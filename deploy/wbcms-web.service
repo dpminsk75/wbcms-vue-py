@@ -1,0 +1,13 @@
+[Unit]
+Description=wbcms-web Vite
+After=network.target wbcms-py.service
+
+[Service]
+User=www-data
+WorkingDirectory=/var/www/wb/wbcms-web
+ExecStart=/usr/bin/npm run dev -- --host 0.0.0.0 --port 3000
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
