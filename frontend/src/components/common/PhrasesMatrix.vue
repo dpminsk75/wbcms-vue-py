@@ -9,21 +9,21 @@
       <table ref="tbl" class="table table-bordered table-hover kv-grid-table mb-0" style="font-size:12px; width:auto; min-width:100%; table-layout:auto">
         <thead style="position:sticky; top:0; z-index:10; background:#fff">
           <tr>
-            <th class="kv-sticky-column" style="width:300px; min-width:300px; white-space:normal; text-align:left; background:#fff">Поисковый запрос</th>
-            <th style="width:80px; text-align:center" title="Средняя частотность за неделю">Ср. част</th>
-            <th style="width:90px; text-align:center">Клики</th>
-            <th style="width:70px; text-align:center">Заказы</th>
-            <th v-for="d in dates" :key="d" class="text-center small" style="min-width:55px; text-align:center">{{ fmtDate(d) }}</th>
+            <th class="kv-sticky-column" style="width:220px; min-width:200px; white-space:normal; text-align:left; background:#fff; cursor:pointer; user-select:none" @click="sortBy('phrase')">Поисковый запрос <span v-if="sortKey==='phrase'">{{ sortDir==='asc'?'▲':'▼' }}</span><span v-else>⇅</span></th>
+            <th style="width:100px; white-space:nowrap; text-align:center; cursor:pointer; user-select:none" title="Средняя частотность за неделю" @click="sortBy('avg_freq')">Ср. част <span v-if="sortKey==='avg_freq'">{{ sortDir==='asc'?'▲':'▼' }}</span><span v-else>⇅</span></th>
+            <th style="width:100px; white-space:nowrap; text-align:center; cursor:pointer; user-select:none" @click="sortBy('total_clicks')">Клики <span v-if="sortKey==='total_clicks'">{{ sortDir==='asc'?'▲':'▼' }}</span><span v-else>⇅</span></th>
+            <th style="width:95px; white-space:nowrap; text-align:center; cursor:pointer; user-select:none" @click="sortBy('total_orders')">Заказы <span v-if="sortKey==='total_orders'">{{ sortDir==='asc'?'▲':'▼' }}</span><span v-else>⇅</span></th>
+            <th v-for="d in dates" :key="d" class="text-center small" style="min-width:35px; padding:4px 2px; font-size:11px; text-align:center">{{ fmtDate(d) }}</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="!rows.length"><td :colspan="4+dates.length" class="text-center text-muted">Нет данных</td></tr>
-          <tr v-for="r in rows" :key="r.phrase" class="clickable-row" style="cursor:pointer" @click="sel=r.phrase" :class="{'selected-row': sel===r.phrase}">
-            <td class="kv-sticky-column text-muted" style="width:300px; white-space:normal; background:#fff"><a :href="'https://www.wildberries.ru/catalog/0/search.aspx?search='+encodeURIComponent(r.phrase)" target="_blank">{{ r.phrase }}</a></td>
+          <tr v-for="r in sortedRows" :key="r.phrase" class="clickable-row" style="cursor:pointer" @click="sel=r.phrase" :class="{'selected-row': sel===r.phrase}">
+            <td class="kv-sticky-column text-muted" style="width:220px; white-space:normal; background:#fff"><a :href="'https://www.wildberries.ru/catalog/0/search.aspx?search='+encodeURIComponent(r.phrase)" target="_blank">{{ r.phrase }}</a></td>
             <td class="text-secondary" style="background:#fcfcfc; text-align:center">{{ r.avg_freq ?? '' }}</td>
             <td class="text-primary" style="background:#fcfcfc; text-align:center">{{ r.total_clicks ?? '' }}</td>
             <td class="text-primary" style="background:#f8f9ff; text-align:center">{{ r.total_orders ?? '' }}</td>
-            <td v-for="d in dates" :key="d" :class="cellCls(r,d)" :title="cellTitle(r,d)" style="text-align:center">{{ cellPos(r,d) }}</td>
+            <td v-for="d in dates" :key="d" :class="cellCls(r,d)" :title="cellTitle(r,d)" style="text-align:center; padding:4px 2px">{{ cellPos(r,d) }}</td>
           </tr>
         </tbody>
       </table>
@@ -31,7 +31,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, nextTick, watch, onMounted } from 'vue'
+import { ref, computed, nextTick, watch, onMounted } from 'vue'
 const props = withDefaults(defineProps<{
   rows: any[]
   dates: string[] // uniqueDates yyyy-mm-dd
@@ -40,6 +40,22 @@ const props = withDefaults(defineProps<{
 const tbl = ref<HTMLTableElement|null>(null)
 const wrapRef = ref<HTMLDivElement|null>(null)
 const sel = ref('')
+// сортировка как phraseDataProvider в WbController.php:878 (дефолт total_orders DESC)
+const sortKey = ref<'phrase'|'avg_freq'|'total_clicks'|'total_orders'>('total_orders')
+const sortDir = ref<'asc'|'desc'>('desc')
+const sortedRows = computed(()=>{
+  const arr=[...props.rows]
+  const k=sortKey.value, d=sortDir.value==='asc'?1:-1
+  arr.sort((a:any,b:any)=>{
+    if(k==='phrase') return String(a.phrase||'').localeCompare(String(b.phrase||''),'ru')*d
+    return ((Number(a[k])||0)-(Number(b[k])||0))*d
+  })
+  return arr
+})
+const sortBy=(k:'phrase'|'avg_freq'|'total_clicks'|'total_orders')=>{
+  if(sortKey.value===k) sortDir.value=sortDir.value==='asc'?'desc':'asc'
+  else{ sortKey.value=k; sortDir.value= k==='phrase'?'asc':'desc' }
+}
 const fmtDate = (d:string)=> { try{ const t=new Date(d); return `${String(t.getDate()).padStart(2,'0')}.${String(t.getMonth()+1).padStart(2,'0')}` }catch{ return d } }
 const cellData = (r:any,d:string)=> r[d] ?? null
 const cellPos = (r:any,d:string)=> cellData(r,d)?.pos ?? ''
@@ -58,7 +74,7 @@ onMounted(()=>{})
 const exportExcel = async()=>{
   if(!props.rows.length) return
   const XLSX=await import('xlsx')
-  const data=props.rows.map((r:any)=>{ const base:any={'Поисковый запрос':r.phrase,'Ср част':r.avg_freq,'Клики':r.total_clicks,'Заказы':r.total_orders}; props.dates.forEach((d:string)=> base[fmtDate(d)] = cellPos(r,d)); return base })
+  const data=sortedRows.value.map((r:any)=>{ const base:any={'Поисковый запрос':r.phrase,'Ср част':r.avg_freq,'Клики':r.total_clicks,'Заказы':r.total_orders}; props.dates.forEach((d:string)=> base[fmtDate(d)] = cellPos(r,d)); return base })
   const ws=XLSX.utils.json_to_sheet(data)
   const wb=XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb,ws,'Фразы')
@@ -76,4 +92,7 @@ const exportExcel = async()=>{
 .table>tbody>tr.selected-row>td.pos-top-10{background:#f37be7 !important}
 .table>tbody>tr.selected-row>td.pos-top-50{background:#f897ee !important}
 #grid-scroll .table{table-layout:auto !important; width:auto !important; min-width:100% !important; display:table !important; overflow:visible !important}
+/* condensed как в оригинале: в окно влезает больше строк */
+#grid-scroll th, #grid-scroll td{padding:4px !important}
+#grid-scroll tbody td{font-size:11px}
 </style>

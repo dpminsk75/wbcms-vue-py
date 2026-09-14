@@ -165,23 +165,33 @@ class WbDetailService:
         return [dict(r) for r in rows]
 
     async def get_phrases(self, nm_id: int, date_from: str, date_to: str):
-        # упрощённо: возвращает matrix как в WbSearchService, пока пусто если нет данных
-        try:
-            sql = text("""SELECT `phrase`, AVG(orders) as total_orders, AVG(clicks) as total_clicks, AVG(avg_position) as avg_freq
-                          FROM wb_sr_report_item_phrases WHERE nmID=:nm_id AND `date` BETWEEN :d1 AND :d2 GROUP BY `phrase` ORDER BY total_orders DESC LIMIT 100""")
-            rows = (await self.db.execute(sql, {"nm_id": nm_id, "d1": date_from, "d2": date_to})).mappings().all()
-            # dates
-            sql2 = text("""SELECT DISTINCT `date` FROM wb_sr_report_item_phrases WHERE nmID=:nm_id AND `date` BETWEEN :d1 AND :d2 ORDER BY `date` ASC""")
-            dates = [r[0] for r in (await self.db.execute(sql2, {"nm_id": nm_id, "d1": date_from, "d2": date_to})).all()]
-            # для каждой фразы подтянуть pos по датам
-            models=[]
-            for r in rows:
-                m=dict(r)
-                for d in dates:
-                    sq=text("""SELECT avg_position as pos, orders FROM wb_sr_report_item_phrases WHERE nmID=:nm_id AND `phrase`=:ph AND `date`=:d LIMIT 1""")
-                    pr=(await self.db.execute(sq, {"nm_id": nm_id, "ph": r["phrase"], "d": d})).mappings().first()
-                    if pr: m[str(d)]={"pos": pr["pos"], "orders": pr["orders"]}
-                models.append(m)
-            return {"models": models, "dates": [str(d) for d in dates]}
-        except Exception:
-            return {"models": [], "dates": []}
+        # как WbSearchService.php:18 — оконные SUM/AVG по фразе, сортировка по частотности
+        sql = text("""SELECT `phrase`, `date`, avg_position, clicks, orders, week_frequency,
+                             SUM(clicks) OVER (PARTITION BY `phrase`) as total_clicks,
+                             SUM(orders) OVER (PARTITION BY `phrase`) as total_orders,
+                             AVG(week_frequency) OVER (PARTITION BY `phrase`) as avg_week_freq
+                      FROM wb_sr_report_item_phrases
+                      WHERE nmID=:nm_id AND `date` BETWEEN :d1 AND :d2
+                      ORDER BY avg_week_freq DESC, `date` ASC""")
+        rows = (await self.db.execute(sql, {"nm_id": nm_id, "d1": date_from, "d2": date_to})).mappings().all()
+        matrix: dict = {}
+        stats: dict = {}
+        dates: dict = {}
+        order: list = []
+        for r in rows:
+            ph = r["phrase"]
+            dt = str(r["date"])[:10]
+            if ph not in matrix:
+                matrix[ph] = {}
+                order.append(ph)
+            matrix[ph][dt] = {"pos": int(r["avg_position"] or 0), "orders": int(r["orders"] or 0)}
+            stats[ph] = {"clicks": int(r["total_clicks"] or 0), "orders": int(r["total_orders"] or 0), "freq": int(r["avg_week_freq"] or 0)}
+            dates[dt] = True
+        unique = sorted(dates.keys())
+        models = []
+        for ph in order:
+            m: dict = {"phrase": ph, "avg_freq": stats[ph]["freq"], "total_clicks": stats[ph]["clicks"], "total_orders": stats[ph]["orders"]}
+            for dt in unique:
+                m[dt] = matrix[ph].get(dt)
+            models.append(m)
+        return {"models": models, "dates": unique}

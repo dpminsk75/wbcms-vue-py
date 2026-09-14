@@ -25,9 +25,9 @@
     </div>
     <!-- период: только выбор дат -->
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:nowrap">
-      <input :value="dateFrom" @input="emit('update:dateFrom', ($event.target as HTMLInputElement).value)" type="date" class="form-control" style="height:38px; flex:1 1 0; min-width:0" />
+      <input :value="dateFrom" @input="emit('update:dateFrom', ($event.target as HTMLInputElement).value)" type="date" class="form-control" style="height:38px; width:150px; flex:0 0 auto" />
       <span style="flex-shrink:0">|</span>
-      <input :value="dateTo" @input="emit('update:dateTo', ($event.target as HTMLInputElement).value)" type="date" class="form-control" style="height:38px; flex:1 1 0; min-width:0" />
+      <input :value="dateTo" @input="emit('update:dateTo', ($event.target as HTMLInputElement).value)" type="date" class="form-control" style="height:38px; width:150px; flex:0 0 auto" />
       <div style="display:flex; gap:4px; height:38px; flex-shrink:0; margin-left:auto">
         <button class="btn btn-outline-secondary btn-sm" @click="setRange('quarter')">-Q</button>
         <button class="btn btn-outline-secondary btn-sm" @click="setRange('year')">-Y</button>
@@ -108,21 +108,40 @@ const onQuickClick = (btn:any)=>{
   emit('apply')
 }
 
+// даты только в локальном времени: toISOString() дает UTC и сдвигает сутки, а new Date('YYYY-MM-DD') парсится как UTC
+const fmtD=(d:Date)=> `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+const parseD=(s:string)=>{ const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s||''); return m ? new Date(+m[1], +m[2]-1, +m[3]) : new Date() }
+
 const setRange = (p:string)=>{
-  const to = dateTo.value ? new Date(dateTo.value) : new Date()
+  const to = dateTo.value ? parseD(dateTo.value) : new Date()
   let from = new Date(to)
   if(p==='year'){ from.setFullYear(to.getFullYear()-1); from.setDate(from.getDate()+1)}
   else if(p==='quarter'){ from.setMonth(to.getMonth()-3); from.setDate(from.getDate()+1)}
-  else if(p==='today'){ const t=new Date(); const v=t.toISOString().slice(0,10); dateFrom.value=v; dateTo.value=v; return}
-  else if(p==='last_year'){ const y=to.getFullYear()-1; from=new Date(y,0,1); const nt=new Date(y,11,31); dateTo.value=nt.toISOString().slice(0,10)}
-  dateFrom.value = from.toISOString().slice(0,10)
+  else if(p==='today'){ dateTo.value=fmtD(new Date()); return } // TD меняет только дату «по»
+  else if(p==='last_year'){ const y=to.getFullYear()-1; from=new Date(y,0,1); dateTo.value=fmtD(new Date(y,11,31)); dateFrom.value=fmtD(from); return }
+  dateFrom.value = fmtD(from)
 }
 
-// синхронизация внешнего nmId -> cardQuery (например при initFromQuery / сбросе)
-watch(()=> nmId.value, (v)=>{
-  if(!v) { if(!showCardList.value) cardQuery.value='' }
-  else if(!cardQuery.value.includes(v)) cardQuery.value = v
-})
+// синхронизация внешнего nmId -> cardQuery (выбор, URL, F5)
+const cardTitleCache = ref<Record<string,string>>({})
+const syncCardLabel=async()=>{
+  const id=String(nmId.value||'')
+  if(!id){ if(!showCardList.value) cardQuery.value=''; return }
+  const c=cardsSource.value.find((x:any)=> String(x.nmID)===id)
+  if(c){ cardQuery.value = c.title ? `${c.nmID} | ${c.title}` : String(c.nmID); return }
+  if(cardQuery.value && cardQuery.value!==id) return // пользователь что-то ввел — не трогаем
+  if(cardTitleCache.value[id]){ cardQuery.value=`${id} | ${cardTitleCache.value[id]}`; return }
+  try{
+    const r=await fetch(`/api/wb/card/${id}`)
+    if(r.ok){
+      const d=await r.json()
+      if(d?.title){ cardTitleCache.value[id]=d.title; if(String(nmId.value)===id) cardQuery.value=`${id} | ${d.title}`; return }
+    }
+  }catch{}
+  if(!cardQuery.value) cardQuery.value=id
+}
+watch(()=> nmId.value, syncCardLabel)
+watch(cardsSource, ()=>{ if(nmId.value) syncCardLabel() })
 
 // клик вне — закрытие списка
 const onDocClick = (e: MouseEvent)=>{
