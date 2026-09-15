@@ -35,20 +35,22 @@
       </div>
     </div>
 
-    <div class="row mb-3 d-flex flex-row flex-nowrap justify-content-between align-items-center">
-      <div class="form__input-dates col-md-6">
+    <div class="row mb-3 g-3 align-items-end">
+      <div class="col-md-8">
         <label style="display:block; font-size:12px; font-weight:600">Период с / по</label>
         <div style="display:flex; gap:8px; align-items:center;">
           <input :value="dateFrom" @input="emit('update:dateFrom', ($event.target as HTMLInputElement).value)" type="date" class="form-control" style="height:38px; flex:1" />
-          <span>|</span>
+          <span class="text-muted">|</span>
           <input :value="dateTo" @input="emit('update:dateTo', ($event.target as HTMLInputElement).value)" type="date" class="form-control" style="height:38px; flex:1" />
         </div>
       </div>
-      <div class="col-md-6 btn-group" style="height:38px; margin-top:18px;">
-        <button type="button" class="btn btn-outline-secondary btn-sm" @click="setRange('quarter')" title="Минус квартал">-Q</button>
-        <button type="button" class="btn btn-outline-secondary btn-sm" @click="setRange('year')" title="Минус год">-Y</button>
-        <button type="button" class="btn btn-outline-secondary btn-sm" @click="setRange('last_year')" title="Прошлый год">LY</button>
-        <button type="button" class="btn btn-outline-secondary btn-sm" @click="setRange('today')" title="По сегодня">TD</button>
+      <div class="col-md-4">
+        <div class="btn-group w-100" style="height:38px;">
+          <button type="button" class="btn btn-outline-secondary btn-sm" @click="setRange('quarter')" title="Минус квартал">-Q</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" @click="setRange('year')" title="Минус год">-Y</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" @click="setRange('last_year')" title="Прошлый год">LY</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" @click="setRange('today')" title="По сегодня">TD</button>
+        </div>
       </div>
     </div>
 

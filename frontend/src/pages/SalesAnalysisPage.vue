@@ -275,8 +275,7 @@ const { data: typesRaw } = useQuery({
 const types = computed(()=> {
   const v = typesRaw.value as any
   if(Array.isArray(v) && v.length) return v
-  // fallback из filterData
-  return []
+  return filterData.value?.types || []
 })
 watch(category, ()=> { if(!category.value) typeVal.value='' })
 watch(country, ()=> { if(country.value!=='Россия') oblast.value=''; region.value='' })

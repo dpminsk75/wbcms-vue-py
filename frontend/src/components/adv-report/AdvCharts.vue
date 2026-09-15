@@ -148,8 +148,8 @@ const tlOption = computed(()=>{
   const cats = d.map((r:any)=> r.odate)
   return {
     tooltip:{trigger:'axis', valueFormatter:(v:any)=> fmt0(v)},
-    legend:{data:['Клики','Корзины','Заказы','Расходы'], bottom:0, itemGap:16, padding:[10,0,0,0], textStyle:{fontSize:11}},
-    grid:{left:50, right:50, top:40, bottom:90, containLabel:true},
+    legend:{data:['Клики','Корзины','Заказы','Расходы'], bottom:20, itemGap:16, padding:[0,0,0,0], textStyle:{fontSize:11}},
+    grid:{left:50, right:50, top:40, bottom:60, containLabel:true},
     xAxis:{type:'category', data:cats, axisLabel:{rotate:30, interval:0, margin:16, fontSize:11, color:'#333'}},
     yAxis:[
       {type:'value', name:'Кол-во (шт)', min:0, axisLabel:{color:'#5067de', fontSize:11, formatter:axQtyFmt}, splitLine:{show:false}},
@@ -188,8 +188,8 @@ const appOption = computed(()=>{
     }
   }
   return {tooltip:{trigger:'axis', valueFormatter:(v:any)=> fmt0(v)},
-    legend:{data:series.map(s=>s.name), bottom:0, itemGap:8, padding:[10,0,0,0], textStyle:{fontSize:10}},
-    grid:{left:50, right:50, top:40, bottom:90, containLabel:true},
+    legend:{data:series.map(s=>s.name), bottom:15, itemGap:8, padding:[0,0,0,0], textStyle:{fontSize:10}, width:320},
+    grid:{left:50, right:50, top:40, bottom:85, containLabel:true},
     xAxis:{type:'category', data:cats, axisLabel:{rotate:30, interval:0, margin:16, fontSize:11, color:'#333'}},
     yAxis:[
       {type:'value', name:'Заказы/Корзины', min:0, axisLabel:{color:'#660ec8', fontSize:11, formatter:axQtyFmt}, splitLine:{show:false}},
@@ -201,8 +201,8 @@ const cpmOption = computed(()=>{
   const cats=d.map((r:any)=> r.odate)
   return {
     tooltip:{trigger:'axis', valueFormatter:(v:any)=> fmt2(v)},
-    legend:{data:['CPM, ₽','CPO, ₽','Расходы'], bottom:0, itemGap:16, padding:[10,0,0,0], textStyle:{fontSize:11}},
-    grid:{left:50, right:50, top:40, bottom:90, containLabel:true},
+    legend:{data:['CPM, ₽','CPO, ₽','Расходы'], bottom:20, itemGap:16, padding:[0,0,0,0], textStyle:{fontSize:11}},
+    grid:{left:50, right:50, top:40, bottom:60, containLabel:true},
     xAxis:{type:'category', data:cats, axisLabel:{rotate:30, interval:0, margin:16, fontSize:11, color:'#333'}},
     yAxis:[
       {type:'value', name:'Показатель (₽)', min:0, axisLabel:{color:'#2196f3', fontSize:11, formatter:(v:any)=> fmt2(v)}, splitLine:{show:false}},
@@ -220,8 +220,8 @@ const ctrOption = computed(()=>{
   const cats=d.map((r:any)=> r.odate)
   return {
     tooltip:{trigger:'axis', valueFormatter:(v:any)=> fmt2(v)},
-    legend:{data:['CTR, %','CR, %','Расходы'], bottom:0, itemGap:16, padding:[10,0,0,0], textStyle:{fontSize:11}},
-    grid:{left:50, right:50, top:40, bottom:90, containLabel:true},
+    legend:{data:['CTR, %','CR, %','Расходы'], bottom:20, itemGap:16, padding:[0,0,0,0], textStyle:{fontSize:11}},
+    grid:{left:50, right:50, top:40, bottom:60, containLabel:true},
     xAxis:{type:'category', data:cats, axisLabel:{rotate:30, interval:0, margin:16, fontSize:11, color:'#333'}},
     yAxis:[
       {type:'value', name:'Показатель (%)', min:0, axisLabel:{color:'#660ec8', fontSize:11, formatter:(v:any)=> fmt2(v)}, splitLine:{show:false}},

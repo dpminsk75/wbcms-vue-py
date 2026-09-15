@@ -72,14 +72,14 @@ class SalesAnalysisService:
         if column not in allowed:
             return []
         where_extra = self._company_where()
-        sql = text(f"SELECT DISTINCT {column} as v FROM wb_sales WHERE {column} IS NOT NULL{where_extra} ORDER BY {column}")
+        sql = text(f"SELECT DISTINCT s.{column} as v FROM wb_sales s WHERE s.{column} IS NOT NULL{where_extra} ORDER BY s.{column}")
         rows = (await self.db.execute(sql, self._company_params())).scalars().all()
         return [r for r in rows if r]
 
     async def get_districts(self, country: str):
         if country != "Россия":
             return []
-        sql = text(f"SELECT DISTINCT oblastOkrugName as v FROM wb_sales WHERE countryName='Россия' AND oblastOkrugName IS NOT NULL{self._company_where()} ORDER BY v")
+        sql = text(f"SELECT DISTINCT s.oblastOkrugName as v FROM wb_sales s WHERE s.countryName='Россия' AND s.oblastOkrugName IS NOT NULL{self._company_where()} ORDER BY v")
         rows = (await self.db.execute(sql, self._company_params())).scalars().all()
         return [r for r in rows if r]
 
@@ -87,18 +87,18 @@ class SalesAnalysisService:
         if not country:
             return []
         params: dict = {"country": country, **self._company_params()}
-        where = "countryName = :country" + self._company_where()
+        where = "s.countryName = :country" + self._company_where()
         if country == "Россия" and oblast:
-            where += " AND oblastOkrugName = :oblast"
+            where += " AND s.oblastOkrugName = :oblast"
             params["oblast"] = oblast
-        sql = text(f"SELECT DISTINCT regionName as v FROM wb_sales WHERE {where} AND regionName IS NOT NULL ORDER BY v")
+        sql = text(f"SELECT DISTINCT s.regionName as v FROM wb_sales s WHERE {where} AND s.regionName IS NOT NULL ORDER BY v")
         rows = (await self.db.execute(sql, params)).scalars().all()
         return [r for r in rows if r]
 
     async def get_types(self, category: str):
         if not category:
             return []
-        sql = text(f"SELECT DISTINCT subject as v FROM wb_sales WHERE category = :cat AND subject IS NOT NULL{self._company_where()} ORDER BY v")
+        sql = text(f"SELECT DISTINCT s.subject as v FROM wb_sales s WHERE s.category = :cat AND s.subject IS NOT NULL{self._company_where()} ORDER BY v")
         rows = (await self.db.execute(sql, {"cat": category, **self._company_params()})).scalars().all()
         return [r for r in rows if r]
 

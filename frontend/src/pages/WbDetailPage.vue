@@ -223,7 +223,36 @@ const fetchOrderStats=async()=>{
 const fetchAll=()=>{ fetchCard(); fetchWeekly(); fetchPhrases(); fetchOrderStats() }
 const onApply=()=>{ syncRoute(); fetchAll() }
 const onReset=()=>{ filters.value.nm_id=''; filters.value.date_from=defFrom; filters.value.date_to=defTo; syncRoute(); card.value=null; weeklyRows.value=[]; phraseModels.value=[]; orderStats.value={alls:0,sLO:0,cancel:0,notb:0,bought:0,sum:0,sFP:0} }
-const copyId=()=>{ if(card.value?.nmID) navigator.clipboard.writeText(String(card.value.nmID)) }
+const copyId=()=>{
+  const val = String(card.value?.nmID || filters.value.nm_id || '').trim()
+  if(!val) return
+  
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(val).catch(err => {
+      console.error('Copy failed:', err)
+      fallbackCopyTextToClipboard(val)
+    })
+  } else {
+    fallbackCopyTextToClipboard(val)
+  }
+}
+
+function fallbackCopyTextToClipboard(text: string) {
+  const textArea = document.createElement("textarea")
+  textArea.value = text
+  textArea.style.position = "fixed"
+  textArea.style.left = "-9999px"
+  textArea.style.top = "0"
+  document.body.appendChild(textArea)
+  textArea.focus()
+  textArea.select()
+  try {
+    document.execCommand('copy')
+  } catch (err) {
+    console.error('Fallback copy failed:', err)
+  }
+  document.body.removeChild(textArea)
+}
 onMounted(()=>{ initFromQuery(); if(filters.value.nm_id) fetchAll() })
 watch(()=>route.query, ()=>{
   if(syncing) return
