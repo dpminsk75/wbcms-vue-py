@@ -1,22 +1,22 @@
 <template>
-  <div class="site-index container-fluid" style="padding:20px 15px">
+  <div class="site-index container-xxl page-sales-analysis">
     <div class="row">
       <div class="nav_div col-md-2"><SideMenu /></div>
       <div class="col-md-10">
-        <h1 class="mb-2" style="font-size:28px">ТОП Продаж WB</h1>
-        <p style="font-size:12px; color:#6b7280"><i> Данные по продажам с 1/09/2025 </i></p>
+        <h1 class="mb-2 page-sales-analysis__title">ТОП Продаж WB</h1>
+        <p class="page-sales-analysis__lede"><i> Данные по продажам с 1/09/2025 </i></p>
 
         <div class="card shadow-sm mb-4 card-body">
-          <div class="row g-3 mb-3" style="align-items:flex-end; justify-content:space-between">
+          <div class="row g-3 mb-3 page-sales-analysis__filters">
             <div class="col-md-4">
               <label class="form-label">Период</label>
               <div class="d-flex gap-2">
-                <input type="date" v-model="dateFrom" class="form-control" style="height:38px">
-                <span style="align-self:center"> | </span>
-                <input type="date" v-model="dateTo" class="form-control" style="height:38px">
+                <input type="date" v-model="dateFrom" class="form-control page-sales-analysis__date-input">
+                <span class="page-sales-analysis__date-sep"> | </span>
+                <input type="date" v-model="dateTo" class="form-control page-sales-analysis__date-input">
               </div>
             </div>
-            <div class="btn-group col-md-3" style="height:38px">
+            <div class="btn-group col-md-3 page-sales-analysis__range-group">
               <button class="btn btn-outline-secondary btn-sm" @click="setRange('quarter')">Квартал</button>
               <button class="btn btn-outline-secondary btn-sm" @click="setRange('year')">Год</button>
               <button class="btn btn-outline-secondary btn-sm" @click="setRange('last_year')">Прошлый год</button>
@@ -92,13 +92,13 @@
         </div>
 
         <div class="card">
-          <div class="card-header text-white bg-wb d-flex justify-content-between align-items-center" style="font-weight:700">
+          <div class="card-header text-white bg-wb d-flex justify-content-between align-items-center page-sales-analysis__result-head">
             <span>Результаты анализа продаж</span>
-            <button class="btn btn-sm btn-light" style="font-size:12px; padding:4px 12px; border-radius:6px" @click="exportExcel" :disabled="!rows.length"><i class="bi bi-file-earmark-excel me-1"></i> Excel</button>
+            <button class="btn btn-sm btn-light wb-excel-btn" @click="exportExcel" :disabled="!rows.length"><i class="bi bi-file-earmark-excel me-1"></i> Excel</button>
           </div>
           <div v-if="isLoading" class="text-center p-4"><span class="spinner-border spinner-border-sm"></span> Загрузка...</div>
-          <div v-else style="overflow-x:auto" ref="wrapRef">
-            <table ref="tableRef" class="table table-bordered table-striped table-hover kv-grid-table mb-0" style="font-size:12px; width:100%; table-layout:fixed">
+          <div v-else class="wb-table-wrap page-sales-analysis__table-wrap" ref="wrapRef">
+            <table ref="tableRef" class="table table-bordered table-striped table-hover kv-grid-table mb-0 page-sales-analysis__table">
               <thead>
                 <tr>
                   <th style="width:40px; min-width:40px; text-align:center">#</th>
@@ -117,28 +117,28 @@
               <tbody>
                 <tr v-if="rows.length===0"><td colspan="11" class="text-center text-muted">Нет данных</td></tr>
                 <tr v-for="(r,i) in rows" :key="r.nm_id">
-                  <td style="overflow:hidden; text-overflow:ellipsis">{{ i+1 }}</td>
-                  <td style="text-align:center; overflow:hidden; text-overflow:ellipsis"><a :href="`/wb/detail?nm_id=${r.nm_id}&date_from=${dateFrom}&date_to=${dateTo}`" target="_blank" style="text-decoration:none">{{ r.nm_id }}</a></td>
-                  <td style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; word-break:break-all" :title="r.vendorCode">{{ r.vendorCode }}</td>
-                  <td style="white-space:normal; word-break:break-word; overflow-wrap:anywhere">
-                    <div style="font-weight:700; font-size:13px; color:#2c3e50; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; word-break:break-word">{{ r.card_name }}</div>
-                    <div style="font-size:11px; color:#666; white-space:normal; word-break:break-word"><b>{{ r.brand }}</b> | {{ r.subject }} | {{ r.category }}</div>
+                  <td class="page-sales-analysis__cell">{{ i+1 }}</td>
+                  <td class="page-sales-analysis__cell page-sales-analysis__cell--center"><a :href="`/wb/detail?nm_id=${r.nm_id}&date_from=${dateFrom}&date_to=${dateTo}`" target="_blank" class="page-sales-analysis__nm-link">{{ r.nm_id }}</a></td>
+                  <td class="page-sales-analysis__vendor" :title="r.vendorCode">{{ r.vendorCode }}</td>
+                  <td class="page-sales-analysis__product-cell">
+                    <div class="page-sales-analysis__product-name">{{ r.card_name }}</div>
+                    <div class="page-sales-analysis__product-sub"><b>{{ r.brand }}</b> | {{ r.subject }} | {{ r.category }}</div>
                   </td>
-                  <td style="text-align:right; font-weight:700">{{ fmt0(r.sales_qty) }}</td>
-                  <td style="text-align:right">{{ fmt2(r.finished_sum) }}</td>
-                  <td style="text-align:right">{{ fmt2(r.for_pay_sum) }}</td>
-                  <td style="text-align:right">{{ fmt2(r.apwd) }}</td>
-                  <td style="text-align:right">{{ fmt1(r.aspp) }}</td>
-                  <td style="text-align:right; font-weight:700">{{ fmt2(r.afp) }}</td>
-                  <td style="text-align:right; font-weight:700">{{ fmt2(r.aforPay) }}</td>
+                  <td class="page-sales-analysis__num--bold">{{ fmt0(r.sales_qty) }}</td>
+                  <td class="page-sales-analysis__num">{{ fmt2(r.finished_sum) }}</td>
+                  <td class="page-sales-analysis__num">{{ fmt2(r.for_pay_sum) }}</td>
+                  <td class="page-sales-analysis__num">{{ fmt2(r.apwd) }}</td>
+                  <td class="page-sales-analysis__num">{{ fmt1(r.aspp) }}</td>
+                  <td class="page-sales-analysis__num--bold">{{ fmt2(r.afp) }}</td>
+                  <td class="page-sales-analysis__num--bold">{{ fmt2(r.aforPay) }}</td>
                 </tr>
               </tbody>
               <tfoot v-if="rows.length">
-                <tr style="font-weight:700; background:#fff3cd">
-                  <td colspan="4" style="text-align:right">Итого</td>
-                  <td style="text-align:right">{{ fmt0(totals.sales_qty) }}</td>
-                  <td style="text-align:right">{{ fmt2(totals.finished_sum) }}</td>
-                  <td style="text-align:right">{{ fmt2(totals.for_pay_sum) }}</td>
+                <tr class="page-sales-analysis__totals">
+                  <td colspan="4">Итого</td>
+                  <td>{{ fmt0(totals.sales_qty) }}</td>
+                  <td>{{ fmt2(totals.finished_sum) }}</td>
+                  <td>{{ fmt2(totals.for_pay_sum) }}</td>
                   <td colspan="4"></td>
                 </tr>
               </tfoot>
@@ -150,6 +150,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import '@/assets/css/pages/page-sales-analysis.css'
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { api } from '../api/client'
@@ -316,6 +317,3 @@ const exportExcel = async ()=>{
   XLSX.writeFile(wb, `top-sales_${dateFrom.value}_${dateTo.value}.xlsx`)
 }
 </script>
-<style scoped>
-.col-resizer:hover{ background:#4A3A8C; opacity:0.2 }
-</style>

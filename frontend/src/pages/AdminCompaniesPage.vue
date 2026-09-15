@@ -1,5 +1,5 @@
 <template>
-  <div class="container-xxl" style="padding:20px 15px">
+  <div class="container-xxl page-admin-companies">
     <h2 style="margin-bottom:16px">Компании (админ)</h2>
     <div v-if="error" style="color:#c00">{{ error }}</div>
     <table style="width:100%; border-collapse:collapse">
@@ -34,6 +34,7 @@
 </template>
 
 <script setup lang="ts">
+import '@/assets/css/pages/page-admin-companies.css'
 import { ref } from 'vue'
 import { authApi } from '../api/auth'
 

@@ -1,6 +1,6 @@
 <template>
-  <div class="d-flex align-items-center justify-content-center" style="min-height:80vh">
-    <div class="card p-4" style="width:360px">
+  <div class="d-flex align-items-center justify-content-center page-login">
+    <div class="card p-4 page-login__card">
       <h5 class="mb-3">Вход — {{ appName }}</h5>
       <div class="mb-2">
         <label class="form-label" for="login-u">Логин</label>
@@ -18,6 +18,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import '@/assets/css/pages/page-login.css'
 import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'

@@ -1,5 +1,5 @@
 <template>
-  <div class="container-xxl" style="padding:20px 15px">
+  <div class="container-xxl page-companies">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px">
       <h2 style="margin:0">Мои компании</h2>
       <button v-if="canCreate" @click="openCreate = true" style="padding:8px 14px; background:#4A3A8C; color:#fff; border:none; border-radius:6px">Создать компанию</button>
@@ -44,6 +44,7 @@
 </template>
 
 <script setup lang="ts">
+import '@/assets/css/pages/page-companies.css'
 import { reactive, ref, computed } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { authApi } from '../api/auth'

@@ -1,13 +1,13 @@
 <template>
-  <div class="container-fluid wb-detail-report" style="padding:20px 15px">
-    <div class="mb-2" style="font-size:12px; color:#6b7280"><a href="/" style="text-decoration:none">Главная</a> <span class="mx-1">/</span> <a href="#" style="text-decoration:none">Данные</a> <span class="mx-1">/</span> <span class="text-dark">О карточке</span></div>
-    <div style="display:flex; align-items:center; gap:12px" class="mb-3">
-      <h1 class="mb-0" style="font-size:28px; font-weight:700; flex:1 1 auto; min-width:0">{{ card?.title || 'Карточка WB' }}</h1>
-      <div v-if="filters.nm_id || card?.nmID" style="display:flex; align-items:center; gap:8px; flex-shrink:0; margin-left:auto">
-        <span class="text-muted" style="font-size:12px">ID:</span>
-        <span class="badge bg-dark" style="font-size:12px">{{ card?.nmID || filters.nm_id }}</span>
-        <button class="btn btn-sm btn-outline-secondary" style="width:32px; height:32px; padding:0; display:flex; align-items:center; justify-content:center" @click="copyId"><i class="bi bi-clipboard"></i></button>
-        <a :href="'https://www.wildberries.ru/catalog/'+(card?.nmID||filters.nm_id)+'/detail.aspx'" target="_blank" class="btn btn-sm btn-outline-primary" style="width:32px; height:32px; padding:0; display:flex; align-items:center; justify-content:center"><i class="bi bi-eye"></i></a>
+  <div class="container-xxl wb-detail-report page-wb-detail">
+    <div class="mb-2 page-wb-detail__crumbs"><a href="/" class="page-wb-detail__crumbs-link">Главная</a> <span class="mx-1">/</span> <a href="#" class="page-wb-detail__crumbs-link">Данные</a> <span class="mx-1">/</span> <span class="text-dark">О карточке</span></div>
+    <div class="mb-3 page-wb-detail__head">
+      <h1 class="mb-0 page-wb-detail__title">{{ card?.title || 'Карточка WB' }}</h1>
+      <div v-if="filters.nm_id || card?.nmID" class="page-wb-detail__id-group">
+        <span class="text-muted page-wb-detail__id-label">ID:</span>
+        <span class="badge bg-dark page-wb-detail__id-badge">{{ card?.nmID || filters.nm_id }}</span>
+        <button class="btn btn-sm btn-outline-secondary page-wb-detail__icon-btn" @click="copyId"><i class="bi bi-clipboard"></i></button>
+        <a :href="'https://www.wildberries.ru/catalog/'+(card?.nmID||filters.nm_id)+'/detail.aspx'" target="_blank" class="btn btn-sm btn-outline-primary page-wb-detail__icon-btn"><i class="bi bi-eye"></i></a>
       </div>
     </div>
 
@@ -25,28 +25,28 @@
         <div v-if="!filters.nm_id" class="alert alert-warning">Выберите карточку — укажите артикул WB (nmID) и нажмите Применить.</div>
         <div v-else-if="cardLoading" class="text-center p-4"><span class="spinner-border spinner-border-sm"></span> Загрузка карточки...</div>
         <div v-else-if="cardError" class="alert alert-danger">Карточка {{ filters.nm_id }} не найдена.</div>
-        <div v-else-if="card" class="card" style="border:1px solid #e0e0e0; border-radius:12px; overflow:hidden">
-          <div class="card-header" style="background:#f8f9fa; font-weight:700; font-size:13px; display:flex; justify-content:space-between">
+        <div v-else-if="card" class="card page-wb-detail__product-card">
+          <div class="card-header page-wb-detail__product-head">
             <span>Товар: {{ card.title }}</span>
-            <span style="font-size:11px; color:#6b7280">WB: {{ card.nmID }}</span>
+            <span class="page-wb-detail__product-wb">WB: {{ card.nmID }}</span>
           </div>
           <div class="card-body">
             <div class="row mb-2">
               <div class="col-md-6 card_characteristics">
-                <dl class="mb-0" style="font-size:12px">
+                <dl class="mb-0 page-wb-detail__facts">
                   <div class="dl_item"><dt class="card_characteristics__dt">Арт. WB:</dt><dd class="card_characteristics__dd"><a :href="'https://www.wildberries.ru/catalog/'+card.nmID+'/detail.aspx'" target="_blank"><b>{{ card.nmID }}</b></a></dd></div>
                   <div class="dl_item"><dt class="card_characteristics__dt">Арт.:</dt><dd class="card_characteristics__dd"><b>{{ card.vendorCode }}</b></dd></div>
                   <div class="dl_item"><dt class="card_characteristics__dt">Бренд:</dt><dd class="card_characteristics__dd"><b>{{ card.brand }}</b></dd></div>
                   <div class="dl_item"><dt class="card_characteristics__dt">Размер:</dt><dd class="card_characteristics__dd">{{ dimensions }}</dd></div>
                 </dl>
                 <div class="mt-2 d-flex gap-2">
-                  <a :href="'/seo/index?status=new&q='+filters.nm_id" target="_blank" class="btn btn-sm btn-outline-primary" style="flex:1"><i class="fas fa-robot me-1"></i> AI рек.</a>
-                  <button class="btn btn-sm btn-outline-warning" style="flex:1" data-bs-toggle="modal" data-bs-target="#seoTargetsModal"><i class="fas fa-bullseye me-1"></i> Целевые</button>
+                  <a :href="'/seo/index?status=new&q='+filters.nm_id" target="_blank" class="btn btn-sm btn-outline-primary page-wb-detail__card-actions"><i class="fas fa-robot me-1"></i> AI рек.</a>
+                  <button class="btn btn-sm btn-outline-warning page-wb-detail__card-actions" data-bs-toggle="modal" data-bs-target="#seoTargetsModal"><i class="fas fa-bullseye me-1"></i> Целевые</button>
                 </div>
               </div>
               <div class="col-md-6">
                 <div class="panel_stats">
-                  <div style="text-align:center">с <b>{{ filters.date_from }}</b> по <b>{{ dateTo14 }}</b></div>
+                  <div class="page-wb-detail__period">с <b>{{ filters.date_from }}</b> по <b>{{ dateTo14 }}</b></div>
                   <div class="orders_total">
                     <div class="ot-row"><span>Всего заказов <b>{{ fmt0(orderStats.alls) }}</b></span><span>На сумму <b>{{ fmt2(orderStats.sLO) }}</b></span></div>
                     <div class="ot-row"><span>Отказов <b>{{ fmt0(orderStats.cancel) }}</b></span><span>Процент выкупа <span :class="buyoutClass + ' fw-bold'">{{ buyoutPct }}%</span></span></div>
@@ -56,16 +56,16 @@
                 </div>
               </div>
             </div>
-            <div class="wb-card-gallery-scroll mt-3" style="display:flex; flex-direction:row; overflow-x:auto; gap:10px; padding:10px; background:#fdfdfd; border:1px solid #eee; border-radius:8px; height:200px; align-items:center">
-              <div v-if="card.video" style="flex:0 0 auto; position:relative; height:180px">
-                <video :src="card.video" controls :poster="photos[0]||''" style="height:180px; width:auto; border-radius:4px; background:#000"></video>
+            <div class="wb-card-gallery-scroll page-wb-detail__gallery mt-3">
+              <div v-if="card.video" class="page-wb-detail__gallery-video">
+                <video :src="card.video" controls :poster="photos[0]||''" class="page-wb-detail__gallery-video-el"></video>
               </div>
-              <img v-for="(u,i) in photos" :key="i" :src="u" loading="lazy" style="height:180px; width:auto; flex:0 0 auto; border-radius:4px; border:1px solid #ddd" @error="(e:any)=>e.target.style.display='none'" />
-              <div v-if="!photos.length && !card.video" class="text-muted" style="padding:10px">Нет фото</div>
+              <img v-for="(u,i) in photos" :key="i" :src="u" loading="lazy" class="page-wb-detail__gallery-photo" @error="(e:any)=>e.target.style.display='none'" />
+              <div v-if="!photos.length && !card.video" class="text-muted page-wb-detail__gallery-empty">Нет фото</div>
             </div>
             <div class="row mt-3 expandable-container" :class="{'is-expanded': descExpanded}" :style="{maxHeight: descExpanded ? '20000px' : '450px', overflow:'hidden', position:'relative', transition:'max-height .5s'}">
               <div class="col-md-6">
-                <div style="font-size:11px; font-weight:700; margin-bottom:6px">Характеристики</div>
+                <div class="page-wb-detail__section-title">Характеристики</div>
                 <div v-if="characteristics.length" class="card_characteristics">
                   <dl class="mb-0">
                     <div v-for="(c,i) in characteristics" :key="i" class="dl_item">
@@ -74,15 +74,15 @@
                     </div>
                   </dl>
                 </div>
-                <div v-else class="text-muted" style="font-size:12px">Нет характеристик</div>
+                <div v-else class="text-muted page-wb-detail__empty">Нет характеристик</div>
               </div>
               <div class="col-md-6">
-                <div style="font-size:11px; font-weight:700; margin-bottom:6px">Описание</div>
-                <div v-if="card.description" class="card_description" style="font-size:11px; white-space:pre-wrap; border-left:1px dashed #ddd; padding-left:10px">{{ card.description }}</div>
+                <div class="page-wb-detail__section-title">Описание</div>
+                <div v-if="card.description" class="card_description page-wb-detail__description">{{ card.description }}</div>
               </div>
             </div>
-            <div v-if="(characteristics.length || card.description) && (String(card.description||'').length>300 || characteristics.length>8)" class="expand-btn-wrapper" style="text-align:center; margin:10px 0 0">
-              <button class="btn btn-outline-primary btn-sm" style="font-size:12px; padding:4px 16px; border-radius:6px" @click="descExpanded=!descExpanded">{{ descExpanded ? 'Свернуть' : 'Увидеть больше' }}</button>
+            <div v-if="(characteristics.length || card.description) && (String(card.description||'').length>300 || characteristics.length>8)" class="expand-btn-wrapper page-wb-detail__expand-btn">
+              <button class="btn btn-outline-primary btn-sm page-wb-detail__more-btn" @click="descExpanded=!descExpanded">{{ descExpanded ? 'Свернуть' : 'Увидеть больше' }}</button>
             </div>
           </div>
         </div>
@@ -103,6 +103,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import '@/assets/css/pages/page-wb-detail.css'
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/api/client'

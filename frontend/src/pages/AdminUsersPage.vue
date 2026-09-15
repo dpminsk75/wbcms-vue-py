@@ -1,5 +1,5 @@
 <template>
-  <div class="container-xxl" style="padding:20px 15px">
+  <div class="container-xxl page-admin-users">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px">
       <h2 style="margin:0">Пользователи{{ isGlobal ? ' (админ)' : '' }}</h2>
       <button @click="openCreate = true" style="padding:8px 14px; background:#4A3A8C; color:#fff; border:none; border-radius:6px">Создать пользователя</button>
@@ -92,6 +92,7 @@
 </template>
 
 <script setup lang="ts">
+import '@/assets/css/pages/page-admin-users.css'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { authApi } from '../api/auth'
 import { useAuthStore } from '../stores/auth'

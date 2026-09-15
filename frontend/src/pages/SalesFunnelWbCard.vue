@@ -1,5 +1,5 @@
 <template>
-  <div class="sales-funnel-wb-card" style="padding:20px 15px">
+  <div class="container-xxl sales-funnel-wb-card page-sales-funnel-wb-card">
     <PageHeaderWidget :title="'Воронка продаж: Карточка WB'" :nm-id="filters.nm_id || card?.nmID || ''" />
 
     <div class="row mt-3">
@@ -95,6 +95,7 @@
 </template>
 
 <script setup lang="ts">
+import '@/assets/css/pages/page-sales-funnel-wb-card.css'
 import { nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeaderWidget from '../components/common/PageHeaderWidget.vue'

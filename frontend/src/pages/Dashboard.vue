@@ -1,5 +1,5 @@
 <template>
-  <div class="site-index container-xxl" style="padding:20px 15px">
+  <div class="site-index container-xxl page-dashboard">
     <div class="row" style="margin-bottom:20px">
       <div class="nav_div col-md-2">
         <SideMenu />
@@ -33,6 +33,7 @@
 </template>
 
 <script setup lang="ts">
+import '@/assets/css/pages/page-dashboard.css'
 import { ref, reactive, computed, provide } from 'vue'
 import TopMetrics from '../components/dashboard/TopMetrics.vue'
 import AdvCampaigns from '../components/dashboard/AdvCampaigns.vue'

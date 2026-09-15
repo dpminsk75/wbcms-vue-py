@@ -1,5 +1,5 @@
 <template>
-  <div class="container-xxl" style="padding:20px 15px">
+  <div class="container-xxl page-admin-invites">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px">
       <h2 style="margin:0">Инвайты</h2>
       <button @click="load" style="padding:6px 12px; border:1px solid #ccc; background:#fff; border-radius:6px">Обновить</button>
@@ -59,6 +59,7 @@
 </template>
 
 <script setup lang="ts">
+import '@/assets/css/pages/page-admin-invites.css'
 import { reactive, ref, computed, onMounted } from 'vue'
 import { authApi } from '../api/auth'
 

@@ -1,5 +1,5 @@
 <template>
-  <div class="container" style="padding:20px 15px; max-width:1100px">
+  <div class="container-xxl page-admin-quick-buttons">
     <nav aria-label="breadcrumb" style="margin-bottom:12px">
       <ol class="breadcrumb" style="font-size:12px">
         <li class="breadcrumb-item"><router-link to="/">Главная</router-link></li>
@@ -169,6 +169,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import '@/assets/css/pages/page-admin-quick-buttons.css'
 import { ref, computed, onMounted, watch } from 'vue'
 import { api } from '../api/client'
 import { dashboardApi } from '../api/dashboard'

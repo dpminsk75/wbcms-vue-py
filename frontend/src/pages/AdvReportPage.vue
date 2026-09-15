@@ -1,8 +1,8 @@
 <template>
-  <div class="container-xxl" style="padding:20px 15px; font-family:&quot;Segoe UI&quot;,Roboto,Helvetica,Arial,sans-serif">
+  <div class="container-xxl page-adv-report">
     <!-- title наследование 1в1 PageHeaderWidget.php:13 + WbAdvReportController.php:26 ($this->title='Аналитика рекламы WB' → route.meta.title, динамика 'Компания: name') -->
     <PageHeaderWidget v-if="detail?.campaign" :title="'Компания: ' + detail.campaign.name" :nm-id="detail.campaign.campaign_id" />
-    <h1 v-else style="font-size:20px; font-weight:700; margin-bottom:12px">Аналитика рекламы WB</h1>
+    <h1 v-else class="page-title">Аналитика рекламы WB</h1>
 
     <!-- фильтр: UniversalFilter (campaign_id + даты), т.к. WbFilterBar только для nm_id/date_from/date_to.
          Кнопки -Q/-Y/LY/TD + Применить/Сбросить 1в1 WbFilterBar (TD правит только date_to). -->
@@ -30,6 +30,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import '@/assets/css/pages/page-adv-report.css'
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'

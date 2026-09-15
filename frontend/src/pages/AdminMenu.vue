@@ -1,5 +1,5 @@
 <template>
-  <div class="container" style="padding:20px 15px; max-width:1200px">
+  <div class="container-xxl page-admin-menu">
     <nav aria-label="breadcrumb" style="margin-bottom:12px">
       <ol class="breadcrumb" style="font-size:12px">
         <li class="breadcrumb-item"><router-link to="/">Главная</router-link></li>
@@ -172,6 +172,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import '@/assets/css/pages/page-admin-menu.css'
 import { ref, computed, onMounted } from 'vue'
 import { dashboardApi } from '../api/dashboard'
 

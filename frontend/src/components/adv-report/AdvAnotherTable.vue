@@ -1,17 +1,17 @@
 <template>
   <!-- Другие товары в заказах — AnotherGoodsProvider pageSize 10 + showPageSummary POS_TOP (index.php:558-586) -->
   <div v-if="rows.length" class="row mb-3">
-    <div class="col-12"><div class="card" style="border:1px solid #e0e0e0; border-radius:12px; overflow:hidden;">
-      <div class="card-header text-white d-flex justify-content-between align-items-center" style="background: linear-gradient(97.26deg,#ed3cca .49%,#df34d2 14.88%,#d02bd9 29.27%,#bf22e1 43.14%,#ae1ae8 57.02%,#9a10f0 70.89%,#8306f7 84.76%,#7c1af8 99.15%); font-weight:700; font-size:13px; line-height:1.5; padding:4px 8px;">
+    <div class="col-12"><div class="card wb-grid-card">
+      <div class="card-header text-white d-flex justify-content-between align-items-center wb-card-header wb-card-header--sm">
         <span>Другие товары в заказах</span>
-        <button class="btn btn-sm btn-light" style="font-size:11px; padding:2px 10px; border-radius:6px" @click="exportExcel" :disabled="!rows.length"><i class="bi bi-file-earmark-excel me-1"></i>Excel</button>
+        <button class="btn btn-sm btn-light wb-excel-btn--sm" @click="exportExcel" :disabled="!rows.length"><i class="bi bi-file-earmark-excel me-1"></i>Excel</button>
       </div>
-      <div class="expandable-container" :class="{'is-expanded': exp}" :style="{maxHeight: exp ? '20000px' : '250px', overflow:'hidden', position:'relative', transition:'max-height .5s'}" style="overflow-x:auto"><table class="table table-bordered table-striped table-hover kv-grid-table mb-0 adv-grid" style="font-size:12px; width:100%; table-layout:auto">
+      <div class="expandable-container wb-table-wrap" :class="{'is-expanded': exp}" :style="{maxHeight: exp ? '20000px' : '250px', overflow:'hidden', position:'relative', transition:'max-height .5s'}"><table class="table table-bordered table-striped table-hover kv-grid-table mb-0 adv-grid">
         <thead><tr>
           <th style="width:90px; text-align:center">Арт WB</th><th style="min-width:420px; text-align:center">Товар / Артикул</th><th style="width:100px; text-align:center">Корзины</th><th style="width:100px; text-align:center">Заказы</th><th style="width:100px; text-align:center">Отмена</th><th style="width:100px; text-align:center">Сумма, ₽</th>
         </tr>
         <!-- POS_TOP: итоги сверху, без слова «Итого» -->
-        <tr class="kv-totals" style="font-weight:700; background:#f2e7c3; font-size:11px">
+        <tr class="kv-totals">
           <td style="padding:4px 6px; border-bottom:2px solid #8A2BE0"></td>
           <td style="padding:4px 6px; border-bottom:2px solid #8A2BE0"></td>
           <td style="text-align:right; color:#5A1C9C; padding:4px 6px; border-bottom:2px solid #8A2BE0">{{ fmt0(sum('atbs')) }}</td>
@@ -49,9 +49,3 @@ const exportExcel = async()=>{
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Другие'); XLSX.writeFile(wb, `adv-another_${props.campaignId}_${props.dateFrom}_${props.dateTo}.xlsx`)
 }
 </script>
-<style scoped>
-.adv-grid th{white-space:normal; overflow-wrap:break-word; font-weight:500; font-size:11px; text-align:center; vertical-align:middle; padding:4px !important;}
-.adv-grid td{font-size:12px; vertical-align:middle;}
-.adv-link{color:#8A2BE0; font-weight:600; text-decoration:none;}
-.kv-totals > td{background-color:#f2e7c3 !important; box-shadow:none !important;}
-</style>

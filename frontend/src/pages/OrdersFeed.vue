@@ -1,34 +1,34 @@
 <template>
-  <div class="container-xxl" style="padding:20px 15px; font-family:&quot;Segoe UI&quot;,Roboto,Helvetica,Arial,sans-serif">
-    <h1 style="font-size:20px; font-weight:700; margin-bottom:12px">Лента заказов</h1>
+  <div class="container-xxl page-orders-feed">
+    <h1 class="page-title">Лента заказов</h1>
     <div class="row">
       <div class="col-md-6"><WbFilterBar v-model:nm-id="filters.nm_id" v-model:date-from="filters.date_from" v-model:date-to="filters.date_to" @apply="page=1; fetchFeed()" @reset="reset()" /></div>
       <div class="col-md-6"><!-- слот для доп. фильтров страницы --></div>
     </div>
 
-    <div v-if="summary" class="grid_orderfeed_summary" style="display:flex; flex-wrap:wrap; gap:16px; margin:16px 0 24px">
-      <div class="summary-card" style="background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:16px 22px; min-width:160px; flex:1 1 160px"><div style="font-size:12px; color:#8a8f98; margin-bottom:8px">Количество заказов</div><div style="font-size:24px; font-weight:700; color:#1f2937">{{ summary.count }}</div></div>
-      <div class="summary-card" style="background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:16px 22px; min-width:160px; flex:1 1 160px"><div style="font-size:12px; color:#8a8f98; margin-bottom:8px">Из них</div><div style="display:flex; gap:16px; margin-top:4px"><span style="font-size:20px; display:inline-flex; align-items:center; gap:6px"><b>{{ summary.fbs_count }}</b><span style="font-size:10px; font-weight:600; padding:2px 7px; border-radius:8px; background:#fef3c7; color:#d97706">FBS</span></span><span style="font-size:20px; display:inline-flex; align-items:center; gap:6px"><b>{{ summary.fbo_count }}</b><span style="font-size:10px; font-weight:600; padding:2px 7px; border-radius:8px; background:#ffedd5; color:#ea580c">FBO</span></span></div></div>
-      <div class="summary-card" style="background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:16px 22px; min-width:160px; flex:1 1 160px"><div style="font-size:12px; color:#8a8f98; margin-bottom:8px">Сумма</div><div style="font-size:24px; font-weight:700; color:#1f2937">{{ fmt2(summary.sum) }} ₽</div></div>
-      <div class="summary-card" style="background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:16px 22px; min-width:160px; flex:1 1 160px"><div style="font-size:12px; color:#8a8f98; margin-bottom:8px">СПП (среднее)</div><div style="font-size:24px; font-weight:700; color:#1f2937">{{ summary.avg_spp.toFixed(1) }}%</div></div>
+    <div v-if="summary" class="page-orders-feed__summary">
+      <div class="page-orders-feed__card"><div class="page-orders-feed__card-label">Количество заказов</div><div class="page-orders-feed__card-value">{{ summary.count }}</div></div>
+      <div class="page-orders-feed__card"><div class="page-orders-feed__card-label">Из них</div><div class="page-orders-feed__card-split"><span class="page-orders-feed__split-item"><b>{{ summary.fbs_count }}</b><span class="page-orders-feed__badge page-orders-feed__badge--fbs">FBS</span></span><span class="page-orders-feed__split-item"><b>{{ summary.fbo_count }}</b><span class="page-orders-feed__badge page-orders-feed__badge--fbo">FBO</span></span></div></div>
+      <div class="page-orders-feed__card"><div class="page-orders-feed__card-label">Сумма</div><div class="page-orders-feed__card-value">{{ fmt2(summary.sum) }} ₽</div></div>
+      <div class="page-orders-feed__card"><div class="page-orders-feed__card-label">СПП (среднее)</div><div class="page-orders-feed__card-value">{{ summary.avg_spp.toFixed(1) }}%</div></div>
     </div>
 
-    <div class="card grid_orderfeed" style="border:1px solid #e0e0e0; border-radius:12px; overflow:hidden">
-      <div class="card-header text-white d-flex justify-content-between align-items-center" style="background: linear-gradient(97.26deg,#ed3cca .49%,#df34d2 14.88%,#d02bd9 29.27%,#bf22e1 43.14%,#ae1ae8 57.02%,#9a10f0 70.89%,#8306f7 84.76%,#7c1af8 99.15%); font-weight:700">
+    <div class="card grid_orderfeed page-orders-feed__grid">
+      <div class="card-header text-white d-flex justify-content-between align-items-center wb-card-header">
         <span>Заказы ({{ fmtDate(filters.date_from) }}<span v-if="filters.date_from!==filters.date_to"> — {{ fmtDate(filters.date_to) }}</span>)</span>
-        <button class="btn btn-sm btn-light" style="font-size:12px; padding:4px 12px; border-radius:6px" @click="exportExcel" :disabled="!items.length"><i class="bi bi-file-earmark-excel me-1"></i> Excel</button>
+        <button class="btn btn-sm btn-light wb-excel-btn" @click="exportExcel" :disabled="!items.length"><i class="bi bi-file-earmark-excel me-1"></i> Excel</button>
       </div>
       <div v-if="isLoading" class="p-4 text-center text-muted">Загрузка...</div>
-      <div v-else style="overflow-x:auto" ref="wrapRef">
-        <table ref="tbl" class="table table-bordered table-striped table-hover kv-grid-table mb-0" style="font-size:12px; width:100%">
+      <div v-else class="wb-table-wrap page-orders-feed__table-wrap" ref="wrapRef">
+        <table ref="tbl" class="table table-bordered table-striped table-hover kv-grid-table mb-0 page-orders-feed__table">
           <thead>
             <tr>
               <th style="width:280px; text-align:center">Заказ</th>
               <th style="text-align:center">Дата заказа</th>
               <th style="text-align:center">Обновлен</th>
-              <th style="width:100px; text-align:center">Статус<br><select v-model="filters.status" class="form-select" style="font-size:12px; padding:3px; width:92%; margin:0 auto" @change="page=1; fetchFeed()"><option value="">Все</option><option v-for="s in statuses" :key="s" :value="s">{{ s }}</option></select></th>
-              <th style="width:100px; text-align:center">Откуда<br><select v-model="filters.warehouse_name" class="form-select" style="font-size:12px; padding:3px; width:92%; margin:0 auto" @change="page=1; fetchFeed()"><option value="">Все</option><option v-for="w in warehouses" :key="w" :value="w">{{ w }}</option></select></th>
-              <th style="width:100px; text-align:center">Куда<br><select v-model="filters.region_name" class="form-select" style="font-size:12px; padding:3px; width:92%; margin:0 auto" @change="page=1; fetchFeed()"><option value="">Все</option><option v-for="r in regions" :key="r" :value="r">{{ r }}</option></select></th>
+              <th style="width:100px; text-align:center">Статус<br><select v-model="filters.status" class="form-select" @change="page=1; fetchFeed()"><option value="">Все</option><option v-for="s in statuses" :key="s" :value="s">{{ s }}</option></select></th>
+              <th style="width:100px; text-align:center">Откуда<br><select v-model="filters.warehouse_name" class="form-select" @change="page=1; fetchFeed()"><option value="">Все</option><option v-for="w in warehouses" :key="w" :value="w">{{ w }}</option></select></th>
+              <th style="width:100px; text-align:center">Куда<br><select v-model="filters.region_name" class="form-select" @change="page=1; fetchFeed()"><option value="">Все</option><option v-for="r in regions" :key="r" :value="r">{{ r }}</option></select></th>
               <th style="width:50px; text-align:center">Цена в кар-ке</th>
               <th style="text-align:center">Скидка, %</th>
               <th style="width:50px; text-align:center">Цена со скидкой</th>
@@ -43,21 +43,21 @@
           <tbody>
             <tr v-for="r in items" :key="r.id">
               <td style="width:280px; overflow:hidden">
-                <div style="display:flex; gap:10px; align-items:flex-start">
-                  <img :src="photo(r)" style="width:50px; height:66px; object-fit:cover; border-radius:4px; flex-shrink:0" @error="(e:any)=>e.target.src='/images/no-photo.png'" />
-                  <div style="min-width:0; overflow:hidden">
-                    <div class="cart-item-title" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:210px;" :title="r.card_title || '(нет карточки)'">{{ r.card_title || '(нет карточки)' }}</div>
+                <div class="page-orders-feed__order">
+                  <img :src="photo(r)" class="page-orders-feed__photo" @error="(e:any)=>e.target.src='/images/no-photo.png'" />
+                  <div class="page-orders-feed__order-text">
+                    <div class="cart-item-title" :title="r.card_title || '(нет карточки)'">{{ r.card_title || '(нет карточки)' }}</div>
                     <div class="cart-item-details d-flex align-items-center"><a :href="'/wb-order/view?id='+r.id" target="_blank" style="text-decoration:none; margin-right:4px"><i class="bi bi-eye-fill lh-1"></i></a>{{ r.card_subject_name }} • {{ r.card_brand }}</div>
                     <div class="cart-item-details" :title="r.card_vendor_code">{{ r.card_vendor_code }}</div>
                     <div class="cart-item-details"><a :href="'/wb/detail?DPFilterForm[nm_id]='+r.nm_id" target="_blank" style="text-decoration:none">WB: {{ r.nm_id }}</a></div>
                   </div>
                 </div>
               </td>
-              <td><div style="font-weight:600;">{{ fmtDate(r.date) }}</div><div style="font-size:11px; color:#888;">{{ fmtTime(r.date) }}</div></td>
-              <td><div style="font-weight:600;">{{ fmtDate(r.fbs_status_changed_at || r.last_change_date) }}</div><div style="font-size:11px; color:#888;">{{ fmtTime(r.fbs_status_changed_at || r.last_change_date) }}</div></td>
-              <td style="width:100px; text-align:center"><span :class="'status-badge '+statusCls(r)" style="display:inline-block; padding:3px 10px; border-radius:12px; font-size:12px; font-weight:500; white-space:nowrap; margin-top:5px">{{ statusLabel(r) }}</span></td>
-              <td style="width:100px;"><div style="font-weight:600;">{{ r.warehouse_name || '—' }}</div><div style="font-size:11px; color:#888;">{{ r.warehouse_type }}</div></td>
-              <td style="width:100px;"><div style="font-weight:600;">{{ r.region_name || '—' }}</div><div style="font-size:11px; color:#888;">{{ r.destination_city || '' }}</div></td>
+              <td><div class="page-orders-feed__date-main">{{ fmtDate(r.date) }}</div><div class="page-orders-feed__date-sub">{{ fmtTime(r.date) }}</div></td>
+              <td><div class="page-orders-feed__date-main">{{ fmtDate(r.fbs_status_changed_at || r.last_change_date) }}</div><div class="page-orders-feed__date-sub">{{ fmtTime(r.fbs_status_changed_at || r.last_change_date) }}</div></td>
+              <td style="width:100px; text-align:center"><span :class="'status-badge '+statusCls(r)">{{ statusLabel(r) }}</span></td>
+              <td style="width:100px;"><div class="page-orders-feed__place-main">{{ r.warehouse_name || '—' }}</div><div class="page-orders-feed__place-sub">{{ r.warehouse_type }}</div></td>
+              <td style="width:100px;"><div class="page-orders-feed__place-main">{{ r.region_name || '—' }}</div><div class="page-orders-feed__place-sub">{{ r.destination_city || '' }}</div></td>
               <td style="text-align:right; width:50px;">{{ r.total_price ? fmt2(r.total_price) : '—' }}</td>
               <td style="text-align:right">{{ r.discount_percent ?? '—' }}</td>
               <td style="text-align:right; width:50px; font-weight:bold;">{{ r.price_with_disc }}</td>
@@ -72,14 +72,15 @@
         </table>
       </div>
     </div>
-    <div style="display:flex; gap:8px; justify-content:center; margin:12px 0">
+    <div class="page-orders-feed__pager">
       <button class="btn btn-outline-secondary btn-sm" :disabled="page<=1" @click="page--; fetchFeed()">Назад</button>
-      <span style="align-self:center; font-size:12px">Стр {{ page }} / {{ Math.ceil(total/50) }} ({{ total }})</span>
+      <span class="page-orders-feed__pager-label">Стр {{ page }} / {{ Math.ceil(total/50) }} ({{ total }})</span>
       <button class="btn btn-outline-secondary btn-sm" :disabled="page>=Math.ceil(total/50)" @click="page++; fetchFeed()">Вперед</button>
     </div>
   </div>
 </template>
 <script setup lang="ts">
+import '@/assets/css/pages/page-orders-feed.css'
 import { ref, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
@@ -214,17 +215,3 @@ watch(()=> route.query, ()=>{
   if(changed){ initFromQuery(); fetchFeed() }
 })
 </script>
-<style>
-/* 1в1 из feed.php:517 */
-.grid_orderfeed .cart-item-title{font-weight:bold; color:#2c3e50; font-size:13px}
-.grid_orderfeed .cart-item-details{color:#666; font-size:11px}
-.grid_orderfeed td:not(:first-child){font-size:12px !important; vertical-align:middle}
-.grid_orderfeed td:nth-child(2), .grid_orderfeed td:nth-child(3), .grid_orderfeed td:nth-child(4){text-align:center}
-.grid_orderfeed th{white-space:normal !important; word-break:break-word; font-weight:500 !important; color:#444; text-align:center; vertical-align:middle}
-.grid_orderfeed th:not(:first-child){font-size:11px !important}
-.grid_orderfeed .form-select{padding:3px; font-size:12px; width:92%; margin:0 auto}
-.status-badge{display:inline-block; padding:3px 10px; border-radius:12px; font-size:12px !important; font-weight:500; white-space:nowrap; margin-top:5px}
-.status-badge.st-blue{background:#e3edff; color:#1a56db} .status-badge.st-lightgreen{background:#e3f9ec; color:#1e7e45} .status-badge.st-green{background:#c9f2d8; color:#0f5132; font-weight:600} .status-badge.st-lightred{background:#fde2e2; color:#c0392b} .status-badge.st-darkred{background:#8b1e1e; color:#fff; font-weight:600} .status-badge.st-unknown{background:#eee; color:#888}
-.col-resizer:hover{ background:#4A3A8C; opacity:0.2 }
-@media (max-width:767px){ .grid_orderfeed .mobile-hide-col{display:none !important} }
-</style>

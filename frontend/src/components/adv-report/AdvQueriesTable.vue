@@ -3,13 +3,13 @@
        сверху были бы только последние даты). В php грид queriesProvider вообще не рендерился,
        так что агрегация ничего 1в1 не ломает. Сортировка по колонкам, дефолт Заказы desc. -->
   <div v-if="rows.length" class="row mb-3" style="margin-top:20px">
-    <div class="col-12"><div class="card" style="border:1px solid #e0e0e0; border-radius:12px; overflow:hidden;">
-      <div class="card-header text-white d-flex justify-content-between align-items-center" style="background: linear-gradient(97.26deg,#ed3cca .49%,#df34d2 14.88%,#d02bd9 29.27%,#bf22e1 43.14%,#ae1ae8 57.02%,#9a10f0 70.89%,#8306f7 84.76%,#7c1af8 99.15%); font-weight:700; font-size:13px; line-height:1.5; padding:4px 8px;">
+    <div class="col-12"><div class="card wb-grid-card">
+      <div class="card-header text-white d-flex justify-content-between align-items-center wb-card-header wb-card-header--sm">
         <span>Запросы ({{ agg.length }})</span>
-        <button class="btn btn-sm btn-light" style="font-size:11px; padding:2px 10px; border-radius:6px" @click="exportExcel" :disabled="!agg.length"><i class="bi bi-file-earmark-excel me-1"></i>Excel</button>
+        <button class="btn btn-sm btn-light wb-excel-btn--sm" @click="exportExcel" :disabled="!agg.length"><i class="bi bi-file-earmark-excel me-1"></i>Excel</button>
       </div>
-      <div class="expandable-container" :class="{'is-expanded': exp}" :style="{maxHeight: exp ? '20000px' : '250px', overflow:'hidden', position:'relative', transition:'max-height .5s'}" style="overflow-x:auto">
-        <table class="table table-bordered table-striped table-hover kv-grid-table mb-0 adv-grid" style="font-size:12px; width:100%; table-layout:auto">
+      <div class="expandable-container wb-table-wrap" :class="{'is-expanded': exp}" :style="{maxHeight: exp ? '20000px' : '250px', overflow:'hidden', position:'relative', transition:'max-height .5s'}">
+        <table class="table table-bordered table-striped table-hover kv-grid-table mb-0 adv-grid">
           <thead><tr>
             <th @click="toggleSort('query')" style="min-width:280px; text-align:center; cursor:pointer; user-select:none; white-space:nowrap">Запрос {{ arrow('query') }}</th>
             <th @click="toggleSort('views')" style="width:100px; text-align:center; cursor:pointer; user-select:none; white-space:nowrap">Показы {{ arrow('views') }}</th>
@@ -73,7 +73,3 @@ const exportExcel = async()=>{
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Запросы'); XLSX.writeFile(wb, `adv-queries_${props.campaignId}_${props.dateFrom}_${props.dateTo}.xlsx`)
 }
 </script>
-<style scoped>
-.adv-grid th{white-space:normal; overflow-wrap:break-word; font-weight:500; font-size:11px; text-align:center; vertical-align:middle; padding:4px !important;}
-.adv-grid td{font-size:12px; vertical-align:middle;}
-</style>

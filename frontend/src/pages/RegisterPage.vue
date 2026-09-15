@@ -1,7 +1,7 @@
 <template>
-  <div class="container-xxl" style="padding:30px 15px; max-width:540px">
+  <div class="container-xxl page-register">
     <h2 style="margin-bottom:20px">Регистрация</h2>
-    <form @submit.prevent="onSubmit" style="display:flex; flex-direction:column; gap:12px">
+    <form @submit.prevent="onSubmit" class="page-register__form">
       <label>
         <div>Invite-токен</div>
         <input v-model="form.invite_token" required style="width:100%" placeholder="из ссылки/письма" @change="peek" />
@@ -53,6 +53,7 @@
 </template>
 
 <script setup lang="ts">
+import '@/assets/css/pages/page-register.css'
 import { reactive, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { authApi } from '../api/auth'

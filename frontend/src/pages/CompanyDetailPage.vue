@@ -1,5 +1,5 @@
 <template>
-  <div class="container-xxl" style="padding:20px 15px">
+  <div class="container-xxl page-company-detail">
     <h2 style="margin-bottom:16px">{{ data?.company?.name || 'Компания' }}</h2>
     <div v-if="error" style="color:#c00">{{ error }}</div>
 
@@ -200,6 +200,7 @@
 </template>
 
 <script setup lang="ts">
+import '@/assets/css/pages/page-company-detail.css'
 import { ref, reactive, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { authApi } from '../api/auth'

@@ -1,6 +1,6 @@
 <template>
-  <div class="container-xxl unclaimed-orders-page" style="padding:20px 15px; font-family:&quot;Segoe UI&quot;,Roboto,Helvetica,Arial,sans-serif">
-    <h1 style="font-size:20px; font-weight:700; margin-bottom:16px">Невыкупленные товары (Unclaimed)</h1>
+  <div class="container-xxl unclaimed-orders-page page-unclaimed-orders">
+    <h1 class="page-title">Невыкупленные товары (Unclaimed)</h1>
 
     <div class="row">
       <div class="col-md-6">
@@ -16,8 +16,8 @@
       <div class="col-md-6">
         <div class="row g-2">
           <div class="col-6">
-            <label class="form-label" style="font-size:12px; font-weight:600">Порог отмен, %</label>
-            <select v-model.number="filters.percent" class="form-select" style="height:38px; font-size:13px" @change="onApply">
+            <label class="form-label page-unclaimed-orders__filter-label">Порог отмен, %</label>
+            <select v-model.number="filters.percent" class="form-select page-unclaimed-orders__filter-select" @change="onApply">
               <option :value="5">5%</option>
               <option :value="10">10%</option>
               <option :value="20">20%</option>
@@ -29,8 +29,8 @@
             </select>
           </div>
           <div class="col-6">
-            <label class="form-label" style="font-size:12px; font-weight:600">Мин. заказов</label>
-            <select v-model.number="filters.min_orders" class="form-select" style="height:38px; font-size:13px" @change="onApply">
+            <label class="form-label page-unclaimed-orders__filter-label">Мин. заказов</label>
+            <select v-model.number="filters.min_orders" class="form-select page-unclaimed-orders__filter-select" @change="onApply">
               <option :value="1">1</option>
               <option :value="5">5</option>
               <option :value="10">10</option>
@@ -40,8 +40,8 @@
             </select>
           </div>
           <div class="col-6">
-            <label class="form-label" style="font-size:12px; font-weight:600">Сортировка</label>
-            <select v-model="filters.sort" class="form-select" style="height:38px; font-size:13px" @change="onSortChange">
+            <label class="form-label page-unclaimed-orders__filter-label">Сортировка</label>
+            <select v-model="filters.sort" class="form-select page-unclaimed-orders__filter-select" @change="onSortChange">
               <option value="nm_id">Артикул WB</option>
               <option value="card_name">Название товара</option>
               <option value="vendorCode">Артикул продавца</option>
@@ -51,8 +51,8 @@
             </select>
           </div>
           <div class="col-6">
-            <label class="form-label" style="font-size:12px; font-weight:600">Направление</label>
-            <select v-model="filters.dir" class="form-select" style="height:38px; font-size:13px" @change="onSortChange">
+            <label class="form-label page-unclaimed-orders__filter-label">Направление</label>
+            <select v-model="filters.dir" class="form-select page-unclaimed-orders__filter-select" @change="onSortChange">
               <option value="DESC">По убыванию</option>
               <option value="ASC">По возрастанию</option>
             </select>
@@ -61,20 +61,20 @@
       </div>
     </div>
 
-    <div class="card unclaimed-table-card" style="border:1px solid #e0e0e0; border-radius:12px; overflow:hidden; margin-top:16px">
-      <div class="card-header text-white d-flex justify-content-between align-items-center" style="background: linear-gradient(97.26deg,#ed3cca .49%,#df3cca 14.88%,#d02bd9 29.27%,#bf22e1 43.14%,#ae1ae8 57.02%,#9a10f0 70.89%,#8306f7 84.76%,#7c1af8 99.15%); font-weight:700; font-size:13px">
+    <div class="card unclaimed-table-card wb-grid-card page-unclaimed-orders__grid">
+      <div class="card-header text-white d-flex justify-content-between align-items-center wb-card-header">
         <span>Невыкупленные товары (с {{ tableDateFrom }})</span>
         <div class="d-flex align-items-center gap-2">
-          <button class="btn btn-sm btn-light" style="font-size:12px" @click="exportExcel" :disabled="!items.length">
+          <button class="btn btn-sm btn-light wb-excel-btn" @click="exportExcel" :disabled="!items.length">
             <i class="bi bi-file-earmark-excel me-1"></i>Excel
           </button>
-          <span class="text-white-50" style="font-size:12px; font-weight:400">Всего: {{ fmt0(total) }} · Стр {{ page }} / {{ totalPages }}</span>
+          <span class="text-white-50 page-unclaimed-orders__head-count">Всего: {{ fmt0(total) }} · Стр {{ page }} / {{ totalPages }}</span>
         </div>
       </div>
       <div v-if="isLoading" class="p-4 text-center text-muted">Загрузка...</div>
       <div v-else-if="error" class="p-4 text-center text-danger">Не удалось загрузить данные.</div>
-      <div v-else style="overflow-x:auto">
-        <table ref="tableRef" class="table table-bordered table-striped table-hover kv-grid-table mb-0 unclaimed-table" style="font-size:12px; width:100%; table-layout:fixed">
+      <div v-else class="wb-table-wrap page-unclaimed-orders__table-wrap">
+        <table ref="tableRef" class="table table-bordered table-striped table-hover kv-grid-table mb-0 unclaimed-table page-unclaimed-orders__table">
           <thead>
             <tr>
               <th style="width:100px; min-width:100px; text-align:center">Артикул WB</th>
@@ -90,23 +90,23 @@
           <tbody>
             <tr v-if="items.length === 0"><td colspan="8" class="text-center text-muted">Нет данных</td></tr>
             <tr v-for="row in items" :key="row.nm_id">
-              <td style="text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">
-                <a :href="`/wb/detail?nm_id=${row.nm_id}`" target="_blank" style="text-decoration:none; font-weight:600">{{ row.nm_id }}</a>
+              <td class="page-unclaimed-orders__cell-id">
+                <a :href="`/wb/detail?nm_id=${row.nm_id}`" target="_blank" class="page-unclaimed-orders__nm-link">{{ row.nm_id }}</a>
               </td>
-              <td style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left" :title="row.card_name">{{ row.card_name || '—' }}</td>
-              <td style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left" :title="row.vendorCode">{{ row.vendorCode || '—' }}</td>
-              <td style="text-align:right; font-weight:600">{{ fmtVal(row.alls, 0) }}</td>
-              <td style="text-align:right; font-weight:600" :style="{ color: row.cancel > 0 ? '#d9534f' : '' }">{{ fmtVal(row.cancel, 0) }}</td>
-              <td style="text-align:right; font-weight:600" :style="{ color: row.rate > 0.3 ? '#d9534f' : '' }">{{ fmt1(row.rate * 100) }}%</td>
-              <td style="text-align:right; font-weight:600">{{ fmtVal(row.bought, 0) }}</td>
-              <td style="text-align:right; font-weight:600">{{ fmtVal(row.sum_price, 2) }} ₽</td>
+              <td class="page-unclaimed-orders__cell-name" :title="row.card_name">{{ row.card_name || '—' }}</td>
+              <td class="page-unclaimed-orders__cell-name" :title="row.vendorCode">{{ row.vendorCode || '—' }}</td>
+              <td class="page-unclaimed-orders__cell-num">{{ fmtVal(row.alls, 0) }}</td>
+              <td class="page-unclaimed-orders__cell-num" :style="{ color: row.cancel > 0 ? '#d9534f' : '' }">{{ fmtVal(row.cancel, 0) }}</td>
+              <td class="page-unclaimed-orders__cell-num" :style="{ color: row.rate > 0.3 ? '#d9534f' : '' }">{{ fmt1(row.rate * 100) }}%</td>
+              <td class="page-unclaimed-orders__cell-num">{{ fmtVal(row.bought, 0) }}</td>
+              <td class="page-unclaimed-orders__cell-num">{{ fmtVal(row.sum_price, 2) }} ₽</td>
             </tr>
           </tbody>
         </table>
       </div>
     </div>
 
-    <div style="display:flex; gap:8px; justify-content:center; margin:12px 0">
+    <div class="page-unclaimed-orders__pager">
       <button class="btn btn-outline-secondary btn-sm" :disabled="page <= 1" @click="page--; fetchData()">Назад</button>
       <button class="btn btn-outline-secondary btn-sm" :disabled="page >= totalPages" @click="page++; fetchData()">Вперед</button>
     </div>
@@ -114,6 +114,7 @@
 </template>
 
 <script setup lang="ts">
+import '@/assets/css/pages/page-unclaimed-orders.css'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
@@ -336,32 +337,3 @@ watch(() => route.query, () => {
   fetchData()
 })
 </script>
-
-<style scoped>
-.unclaimed-table th,
-.unclaimed-table td {
-  padding: 6px 4px !important;
-  vertical-align: middle;
-  white-space: nowrap;
-}
-.unclaimed-table th {
-  font-size: 11px !important;
-  font-weight: 600;
-  color: #343a40;
-  background: #f8f9fa;
-}
-.unclaimed-table td {
-  font-size: 12px;
-}
-.unclaimed-table-card .card-header {
-  padding: 8px 12px;
-}
-@media (max-width: 767px) {
-  .unclaimed-orders-page {
-    padding: 16px 10px;
-  }
-  .unclaimed-table {
-    min-width: 880px;
-  }
-}
-</style>

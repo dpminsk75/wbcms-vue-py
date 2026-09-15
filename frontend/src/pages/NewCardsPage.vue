@@ -1,5 +1,5 @@
 <template>
-  <div class="site-index container-xxl" style="padding:20px 15px">
+  <div class="site-index container-xxl page-new-cards">
     <div class="row" style="margin-bottom:20px">
       <div class="nav_div col-md-2">
         <SideMenu />
@@ -75,6 +75,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import '@/assets/css/pages/page-new-cards.css'
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
