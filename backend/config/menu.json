@@ -144,7 +144,11 @@
       {"label": "Роли", "url": "/admin/assignment", "visibleIn": ["top", "side"], "roles": ["admin"]},
       {"label": "Компании", "url": "/company/index", "visibleIn": ["top", "side"], "roles": ["manageCompanies"]},
       {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "Пользователи (SPA)", "url": "/admin/users", "visibleIn": ["top", "side"]},
+      {"label": "Компании (SPA)", "url": "/companies", "visibleIn": ["top", "side"], "roles": ["manageCompanies"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Быстрые кнопки", "url": "/admin/quick-buttons", "visibleIn": ["top", "side"], "roles": ["admin"]},
+      {"label": "Инвайты (SPA)", "url": "/admin/invites", "visibleIn": ["top", "side"], "roles": ["admin"]},
       {"label": "Меню", "url": "/admin/menu", "visibleIn": ["top", "side"], "roles": ["admin"]},
       {"label": "Настройки профиля", "url": "/user/profile", "visibleIn": ["top", "side"]}
     ]

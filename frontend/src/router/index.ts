@@ -26,7 +26,13 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', name: 'login', component: () => import('../pages/Login.vue'), meta: { title: 'Вход — wbcms', public: true } },
+    { path: '/register', name: 'register', component: () => import('../pages/RegisterPage.vue'), meta: { title: 'Регистрация — wbcms', public: true } },
     { path: '/', name: 'dashboard', component: Dashboard, meta: { title: 'Управление товарами и карточками — wbcms' } },
+    { path: '/companies', name: 'companies', component: () => import('../pages/CompaniesPage.vue'), meta: { title: 'Компании — wbcms' } },
+    { path: '/companies/:id', name: 'company-detail', component: () => import('../pages/CompanyDetailPage.vue'), meta: { title: 'Компания — wbcms' } },
+    { path: '/admin/users', name: 'admin-users', component: () => import('../pages/AdminUsersPage.vue'), meta: { title: 'Пользователи — wbcms', needAdmin: true } },
+    { path: '/admin/invites', name: 'admin-invites', component: () => import('../pages/AdminInvitesPage.vue'), meta: { title: 'Инвайты — wbcms', needAdmin: true } },
+    { path: '/admin/companies', name: 'admin-companies', component: () => import('../pages/AdminCompaniesPage.vue'), meta: { title: 'Компании (админ) — wbcms', needAdmin: true } },
     { path: '/site/new-cards', name: 'new-cards', component: () => import('../pages/NewCardsPage.vue'), meta: { title: 'Новые карточки — wbcms' } },
     { path: '/wb-sales-analysis', name: 'sales-analysis', component: () => import('../pages/SalesAnalysisPage.vue'), alias: '/wb-sales-analysis/', meta: { title: 'ТОП Продаж WB — wbcms' } },
     { path: '/wb-get-sales-funnel/wbcard', name: 'sales-funnel-wb-card', component: () => import('../pages/SalesFunnelWbCard.vue'), alias: '/wb-get-sales-funnel/wbcard/', meta: { title: 'Воронка продаж: Карточка WB — wbcms' } },
@@ -58,7 +64,13 @@ router.beforeEach(async (to) => {
     const ok = await auth.loadMe()
     if (!ok) return { path: '/login', query: { back: to.fullPath } }
   }
-  if ((to.meta as any)?.needAdmin && !auth.isAdmin) return { path: '/' }
+  if ((to.meta as any)?.needAdmin && !auth.isAdmin) {
+    // /admin/* пускает и админов компаний (скоуп своих — уже на бэке); членства подгружаем лениво
+    if (auth.token && !auth.memberships.length) {
+      try { await auth.loadMemberships() } catch { /* noop */ }
+    }
+    if (!auth.managesAny) return { path: '/' }
+  }
   return true
 })
 

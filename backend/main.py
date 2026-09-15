@@ -1,13 +1,12 @@
-from fastapi import FastAPI, Depends, Query, Body, HTTPException, Response, Request
-from datetime import date, timedelta
+from fastapi import FastAPI, Depends, Query, Body, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database import get_db
-from backend.deps import get_current_user, get_optional_user, require_admin
+from backend.deps import get_current_user, get_optional_user, require_admin, get_current_company
+from backend.routers import auth_router, companies_router, dashboard_router, admin_router
 from backend.services import auth_service as AuthService
-from backend.services.kpi_service import KpiService
-from backend.services.dashboard_service import DashboardService
 from backend.services.orders_service import OrdersService
 from backend.services.orders_aggregated_service import OrdersAggregatedService
 from backend.services.unclaimed_orders_service import UnclaimedOrdersService
@@ -19,6 +18,22 @@ from backend.services.sales_funnel_service import SalesFunnelService
 from backend.services.adv_report_service import AdvReportService
 
 app = FastAPI(title="wbcms-py dashboard proto")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://31.130.204.146:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
+app.include_router(auth_router)
+app.include_router(companies_router)
+app.include_router(dashboard_router)
+app.include_router(admin_router)
 
 class QuickButton(BaseModel):
     icon: str
@@ -31,8 +46,12 @@ class LoginIn(BaseModel):
 
 @app.post("/api/auth/login")
 async def login(payload: LoginIn, request: Request, db: AsyncSession = Depends(get_db)):
-    """Замена SiteController login + LoginForm — проверяет bcrypt-хэш из таблицы `user`."""
-    user = await AuthService.get_user_by_username(db, payload.username.strip())
+    """Замена SiteController login + LoginForm — проверяет bcrypt-хэш из таблицы `user`.
+    Принимает username ИЛИ email (как yii2 LoginForm)."""
+    login = payload.username.strip()
+    user = await AuthService.get_user_by_username(db, login)
+    if not user and "@" in login:
+        user = await AuthService.get_user_by_email(db, login)
     if not user or not AuthService.verify_password(payload.password, user.get("password_hash") or ""):
         raise HTTPException(status_code=401, detail="Неверный логин или пароль")
     if user.get("blocked_at") is not None:
@@ -48,88 +67,10 @@ async def login(payload: LoginIn, request: Request, db: AsyncSession = Depends(g
         "perms": pp["all"],
     }
 
-@app.get("/api/auth/me")
-async def me(user: dict = Depends(get_current_user)):
-    return {"user": {"id": user["id"], "username": user["username"], "email": user.get("email")},
-            "roles": user.get("roles", []), "perms": user.get("perms", [])}
-
-@app.get("/api/companies")
-async def companies(user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Замена CompanyManager::getActiveCompanies — список для селектора кабинета."""
-    rows = (await db.execute(text("SELECT id, name FROM companies WHERE is_active=1 ORDER BY id"))).mappings().all()
-    return [dict(r) for r in rows]
 
 @app.get("/health")
 def health():
     return {"ok": True}
-
-@app.get("/api/dashboard/shell")
-def shell(dateFrom: str | None = None, dateTo: str | None = None):
-    df = dateFrom or (date.today() - timedelta(days=3)).isoformat()
-    dt = dateTo or date.today().isoformat()
-    return {"dateFrom": df, "dateTo": dt, "source": "py proto"}
-
-@app.get("/api/dashboard/top-metrics")
-async def top_metrics(db: AsyncSession = Depends(get_db)):
-    svc = KpiService(db)
-    chart = await svc.get_30d_chart()
-    kpi = await svc.get_30d_kpi()
-    return {"chart45Data": chart, "kpi45Data": kpi}
-
-@app.get("/api/dashboard/today-stats")
-async def today_stats(period: str = Query(default="today"), tab: str = Query(default="orders"), db: AsyncSession = Depends(get_db)):
-    table = "wb_order" if tab == "orders" else "wb_sales"
-    sum_field = "price_with_disc" if tab == "orders" else "priceWithDisc"
-    svc = DashboardService(db)
-    data = await svc.build_period_stats(period, table, sum_field)
-    try:
-        updated = await svc.get_last_order_time()
-        data["updated_at"] = updated
-    except Exception:
-        data["updated_at"] = None
-    return data
-
-@app.get("/api/dashboard/orders-summary")
-async def orders_summary(db: AsyncSession = Depends(get_db)):
-    svc = DashboardService(db)
-    return await svc.get_orders_summary()
-
-@app.get("/api/dashboard/adv")
-async def adv(dateFrom: str = Query(default=None), dateTo: str = Query(default=None), db: AsyncSession = Depends(get_db)):
-    svc = DashboardService(db)
-    df = dateFrom or (date.today() - timedelta(days=3)).isoformat()
-    dt = dateTo or date.today().isoformat()
-    return await svc.get_adv(df, dt)
-
-@app.get("/api/dashboard/last-orders")
-async def last_orders(dateFrom: str = Query(default=None), dateTo: str = Query(default=None), db: AsyncSession = Depends(get_db)):
-    svc = DashboardService(db)
-    df = dateFrom or (date.today() - timedelta(days=3)).isoformat()
-    dt = dateTo or date.today().isoformat()
-    return await svc.get_last_orders(df, dt)
-
-@app.get("/api/dashboard/last-sales")
-async def last_sales(dateFrom: str = Query(default=None), dateTo: str = Query(default=None), db: AsyncSession = Depends(get_db)):
-    svc = DashboardService(db)
-    df = dateFrom or (date.today() - timedelta(days=3)).isoformat()
-    dt = dateTo or date.today().isoformat()
-    return await svc.get_last_sales(df, dt)
-
-@app.get("/api/dashboard/monthly-finance")
-async def monthly_finance(db: AsyncSession = Depends(get_db)):
-    svc = DashboardService(db)
-    return await svc.get_monthly_finance()
-
-@app.get("/api/dashboard/new-cards")
-async def new_cards(
-    dateFrom: str | None = Query(default=None),
-    dateTo: str | None = Query(default=None),
-    title: str = Query(default=""),
-    sort: str = Query(default="created_desc"),
-    db: AsyncSession = Depends(get_db),
-):
-    svc = DashboardService(db)
-    return await svc.get_new_cards(dateFrom, dateTo, title, sort)
 
 @app.get("/api/orders/feed")
 async def orders_feed(
@@ -141,11 +82,12 @@ async def orders_feed(
     region_name: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
 ):
     from datetime import date as _date
     df = date_from or _date.today().isoformat()
     dt = date_to or _date.today().isoformat()
-    svc = OrdersService(db)
+    svc = OrdersService(db, company_id=company_id)
     return await svc.feed(nm_id, df, dt, status, warehouse_name, region_name, page, 50)
 
 
@@ -161,8 +103,9 @@ async def unclaimed_orders(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
 ):
-    svc = UnclaimedOrdersService(db)
+    svc = UnclaimedOrdersService(db, company_id=company_id)
     return await svc.search(date_from, date_to, nm_id, percent, min_orders, sort, sort_dir, page, page_size)
 
 
@@ -175,11 +118,12 @@ async def orders_feed_options(
     warehouse_name: str | None = Query(default=None),
     region_name: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
 ):
     from datetime import date as _date
     df = date_from or _date.today().isoformat()
     dt = date_to or _date.today().isoformat()
-    svc = OrdersService(db)
+    svc = OrdersService(db, company_id=company_id)
     return await svc.feed_options(nm_id, df, dt, status, warehouse_name, region_name)
 
 @app.get("/api/orders/feed-aggregated")
@@ -190,11 +134,12 @@ async def orders_feed_aggregated(
     sort_by: str = Query(default="count"),
     page: int = Query(default=1, ge=1),
     db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
 ):
     from datetime import date as _date, timedelta
     df = date_from or (_date.today() - timedelta(days=13)).isoformat()  # 14д включительно = 2 недели, было 6д как в WbOrderController.php:103
     dt = date_to or _date.today().isoformat()
-    svc = OrdersAggregatedService(db)
+    svc = OrdersAggregatedService(db, company_id=company_id)
     return await svc.feed_aggregated(nm_id, df, dt, sort_by, page, 50)
 
 @app.get("/api/orders/heatmap")
@@ -203,16 +148,17 @@ async def orders_heatmap(
     date_from: str = Query(default=None),
     date_to: str = Query(default=None),
     db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
 ):
     from datetime import date as _date, timedelta
     df = date_from or (_date.today() - timedelta(days=14)).isoformat()  # getDPWidget::getParams(14) в WbOrderController.php:136
     dt = date_to or (_date.today() - timedelta(days=1)).isoformat()
-    svc = HeatmapService(db)
+    svc = HeatmapService(db, company_id=company_id)
     return await svc.get_heatmap(nm_id, df, dt)
 
 @app.get("/api/adv-report/campaigns")
-async def adv_campaigns(db: AsyncSession = Depends(get_db)):
-    svc = AdvReportService(db)
+async def adv_campaigns(db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
+    svc = AdvReportService(db, company_id=company_id)
     return await svc.get_campaign_list()
 
 @app.get("/api/adv-report")
@@ -221,18 +167,17 @@ async def adv_report(
     date_from: str = Query(default=None, alias="date_from"),
     date_to: str = Query(default=None, alias="date_to"),
     db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
 ):
     from datetime import date as _date, timedelta
     df = date_from or (_date.today() - timedelta(days=14)).isoformat()  # WbAdvReportController.php:23
     dt = date_to or _date.today().isoformat()
+    svc = AdvReportService(db, company_id=company_id)
     if id is None:
-        svc = AdvReportService(db)
         return {"campaignList": await svc.get_campaign_list(), "date_from": df, "date_to": dt}
-    svc = AdvReportService(db)
     data = await svc.get_detail(id, df, dt)
     if data is None:
         return {"detail": "campaign not found", "id": id}
-    # для фронта отдаем вместе со списком кампаний (как php campaignList)
     data["campaignList"] = await svc.get_campaign_list()
     data["date_from"] = df
     data["date_to"] = dt
@@ -252,85 +197,86 @@ async def sales_analysis_top(
     region: str | None = Query(default=None),
     oblast: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
 ):
-    svc = SalesAnalysisService(db)
+    svc = SalesAnalysisService(db, company_id=company_id)
     return await svc.get_top(date_from, date_to, report_type, top_limit, brand, category, type, country, region, oblast)
 
 @app.get("/api/sales-analysis/filters")
-async def sales_analysis_filters(db: AsyncSession = Depends(get_db)):
-    svc = SalesAnalysisService(db)
+async def sales_analysis_filters(db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
+    svc = SalesAnalysisService(db, company_id=company_id)
     return await svc.get_filter_data()
 
 @app.get("/api/sales-analysis/districts")
-async def sales_analysis_districts(country: str = Query(default=""), db: AsyncSession = Depends(get_db)):
-    svc = SalesAnalysisService(db)
+async def sales_analysis_districts(country: str = Query(default=""), db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
+    svc = SalesAnalysisService(db, company_id=company_id)
     return await svc.get_districts(country)
 
 @app.get("/api/sales-analysis/regions")
-async def sales_analysis_regions(country: str = Query(default=""), oblast: str | None = Query(default=None), db: AsyncSession = Depends(get_db)):
-    svc = SalesAnalysisService(db)
+async def sales_analysis_regions(country: str = Query(default=""), oblast: str | None = Query(default=None), db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
+    svc = SalesAnalysisService(db, company_id=company_id)
     return await svc.get_regions(country, oblast)
 
 @app.get("/api/sales-analysis/types")
-async def sales_analysis_types(category: str = Query(default=""), db: AsyncSession = Depends(get_db)):
-    svc = SalesAnalysisService(db)
+async def sales_analysis_types(category: str = Query(default=""), db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
+    svc = SalesAnalysisService(db, company_id=company_id)
     return await svc.get_types(category)
 
 @app.get("/api/wb/cards")
-async def wb_cards(q: str | None = Query(default=None), limit: int = Query(default=50, ge=1, le=200), db: AsyncSession = Depends(get_db)):
-    svc = WbCardService(db)
+async def wb_cards(q: str | None = Query(default=None), limit: int = Query(default=50, ge=1, le=200), db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
+    svc = WbCardService(db, company_id=company_id)
     return await svc.list_cards(q, limit)
 
 @app.get("/api/wb/detail/stocks")
-async def wb_detail_stocks(nm_id: int = Query(..., ge=1), db: AsyncSession = Depends(get_db)):
-    svc = WbDetailService(db)
+async def wb_detail_stocks(nm_id: int = Query(..., ge=1), db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
+    svc = WbDetailService(db, company_id=company_id)
     wh = await svc.get_warehouse_stocks(nm_id)
     way = await svc.get_in_way_stocks(nm_id)
     return {"warehouse": wh, "inWay": way}
 
 @app.get("/api/wb/detail/paid-storage")
-async def wb_detail_paid_storage(nm_id: int = Query(..., ge=1), date_from: str = Query(...), date_to: str = Query(...), db: AsyncSession = Depends(get_db)):
-    svc = WbDetailService(db)
+async def wb_detail_paid_storage(nm_id: int = Query(..., ge=1), date_from: str = Query(...), date_to: str = Query(...), db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
+    svc = WbDetailService(db, company_id=company_id)
     return await svc.get_paid_storage(nm_id, date_from, date_to)
 
 @app.get("/api/wb/detail/adv")
-async def wb_detail_adv(nm_id: int = Query(..., ge=1), date_from: str = Query(...), date_to: str = Query(...), db: AsyncSession = Depends(get_db)):
-    svc = WbDetailService(db)
+async def wb_detail_adv(nm_id: int = Query(..., ge=1), date_from: str = Query(...), date_to: str = Query(...), db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
+    svc = WbDetailService(db, company_id=company_id)
     return await svc.get_adv(nm_id, date_from, date_to)
 
 @app.get("/api/wb/detail/funnel")
-async def wb_detail_funnel(nm_id: int = Query(..., ge=1), date_from: str = Query(...), date_to: str = Query(...), db: AsyncSession = Depends(get_db)):
-    svc = WbDetailService(db)
+async def wb_detail_funnel(nm_id: int = Query(..., ge=1), date_from: str = Query(...), date_to: str = Query(...), db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
+    svc = WbDetailService(db, company_id=company_id)
     return await svc.get_funnel(nm_id, date_from, date_to)
 
 @app.get("/api/wb/detail/order-stats")
-async def wb_detail_order_stats(nm_id: int = Query(..., ge=1), date_from: str = Query(...), date_to: str = Query(...), db: AsyncSession = Depends(get_db)):
-    svc = WbDetailService(db)
+async def wb_detail_order_stats(nm_id: int = Query(..., ge=1), date_from: str = Query(...), date_to: str = Query(...), db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
+    svc = WbDetailService(db, company_id=company_id)
     return await svc.get_order_stats(nm_id, date_from, date_to)
 
 @app.get("/api/wb/detail/orders-daily")
-async def wb_detail_orders_daily(nm_id: int = Query(..., ge=1), date_from: str = Query(...), date_to: str = Query(...), db: AsyncSession = Depends(get_db)):
-    svc = WbDetailService(db)
+async def wb_detail_orders_daily(nm_id: int = Query(..., ge=1), date_from: str = Query(...), date_to: str = Query(...), db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
+    svc = WbDetailService(db, company_id=company_id)
     return await svc.get_daily_orders(nm_id, date_from, date_to)
 
 @app.get("/api/wb/detail/sales-daily")
-async def wb_detail_sales_daily(nm_id: int = Query(..., ge=1), date_from: str = Query(...), date_to: str = Query(...), db: AsyncSession = Depends(get_db)):
-    svc = WbDetailService(db)
+async def wb_detail_sales_daily(nm_id: int = Query(..., ge=1), date_from: str = Query(...), date_to: str = Query(...), db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
+    svc = WbDetailService(db, company_id=company_id)
     return await svc.get_daily_sales(nm_id, date_from, date_to)
 
 @app.get("/api/wb/detail/weekly")
-async def wb_detail_weekly(nm_id: int = Query(..., ge=1), date_from: str = Query(...), date_to: str = Query(...), db: AsyncSession = Depends(get_db)):
-    svc = WbDetailService(db)
+async def wb_detail_weekly(nm_id: int = Query(..., ge=1), date_from: str = Query(...), date_to: str = Query(...), db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
+    svc = WbDetailService(db, company_id=company_id)
     return await svc.get_weekly_finance(nm_id, date_from, date_to)
 
 @app.get("/api/wb/detail/phrases")
-async def wb_detail_phrases(nm_id: int = Query(..., ge=1), date_from: str = Query(...), date_to: str = Query(...), db: AsyncSession = Depends(get_db)):
-    svc = WbDetailService(db)
+async def wb_detail_phrases(nm_id: int = Query(..., ge=1), date_from: str = Query(...), date_to: str = Query(...), db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
+    svc = WbDetailService(db, company_id=company_id)
     return await svc.get_phrases(nm_id, date_from, date_to)
 
 @app.get("/api/wb/card/{nm_id}")
-async def wb_card(nm_id: int, db: AsyncSession = Depends(get_db)):
-    svc = WbCardService(db)
+async def wb_card(nm_id: int, db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
+    svc = WbCardService(db, company_id=company_id)
     data = await svc.get_card(nm_id)
     if not data:
         from fastapi import HTTPException
@@ -343,8 +289,9 @@ async def wb_sales_funnel_wbcard(
     date_from: str = Query(...),
     date_to: str = Query(...),
     db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
 ):
-    svc = SalesFunnelService(db)
+    svc = SalesFunnelService(db, company_id=company_id)
     return await svc.get_card_funnel(nm_id, date_from, date_to)
 
 @app.get("/api/wb-sales-funnel/wbcard/export")
@@ -353,8 +300,9 @@ async def wb_sales_funnel_wbcard_export(
     date_from: str = Query(...),
     date_to: str = Query(...),
     db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
 ):
-    svc = SalesFunnelService(db)
+    svc = SalesFunnelService(db, company_id=company_id)
     rows = await svc.export_rows(nm_id, date_from, date_to)
     return svc.build_xlsx_response(rows, nm_id, date_from, date_to)
 

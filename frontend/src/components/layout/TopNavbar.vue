@@ -11,7 +11,7 @@
     <div class="mobile-nav-drawer d-md-none" :style="{display: mobileOpen ? 'block' : 'none', position:'fixed', top:0, left:0, width:'260px', height:'100vh', background:'#fff', zIndex:1050, overflowY:'auto', padding:'16px'}" @click="mobileOpen=false">
       <div style="margin-bottom:12px">
         <div style="font-weight:700; padding:6px 0">{{ companyLabel }}</div>
-        <a href="#" @click.prevent="pickCompany('all')" style="display:block; padding:4px 0; font-size:13px; color:#4A3A8C; text-decoration:none">Все компании</a>
+        <a v-if="isGlobalAdmin" href="#" @click.prevent="pickCompany('all')" style="display:block; padding:4px 0; font-size:13px; color:#4A3A8C; text-decoration:none">Все компании</a>
         <a v-for="c in auth.companies" :key="c.id" href="#" @click.prevent="pickCompany(c.id)" style="display:block; padding:4px 0; font-size:13px; color:#4A3A8C; text-decoration:none">{{ c.name }}</a>
         <a href="#" @click.prevent="doLogout" style="display:block; padding:8px 0; font-size:13px; color:#c00; text-decoration:none">Выйти ({{ auth.user?.username || '...' }})</a>
       </div>
@@ -52,16 +52,17 @@
               <span class="wb-text">{{ companyLabel }}</span>
             </a>
             <ul class="dropdown-menu">
-              <li>
+              <li v-if="isGlobalAdmin">
                 <a class="dropdown-item" :class="{ active: auth.companyId === 'all' }" href="#" @click.prevent="pickCompany('all')">Все компании</a>
               </li>
-              <li class="dropdown-divider"></li>
+              <li v-if="isGlobalAdmin" class="dropdown-divider"></li>
               <li v-for="c in auth.companies" :key="c.id">
                 <a class="dropdown-item" :class="{ active: auth.companyId === c.id }" href="#" @click.prevent="pickCompany(c.id)">{{ c.name }}</a>
               </li>
             </ul>
           </li>
           <li class="nav-item ms-2" style="position:static !important; right:auto !important">
+            <!-- Компании/Пользователи идут из backend/config/menu.json (секция Админка), хардкода тут нет -->
             <button class="wb-logout-btn" @click="doLogout">
               <i class="bi bi-box-arrow-right wb-icon"></i>
               <span class="wb-text">Выйти ({{ auth.user?.username || '...' }})</span>
@@ -83,6 +84,8 @@ const mobileOpen = ref(false)
 const router = useRouter()
 const auth = useAuthStore()
 const qc = useQueryClient()
+
+const isGlobalAdmin = computed(() => auth.roles.includes('global_admin') || auth.perms.includes('global_admin') || auth.roles.includes('admin') || auth.perms.includes('admin'))
 
 onMounted(() => {
   if (!auth.user) auth.loadMe().then((ok) => { if (ok) auth.loadCompanies() })
@@ -137,7 +140,7 @@ const sectionIconClass = (section:any): string => {
   return iconClassMap[value] || value
 }
 
-const spaMap: Record<string,string> = { '/wb-order/feed': '/feed', '/wb-sales-analysis': '/wb-sales-analysis', '/wb-sales-analysis/': '/wb-sales-analysis', '/wb/detail': '/wb/detail', '/wb/detail/': '/wb/detail', '/admin/quick-buttons': '/admin/quick-buttons', '/admin/menu': '/admin/menu' }
+const spaMap: Record<string,string> = { '/wb-order/feed': '/feed', '/wb-sales-analysis': '/wb-sales-analysis', '/wb-sales-analysis/': '/wb-sales-analysis', '/wb/detail': '/wb/detail', '/wb/detail/': '/wb/detail', '/admin/quick-buttons': '/admin/quick-buttons', '/admin/menu': '/admin/menu', '/admin/invites': '/admin/invites', '/companies': '/companies', '/admin/users': '/admin/users' }
 const toSpa = (url?: string): string | null => {
   if (!url || url==='#') return null
   if (spaMap[url]) return spaMap[url]

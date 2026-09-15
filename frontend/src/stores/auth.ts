@@ -10,6 +10,7 @@ export const useAuthStore = defineStore('auth', () => {
   const roles = ref<string[]>([])
   const companies = ref<{ id: number; name: string }[]>([])
   const companyId = ref<number | 'all'>('all')
+  const memberships = ref<Array<{ company_id: number; company_name: string; role: string; status: string }>>([])
 
   try { token.value = localStorage.getItem(TOKEN_KEY) } catch { /* noop */ }
   try {
@@ -19,7 +20,10 @@ export const useAuthStore = defineStore('auth', () => {
   } catch { /* noop */ }
 
   const isAuth = computed(() => !!token.value && !!user.value)
-  const isAdmin = computed(() => perms.value.includes('admin') || roles.value.includes('admin'))
+  // B2: global_admin тоже админ (в БД у user 100 только эта роль, 'admin' может не быть)
+  const isAdmin = computed(() => perms.value.includes('admin') || roles.value.includes('admin') || perms.value.includes('global_admin') || roles.value.includes('global_admin'))
+  // админ хотя бы одной компании (owner/admin + active) — пускаем в /admin/users со скоупом своих
+  const managesAny = computed(() => memberships.value.some((m) => m.status === 'active' && (m.role === 'owner' || m.role === 'admin')))
   const can = (p: string) => isAdmin.value || perms.value.includes(p)
 
   async function login(username: string, password: string) {
@@ -52,6 +56,16 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       companies.value = await authApi.companies()
     } catch { companies.value = [] }
+    const isGlobal = roles.value.includes('global_admin') || perms.value.includes('global_admin') || roles.value.includes('admin') || perms.value.includes('admin')
+    if (!isGlobal && companies.value.length === 1 && companyId.value === 'all') {
+      setCompany(companies.value[0].id)
+    }
+  }
+
+  async function loadMemberships() {
+    if (!token.value) return
+    try { memberships.value = await authApi.memberships() }
+    catch { memberships.value = [] }
   }
 
   function setCompany(v: number | 'all') {
@@ -68,5 +82,5 @@ export const useAuthStore = defineStore('auth', () => {
     delete api.defaults.headers.common.Authorization
   }
 
-  return { token, user, perms, roles, companies, companyId, isAuth, isAdmin, can, login, loadMe, loadCompanies, setCompany, logout }
+  return { token, user, perms, roles, companies, companyId, memberships, managesAny, isAuth, isAdmin, can, login, loadMe, loadCompanies, loadMemberships, setCompany, logout }
 })

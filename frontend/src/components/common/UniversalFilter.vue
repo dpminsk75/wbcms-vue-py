@@ -145,13 +145,16 @@ const onQuickClick = (btn:any)=>{
 }
 
 const setRange = (p:string)=>{
-  const to = dateTo.value ? new Date(dateTo.value) : new Date()
+  // 1в1 WbFilterBar.vue:setRange — TD меняет только date_to, LY = прошлый год целиком
+  const fmtD=(d:Date)=> `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+  const parseD=(s:string)=>{ const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s||''); return m ? new Date(+m[1], +m[2]-1, +m[3]) : new Date() }
+  const to = dateTo.value ? parseD(dateTo.value) : new Date()
   let from = new Date(to)
   if(p==='year'){ from.setFullYear(to.getFullYear()-1); from.setDate(from.getDate()+1)}
   else if(p==='quarter'){ from.setMonth(to.getMonth()-3); from.setDate(from.getDate()+1)}
-  else if(p==='today'){ const t=new Date(); const v=t.toISOString().slice(0,10); dateFrom.value=v; dateTo.value=v; return}
-  else if(p==='last_year'){ const y=to.getFullYear()-1; from=new Date(y,0,1); const nt=new Date(y,11,31); dateTo.value=nt.toISOString().slice(0,10)}
-  dateFrom.value = from.toISOString().slice(0,10)
+  else if(p==='today'){ dateTo.value=fmtD(new Date()); return }
+  else if(p==='last_year'){ const y=to.getFullYear()-1; from=new Date(y,0,1); dateTo.value=fmtD(new Date(y,11,31)); dateFrom.value=fmtD(from); return }
+  dateFrom.value = fmtD(from)
 }
 
 const onReset = ()=>{
