@@ -36,6 +36,7 @@
 </template>
 <script setup lang="ts">
 import { ref, watch, onMounted, nextTick } from 'vue'
+import { api } from '@/api/client'
 const props=defineProps<{ nmId:string|number, dateFrom:string, dateTo:string }>()
 const rows=ref<any[]>([])
 const loading=ref(false)
@@ -47,8 +48,8 @@ const fetchData=async()=>{
   if(!props.nmId) return
   loading.value=true
   try{
-    const r=await fetch(`/api/wb/detail/paid-storage?nm_id=${props.nmId}&date_from=${props.dateFrom}&date_to=${props.dateTo}`)
-    rows.value=await r.json()
+    const { data:d } = await api.get(`/api/wb/detail/paid-storage?nm_id=${props.nmId}&date_from=${props.dateFrom}&date_to=${props.dateTo}`)
+    rows.value=d
   }catch{ rows.value=[] } finally{ loading.value=false; nextTick(enableResize) }
 }
 const enableResize=()=>{

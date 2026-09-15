@@ -140,6 +140,7 @@
 </template>
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { api } from '../api/client'
 import OrderFunnel from '../components/dashboard/OrderFunnel.vue'
 import WbFilterBar from '../components/common/WbFilterBar.vue'
 
@@ -196,8 +197,7 @@ const fetchData = async()=>{
   isLoading.value=true
   const q = new URLSearchParams({date_from: filters.value.date_from, date_to: filters.value.date_to, sort_by: filters.value.sort_by, page: String(page.value)} as any)
   if(filters.value.nm_id) q.set('nm_id', filters.value.nm_id)
-  const r = await fetch(`/api/orders/feed-aggregated?${q}`)
-  const data = await r.json()
+  const { data } = await api.get(`/api/orders/feed-aggregated?${q}`)
   items.value = data.items || []; total.value = data.total || 0
   summary.value = data.summary || summary.value
   funnel.value = data.funnel || funnel.value

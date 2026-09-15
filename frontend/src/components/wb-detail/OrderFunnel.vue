@@ -49,6 +49,7 @@
 </template>
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
+import { api } from '@/api/client'
 const props=defineProps<{ nmId:string|number, dateFrom:string, dateTo:string }>()
 const data=ref<any>(null)
 const loading=ref(false)
@@ -62,8 +63,8 @@ const fetchData=async()=>{
   if(!props.nmId) return
   loading.value=true
   try{
-    const r=await fetch(`/api/wb/detail/funnel?nm_id=${props.nmId}&date_from=${props.dateFrom}&date_to=${props.dateTo}`)
-    data.value=await r.json()
+    const { data:d } = await api.get(`/api/wb/detail/funnel?nm_id=${props.nmId}&date_from=${props.dateFrom}&date_to=${props.dateTo}`)
+    data.value=d
   }catch{ data.value=null } finally{ loading.value=false }
 }
 onMounted(fetchData)

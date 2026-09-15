@@ -37,6 +37,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import * as echarts from 'echarts'
+import { api } from '@/api/client'
 
 const props=defineProps<{ nmId:string|number, dateFrom:string, dateTo:string }>()
 const timelineRef=ref<HTMLDivElement|null>(null)
@@ -53,7 +54,7 @@ const monthKey=(d:Date)=> `${d.getFullYear()}-${String(d.getMonth()+1).padStart(
 
 const fetchTimeline=async()=>{
   if(!props.nmId || !timelineRef.value) return
-  const r=await fetch(`/api/wb/detail/orders-daily?nm_id=${props.nmId}&date_from=${props.dateFrom}&date_to=${props.dateTo}`).then(x=>x.json()).catch(()=>[])
+  const r=await api.get(`/api/wb/detail/orders-daily?nm_id=${props.nmId}&date_from=${props.dateFrom}&date_to=${props.dateTo}`).then(x=>x.data).catch(()=>[])
   const rows=Array.isArray(r)? r : r.items||[]
   // начальный вид как в оригинале: >50 → month, >14 → week, иначе day
   const key=`${props.nmId}|${props.dateFrom}|${props.dateTo}`
@@ -116,7 +117,7 @@ const fetchTimeline=async()=>{
 
 const fetchYearline=async()=>{
   if(!props.nmId || !yearlineRef.value) return
-  const r=await fetch(`/api/wb/detail/sales-daily?nm_id=${props.nmId}&date_from=${props.dateFrom}&date_to=${props.dateTo}`).then(x=>x.json()).catch(()=>[])
+  const r=await api.get(`/api/wb/detail/sales-daily?nm_id=${props.nmId}&date_from=${props.dateFrom}&date_to=${props.dateTo}`).then(x=>x.data).catch(()=>[])
   const rows=Array.isArray(r)? r : r.items||[]
   // как am5 DateAxis в detail.php:914 — ось только по месяцам из диапазона дат
   const d1=new Date(props.dateFrom), d2=new Date(props.dateTo)

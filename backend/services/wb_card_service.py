@@ -3,8 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import json
 
 class WbCardService:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, company_id: int | None = None):
         self.db = db
+        self.company_id = company_id
 
     async def list_cards(self, q: str | None = None, limit: int = 50):
         # как в WbCard::getListForSelect + фильтр по q

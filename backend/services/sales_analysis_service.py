@@ -4,8 +4,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date, timedelta
 
 class SalesAnalysisService:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, company_id: int | None = None):
         self.db = db
+        self.company_id = company_id
+
+    def _company_where(self) -> str:
+        return "" if self.company_id is None else " AND s.company_id = :company_id"
+
+    def _company_params(self) -> dict:
+        return {} if self.company_id is None else {"company_id": self.company_id}
 
     async def get_top(self, date_from: str, date_to: str, report_type: str = "revenue", top_limit: int = 20,
                       brand: str | None = None, category: str | None = None, type_: str | None = None,
@@ -21,8 +28,8 @@ class SalesAnalysisService:
 
         order_by = "sales_qty DESC" if report_type == "qty" else "finished_sum DESC"
 
-        where = ["s.date BETWEEN :d1 AND :d2"]
-        params: dict = {"d1": date_from, "d2": date_to, "lim": top_limit}
+        where = ["s.date BETWEEN :d1 AND :d2" + self._company_where()]
+        params: dict = {"d1": date_from, "d2": date_to, "lim": top_limit, **self._company_params()}
         if brand:
             where.append("s.brand = :brand"); params["brand"] = brand
         if category:
@@ -64,22 +71,23 @@ class SalesAnalysisService:
         allowed = {"brand", "category", "subject", "countryName"}
         if column not in allowed:
             return []
-        sql = text(f"SELECT DISTINCT {column} as v FROM wb_sales WHERE {column} IS NOT NULL ORDER BY {column}")
-        rows = (await self.db.execute(sql)).scalars().all()
+        where_extra = self._company_where()
+        sql = text(f"SELECT DISTINCT {column} as v FROM wb_sales WHERE {column} IS NOT NULL{where_extra} ORDER BY {column}")
+        rows = (await self.db.execute(sql, self._company_params())).scalars().all()
         return [r for r in rows if r]
 
     async def get_districts(self, country: str):
         if country != "Россия":
             return []
-        sql = text("SELECT DISTINCT oblastOkrugName as v FROM wb_sales WHERE countryName='Россия' AND oblastOkrugName IS NOT NULL ORDER BY v")
-        rows = (await self.db.execute(sql)).scalars().all()
+        sql = text(f"SELECT DISTINCT oblastOkrugName as v FROM wb_sales WHERE countryName='Россия' AND oblastOkrugName IS NOT NULL{self._company_where()} ORDER BY v")
+        rows = (await self.db.execute(sql, self._company_params())).scalars().all()
         return [r for r in rows if r]
 
     async def get_regions(self, country: str, oblast: str | None = None):
         if not country:
             return []
-        params: dict = {"country": country}
-        where = "countryName = :country"
+        params: dict = {"country": country, **self._company_params()}
+        where = "countryName = :country" + self._company_where()
         if country == "Россия" and oblast:
             where += " AND oblastOkrugName = :oblast"
             params["oblast"] = oblast
@@ -90,8 +98,8 @@ class SalesAnalysisService:
     async def get_types(self, category: str):
         if not category:
             return []
-        sql = text("SELECT DISTINCT subject as v FROM wb_sales WHERE category = :cat AND subject IS NOT NULL ORDER BY v")
-        rows = (await self.db.execute(sql, {"cat": category})).scalars().all()
+        sql = text(f"SELECT DISTINCT subject as v FROM wb_sales WHERE category = :cat AND subject IS NOT NULL{self._company_where()} ORDER BY v")
+        rows = (await self.db.execute(sql, {"cat": category, **self._company_params()})).scalars().all()
         return [r for r in rows if r]
 
     async def get_filter_data(self):

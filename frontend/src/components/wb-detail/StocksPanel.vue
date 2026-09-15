@@ -40,6 +40,7 @@
 </template>
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
+import { api } from '@/api/client'
 const props = defineProps<{ nmId: string|number }>()
 const warehouse=ref<any[]>([])
 const inWay=ref<any[]>([])
@@ -49,8 +50,7 @@ const fetchStocks=async()=>{
   if(!props.nmId) return
   loading.value=true
   try{
-    const r=await fetch(`/api/wb/detail/stocks?nm_id=${props.nmId}`)
-    const d=await r.json()
+    const { data:d } = await api.get(`/api/wb/detail/stocks?nm_id=${props.nmId}`)
     warehouse.value=d.warehouse||[]; inWay.value=d.inWay||[]
   }catch{ warehouse.value=[]; inWay.value=[] } finally{ loading.value=false }
 }

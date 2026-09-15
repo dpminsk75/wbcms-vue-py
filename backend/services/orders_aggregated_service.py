@@ -5,13 +5,20 @@ from datetime import date, timedelta
 
 
 class OrdersAggregatedService:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, company_id: int | None = None):
         self.db = db
+        self.company_id = company_id
+
+    def _company_where(self) -> str:
+        return "" if self.company_id is None else " AND o.company_id = :company_id"
+
+    def _company_params(self) -> dict:
+        return {} if self.company_id is None else {"company_id": self.company_id}
 
     # --- summary карточки над таблицей ---
     async def get_summary_stats(self, nm_id: int | None, date_from: str, date_to: str) -> dict:
-        where = ["o.date BETWEEN :d1 AND :d2"]
-        params: dict = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59"}
+        where = ["o.date BETWEEN :d1 AND :d2" + self._company_where()]
+        params: dict = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59", **self._company_params()}
         if nm_id:
             where.append("o.nm_id = :nm_id")
             params["nm_id"] = nm_id
@@ -35,8 +42,8 @@ class OrdersAggregatedService:
 
     # --- воронка заказов ---
     async def get_funnel_stats(self, nm_id: int | None, date_from: str, date_to: str) -> dict:
-        where = ["o.date BETWEEN :d1 AND :d2"]
-        params: dict = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59"}
+        where = ["o.date BETWEEN :d1 AND :d2" + self._company_where()]
+        params: dict = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59", **self._company_params()}
         if nm_id:
             where.append("o.nm_id = :nm_id")
             params["nm_id"] = nm_id
@@ -88,8 +95,8 @@ class OrdersAggregatedService:
 
     # --- ежедневная разбивка для stacked-Bar ---
     async def get_daily_status_chart_data(self, nm_id: int | None, date_from: str, date_to: str) -> list:
-        where = ["o.date BETWEEN :d1 AND :d2"]
-        params: dict = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59"}
+        where = ["o.date BETWEEN :d1 AND :d2" + self._company_where()]
+        params: dict = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59", **self._company_params()}
         if nm_id:
             where.append("o.nm_id = :nm_id")
             params["nm_id"] = nm_id
@@ -144,8 +151,8 @@ class OrdersAggregatedService:
     async def search(self, nm_id: int | None, date_from: str, date_to: str, sort_by: str = "count", page: int = 1, page_size: int = 50) -> dict:
         if sort_by not in ("count", "sum"):
             sort_by = "count"
-        where = ["o.date BETWEEN :d1 AND :d2"]
-        params: dict = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59", "off": (page - 1) * page_size, "lim": page_size}
+        where = ["o.date BETWEEN :d1 AND :d2" + self._company_where()]
+        params: dict = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59", "off": (page - 1) * page_size, "lim": page_size, **self._company_params()}
         if nm_id:
             where.append("o.nm_id = :nm_id")
             params["nm_id"] = nm_id

@@ -114,6 +114,7 @@
 </template>
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { api } from '../api/client'
 import WbFilterBar from '../components/common/WbFilterBar.vue'
 
 const days = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс']
@@ -215,8 +216,8 @@ const fetchData = async()=>{
   isLoading.value = true
   const q = new URLSearchParams({date_from: filters.value.date_from, date_to: filters.value.date_to} as any)
   if(filters.value.nm_id) q.set('nm_id', filters.value.nm_id)
-  const r = await fetch(`/api/orders/heatmap?${q}`)
-  data.value = await r.json()
+  const { data:d } = await api.get(`/api/orders/heatmap?${q}`)
+  data.value = d
   isLoading.value = false
 }
 

@@ -113,6 +113,7 @@
 </template>
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
+import { api } from '@/api/client'
 const props=defineProps<{ nmId:string|number, dateFrom:string, dateTo:string }>()
 const orders=ref<any[]>([])
 const sales=ref<any[]>([])
@@ -132,8 +133,8 @@ const fetchData=async()=>{
   loading.value=true
   try{
     const [ro, rs]=await Promise.all([
-      fetch(`/api/wb/detail/orders-daily?nm_id=${props.nmId}&date_from=${props.dateFrom}&date_to=${props.dateTo}`).then(r=>r.json()),
-      fetch(`/api/wb/detail/sales-daily?nm_id=${props.nmId}&date_from=${props.dateFrom}&date_to=${props.dateTo}`).then(r=>r.json())
+      api.get(`/api/wb/detail/orders-daily?nm_id=${props.nmId}&date_from=${props.dateFrom}&date_to=${props.dateTo}`).then(r=>r.data),
+      api.get(`/api/wb/detail/sales-daily?nm_id=${props.nmId}&date_from=${props.dateFrom}&date_to=${props.dateTo}`).then(r=>r.data)
     ])
     orders.value=Array.isArray(ro)? ro : ro.items||[]
     sales.value=Array.isArray(rs)? rs : rs.items||[]

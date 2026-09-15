@@ -15,8 +15,15 @@ class UnclaimedOrdersService:
         "cancel": "SUM(o.is_cancel)",
     }
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, company_id: int | None = None):
         self.db = db
+        self.company_id = company_id
+
+    def _company_where(self) -> str:
+        return "" if self.company_id is None else " AND o.company_id = :company_id"
+
+    def _company_params(self) -> dict:
+        return {} if self.company_id is None else {"company_id": self.company_id}
 
     @staticmethod
     def default_params() -> dict:
@@ -50,12 +57,13 @@ class UnclaimedOrdersService:
         offset = (page - 1) * page_size
         rate_threshold = percent / 100
 
-        where = ["o.date BETWEEN :d1 AND :d2"]
+        where = ["o.date BETWEEN :d1 AND :d2" + self._company_where()]
         params: dict = {
             "d1": f"{date_from} 00:00:00",
             "d2": f"{date_to} 23:59:59",
             "min_orders": min_orders,
             "rate_threshold": rate_threshold,
+            **self._company_params(),
         }
         if nm_id is not None and nm_id != '':
             where.append("o.nm_id = :nm_id")

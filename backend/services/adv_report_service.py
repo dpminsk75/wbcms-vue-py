@@ -7,42 +7,50 @@ TYPE_MAP = {4:"Каталог",5:"Карточка товара",6:"Поиск",
 STATUS_PRIORITY = [9,11,7,4,8,-1]
 
 class AdvReportService:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, company_id: int | None = None):
         self.db = db
+        self.company_id = company_id
+
+    def _company_where(self, alias: str = "c") -> str:
+        prefix = f"{alias}." if alias else ""
+        return "" if self.company_id is None else f" AND {prefix}company_id = :company_id"
+
+    def _company_params(self) -> dict:
+        return {} if self.company_id is None else {"company_id": self.company_id}
 
     async def get_campaign_list(self):
         # как в php:213 active ids = distinct wb_campaign_stats.campaign_id
-        sql = text("""
+        sql = text(f"""
             SELECT c.campaign_id, c.name, c.status FROM wb_campaign c
-            WHERE c.campaign_id IN (SELECT DISTINCT campaign_id FROM wb_campaign_stats)
+            WHERE c.campaign_id IN (SELECT DISTINCT campaign_id FROM wb_campaign_stats){self._company_where('c')}
             ORDER BY FIELD(c.status, 9,11,7,4,8,-1), c.name ASC
         """)
-        rows = (await self.db.execute(sql)).mappings().all()
+        rows = (await self.db.execute(sql, self._company_params())).mappings().all()
         out = []
         for r in rows:
             label = STATUS_MAP.get(r["status"], "???")
             out.append({"campaign_id": r["campaign_id"], "name": r["name"], "status": r["status"], "label": f"({label}) — {r['name']} [ID: {r['campaign_id']}]"})
         return out
 
-    async def get_detail(self, campaign_id: int, date_from: str, date_to: str):
+async def get_detail(self, campaign_id: int, date_from: str, date_to: str):
         # кампания
-        camp_sql = text("SELECT campaign_id, name, status, type, daily_budget, change_time FROM wb_campaign WHERE campaign_id=:id")
-        camp = (await self.db.execute(camp_sql, {"id": campaign_id})).mappings().first()
+        camp_sql = text(f"SELECT campaign_id, name, status, type, daily_budget, change_time FROM wb_campaign WHERE campaign_id=:id{self._company_where('')}")
+        camp = (await self.db.execute(camp_sql, {"id": campaign_id, **self._company_params()})).mappings().first()
         if not camp:
             return None
         campaign = dict(camp)
 
         # items
-        items_sql = text("""
+        items_sql = text(f"""
             SELECT i.*, c.title as card_name, c.brand, c.vendorCode
             FROM wb_campaign_item i
             LEFT JOIN wbcards c ON c.nmID = i.nm_id
-            WHERE i.campaign_id=:id
+            WHERE i.campaign_id=:id{self._company_where('i')}
         """)
-        items = [dict(r) for r in (await self.db.execute(items_sql, {"id": campaign_id})).mappings().all()]
+        items = [dict(r) for r in (await self.db.execute(items_sql, {"id": campaign_id, **self._company_params()})).mappings().all()]
 
         # stats per date+nm_id (для таблицы Общая статистика по дням)
-        stats_sql = text("""
+        stats_sql = text(f"""
             SELECT c.campaign_id, i.nm_id, s.date, w.title, w.vendorCode,
                    SUM(n.views) as views, SUM(n.clicks) as clicks, SUM(n.atbs) as atbs,
                    SUM(n.orders) as orders, SUM(n.shks) as shks, SUM(n.sum) as sum,
@@ -52,14 +60,14 @@ class AdvReportService:
             INNER JOIN wb_campaign_stats s ON c.campaign_id=s.campaign_id
             INNER JOIN wb_campaign_stats_nms n ON s.id=n.parent_id AND i.nm_id=n.nm_id
             INNER JOIN wbcards w ON n.nm_id=w.nmID
-            WHERE c.campaign_id=:id AND s.date BETWEEN :d1 AND :d2
+            WHERE c.campaign_id=:id AND s.date BETWEEN :d1 AND :d2{self._company_where('c')}
             GROUP BY c.campaign_id, i.nm_id, s.date, w.title, w.vendorCode
             ORDER BY s.date DESC
         """)
-        stats = [dict(r) for r in (await self.db.execute(stats_sql, {"id": campaign_id, "d1": date_from, "d2": date_to})).mappings().all()]
+        stats = [dict(r) for r in (await self.db.execute(stats_sql, {"id": campaign_id, "d1": date_from, "d2": date_to, **self._company_params()})).mappings().all()]
 
         # ShortStats per nm_id (Сводные показатели)
-        short_sql = text("""
+        short_sql = text(f"""
             SELECT c.campaign_id, i.nm_id, w.title, w.vendorCode,
                    SUM(n.views) as views, SUM(n.clicks) as clicks, SUM(n.atbs) as atbs,
                    SUM(n.orders) as orders, SUM(n.shks) as shks, SUM(n.sum) as sum,
@@ -69,14 +77,14 @@ class AdvReportService:
             INNER JOIN wb_campaign_stats s ON c.campaign_id=s.campaign_id
             INNER JOIN wb_campaign_stats_nms n ON s.id=n.parent_id AND i.nm_id=n.nm_id
             INNER JOIN wbcards w ON n.nm_id=w.nmID
-            WHERE c.campaign_id=:id AND s.date BETWEEN :d1 AND :d2
+            WHERE c.campaign_id=:id AND s.date BETWEEN :d1 AND :d2{self._company_where('c')}
             GROUP BY c.campaign_id, i.nm_id, w.title, w.vendorCode
             ORDER BY i.nm_id ASC
         """)
-        short = [dict(r) for r in (await self.db.execute(short_sql, {"id": campaign_id, "d1": date_from, "d2": date_to})).mappings().all()]
+        short = [dict(r) for r in (await self.db.execute(short_sql, {"id": campaign_id, "d1": date_from, "d2": date_to, **self._company_params()})).mappings().all()]
 
         # AnotherGoods — товары в заказах но не в кампании, только с orders>0 и i.nm_id IS NULL left join
-        another_sql = text("""
+        another_sql = text(f"""
             SELECT c.campaign_id, n.nm_id, w.title, w.vendorCode,
                    SUM(n.views) as views, SUM(n.clicks) as clicks, SUM(n.atbs) as atbs,
                    SUM(n.orders) as orders, SUM(n.shks) as shks, SUM(n.sum) as sum,
@@ -84,17 +92,17 @@ class AdvReportService:
             FROM wb_campaign c
             INNER JOIN wb_campaign_stats s ON c.campaign_id=s.campaign_id
             INNER JOIN wb_campaign_stats_nms n ON s.id=n.parent_id
-            LEFT JOIN wb_campaign_item i ON c.campaign_id=i.campaign_id AND n.nm_id=i.nm_id
+            LEFT JOIN wb_campaign_item i ON c.campaign_id=s.campaign_id AND n.nm_id=i.nm_id
             INNER JOIN wbcards w ON n.nm_id=w.nmID
-            WHERE c.campaign_id=:id AND s.date BETWEEN :d1 AND :d2
+            WHERE c.campaign_id=:id AND s.date BETWEEN :d1 AND :d2{self._company_where('c')}
               AND i.nm_id IS NULL AND n.orders > 0
             GROUP BY c.campaign_id, n.nm_id, w.title, w.vendorCode
             ORDER BY SUM(n.orders) DESC, n.nm_id ASC
         """)
-        another = [dict(r) for r in (await self.db.execute(another_sql, {"id": campaign_id, "d1": date_from, "d2": date_to})).mappings().all()]
+        another = [dict(r) for r in (await self.db.execute(another_sql, {"id": campaign_id, "d1": date_from, "d2": date_to, **self._company_params()})).mappings().all()]
 
         # ChartStats per date (timeline)
-        chart_sql = text("""
+        chart_sql = text(f"""
             SELECT s.date as odate,
                    SUM(n.views) as views, SUM(n.clicks) as clicks, SUM(n.atbs) as atbs,
                    SUM(n.orders) as orders, SUM(n.shks) as shks, SUM(n.sum) as sum,
@@ -109,10 +117,10 @@ class AdvReportService:
             INNER JOIN wb_campaign_stats s ON c.campaign_id=s.campaign_id
             INNER JOIN wb_campaign_stats_nms n ON s.id=n.parent_id AND i.nm_id=n.nm_id
             INNER JOIN wbcards w ON n.nm_id=w.nmID
-            WHERE c.campaign_id=:id AND s.date BETWEEN :d1 AND :d2
+            WHERE c.campaign_id=:id AND s.date BETWEEN :d1 AND :d2{self._company_where('c')}
             GROUP BY s.date ORDER BY s.date ASC
         """)
-        chart = [dict(r) for r in (await self.db.execute(chart_sql, {"id": campaign_id, "d1": date_from, "d2": date_to})).mappings().all()]
+        chart = [dict(r) for r in (await self.db.execute(chart_sql, {"id": campaign_id, "d1": date_from, "d2": date_to, **self._company_params()})).mappings().all()]
         for r in chart:
             # normalize date to string yyyy-mm-dd
             if r.get("odate") is not None:
@@ -122,13 +130,13 @@ class AdvReportService:
                     pass
 
         # ChartAppStats — устр-ва: app_type 1/32/64
-        app_sql = text("""
+        app_sql = text(f"""
             SELECT app_type, date, SUM(views) as views, SUM(clicks) as clicks, SUM(atbs) as atbs,
                    SUM(orders) as orders, SUM(sum_price) as sum_price
-            FROM wb_campaign_stats WHERE campaign_id=:id AND date BETWEEN :d1 AND :d2
+            FROM wb_campaign_stats WHERE campaign_id=:id AND date BETWEEN :d1 AND :d2{self._company_where('')}
             GROUP BY date, app_type ORDER BY date ASC, app_type DESC
         """)
-        app_rows = [dict(r) for r in (await self.db.execute(app_sql, {"id": campaign_id, "d1": date_from, "d2": date_to})).mappings().all()]
+        app_rows = [dict(r) for r in (await self.db.execute(app_sql, {"id": campaign_id, "d1": date_from, "d2": date_to, **self._company_params()})).mappings().all()]
         # flatten как в php: flatData[date][metric_type]
         flat = {}
         types = [32,64,1]

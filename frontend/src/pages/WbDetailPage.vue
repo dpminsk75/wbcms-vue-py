@@ -105,6 +105,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { api } from '@/api/client'
 import WbFilterBar from '../components/common/WbFilterBar.vue'
 import WeeklyFinanceTable from '../components/common/WeeklyFinanceTable.vue'
 import PhrasesMatrix from '../components/common/PhrasesMatrix.vue'
@@ -179,7 +180,7 @@ const updateDetailTitle = ()=>{
 const fetchCard=async()=>{
   if(!filters.value.nm_id) { card.value=null; updateDetailTitle(); return }
   cardLoading.value=true; cardError.value=false
-  try{ const r=await fetch(`/api/wb/card/${filters.value.nm_id}`); if(!r.ok) throw new Error(); card.value=await r.json(); updateDetailTitle() }catch{ cardError.value=true; card.value=null; updateDetailTitle() } finally{ cardLoading.value=false }
+  try{ const { data:d } = await api.get(`/api/wb/card/${filters.value.nm_id}`); card.value=d; updateDetailTitle() }catch{ cardError.value=true; card.value=null; updateDetailTitle() } finally{ cardLoading.value=false }
 }
 watch(card, updateDetailTitle)
 watch(()=>filters.value.nm_id, updateDetailTitle)
@@ -201,22 +202,21 @@ const phraseLoading=ref(false)
 const fetchWeekly=async()=>{
   if(!filters.value.nm_id) return
   weeklyLoading.value=true
-  try{ const r=await fetch(`/api/wb/detail/weekly?nm_id=${filters.value.nm_id}&date_from=${filters.value.date_from}&date_to=${filters.value.date_to}`); weeklyRows.value=await r.json() }catch{ weeklyRows.value=[] } finally{ weeklyLoading.value=false }
+  try{ const { data:d } = await api.get(`/api/wb/detail/weekly?nm_id=${filters.value.nm_id}&date_from=${filters.value.date_from}&date_to=${filters.value.date_to}`); weeklyRows.value=d }catch{ weeklyRows.value=[] } finally{ weeklyLoading.value=false }
 }
 const fetchPhrases=async()=>{
   if(!filters.value.nm_id) return
   phraseLoading.value=true
   try{
-    const r=await fetch(`/api/wb/detail/phrases?nm_id=${filters.value.nm_id}&date_from=${filters.value.date_from}&date_to=${filters.value.date_to}`)
-    const j=await r.json()
+    const { data:j } = await api.get(`/api/wb/detail/phrases?nm_id=${filters.value.nm_id}&date_from=${filters.value.date_from}&date_to=${filters.value.date_to}`)
     phraseModels.value=j.models||[]; phraseDates.value=j.dates||[]
   }catch{ phraseModels.value=[]; phraseDates.value=[] } finally{ phraseLoading.value=false }
 }
 const fetchOrderStats=async()=>{
   if(!filters.value.nm_id) return
   try{
-    const r=await fetch(`/api/wb/detail/order-stats?nm_id=${filters.value.nm_id}&date_from=${filters.value.date_from}&date_to=${filters.value.date_to}`)
-    orderStats.value=await r.json()
+    const { data:d } = await api.get(`/api/wb/detail/order-stats?nm_id=${filters.value.nm_id}&date_from=${filters.value.date_from}&date_to=${filters.value.date_to}`)
+    orderStats.value=d
   }catch{ orderStats.value={alls:0,sLO:0,cancel:0,notb:0,bought:0,sum:0,sFP:0} }
 }
 const fetchAll=()=>{ fetchCard(); fetchWeekly(); fetchPhrases(); fetchOrderStats() }

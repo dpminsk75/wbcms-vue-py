@@ -9,8 +9,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class SalesFunnelService:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, company_id: int | None = None):
         self.db = db
+        self.company_id = company_id
+
+    def _company_where(self) -> str:
+        return "" if self.company_id is None else " AND h.company_id = :company_id"
+
+    def _company_params(self) -> dict:
+        return {} if self.company_id is None else {"company_id": self.company_id}
 
     async def get_card_funnel(self, nm_id: int, date_from: str, date_to: str):
         card = await self.get_card(nm_id)
@@ -37,7 +44,7 @@ class SalesFunnelService:
         return dict(row) if row else None
 
     async def get_rows(self, nm_id: int, date_from: str, date_to: str):
-        sql = text("""
+        sql = text(f"""
             SELECT
                 h.nmId AS nm_id,
                 h.date,
@@ -54,10 +61,10 @@ class SalesFunnelService:
             FROM wb_sales_funnel_history h
             LEFT JOIN wbcards c ON c.nmID = h.nmId
             WHERE h.nmId = :nm_id
-              AND h.date BETWEEN :date_from AND :date_to
+              AND h.date BETWEEN :date_from AND :date_to{self._company_where()}
             ORDER BY h.date DESC
         """)
-        params = {"nm_id": nm_id, "date_from": date_from, "date_to": date_to}
+        params = {"nm_id": nm_id, "date_from": date_from, "date_to": date_to, **self._company_params()}
         rows = [dict(r) for r in (await self.db.execute(sql, params)).mappings().all()]
 
         for row in rows:
@@ -69,7 +76,7 @@ class SalesFunnelService:
         return rows
 
     async def get_chart_data(self, nm_id: int, date_from: str, date_to: str):
-        sql = text("""
+        sql = text(f"""
             SELECT
                 h.date,
                 SUM(h.openCount) AS open_count,
@@ -80,11 +87,11 @@ class SalesFunnelService:
                 SUM(h.buyoutSum) AS buyout_sum
             FROM wb_sales_funnel_history h
             WHERE h.nmId = :nm_id
-              AND h.date BETWEEN :date_from AND :date_to
+              AND h.date BETWEEN :date_from AND :date_to{self._company_where()}
             GROUP BY h.date
             ORDER BY h.date ASC
         """)
-        params = {"nm_id": nm_id, "date_from": date_from, "date_to": date_to}
+        params = {"nm_id": nm_id, "date_from": date_from, "date_to": date_to, **self._company_params()}
         chart_data = [dict(r) for r in (await self.db.execute(sql, params)).mappings().all()]
         return chart_data
 

@@ -81,6 +81,7 @@
 </template>
 <script setup lang="ts">
 import { ref, nextTick, watch, onMounted } from 'vue'
+import { api } from '@/api/client'
 const props = withDefaults(defineProps<{
   rows: any[]
   isLoading?: boolean
@@ -111,6 +112,15 @@ const enableResize = ()=>{
 }
 onMounted(()=> nextTick(enableResize))
 watch(()=>props.rows, ()=> nextTick(enableResize))
+const fetchWeekly = async () => {
+  if(!props.nmId || !props.dateFrom || !props.dateTo) return
+  isLoading.value = true
+  try{
+    const { data:d } = await api.get(`/api/wb/detail/weekly?nm_id=${props.nmId}&date_from=${props.dateFrom}&date_to=${props.dateTo}`)
+    weeklyRows.value=d
+  }catch{ weeklyRows.value=[] } finally{ isLoading.value=false }
+}
+onMounted(fetchWeekly)
 const exportExcel = async()=>{
   if(!props.rows.length) return
   const XLSX=await import('xlsx')

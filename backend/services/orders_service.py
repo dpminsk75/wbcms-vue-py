@@ -10,13 +10,20 @@ def build_status_where(status: str):
     return None
 
 class OrdersService:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, company_id: int | None = None):
         self.db = db
+        self.company_id = company_id
+
+    def _company_where(self) -> str:
+        return "" if self.company_id is None else " AND o.company_id = :company_id"
+
+    def _company_params(self) -> dict:
+        return {} if self.company_id is None else {"company_id": self.company_id}
 
     async def feed(self, nm_id: int | None, date_from: str, date_to: str, status: str | None, warehouse_name: str | None, region_name: str | None, page: int = 1, page_size: int = 50):
         # базовый запрос как в buildBaseQuery:200 + search:244
         where = ["o.date BETWEEN :d1 AND :d2"]
-        params = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59", "off": (page-1)*page_size, "lim": page_size}
+        params = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59", "off": (page-1)*page_size, "lim": page_size, **self._company_params()}
         if nm_id:
             where.append("o.nm_id = :nm_id")
             params["nm_id"] = nm_id
@@ -57,7 +64,7 @@ class OrdersService:
     async def feed_options(self, nm_id, date_from, date_to, status, warehouse_name, region_name):
         # distinct списки как getWarehouseOptions/getRegionOptions
         where = ["o.date BETWEEN :d1 AND :d2"]
-        params = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59"}
+        params = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59", **self._company_params()}
         if nm_id:
             where.append("o.nm_id = :nm_id")
             params["nm_id"] = nm_id

@@ -32,6 +32,7 @@
 </template>
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, onMounted } from 'vue'
+import { api } from '@/api/client'
 const props = withDefaults(defineProps<{
   rows: any[]
   dates: string[] // uniqueDates yyyy-mm-dd
@@ -71,6 +72,19 @@ const cellCls = (r:any,d:string)=>{
 }
 watch(()=>props.rows, ()=> nextTick(()=>{}))
 onMounted(()=>{})
+const fetchPhrases = async () => {
+  if (!props.nmId || !props.dateFrom || !props.dateTo) return
+  isLoading.value = true
+  try {
+    const { data:j } = await api.get(`/api/wb/detail/phrases?nm_id=${props.nmId}&date_from=${props.dateFrom}&date_to=${props.dateTo}`)
+    rows.value = j.models || []
+  } catch {
+    rows.value = []
+  } finally {
+    isLoading.value = false
+  }
+}
+onMounted(fetchPhrases)
 const exportExcel = async()=>{
   if(!props.rows.length) return
   const XLSX=await import('xlsx')

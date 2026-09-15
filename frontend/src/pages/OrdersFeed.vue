@@ -82,6 +82,7 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { api } from '../api/client'
 import WbFilterBar from '../components/common/WbFilterBar.vue'
 const route = useRoute()
 const router = useRouter()
@@ -170,11 +171,11 @@ const fetchFeed = async()=>{
   if(filters.value.status) q.set('status', filters.value.status)
   if(filters.value.warehouse_name) q.set('warehouse_name', filters.value.warehouse_name)
   if(filters.value.region_name) q.set('region_name', filters.value.region_name)
-  const r = await fetch(`/api/orders/feed?${q}`); const data = await r.json()
+  const { data } = await api.get(`/api/orders/feed?${q}`)
   items.value = data.items || []; total.value = data.total || 0; summary.value = data.summary || summary.value
   const optQ = new URLSearchParams({date_from: filters.value.date_from, date_to: filters.value.date_to} as any)
   if(filters.value.nm_id) optQ.set('nm_id', filters.value.nm_id)
-  try{ const ro=await fetch(`/api/orders/feed/options?${optQ}`); const od=await ro.json(); warehouses.value=od.warehouses||[]; regions.value=od.regions||[] }catch{}
+  try{ const { data:od } = await api.get(`/api/orders/feed/options?${optQ}`); warehouses.value=od.warehouses||[]; regions.value=od.regions||[] }catch{}
   isLoading.value=false
   nextTick(enableResize)
 }

@@ -170,6 +170,7 @@
 </template>
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { api } from '../api/client'
 import { dashboardApi } from '../api/dashboard'
 
 const items = ref<any[]>([])
@@ -241,8 +242,8 @@ async function reload(){
     const map: Record<string,string> = {}
     await Promise.all(items.value.map(async (b:any)=>{
       try{
-        const r=await fetch(`/api/wb/card/${b.nm_id}`)
-        if(r.ok){ const j=await r.json(); map[b.nm_id]= j.title ? `${j.title} · ${j.vendorCode||''}`.trim() : (j.vendorCode||''); return }
+        const { data:j } = await api.get(`/api/wb/card/${b.nm_id}`)
+        if(j){ map[b.nm_id]= j.title ? `${j.title} · ${j.vendorCode||''}`.trim() : (j.vendorCode||''); return }
       }catch{}
       // фолбэк: поиск через /api/wb/cards
       try{

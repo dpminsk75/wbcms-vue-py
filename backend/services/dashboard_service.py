@@ -9,6 +9,12 @@ class DashboardService:
         self.db = db
         self.company_id = company_id
 
+    def _company_where(self) -> str:
+        return "" if self.company_id is None else " AND company_id = :company_id"
+
+    def _company_params(self) -> dict:
+        return {} if self.company_id is None else {"company_id": self.company_id}
+
     # --- buildPeriodStats dispatcher ---
     async def build_period_stats(self, period: str, table: str, sum_field: str):
         if period == "yesterday":
@@ -99,14 +105,18 @@ class DashboardService:
         return {"granularity":"day","categories":categories,"axisCaption":f"{first_a.strftime('%B %Y')} / {first_b.strftime('%B %Y')}","seriesMeta":[{"key":"a","name":label_a},{"key":"b","name":label_b}],"series":{"a":series_a,"b":series_b},"totals":{"a":totals_a,"b":totals_b}}
 
     async def query_period_by_hour(self, table, sum_field, d: str, date_label=None):
-        sql = text(f"SELECT HOUR(date) as hour, COUNT(*) as cnt, SUM({sum_field}) as sum, AVG(spp) as spp FROM {table} WHERE date BETWEEN :d1 AND :d2 GROUP BY hour")
-        rows = (await self.db.execute(sql, {"d1":f"{d} 00:00:00","d2":f"{d} 23:59:59"})).mappings().all()
+        where = f"date BETWEEN :d1 AND :d2{self._company_where()}"
+        params = {"d1": f"{d} 00:00:00", "d2": f"{d} 23:59:59", **self._company_params()}
+        sql = text(f"SELECT HOUR(date) as hour, COUNT(*) as cnt, SUM({sum_field}) as sum, AVG(spp) as spp FROM {table} WHERE {where} GROUP BY hour")
+        rows = (await self.db.execute(sql, params)).mappings().all()
         by_hour = {int(r["hour"]): r for r in rows}
         return [{"category":f"{h:02d}","sum":round(float(by_hour.get(h,{}).get("sum") or 0),2),"cnt":int(by_hour.get(h,{}).get("cnt") or 0),"spp":round(float(by_hour.get(h,{}).get("spp") or 0),1),"date":date_label} for h in range(24)]
 
     async def query_period_by_day(self, table, sum_field, date_from, date_to):
-        sql = text(f"SELECT DATE(date) as d, COUNT(*) as cnt, SUM({sum_field}) as sum, AVG(spp) as spp FROM {table} WHERE date BETWEEN :d1 AND :d2 GROUP BY d")
-        rows = (await self.db.execute(sql, {"d1":f"{date_from} 00:00:00","d2":f"{date_to} 23:59:59"})).mappings().all()
+        where = f"date BETWEEN :d1 AND :d2{self._company_where()}"
+        params = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59", **self._company_params()}
+        sql = text(f"SELECT DATE(date) as d, COUNT(*) as cnt, SUM({sum_field}) as sum, AVG(spp) as spp FROM {table} WHERE {where} GROUP BY d")
+        rows = (await self.db.execute(sql, params)).mappings().all()
         return {str(r["d"]): {"cnt":int(r["cnt"]),"sum":float(r["sum"] or 0),"spp":float(r["spp"] or 0)} for r in rows}
 
     async def query_period_agg(self, table, sum_field, d1, d2):

@@ -116,6 +116,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { api } from '../api/client'
 import WbFilterBar from '../components/common/WbFilterBar.vue'
 
 const toIsoDate = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
@@ -238,9 +239,7 @@ const fetchData = async () => {
   })
   if (filters.value.nm_id) q.set('nm_id', filters.value.nm_id)
   try {
-    const response = await fetch(`/api/unclaimed-orders?${q}`)
-    if (!response.ok) throw new Error('request failed')
-    const payload = await response.json() as UnclaimedData
+    const { data:payload } = await api.get(`/api/unclaimed-orders?${q}`)
     items.value = Array.isArray(payload.items) ? payload.items : []
     total.value = Number(payload.total) || 0
     page.value = Number(payload.page) || filters.value.page

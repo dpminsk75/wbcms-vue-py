@@ -40,3 +40,25 @@ class KpiService:
         d = dict(row) if row else {}
         d["total_orders_cnt"] = int(cnt or 0)
         return d
+
+    async def invalidate_monthly_cache(self) -> None:
+        # Раньше был Redis-кэш; в прототипе оставляем no-op.
+        return None
+
+    async def get_monthly_profit(self):
+        where_extra = "" if self.company_id is None else " AND company_id = :company_id"
+        params = {} if self.company_id is None else {"company_id": self.company_id}
+        sql = text(f"""
+            SELECT DATE_FORMAT(sdate,'%Y-%m') as month, SUM(qnt) as qnt, SUM(amount) as amount, SUM(`return`) as `return`,
+                   SUM(commission) as commission, SUM(f_acquiring_fee) as f_acquiring_fee, SUM(f_acceptance) as f_acceptance,
+                   SUM(f_delivery) as f_delivery, SUM(f_storage_fee) as f_storage_fee, SUM(f_penalty) as f_penalty,
+                   SUM(f_deduction) as f_deduction, SUM(f_otziv) as f_otziv, SUM(f_adv) as f_adv, SUM(f_cashback) as f_cashback,
+                   SUM(net_profit) as net_profit, SUM(f_nds) as total_nds, SUM(f_cost_price) as total_cost,
+                   SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price) as profit_before_tax,
+                   GREATEST(0, SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price))*0.07 as tax_amount,
+                   (SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price)) - GREATEST(0, SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price))*0.07 as clean_margin
+            FROM agg_daily_summary WHERE sdate >= '2025-01-01'{where_extra}
+            GROUP BY DATE_FORMAT(sdate,'%Y-%m') ORDER BY month DESC
+        """)
+        rows = (await self.db.execute(sql, params)).mappings().all()
+        return [dict(r) for r in rows] 

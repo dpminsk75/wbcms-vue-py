@@ -43,6 +43,7 @@
 </template>
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { api } from '@/api/client'
 
 const props = withDefaults(defineProps<{
   showCard?: boolean
@@ -132,11 +133,8 @@ const syncCardLabel=async()=>{
   if(cardQuery.value && cardQuery.value!==id) return // пользователь что-то ввел — не трогаем
   if(cardTitleCache.value[id]){ cardQuery.value=`${id} | ${cardTitleCache.value[id]}`; return }
   try{
-    const r=await fetch(`/api/wb/card/${id}`)
-    if(r.ok){
-      const d=await r.json()
-      if(d?.title){ cardTitleCache.value[id]=d.title; if(String(nmId.value)===id) cardQuery.value=`${id} | ${d.title}`; return }
-    }
+    const { data:d } = await api.get(`/api/wb/card/${id}`)
+    if(d?.title){ cardTitleCache.value[id]=d.title; if(String(nmId.value)===id) cardQuery.value=`${id} | ${d.title}`; return }
   }catch{}
   if(!cardQuery.value) cardQuery.value=id
 }
@@ -155,21 +153,18 @@ onMounted(async()=>{
     try{
       // пробуем новый эндпоинт /api/wb/cards (все карточки, без ограничения 14д как new-cards), fallback на старый
       let d:any=null
-      try{ const r=await fetch('/api/wb/cards?limit=200'); if(r.ok) d=await r.json() }catch{}
+      try{ const r=await api.get('/api/wb/cards?limit=200'); d=r.data }catch{}
       if(!d || !Array.isArray(d) || d.length===0){
-        const r2=await fetch('/api/dashboard/new-cards?dateFrom=2025-01-01&dateTo=2026-12-31'); d=await r2.json()
+        const r2=await api.get('/api/dashboard/new-cards?dateFrom=2025-01-01&dateTo=2026-12-31'); d=r2.data
       }
       innerCards.value = Array.isArray(d) ? d : (d?.items ?? [])
     }catch{}
   }
   if(props.quickButtonsProp === null){
     try{
-      const r=await fetch('/api/config/quick-buttons')
-      if(r.ok){
-        const d=await r.json()
-        if(Array.isArray(d) && d.length) quickButtonsStatic.value = d
-        // если бек вернул [] — оставляем defaultQuickButtons, не затираем
-      }
+      const { data:d } = await api.get('/api/config/quick-buttons')
+      if(Array.isArray(d) && d.length) quickButtonsStatic.value = d
+      // если бек вернул [] — оставляем defaultQuickButtons, не затираем
     }catch{}
   }
 })
