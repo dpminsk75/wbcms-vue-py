@@ -144,7 +144,135 @@ async def get_user_perms(db: AsyncSession, user_id: int) -> dict:
     except Exception:
         roles = sorted(assigned)
         perms = sorted(all_names - set(assigned))
-    return {"roles": roles, "perms": perms, "all": sorted(all_names)}
+
+    # v2: derived-пермы из ролей в компаниях (без записей — read-time).
+    # Мелкий админ/owner: база + управление своими; member: отчёты; viewer: дашборд.
+    # viewSeo/manageFbsStocks — только явными грантами. На require_admin/isAdmin не влияет.
+    derived = await get_derived_perms(db, user_id)
+    all_names |= derived
+    perms = sorted(set(perms) | derived)
+    return {"roles": roles, "perms": perms, "all": sorted(all_names), "derived": sorted(derived)}
+
+
+# База по роли в компании. manageCompanyUsers — кастомный перм только для menu.json
+# (пункты «Пользователи (SPA)» своих компаний); в yii2 такого нет, прод его игнорирует.
+COMPANY_ROLE_PERMS: dict[str, tuple[str, ...]] = {
+    "owner": ("viewReports", "viewOrders", "manageCompanyUsers"),
+    "admin": ("viewReports", "viewOrders", "manageCompanyUsers"),
+    "member": ("viewReports", "viewOrders"),
+    "viewer": ("viewDashboard",),
+}
+
+# Что вообще можно выдавать через инвайты/карточку компании (помимо базы).
+# admin/manageUsers/manageCompanies/global_admin и роли (type 1) — только global через /admin.
+GRANTABLE_PERMS = ("viewDashboard", "viewReports", "viewOrders", "viewSeo", "manageFbsStocks")
+PROTECTED_ITEMS = ("global_admin", "admin", "manageUsers", "manageCompanies")
+
+
+async def get_active_company_roles(db: AsyncSession, user_id: int) -> list[str]:
+    rows = (await db.execute(
+        text("SELECT DISTINCT role FROM company_members WHERE user_id=:u AND status='active'"),
+        {"u": user_id},
+    )).all()
+    return [r[0] for r in rows]
+
+
+async def get_derived_perms(db: AsyncSession, user_id: int) -> set[str]:
+    out: set[str] = set()
+    for role in await get_active_company_roles(db, user_id):
+        out.update(COMPANY_ROLE_PERMS.get(role, ()))
+    return out
+
+
+async def effective_perms(db: AsyncSession, user_id: int) -> set[str]:
+    pp = await get_user_perms(db, user_id)
+    return set(pp.get("all", []))
+
+
+async def validate_grant(db: AsyncSession, granter_id: int, perms: list[str]) -> list[str]:
+    # Проверка выдачи пермов: существуют, не защищены, выдающий ими владеет
+    # (global_admin — всеми кроме PROTECTED). Возвращает очищенный список.
+    clean = sorted({(p or "").strip() for p in (perms or []) if (p or "").strip()})
+    if not clean:
+        return []
+    for p in clean:
+        if p in PROTECTED_ITEMS:
+            raise ValueError(f"permission '{p}' requires global_admin via /admin")
+    placeholders = ",".join(f":p{i}" for i in range(len(clean)))
+    rows = (await db.execute(
+        text(f"SELECT name, type FROM auth_item WHERE name IN ({placeholders})"),
+        {f"p{i}": v for i, v in enumerate(clean)},
+    )).mappings().all()
+    found = {r["name"]: r["type"] for r in rows}
+    for p in clean:
+        if p not in found:
+            raise ValueError(f"unknown permission '{p}'")
+        if found[p] == 1:
+            raise ValueError(f"'{p}' is a role — roles are granted only via /admin")
+    if await is_global_admin(db, granter_id):
+        return clean
+    mine = await effective_perms(db, granter_id)
+    for p in clean:
+        if p not in GRANTABLE_PERMS or p not in mine:
+            raise ValueError(f"cannot grant '{p}' — not available to you")
+    return clean
+
+
+async def _existing_items(db: AsyncSession, perms: list[str]) -> list[str]:
+    clean = sorted({(p or "").strip() for p in (perms or []) if (p or "").strip()})
+    if not clean:
+        return []
+    placeholders = ",".join(f":p{i}" for i in range(len(clean)))
+    rows = (await db.execute(
+        text(f"SELECT name FROM auth_item WHERE name IN ({placeholders})"),
+        {f"p{i}": v for i, v in enumerate(clean)},
+    )).all()
+    found = {r[0] for r in rows}
+    unknown = [p for p in clean if p not in found]
+    if unknown:
+        raise ValueError(f"unknown permission '{unknown[0]}'")
+    return clean
+
+
+async def grant_perms(db: AsyncSession, user_id: int, perms: list[str]) -> list[str]:
+    # Низкоуровневая выдача (проверку «можно ли» делает вызыватель через validate_grant
+    # или global-гарды). INSERT IGNORE — повтор безопасен.
+    clean = await _existing_items(db, perms)
+    if not clean:
+        return []
+    now = int(time.time())
+    placeholders = ",".join(f"(:n{i}, :u, :t)" for i in range(len(clean)))
+    params: dict = {"u": str(user_id), "t": now}
+    params.update({f"n{i}": v for i, v in enumerate(clean)})
+    await db.execute(
+        text(f"INSERT IGNORE INTO auth_assignment (item_name, user_id, created_at) VALUES {placeholders}"),
+        params,
+    )
+    return clean
+
+
+async def revoke_perms(db: AsyncSession, user_id: int, perms: list[str]) -> list[str]:
+    clean = sorted({(p or "").strip() for p in (perms or []) if (p or "").strip()})
+    if not clean:
+        return []
+    placeholders = ",".join(f":p{i}" for i in range(len(clean)))
+    params: dict = {"u": str(user_id)}
+    params.update({f"p{i}": v for i, v in enumerate(clean)})
+    await db.execute(
+        text(f"DELETE FROM auth_assignment WHERE user_id=:u AND item_name IN ({placeholders})"),
+        params,
+    )
+    return clean
+
+
+async def get_user_explicit_items(db: AsyncSession, user_id: int) -> list[dict]:
+    rows = (await db.execute(
+        text("SELECT a.item_name AS name, i.type AS type, i.description AS description "
+             "FROM auth_assignment a LEFT JOIN auth_item i ON i.name=a.item_name "
+             "WHERE a.user_id=:u ORDER BY a.item_name"),
+        {"u": str(user_id)},
+    )).mappings().all()
+    return [dict(r) for r in rows]
 
 
 async def is_global_admin(db: AsyncSession, user_id: int) -> bool:
@@ -158,6 +286,23 @@ async def get_company_by_id(db: AsyncSession, company_id: int) -> dict | None:
         {"id": company_id},
     )).mappings().first()
     return dict(row) if row else None
+
+
+async def get_company_full(db: AsyncSession, company_id: int) -> dict | None:
+    # Полная запись для формы редактирования (порт yii2 company/update).
+    # Секреты (api_key, seo_openrouter_key) отдаём только менеджерам компании —
+    # эндпоинт под require_company_admin, в списках их нет.
+    row = (await db.execute(
+        text("SELECT * FROM companies WHERE id=:id LIMIT 1"),
+        {"id": company_id},
+    )).mappings().first()
+    if not row:
+        return None
+    d = dict(row)
+    for k, v in list(d.items()):
+        if hasattr(v, "isoformat"):
+            d[k] = v.isoformat()
+    return d
 
 
 async def get_company_member(db: AsyncSession, company_id: int, user_id: int) -> dict | None:
@@ -210,7 +355,21 @@ async def get_company_members(db: AsyncSession, company_id: int) -> list[dict]:
         """),
         {"company_id": company_id},
     )).mappings().all()
-    return [dict(r) for r in rows]
+    out = [dict(r) for r in rows]
+    if out:
+        ids = [r["id"] for r in out]
+        placeholders = ",".join(f":u{i}" for i in range(len(ids)))
+        pr = (await db.execute(
+            text(f"SELECT a.user_id AS uid, a.item_name AS name FROM auth_assignment a "
+                 f"WHERE a.user_id IN ({placeholders})"),
+            {f"u{i}": str(v) for i, v in enumerate(ids)},
+        )).mappings().all()
+        by_user: dict[int, list[str]] = {}
+        for r in pr:
+            by_user.setdefault(int(r["uid"]), []).append(r["name"])
+        for r in out:
+            r["perms"] = sorted(by_user.get(int(r["id"]), []))
+    return out
 
 
 async def upsert_company_member(
@@ -333,7 +492,17 @@ async def create_company(
 
 
 COMPANY_UPDATE_FIELDS = (
-    "name", "abbreviation", "inn", "api_key",
+    "name", "abbreviation", "inn", "api_key", "is_active",
+    "fbs_deduct_enabled", "fbs_deduct_test",
+    "seo_model", "seo_summary_model", "seo_summary_max_tokens",
+    "seo_daily_limit", "seo_desc_min", "seo_desc_max", "seo_anti_spam_days",
+    "seo_openrouter_key", "seo_openrouter_referer", "seo_openrouter_title",
+    "seo_prompt", "seo_competitor_prompt", "seo_summary_prompt",
+)
+
+# Поля yii2 company/_form.php с ограниченным доступом (п.4 пользователя):
+FBS_FIELDS = ("fbs_deduct_enabled", "fbs_deduct_test")
+SEO_FIELDS = (
     "seo_model", "seo_summary_model", "seo_summary_max_tokens",
     "seo_daily_limit", "seo_desc_min", "seo_desc_max", "seo_anti_spam_days",
     "seo_openrouter_key", "seo_openrouter_referer", "seo_openrouter_title",
@@ -351,6 +520,10 @@ async def update_company(db: AsyncSession, company_id: int, fields: dict) -> dic
             sets[k] = v.strip() if isinstance(v, str) else v
     if "name" in sets and not sets["name"]:
         raise ValueError("company name is required")
+    if sets.get("inn"):
+        import re as _re
+        if not _re.match(r"^\d{10,12}$", str(sets["inn"])):
+            raise ValueError("inn must be 10 or 12 digits")
     if not sets:
         raise ValueError("nothing to update")
     cols = ", ".join(f"{k}=:{k}" for k in sets)
@@ -375,6 +548,7 @@ def _invite_payload(
     company_name: str | None,
     raw_token: str,
     expires_at: datetime,
+    perms: list[str] | None = None,
 ) -> dict:
     return {
         "token": raw_token,
@@ -384,6 +558,7 @@ def _invite_payload(
         "target_email": normalize_email(target_email) if target_email else None,
         "role": role,
         "company_name": company_name.strip() if company_name else None,
+        "perms": sorted(set(perms or [])),
         "iat": int(time.time()),
         "exp": int(expires_at.replace(tzinfo=timezone.utc).timestamp()),
     }
@@ -400,6 +575,7 @@ async def create_invite_token(
     created_by: int | None = None,
     expires_at: datetime | None = None,
     expires_in_days: int = 7,
+    perms: list[str] | None = None,
 ) -> str:
     if token_type not in ("company", "user"):
         raise ValueError("invalid token type")
@@ -414,6 +590,7 @@ async def create_invite_token(
         company_name=company_name,
         raw_token=raw_token,
         expires_at=expires_at,
+        perms=perms,
     )
     token_ciphertext = _fernet().encrypt(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("utf-8")
     await db.execute(text("""
@@ -473,6 +650,7 @@ async def create_user_invite_token(
     email: str,
     role: str = "member",
     expires_in_days: int = 7,
+    perms: list[str] | None = None,
 ) -> str:
     user = await get_user_by_email(db, email)
     return await create_invite_token(
@@ -484,6 +662,7 @@ async def create_user_invite_token(
         role=role,
         created_by=created_by,
         expires_in_days=expires_in_days,
+        perms=perms,
     )
 
 

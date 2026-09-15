@@ -27,6 +27,110 @@ class PasswordSetIn(BaseModel):
     password: str
 
 
+class AdminUserCreateIn(BaseModel):
+    username: str
+    email: str
+    password: str
+    # global: опционально сразу в компанию; мелкий админ: company_id обязателен из своих.
+    company_id: int | None = None
+    role: str = "member"
+    perms: list[str] = []
+
+
+@router.post("/users")
+async def create_user(
+    payload: AdminUserCreateIn, db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)
+):
+    # Создание пользователя напрямую (кнопка в /admin/users). Global — кого угодно +/без компании;
+    # мелкий админ — только в свои компании (роль member/viewer/admin, пермы делегированные).
+    if payload.role not in ("member", "viewer", "admin"):
+        raise HTTPException(status_code=400, detail="invalid role")
+    glob = await auth_service.is_global_admin(db, user["id"])
+    company = None
+    if payload.company_id is not None:
+        company = await auth_service.get_company_by_id(db, payload.company_id)
+        if not company:
+            raise HTTPException(status_code=404, detail="company not found")
+        if not glob and not await auth_service.can_manage_company(db, user["id"], payload.company_id):
+            raise HTTPException(status_code=403, detail="company access denied")
+    elif not glob:
+        raise HTTPException(status_code=400, detail="company_id is required")
+    try:
+        granted = await auth_service.validate_grant(db, user["id"], payload.perms)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    try:
+        await db.rollback()  # сбрасываем autobegin от deps перед begin (B6)
+        async with db.begin():
+            try:
+                new_user = await auth_service.create_user(db, payload.username, payload.email, payload.password)
+            except ValueError as exc:
+                raise HTTPException(status_code=409, detail=str(exc))
+            if company is not None:
+                await auth_service.upsert_company_member(
+                    db, company["id"], new_user["id"], payload.role, "active", user["id"]
+                )
+            if granted:
+                await auth_service.grant_perms(db, new_user["id"], granted)
+            return {
+                "user": auth_service.public_user(new_user),
+                "company": auth_service.public_company(company),
+                "role": payload.role if company is not None else None,
+                "perms": granted,
+            }
+    except HTTPException:
+        raise
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="username or email already exists")
+
+
+class RolesSetIn(BaseModel):
+    add: list[str] = []
+    remove: list[str] = []
+
+
+async def _need_global(db: AsyncSession, user: dict) -> None:
+    # Управление ролями — только global_admin (замена yii2 /admin/assignment).
+    if not await auth_service.is_global_admin(db, user["id"]):
+        raise HTTPException(status_code=403, detail="global_admin required")
+
+
+@router.get("/rbac-items")
+async def rbac_items(db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+    await _need_global(db, user)
+    rows = (await db.execute(text(
+        "SELECT name, type, description FROM auth_item ORDER BY type, name"
+    ))).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@router.post("/users/{user_id}/roles")
+async def set_user_roles(
+    user_id: int = Path(..., ge=1),
+    payload: RolesSetIn = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    await _need_global(db, user)
+    target = await auth_service.get_user_by_id(db, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="user not found")
+    add = sorted({(p or "").strip() for p in (payload.add or []) if (p or "").strip()})
+    remove = sorted({(p or "").strip() for p in (payload.remove or []) if (p or "").strip()})
+    if "global_admin" in add or "global_admin" in remove:
+        raise HTTPException(status_code=400, detail="global_admin is managed only via DB")
+    try:
+        if add:
+            await auth_service.grant_perms(db, user_id, add)
+        if remove:
+            await auth_service.revoke_perms(db, user_id, remove)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    await db.commit()
+    return {"id": user_id, "items": await auth_service.get_user_explicit_items(db, user_id)}
+
+
 @router.patch("/users/{user_id}/password")
 async def set_user_password(
     user_id: int = Path(..., ge=1),
@@ -87,6 +191,14 @@ async def list_users(db: AsyncSession = Depends(get_db), user: dict = Depends(ge
             "role": r["role"],
             "status": r["status"],
         })
+    ai = (await db.execute(text(
+        "SELECT a.user_id AS uid, a.item_name AS name, i.type AS type "
+        "FROM auth_assignment a LEFT JOIN auth_item i ON i.name=a.item_name "
+        f"WHERE a.user_id IN ({placeholders})"
+    ), {f"i{i}": str(v) for i, v in enumerate(ids)})).mappings().all()
+    items_by_user: dict[int, list[dict]] = {}
+    for r in ai:
+        items_by_user.setdefault(int(r["uid"]), []).append({"name": r["name"], "type": r["type"]})
     out = []
     for r in rows:
         out.append({
@@ -95,6 +207,7 @@ async def list_users(db: AsyncSession = Depends(get_db), user: dict = Depends(ge
             "email": r["email"],
             "blocked": r["blocked_at"] is not None,
             "companies": by_user.get(r["id"], []),
+            "items": sorted(items_by_user.get(r["id"], []), key=lambda x: x["name"]),
         })
     return out
 

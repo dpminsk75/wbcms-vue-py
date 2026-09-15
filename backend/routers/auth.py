@@ -34,6 +34,8 @@ class InviteCreateIn(BaseModel):
     inn: str | None = None
     email: str | None = None
     role: Literal["admin", "member"] = "member"
+    # v2: явные пермы сверх базы (делегирование — см. validate_grant)
+    perms: list[str] = []
     expires_in_days: int = 7
 
 
@@ -140,6 +142,11 @@ async def register(payload: RegisterInviteIn, db: AsyncSession = Depends(get_db)
                     "active",
                     None,
                 )
+                # v2: явные пермы из инвайта (проверены при выпуске, payload запечатан Fernet)
+                try:
+                    await auth_service.grant_perms(db, user["id"], token_payload.get("perms") or [])
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc))
 
             consumed = await auth_service.consume_invite_token(db, token_row["id"], int(user["id"]))
             if not consumed:
@@ -167,6 +174,24 @@ def _mask_email(email: str) -> str:
         return (email[:1] + "***") if email else ""
     local, _, domain = email.partition("@")
     return (local[:1] + "***@" + domain) if local else "***@" + domain
+
+
+@router.get("/grantable-perms")
+async def grantable_perms(db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+    # Что текущий юзер может выдавать (для чекбоксов в UI инвайта).
+    if await auth_service.is_global_admin(db, user["id"]):
+        allowed = list(auth_service.GRANTABLE_PERMS)
+    else:
+        mine = await auth_service.effective_perms(db, user["id"])
+        allowed = [p for p in auth_service.GRANTABLE_PERMS if p in mine]
+    if not allowed:
+        return []
+    placeholders = ",".join(f":p{i}" for i in range(len(allowed)))
+    rows = (await db.execute(
+        text(f"SELECT name, description FROM auth_item WHERE name IN ({placeholders}) ORDER BY name"),
+        {f"p{i}": v for i, v in enumerate(allowed)},
+    )).mappings().all()
+    return [dict(r) for r in rows]
 
 
 @router.get("/invites/{token}/info")
@@ -306,6 +331,13 @@ async def create_invite(payload: InviteCreateIn, db: AsyncSession = Depends(get_
                         secrets.token_urlsafe(12),
                     )
 
+                try:
+                    granted = await auth_service.validate_grant(db, user["id"], payload.perms)
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc))
+                if granted:
+                    await auth_service.grant_perms(db, target["id"], granted)
+
                 token = await auth_service.create_user_invite_token(
                     db,
                     created_by=user["id"],
@@ -313,6 +345,7 @@ async def create_invite(payload: InviteCreateIn, db: AsyncSession = Depends(get_
                     email=payload.email or "",
                     role=payload.role,
                     expires_in_days=payload.expires_in_days,
+                    perms=granted,
                 )
             else:
                 raise HTTPException(status_code=400, detail="company_id or company_name is required")

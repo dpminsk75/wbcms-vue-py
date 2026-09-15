@@ -39,8 +39,21 @@ export const authApi = {
   getCompanyMembers: (companyId: number) =>
     api.get(`/api/companies/${companyId}/members`).then((r) => r.data as { company: Company; members: CompanyMember[] }),
 
-  inviteMember: (companyId: number, payload: { email: string; role?: 'admin' | 'member' }) =>
+  getCompany: (companyId: number) =>
+    api.get(`/api/companies/${companyId}`).then((r) => r.data as Record<string, any>),
+
+  inviteMember: (companyId: number, payload: { email: string; role?: 'admin' | 'member' | 'viewer'; perms?: string[] }) =>
     api.post(`/api/companies/${companyId}/members`, payload).then((r) => r.data as { invite_token: string; expires_at: string; company: Company; member: CompanyMember & { user: AuthUser } }),
+  memberPerms: (companyId: number, userId: number, payload: { add?: string[]; remove?: string[] }) =>
+    api.patch(`/api/companies/${companyId}/members/${userId}/perms`, payload).then((r) => r.data as { company_id: number; id: number; perms: string[] }),
+  grantablePerms: () =>
+    api.get('/api/auth/grantable-perms').then((r) => r.data as Array<{ name: string; description: string | null }>),
+  rbacItems: () =>
+    api.get('/api/admin/rbac-items').then((r) => r.data as Array<{ name: string; type: number; description: string | null }>),
+  setUserRoles: (userId: number, payload: { add?: string[]; remove?: string[] }) =>
+    api.post(`/api/admin/users/${userId}/roles`, payload).then((r) => r.data as { id: number; items: Array<{ name: string; type: number | null; description: string | null }> }),
+  adminCreateUser: (payload: { username: string; email: string; password: string; company_id?: number; role?: 'member' | 'viewer' | 'admin'; perms?: string[] }) =>
+    api.post('/api/admin/users', payload).then((r) => r.data as { user: AuthUser; company: Company | null; role: string | null; perms: string[] }),
 
   updateMember: (companyId: number, userId: number, payload: { role: 'owner' | 'admin' | 'member' | 'viewer'; status?: 'active' | 'blocked' | 'invited' }) =>
     api.patch(`/api/companies/${companyId}/members/${userId}`, payload).then((r) => r.data),

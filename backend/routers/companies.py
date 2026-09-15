@@ -36,7 +36,9 @@ class CompanyCreateIn(BaseModel):
 
 class MemberInviteIn(BaseModel):
     email: str
-    role: Literal["admin", "member"] = "member"
+    role: Literal["admin", "member", "viewer"] = "member"
+    # Явные пермы сверх базы по роли (v2): только из того, что есть у приглашающего.
+    perms: list[str] = []
 
 
 class CompanyUpdateIn(BaseModel):
@@ -44,6 +46,9 @@ class CompanyUpdateIn(BaseModel):
     abbreviation: str | None = None
     inn: str | None = None
     api_key: str | None = None
+    is_active: bool | None = None
+    fbs_deduct_enabled: bool | None = None
+    fbs_deduct_test: bool | None = None
     seo_model: str | None = None
     seo_summary_model: str | None = None
     seo_summary_max_tokens: int | None = None
@@ -120,6 +125,15 @@ async def create_company(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+@router.get("/{company_id}", response_model=None)
+async def get_company(company_id: int = Path(..., ge=1), db: AsyncSession = Depends(get_db), user: dict = Depends(require_company_admin)):
+    # Полная запись для формы редактирования (yii2 company/update). Секреты — только менеджерам.
+    company = await auth_service.get_company_full(db, company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="company not found")
+    return company
+
+
 @router.patch("/{company_id}")
 async def update_company(
     company_id: int = Path(..., ge=1),
@@ -129,9 +143,19 @@ async def update_company(
 ):
     # Порт yii2 CompanyController update: имя/ИНН/API-ключ/SEO. Секреты (api_key,
     # seo_openrouter_key) принимаются, но наружу через public_company не отдаются.
+    # Гейты полей (п.4): FBS-блок — только manageFbsStocks, SEO-блок — только viewSeo,
+    # global_admin — всё. Фронт такие поля не показывает, бэк перестраховывает.
+    data = payload.model_dump(exclude_unset=True)
+    if not await auth_service.is_global_admin(db, user["id"]):
+        perms = await auth_service.effective_perms(db, user["id"])
+        if any(k in data and data[k] is not None for k in auth_service.FBS_FIELDS) and "manageFbsStocks" not in perms:
+            raise HTTPException(status_code=403, detail="fbs fields require manageFbsStocks")
+        if any(k in data and data[k] is not None for k in auth_service.SEO_FIELDS) and "viewSeo" not in perms:
+            raise HTTPException(status_code=403, detail="seo fields require viewSeo")
     try:
+        await db.rollback()  # сбрасываем autobegin от deps/gates перед begin (B6)
         async with db.begin():
-            company = await auth_service.update_company(db, company_id, payload.model_dump())
+            company = await auth_service.update_company(db, company_id, data)
             return auth_service.public_company(company)
     except ValueError as exc:
         await db.rollback()
@@ -171,6 +195,15 @@ async def invite_member(company_id: int = Path(..., ge=1), payload: MemberInvite
                     secrets.token_urlsafe(12),
                 )
 
+            # v2: явные пермы — валидируем по выдающему (делегирование), выдаём сразу
+            # предсозданному/существующему и кладём в токен (применятся при регистрации).
+            try:
+                granted = await auth_service.validate_grant(db, user["id"], payload.perms)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            if granted:
+                await auth_service.grant_perms(db, target["id"], granted)
+
             await auth_service.upsert_company_member(
                 db,
                 company_id,
@@ -183,8 +216,9 @@ async def invite_member(company_id: int = Path(..., ge=1), payload: MemberInvite
                 db,
                 created_by=user["id"],
                 company_id=company_id,
-                email=payload.email,
+                email=payload.email or "",
                 role=payload.role,
+                perms=granted,
             )
             return {
                 "invite_token": token,
@@ -205,6 +239,42 @@ async def invite_member(company_id: int = Path(..., ge=1), payload: MemberInvite
     except ValueError as exc:
         await db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+class MemberPermsIn(BaseModel):
+    add: list[str] = []
+    remove: list[str] = []
+
+
+@router.patch("/{company_id}/members/{user_id}/perms")
+async def update_member_perms(
+    company_id: int = Path(..., ge=1),
+    user_id: int = Path(..., ge=1),
+    payload: MemberPermsIn = Body(...),
+    db: AsyncSession = Depends(get_db),
+    actor: dict = Depends(require_company_admin),
+):
+    # Добавление/снятие явных пермов члену своей компании. add — только делегированное
+    # (validate_grant), remove — только из GRANTABLE_PERMS (роли снимает global через /admin).
+    try:
+        await db.rollback()
+        async with db.begin():
+            member = await auth_service.get_company_member(db, company_id, user_id)
+            if not member:
+                raise HTTPException(status_code=404, detail="member not found")
+            try:
+                added = await auth_service.validate_grant(db, actor["id"], payload.add)
+                removable = [p for p in (payload.remove or []) if p in auth_service.GRANTABLE_PERMS]
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            if added:
+                await auth_service.grant_perms(db, user_id, added)
+            if removable:
+                await auth_service.revoke_perms(db, user_id, removable)
+            items = await auth_service.get_user_explicit_items(db, user_id)
+            return {"company_id": company_id, "id": user_id, "perms": [i["name"] for i in items]}
+    except HTTPException:
+        raise
 
 
 @router.patch("/{company_id}/members/{user_id}/password")

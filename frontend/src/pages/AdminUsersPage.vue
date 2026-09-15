@@ -1,6 +1,9 @@
 <template>
   <div class="container-xxl" style="padding:20px 15px">
-    <h2 style="margin-bottom:4px">Пользователи{{ isGlobal ? ' (админ)' : '' }}</h2>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px">
+      <h2 style="margin:0">Пользователи{{ isGlobal ? ' (админ)' : '' }}</h2>
+      <button @click="openCreate = true" style="padding:8px 14px; background:#4A3A8C; color:#fff; border:none; border-radius:6px">Создать пользователя</button>
+    </div>
     <div v-if="!isGlobal" style="font-size:13px; color:#666; margin-bottom:12px">Показаны только пользователи ваших компаний ({{ managedNames }}).</div>
     <div v-if="error" style="color:#c00">{{ error }}</div>
     <table style="width:100%; border-collapse:collapse">
@@ -11,6 +14,7 @@
           <th style="text-align:left; padding:8px">Email</th>
           <th style="text-align:left; padding:8px">Статус</th>
           <th style="text-align:left; padding:8px">Компании</th>
+          <th v-if="isGlobal" style="text-align:left; padding:8px">Роли/пермы</th>
           <th></th>
         </tr>
       </thead>
@@ -25,6 +29,15 @@
               {{ c.company_name }} <small>({{ c.role }}/{{ c.status }})</small>
             </span>
             <span v-if="!u.companies.length" style="color:#999">—</span>
+          </td>
+          <td v-if="isGlobal" style="padding:8px">
+            <span v-for="it in (u.items || [])" :key="it.name" style="display:inline-block; background:#f1f1f4; border-radius:8px; padding:1px 6px; margin:0 4px 2px 0; font-size:12px" :title="it.type === 1 ? 'роль' : 'перм'">
+              {{ it.name }}<a href="#" @click.prevent="dropRole(u.id, it.name)" style="margin-left:4px; color:#c00; text-decoration:none" title="Снять">×</a>
+            </span>
+            <select v-model="addSel[u.id]" @change="addRole(u.id)" style="font-size:12px; max-width:150px">
+              <option value="">+ дать...</option>
+              <option v-for="r in rbacItems" :key="r.name" :value="r.name" :disabled="(u.items || []).some((x: any) => x.name === r.name) || r.name === 'global_admin'">{{ r.name }}</option>
+            </select>
           </td>
           <td style="padding:8px; white-space:nowrap">
             <button @click="openPwd(u)" style="background:#4A3A8C; color:#fff; border:none; padding:4px 10px; border-radius:6px; margin-right:6px">Изменить пароль</button>
@@ -48,11 +61,38 @@
         </div>
       </form>
     </div>
+
+    <div v-if="openCreate" style="position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center">
+      <form @submit.prevent="createUser" style="background:#fff; padding:20px; border-radius:8px; min-width:360px; display:flex; flex-direction:column; gap:10px">
+        <h3 style="margin:0">Новый пользователь{{ isGlobal ? '' : ' в мою компанию' }}</h3>
+        <label>Логин<input v-model="createForm.username" required minlength="3" style="width:100%" /></label>
+        <label>Email<input v-model="createForm.email" type="email" required style="width:100%" /></label>
+        <label>Пароль (мин. 6)<input v-model="createForm.password" type="password" required minlength="6" autocomplete="new-password" style="width:100%" /></label>
+        <label>Компания
+          <select v-model="createForm.company_id" :required="!isGlobal" style="width:100%">
+            <option v-if="isGlobal" :value="null">— без компании —</option>
+            <option v-for="c in companyOptions" :key="c.id" :value="c.id">{{ c.name }}</option>
+          </select>
+        </label>
+        <label v-if="createForm.company_id">Роль в компании
+          <select v-model="createForm.role" style="width:100%">
+            <option value="member">member</option>
+            <option value="viewer">viewer</option>
+            <option value="admin">admin</option>
+          </select>
+        </label>
+        <div v-if="createError" style="color:#c00">{{ createError }}</div>
+        <div style="display:flex; gap:8px; justify-content:flex-end">
+          <button type="button" @click="openCreate = false">Отмена</button>
+          <button type="submit" :disabled="creating" style="background:#4A3A8C; color:#fff; border:none; padding:6px 12px; border-radius:6px">Создать</button>
+        </div>
+      </form>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { authApi } from '../api/auth'
 import { useAuthStore } from '../stores/auth'
 
@@ -75,10 +115,34 @@ const pwd2 = ref('')
 const pwdError = ref('')
 const pwdBusy = ref(false)
 
+// Создание пользователя: global — куда угодно (или без компании), мелкий админ — только в свои
+const openCreate = ref(false)
+const creating = ref(false)
+const createError = ref('')
+const createForm = reactive({ username: '', email: '', password: '', company_id: null as number | null, role: 'member' as 'member' | 'viewer' | 'admin' })
+const allCompanies = ref<Array<{ id: number; name: string }>>([])
+const companyOptions = computed(() => isGlobal.value
+  ? allCompanies.value
+  : auth.memberships
+    .filter((m) => m.status === 'active' && (m.role === 'owner' || m.role === 'admin'))
+    .map((m) => ({ id: m.company_id, name: m.company_name }))
+)
+
+// Ручное управление ролями/пермами (только global — замена yii2 /admin/assignment)
+const rbacItems = ref<Array<{ name: string; type: number | null; description: string | null }>>([])
+const addSel = ref<Record<number, string>>({})
+
 async function load() {
   try {
     await auth.loadMemberships().catch(() => {})
     users.value = await authApi.adminUsers()
+    if (isGlobal.value) {
+      try { rbacItems.value = await authApi.rbacItems() } catch { rbacItems.value = [] }
+      try {
+        const cs = await authApi.adminCompanies()
+        allCompanies.value = cs.map((c: any) => ({ id: c.id, name: c.name }))
+      } catch { allCompanies.value = [] }
+    }
   } catch (e: any) { error.value = e?.response?.data?.detail || String(e) }
 }
 onMounted(load)
@@ -90,6 +154,46 @@ async function toggle(u: any) {
     await load()
   } catch (e: any) { error.value = e?.response?.data?.detail || String(e) }
   finally { busy.value = null }
+}
+
+async function addRole(userId: number) {
+  const name = addSel.value[userId]
+  if (!name) return
+  try {
+    await authApi.setUserRoles(userId, { add: [name] })
+    addSel.value[userId] = ''
+    await load()
+  } catch (e: any) { error.value = e?.response?.data?.detail || String(e) }
+}
+
+async function dropRole(userId: number, name: string) {
+  if (!confirm(`Снять ${name}?`)) return
+  try {
+    await authApi.setUserRoles(userId, { remove: [name] })
+    await load()
+  } catch (e: any) { error.value = e?.response?.data?.detail || String(e) }
+}
+
+async function createUser() {
+  creating.value = true
+  createError.value = ''
+  try {
+    const payload: any = { username: createForm.username, email: createForm.email, password: createForm.password }
+    if (createForm.company_id) {
+      payload.company_id = createForm.company_id
+      payload.role = createForm.role
+    } else if (!isGlobal.value) {
+      throw new Error('Выберите компанию')
+    }
+    await authApi.adminCreateUser(payload)
+    openCreate.value = false
+    createForm.username = ''
+    createForm.email = ''
+    createForm.password = ''
+    createForm.role = 'member'
+    await load()
+  } catch (e: any) { createError.value = e?.response?.data?.detail || String(e) }
+  finally { creating.value = false }
 }
 
 function openPwd(u: any) {
