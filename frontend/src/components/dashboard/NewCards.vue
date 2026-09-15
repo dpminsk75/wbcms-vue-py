@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div v-if="busy || hasData || isError">
     <div class="card expandable-container" :class="{'is-expanded': expanded}" :style="{maxHeight: expanded ? '20000px' : '340px', overflow:'hidden', position:'relative', transition:'max-height .5s', border:'1px solid var(--bs-border-color-translucent)', borderRadius:'8px', background:'#fff'}">
       <div class="card-header text-white d-flex justify-content-between align-items-center" style="font-size:13px; font-weight:700; background-color:#4b4b4b; padding:10px 15px">
         <router-link to="/site/new-cards" class="text-white" style="text-decoration:none">Новые карточки за последние 14 дней ({{ rows.length }})</router-link>
@@ -35,11 +35,15 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, inject, watchEffect } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { dashboardApi } from '../../api/dashboard'
+import { useAuthStore } from '../../stores/auth'
+const auth = useAuthStore()
+const report = inject<(n:string,h:boolean)=>void>('dashReport', ()=>{})
 const expanded = ref(false)
-const { data: rowsRaw, isLoading } = useQuery({ queryKey:['new-cards'], queryFn: ()=> (dashboardApi as any).newCards({}), initialData: [] as any })
+const { data: rowsRaw, isLoading, isFetching, isError } = useQuery({ queryKey: computed(() => ['new-cards', auth.companyId] as const), queryFn: ()=> (dashboardApi as any).newCards({}), initialData: [] as any })
+const busy = computed(() => isLoading.value || isFetching.value)
 const rows = computed(()=> {
   const v = rowsRaw.value as any
   if(Array.isArray(v)) return v
@@ -55,6 +59,8 @@ const imgSrc = (c:any)=>{
   return null
 }
 const fmtDate = (d:string)=> d ? new Date(d).toLocaleDateString('ru-RU') : '—'
+const hasData = computed(() => rows.value.length > 0)
+watchEffect(() => { if (!busy.value) report('new-cards', hasData.value || !!isError.value) })
 </script>
 <style scoped>
 .expandable-container:not(.is-expanded)::after{content:""; position:absolute; bottom:0; left:0; width:100%; height:50px; background:linear-gradient(transparent, #f8fafc); pointer-events:none}

@@ -1,5 +1,5 @@
 <template>
-  <div class="div_bordered" style="padding:0; overflow:hidden">
+  <div v-if="busy || hasData || isError" class="div_bordered" style="padding:0; overflow:hidden">
     <div class="card-header text-white" style="background: linear-gradient(97.26deg,#002fa7 .49%,#0046c7 14.88%,#005ce6 29.27%,#0072ff 43.14%,#008cff 57.02%,#00a4ff 70.89%,#00bcff 84.76%,#00d2ff 99.15%); padding:10px 15px; font-size:12px; font-weight:700; border-radius:12px 12px 0 0; font-family:&quot;Segoe UI&quot;,Roboto,Helvetica,Arial,sans-serif">
       Сумма заказов за последние 30 дней
     </div>
@@ -29,8 +29,17 @@
   </div>
 </template>
 <script setup lang="ts">
+import { computed, inject, watchEffect } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { dashboardApi } from '../../api/dashboard'
-const { data: rows, isLoading } = useQuery({ queryKey:['orders-summary'], queryFn: dashboardApi.ordersSummary as any })
+import { useAuthStore } from '../../stores/auth'
+const auth = useAuthStore()
+const { data: rows, isLoading, isFetching, isError } = useQuery({ queryKey: computed(() => ['orders-summary', auth.companyId] as const), queryFn: dashboardApi.ordersSummary as any })
+// UNION всегда возвращает 4 строки — пусто значит все нули
+const hasData = computed(() => ((rows.value as any[]) || []).some((r:any) =>
+  ['ieri','pazyera','past_7_days','week_before','past_30_days'].some((k) => Number(r?.[k]) !== 0)))
+const busy = computed(() => isLoading.value || isFetching.value)
+const report = inject<(n:string,h:boolean)=>void>('dashReport', ()=>{})
+watchEffect(() => { if (!busy.value) report('orders-summary', hasData.value || !!isError.value) })
 const fmt2 = (v:any)=> new Intl.NumberFormat('ru-RU', {minimumFractionDigits:2, maximumFractionDigits:2}).format(v||0)
 </script>

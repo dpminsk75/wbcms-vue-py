@@ -22,7 +22,7 @@ class OrdersService:
 
     async def feed(self, nm_id: int | None, date_from: str, date_to: str, status: str | None, warehouse_name: str | None, region_name: str | None, page: int = 1, page_size: int = 50):
         # базовый запрос как в buildBaseQuery:200 + search:244
-        where = ["o.date BETWEEN :d1 AND :d2"]
+        where = ["o.date BETWEEN :d1 AND :d2" + self._company_where()]
         params = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59", "off": (page-1)*page_size, "lim": page_size, **self._company_params()}
         if nm_id:
             where.append("o.nm_id = :nm_id")
@@ -63,7 +63,7 @@ class OrdersService:
 
     async def feed_options(self, nm_id, date_from, date_to, status, warehouse_name, region_name):
         # distinct списки как getWarehouseOptions/getRegionOptions
-        where = ["o.date BETWEEN :d1 AND :d2"]
+        where = ["o.date BETWEEN :d1 AND :d2" + self._company_where()]
         params = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59", **self._company_params()}
         if nm_id:
             where.append("o.nm_id = :nm_id")

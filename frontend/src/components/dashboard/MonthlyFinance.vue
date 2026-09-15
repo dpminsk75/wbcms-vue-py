@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div v-if="busy || hasData || isError">
     <div style="border:1px solid #e0e0e0; border-radius:12px; background:#fff; overflow:hidden">
       <div class="card-header d-flex justify-content-between align-items-center text-white bg-wb-blue-header" style="padding:10px 15px; font-size:13px; font-weight:700; font-family:&quot;Segoe UI&quot;,Roboto,Helvetica,Arial,sans-serif">
         <span>Финансовая аналитика (с 2025 года)</span>
@@ -82,10 +82,14 @@
   </div>
 </template>
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, inject, watchEffect } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { dashboardApi } from '../../api/dashboard'
-const { data: rowsRaw, isLoading } = useQuery({ queryKey:['monthly-finance'], queryFn: ()=> (dashboardApi as any).monthly(), initialData: [] as any })
+import { useAuthStore } from '../../stores/auth'
+const auth = useAuthStore()
+const { data: rowsRaw, isLoading, isFetching, isError } = useQuery({ queryKey: computed(() => ['monthly-finance', auth.companyId] as const), queryFn: ()=> (dashboardApi as any).monthly(), initialData: [] as any })
+const report = inject<(n:string,h:boolean)=>void>('dashReport', ()=>{})
+const busy = computed(() => isLoading.value || isFetching.value)
 const rows = computed(()=> (rowsRaw.value as any[]) ?? [])
 const totals = computed(()=>{
   const sum = (k:string)=> rows.value.reduce((s:number,r:any)=> s + (Number(r[k])||0), 0)
@@ -100,4 +104,6 @@ const totals = computed(()=>{
   }
 })
 const fmt0 = (v:any)=> new Intl.NumberFormat('ru-RU').format(Math.round(Number(v)||0))
+const hasData = computed(() => rows.value.length > 0)
+watchEffect(() => { if (!busy.value) report('monthly', hasData.value || !!isError.value) })
 </script>

@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div v-if="busy || hasData || isError">
     <div class="expandable-container" :class="{'is-expanded': expanded}" :style="{maxHeight: expanded ? '20000px' : '250px', overflow:'hidden', position:'relative', transition:'max-height .5s', border:'1px solid #e0e0e0', borderRadius:'12px', background:'#fff'}">
       <div class="card-header d-flex justify-content-between align-items-center text-white" style="background: linear-gradient(97.26deg,#ed3cca .49%,#df34d2 14.88%,#d02bd9 29.27%,#bf22e1 43.14%,#ae1ae8 57.02%,#9a10f0 70.89%,#8306f7 84.76%,#7c1af8 99.15%); padding:10px 15px; font-size:13px; font-weight:700; font-family:&quot;Segoe UI&quot;,Roboto,Helvetica,Arial,sans-serif">
         <span>Реклама (с {{ fmtDate(dateFrom) }})</span>
@@ -48,14 +48,20 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, inject, watchEffect } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { dashboardApi } from '../../api/dashboard'
+import { useAuthStore } from '../../stores/auth'
 const props = defineProps<{dateFrom:string, dateTo:string}>()
+const auth = useAuthStore()
+const report = inject<(n:string,h:boolean)=>void>('dashReport', ()=>{})
 const expanded = ref(false)
 const sortKey = ref<'name'|'status'|null>(null)
 const sortDir = ref<'asc'|'desc'>('asc')
-const { data: rows } = useQuery({ queryKey:['adv', props], queryFn: ()=> (dashboardApi as any).adv({dateFrom: props.dateFrom, dateTo: props.dateTo}), initialData: [] as any })
+const { data: rows, isLoading, isFetching, isError } = useQuery({ queryKey: computed(() => ['adv', props.dateFrom, props.dateTo, auth.companyId] as const), queryFn: ()=> (dashboardApi as any).adv({dateFrom: props.dateFrom, dateTo: props.dateTo}), initialData: [] as any })
+const hasData = computed(() => ((rows.value as any[]) || []).length > 0)
+const busy = computed(() => isLoading.value || isFetching.value)
+watchEffect(() => { if (!busy.value) report('adv', hasData.value || !!isError.value) })
 const sorted = computed(()=>{
   const arr = [...(rows.value as any[])]
   if(sortKey.value==='name') { arr.sort((a,b)=> sortDir.value==='asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name)); return arr }

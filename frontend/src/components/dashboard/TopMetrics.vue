@@ -1,5 +1,5 @@
 <template>
-  <div style="font-family:&quot;Segoe UI&quot;,Roboto,Helvetica,Arial,sans-serif">
+  <div v-if="busy || hasData || isError" style="font-family:&quot;Segoe UI&quot;,Roboto,Helvetica,Arial,sans-serif">
     <div class="row g-3 mb-4">
       <div class="col-md-3 col-sm-6">
         <div class="card shadow-sm border-0 bg-light text-dark h-100 p-3 text-center">
@@ -47,9 +47,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, inject, watchEffect } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { dashboardApi } from '../../api/dashboard'
+import { useAuthStore } from '../../stores/auth'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { BarChart } from 'echarts/charts'
@@ -58,7 +59,15 @@ import { CanvasRenderer } from 'echarts/renderers'
 
 use([BarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
-const { data } = useQuery({ queryKey: ['top-metrics'], queryFn: dashboardApi.topMetrics })
+const auth = useAuthStore()
+// companyId в ключе: смена компании обязана дёрнуть refetch, иначе покажем чужой кэш
+const { data, isLoading, isFetching, isError } = useQuery({ queryKey: computed(() => ['top-metrics', auth.companyId] as const), queryFn: dashboardApi.topMetrics })
+
+// пустой блок: нет точек за 30д — прячемся, Dashboard покажет заглушку если все пустые
+const report = inject<(n:string,h:boolean)=>void>('dashReport', ()=>{})
+const hasData = computed(() => (((data.value as any)?.chart45Data || []) as any[]).length > 0)
+const busy = computed(() => isLoading.value || isFetching.value)
+watchEffect(() => { if (!busy.value) report('top-metrics', hasData.value || !!isError.value) })
 
 const kpis = computed(() => {
   const d = (data.value as any)?.kpi45Data; if(!d) return [{},{},{},{}] as any

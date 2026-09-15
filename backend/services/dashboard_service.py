@@ -9,8 +9,10 @@ class DashboardService:
         self.db = db
         self.company_id = company_id
 
-    def _company_where(self) -> str:
-        return "" if self.company_id is None else " AND company_id = :company_id"
+    def _company_where(self, alias: str = "") -> str:
+        # Алиас обязателен в JOIN (company_id есть и в wbcards!) — иначе ambiguous column.
+        prefix = f"{alias}." if alias else ""
+        return "" if self.company_id is None else f" AND {prefix}company_id = :company_id"
 
     def _company_params(self) -> dict:
         return {} if self.company_id is None else {"company_id": self.company_id}
@@ -120,14 +122,14 @@ class DashboardService:
         return {str(r["d"]): {"cnt":int(r["cnt"]),"sum":float(r["sum"] or 0),"spp":float(r["spp"] or 0)} for r in rows}
 
     async def query_period_agg(self, table, sum_field, d1, d2):
-        sql = text(f"SELECT COUNT(*) cnt, SUM({sum_field}) sum, AVG(spp) spp FROM {table} WHERE date BETWEEN :d1 AND :d2")
-        row = (await self.db.execute(sql, {"d1":d1,"d2":d2})).mappings().first()
+        sql = text(f"SELECT COUNT(*) cnt, SUM({sum_field}) sum, AVG(spp) spp FROM {table} WHERE date BETWEEN :d1 AND :d2{self._company_where()}")
+        row = (await self.db.execute(sql, {"d1":d1,"d2":d2, **self._company_params()})).mappings().first()
         return {"cnt":int(row["cnt"] or 0),"sum":round(float(row["sum"] or 0),2),"spp":round(float(row["spp"] or 0),1)}
 
     # --- 5 оставшихся слотов ---
     async def get_adv(self, date_from: str, date_to: str):
         # SiteController.php:238 4 JOIN + GROUP BY campaign_id
-        sql = text("""
+        sql = text(f"""
             SELECT c.campaign_id, c.name, c.status,
                    CASE WHEN c.status=9 THEN 1 WHEN c.status=11 THEN 2 WHEN c.status=7 THEN 4 WHEN c.status=4 THEN 5 WHEN c.status=-1 THEN 6 ELSE 5 END as status_priority,
                    SUM(n.views) as views, SUM(n.clicks) as clicks, SUM(n.atbs) as atbs,
@@ -137,112 +139,119 @@ class DashboardService:
             INNER JOIN wb_campaign_stats s ON c.campaign_id=s.campaign_id
             INNER JOIN wb_campaign_stats_nms n ON s.id=n.parent_id AND i.nm_id=n.nm_id
             INNER JOIN wbcards w ON n.nm_id=w.nmID
-            WHERE s.date BETWEEN :d1 AND :d2
+            WHERE s.date BETWEEN :d1 AND :d2{self._company_where('c')}
             GROUP BY c.campaign_id, c.name, c.status
             ORDER BY status_priority, c.name
             LIMIT 50
         """)
-        rows = (await self.db.execute(sql, {"d1":f"{date_from} 00:00:00","d2":f"{date_to} 23:59:59"})).mappings().all()
+        rows = (await self.db.execute(sql, {"d1":f"{date_from} 00:00:00","d2":f"{date_to} 23:59:59", **self._company_params()})).mappings().all()
         return [dict(r) for r in rows]
 
     async def get_orders_summary(self):
         # SiteController.php:279 4 UNION — порядок как в PHP: Количество, Без скидок, Цена со скидкой, Цена в заказе
-        sql = text("""
+        w = self._company_where()
+        p = self._company_params()
+        sql = text(f"""
             SELECT 'Количество заказов' as price_type,
-                   COUNT(CASE WHEN DATE(date)=CURDATE()-INTERVAL 1 DAY THEN 1 END) as ieri,
-                   COUNT(CASE WHEN DATE(date)=CURDATE()-INTERVAL 2 DAY THEN 1 END) as pazyera,
-                   COUNT(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 7 DAY AND date<CURDATE() THEN 1 END) as past_7_days,
-                   COUNT(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 14 DAY AND date<CURDATE()-INTERVAL 7 DAY THEN 1 END) as week_before,
-                   COUNT(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 30 DAY AND date<CURDATE() THEN 1 END) as past_30_days
-            FROM wb_order WHERE date >= CURDATE()-INTERVAL 30 DAY
+                    COUNT(CASE WHEN DATE(date)=CURDATE()-INTERVAL 1 DAY THEN 1 END) as ieri,
+                    COUNT(CASE WHEN DATE(date)=CURDATE()-INTERVAL 2 DAY THEN 1 END) as pazyera,
+                    COUNT(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 7 DAY AND date<CURDATE() THEN 1 END) as past_7_days,
+                    COUNT(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 14 DAY AND date<CURDATE()-INTERVAL 7 DAY THEN 1 END) as week_before,
+                    COUNT(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 30 DAY AND date<CURDATE() THEN 1 END) as past_30_days
+            FROM wb_order WHERE date >= CURDATE()-INTERVAL 30 DAY{w}
             UNION ALL
             SELECT 'Без скидок',
-                   SUM(CASE WHEN DATE(date)=CURDATE()-INTERVAL 1 DAY THEN total_price ELSE 0 END),
-                   SUM(CASE WHEN DATE(date)=CURDATE()-INTERVAL 2 DAY THEN total_price ELSE 0 END),
-                   SUM(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 7 DAY AND date<CURDATE() THEN total_price ELSE 0 END),
-                   SUM(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 14 DAY AND date<CURDATE()-INTERVAL 7 DAY THEN total_price ELSE 0 END),
-                   SUM(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 30 DAY AND date<CURDATE() THEN total_price ELSE 0 END)
-            FROM wb_order WHERE date >= CURDATE()-INTERVAL 30 DAY
+                    SUM(CASE WHEN DATE(date)=CURDATE()-INTERVAL 1 DAY THEN total_price ELSE 0 END),
+                    SUM(CASE WHEN DATE(date)=CURDATE()-INTERVAL 2 DAY THEN total_price ELSE 0 END),
+                    SUM(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 7 DAY AND date<CURDATE() THEN total_price ELSE 0 END),
+                    SUM(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 14 DAY AND date<CURDATE()-INTERVAL 7 DAY THEN total_price ELSE 0 END),
+                    SUM(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 30 DAY AND date<CURDATE() THEN total_price ELSE 0 END)
+            FROM wb_order WHERE date >= CURDATE()-INTERVAL 30 DAY{w}
             UNION ALL
             SELECT 'Цена со скидкой',
-                   SUM(CASE WHEN DATE(date)=CURDATE()-INTERVAL 1 DAY THEN price_with_disc ELSE 0 END),
-                   SUM(CASE WHEN DATE(date)=CURDATE()-INTERVAL 2 DAY THEN price_with_disc ELSE 0 END),
-                   SUM(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 7 DAY AND date<CURDATE() THEN price_with_disc ELSE 0 END),
-                   SUM(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 14 DAY AND date<CURDATE()-INTERVAL 7 DAY THEN price_with_disc ELSE 0 END),
-                   SUM(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 30 DAY AND date<CURDATE() THEN price_with_disc ELSE 0 END)
-            FROM wb_order WHERE date >= CURDATE()-INTERVAL 30 DAY
+                    SUM(CASE WHEN DATE(date)=CURDATE()-INTERVAL 1 DAY THEN price_with_disc ELSE 0 END),
+                    SUM(CASE WHEN DATE(date)=CURDATE()-INTERVAL 2 DAY THEN price_with_disc ELSE 0 END),
+                    SUM(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 7 DAY AND date<CURDATE() THEN price_with_disc ELSE 0 END),
+                    SUM(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 14 DAY AND date<CURDATE()-INTERVAL 7 DAY THEN price_with_disc ELSE 0 END),
+                    SUM(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 30 DAY AND date<CURDATE() THEN price_with_disc ELSE 0 END)
+            FROM wb_order WHERE date >= CURDATE()-INTERVAL 30 DAY{w}
             UNION ALL
             SELECT 'Цена в заказе',
-                   SUM(CASE WHEN DATE(date)=CURDATE()-INTERVAL 1 DAY THEN finished_price ELSE 0 END),
-                   SUM(CASE WHEN DATE(date)=CURDATE()-INTERVAL 2 DAY THEN finished_price ELSE 0 END),
-                   SUM(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 7 DAY AND date<CURDATE() THEN finished_price ELSE 0 END),
-                   SUM(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 14 DAY AND date<CURDATE()-INTERVAL 7 DAY THEN finished_price ELSE 0 END),
-                   SUM(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 30 DAY AND date<CURDATE() THEN finished_price ELSE 0 END)
-            FROM wb_order WHERE date >= CURDATE()-INTERVAL 30 DAY
+                    SUM(CASE WHEN DATE(date)=CURDATE()-INTERVAL 1 DAY THEN finished_price ELSE 0 END),
+                    SUM(CASE WHEN DATE(date)=CURDATE()-INTERVAL 2 DAY THEN finished_price ELSE 0 END),
+                    SUM(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 7 DAY AND date<CURDATE() THEN finished_price ELSE 0 END),
+                    SUM(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 14 DAY AND date<CURDATE()-INTERVAL 7 DAY THEN finished_price ELSE 0 END),
+                    SUM(CASE WHEN DATE(date)>=CURDATE()-INTERVAL 30 DAY AND date<CURDATE() THEN finished_price ELSE 0 END)
+            FROM wb_order WHERE date >= CURDATE()-INTERVAL 30 DAY{w}
         """)
-        rows = (await self.db.execute(sql)).mappings().all()
+        rows = (await self.db.execute(sql, p)).mappings().all()
         return [dict(r) for r in rows]
 
     async def get_last_orders(self, date_from: str, date_to: str, limit: int = 500):
-        # Итоги по всем заказам за период (не по срезу ТОП) — отдельный agg как queryPeriodAgg
-        totals_sql = text("SELECT COUNT(*) as cnt, COALESCE(SUM(price_with_disc),0) as pwd, COALESCE(SUM(finished_price),0) as fp FROM wb_order WHERE date BETWEEN :d1 AND :d2")
-        totals_row = (await self.db.execute(totals_sql, {"d1":f"{date_from} 00:00:00","d2":f"{date_to} 23:59:59"})).mappings().first()
+        # Итоги по всем заказам за период (не по срезу ТОП) — отдельный agg как queryPeriodAgg.
+        # Фильтр по FACT-алиасу o (у wbcards тоже есть company_id — c. нельзя!).
+        wo = self._company_where('o')
+        cp = self._company_params()
+        totals_sql = text(f"SELECT COUNT(*) as cnt, COALESCE(SUM(price_with_disc),0) as pwd, COALESCE(SUM(finished_price),0) as fp FROM wb_order o WHERE o.date BETWEEN :d1 AND :d2{wo}")
+        totals_row = (await self.db.execute(totals_sql, {"d1":f"{date_from} 00:00:00","d2":f"{date_to} 23:59:59", **cp})).mappings().first()
         totals = {"cnt": int(totals_row["cnt"] or 0), "pwd": float(totals_row["pwd"] or 0), "fp": float(totals_row["fp"] or 0)}
-        sql = text("""
+        sql = text(f"""
             SELECT c.title, c.nmID as nm_id, c.vendorCode,
-                   COUNT(o.nm_id) as cnt,
-                    SUM(CASE WHEN DATE(date)=CURDATE() THEN 1 ELSE 0 END) as cnt_0,
-                    SUM(CASE WHEN DATE(date)=DATE_SUB(CURDATE(),INTERVAL 1 DAY) THEN 1 ELSE 0 END) as cnt_1,
-                    SUM(CASE WHEN DATE(date)=DATE_SUB(CURDATE(),INTERVAL 2 DAY) THEN 1 ELSE 0 END) as cnt_2,
-                    SUM(CASE WHEN DATE(date)=DATE_SUB(CURDATE(),INTERVAL 3 DAY) THEN 1 ELSE 0 END) as cnt_3,
-                    SUM(o.price_with_disc) as pwd, SUM(o.finished_price) as fp,
-                    AVG(o.price_with_disc) as apwd, AVG(o.spp) as aspp, AVG(o.finished_price) as afp
+                    COUNT(o.nm_id) as cnt,
+                     SUM(CASE WHEN DATE(o.date)=CURDATE() THEN 1 ELSE 0 END) as cnt_0,
+                     SUM(CASE WHEN DATE(o.date)=DATE_SUB(CURDATE(),INTERVAL 1 DAY) THEN 1 ELSE 0 END) as cnt_1,
+                     SUM(CASE WHEN DATE(o.date)=DATE_SUB(CURDATE(),INTERVAL 2 DAY) THEN 1 ELSE 0 END) as cnt_2,
+                     SUM(CASE WHEN DATE(o.date)=DATE_SUB(CURDATE(),INTERVAL 3 DAY) THEN 1 ELSE 0 END) as cnt_3,
+                     SUM(o.price_with_disc) as pwd, SUM(o.finished_price) as fp,
+                     AVG(o.price_with_disc) as apwd, AVG(o.spp) as aspp, AVG(o.finished_price) as afp
             FROM wb_order o INNER JOIN wbcards c ON o.nm_id=c.nmID
-            WHERE o.date BETWEEN :d1 AND :d2
+            WHERE o.date BETWEEN :d1 AND :d2{wo}
             GROUP BY c.title, c.nmID, c.vendorCode
             ORDER BY cnt DESC LIMIT :lim
         """)
-        rows = (await self.db.execute(sql, {"d1":f"{date_from} 00:00:00","d2":f"{date_to} 23:59:59","lim":limit})).mappings().all()
+        rows = (await self.db.execute(sql, {"d1":f"{date_from} 00:00:00","d2":f"{date_to} 23:59:59","lim":limit, **cp})).mappings().all()
         items = [dict(r) for r in rows]
         return {"items": items, "totals": totals, "total_items": len(items)}
 
     async def get_last_sales(self, date_from: str, date_to: str, limit: int = 500):
-        totals_sql = text("SELECT COUNT(*) as cnt, COALESCE(SUM(priceWithDisc),0) as pwd, COALESCE(SUM(finishedPrice),0) as fp, COALESCE(SUM(forPay),0) as forpay FROM wb_sales WHERE date BETWEEN :d1 AND :d2")
-        totals_row = (await self.db.execute(totals_sql, {"d1":f"{date_from} 00:00:00","d2":f"{date_to} 23:59:59"})).mappings().first()
+        wo = self._company_where('o')
+        cp = self._company_params()
+        totals_sql = text(f"SELECT COUNT(*) as cnt, COALESCE(SUM(priceWithDisc),0) as pwd, COALESCE(SUM(finishedPrice),0) as fp, COALESCE(SUM(forPay),0) as forpay FROM wb_sales o WHERE o.date BETWEEN :d1 AND :d2{wo}")
+        totals_row = (await self.db.execute(totals_sql, {"d1":f"{date_from} 00:00:00","d2":f"{date_to} 23:59:59", **cp})).mappings().first()
         totals = {"cnt": int(totals_row["cnt"] or 0), "pwd": float(totals_row["pwd"] or 0), "fp": float(totals_row["fp"] or 0), "forpay": float(totals_row["forpay"] or 0)}
-        sql = text("""
+        sql = text(f"""
             SELECT c.title, c.nmID as nm_id, c.vendorCode,
-                   COUNT(o.nmId) as cnt,
-                    SUM(CASE WHEN DATE(date)=CURDATE() THEN 1 ELSE 0 END) as cnt_0,
-                    SUM(CASE WHEN DATE(date)=DATE_SUB(CURDATE(),INTERVAL 1 DAY) THEN 1 ELSE 0 END) as cnt_1,
-                    SUM(CASE WHEN DATE(date)=DATE_SUB(CURDATE(),INTERVAL 2 DAY) THEN 1 ELSE 0 END) as cnt_2,
-                    SUM(CASE WHEN DATE(date)=DATE_SUB(CURDATE(),INTERVAL 3 DAY) THEN 1 ELSE 0 END) as cnt_3,
-                    SUM(o.totalPrice) as tp, SUM(o.priceWithDisc) as pwd, SUM(o.finishedPrice) as fp, SUM(o.forPay) as forpay,
-                    AVG(o.priceWithDisc) as apwd, AVG(o.spp) as aspp, AVG(o.finishedPrice) as afp, AVG(o.forPay) as aforpay, AVG(o.discountPercent) as adp
+                    COUNT(o.nmId) as cnt,
+                     SUM(CASE WHEN DATE(o.date)=CURDATE() THEN 1 ELSE 0 END) as cnt_0,
+                     SUM(CASE WHEN DATE(o.date)=DATE_SUB(CURDATE(),INTERVAL 1 DAY) THEN 1 ELSE 0 END) as cnt_1,
+                     SUM(CASE WHEN DATE(o.date)=DATE_SUB(CURDATE(),INTERVAL 2 DAY) THEN 1 ELSE 0 END) as cnt_2,
+                     SUM(CASE WHEN DATE(o.date)=DATE_SUB(CURDATE(),INTERVAL 3 DAY) THEN 1 ELSE 0 END) as cnt_3,
+                     SUM(o.totalPrice) as tp, SUM(o.priceWithDisc) as pwd, SUM(o.finishedPrice) as fp, SUM(o.forPay) as forpay,
+                     AVG(o.priceWithDisc) as apwd, AVG(o.spp) as aspp, AVG(o.finishedPrice) as afp, AVG(o.forPay) as aforpay, AVG(o.discountPercent) as adp
             FROM wb_sales o INNER JOIN wbcards c ON o.nmId=c.nmID
-            WHERE o.date BETWEEN :d1 AND :d2
+            WHERE o.date BETWEEN :d1 AND :d2{wo}
             GROUP BY c.title, c.nmID, c.vendorCode
             ORDER BY cnt DESC LIMIT :lim
         """)
-        rows = (await self.db.execute(sql, {"d1":f"{date_from} 00:00:00","d2":f"{date_to} 23:59:59","lim":limit})).mappings().all()
+        rows = (await self.db.execute(sql, {"d1":f"{date_from} 00:00:00","d2":f"{date_to} 23:59:59","lim":limit, **cp})).mappings().all()
         items = [dict(r) for r in rows]
         return {"items": items, "totals": totals, "total_items": len(items)}
 
     async def get_monthly_finance(self):
         # WbProfitService.php:18
-        sql = text("""
+        sql = text(f"""
             SELECT DATE_FORMAT(sdate,'%Y-%m') as month, SUM(qnt) as qnt, SUM(amount) as amount, SUM(`return`) as `return`,
-                   SUM(commission) as commission, SUM(f_acquiring_fee) as f_acquiring_fee, SUM(f_acceptance) as f_acceptance,
-                   SUM(f_delivery) as f_delivery, SUM(f_storage_fee) as f_storage_fee, SUM(f_penalty) as f_penalty,
-                   SUM(f_deduction) as f_deduction, SUM(f_otziv) as f_otziv, SUM(f_adv) as f_adv, SUM(f_cashback) as f_cashback,
-                   SUM(net_profit) as net_profit, SUM(f_nds) as total_nds, SUM(f_cost_price) as total_cost,
-                   SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price) as profit_before_tax,
-                   GREATEST(0, SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price))*0.07 as tax_amount,
-                   (SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price)) - GREATEST(0, SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price))*0.07 as clean_margin
-            FROM agg_daily_summary WHERE sdate >= '2025-01-01'
+                    SUM(commission) as commission, SUM(f_acquiring_fee) as f_acquiring_fee, SUM(f_acceptance) as f_acceptance,
+                    SUM(f_delivery) as f_delivery, SUM(f_storage_fee) as f_storage_fee, SUM(f_penalty) as f_penalty,
+                    SUM(f_deduction) as f_deduction, SUM(f_otziv) as f_otziv, SUM(f_adv) as f_adv, SUM(f_cashback) as f_cashback,
+                    SUM(net_profit) as net_profit, SUM(f_nds) as total_nds, SUM(f_cost_price) as total_cost,
+                    SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price) as profit_before_tax,
+                    GREATEST(0, SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price))*0.07 as tax_amount,
+                    (SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price)) - GREATEST(0, SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price))*0.07 as clean_margin
+            FROM agg_daily_summary WHERE sdate >= '2025-01-01'{self._company_where()}
             GROUP BY DATE_FORMAT(sdate,'%Y-%m') ORDER BY month DESC
         """)
-        rows = (await self.db.execute(sql)).mappings().all()
+        rows = (await self.db.execute(sql, self._company_params())).mappings().all()
         return [dict(r) for r in rows]
 
     async def get_new_cards(self, date_from: str | None = None, date_to: str | None = None, title: str = "", sort: str = "created_desc"):
@@ -255,8 +264,8 @@ class DashboardService:
         allowed = {'created_desc','created_asc','nmid_asc','nmid_desc','title_asc','title_desc'}
         if sort not in allowed:
             sort = 'created_desc'
-        base_where = "created_at BETWEEN :d1 AND :d2"
-        params: dict = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59"}
+        base_where = f"created_at BETWEEN :d1 AND :d2{self._company_where()}"
+        params: dict = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59", **self._company_params()}
         title_clause = ""
         if title:
             title_clause = " AND title LIKE :title"
@@ -277,7 +286,14 @@ class DashboardService:
         return [dict(r) for r in rows]
 
     async def get_last_order_time(self) -> str | None:
-        row = (await self.db.execute(text("SELECT MAX(date) as d FROM wb_order"))).scalar()
+        # «Обновлено в» — MAX по СВОЕЙ компании, иначе чужое время обновления.
+        if self.company_id is None:
+            row = (await self.db.execute(text("SELECT MAX(date) as d FROM wb_order"))).scalar()
+        else:
+            row = (await self.db.execute(
+                text("SELECT MAX(date) as d FROM wb_order WHERE company_id = :company_id"),
+                {"company_id": self.company_id},
+            )).scalar()
         if row is None:
             return None
         # row может быть datetime или str

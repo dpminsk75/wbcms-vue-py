@@ -34,13 +34,15 @@ class SalesFunnelService:
         }
 
     async def get_card(self, nm_id: int):
-        sql = text("""
+        # мета карточки — только своя (как wb_card_service/heatmap), иначе чужое название
+        where = "WHERE nmID = :nm_id" if self.company_id is None else "WHERE nmID = :nm_id AND company_id = :company_id"
+        sql = text(f"""
             SELECT nmID, vendorCode, title, brand, subjectName
             FROM wbcards
-            WHERE nmID = :nm_id
+            {where}
             LIMIT 1
         """)
-        row = (await self.db.execute(sql, {"nm_id": nm_id})).mappings().first()
+        row = (await self.db.execute(sql, {"nm_id": nm_id, **self._company_params()})).mappings().first()
         return dict(row) if row else None
 
     async def get_rows(self, nm_id: int, date_from: str, date_to: str):

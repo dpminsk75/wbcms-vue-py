@@ -1,5 +1,5 @@
 <template>
-  <div class="card shadow-sm border-0 mb-4 today-stats-widget" style="border:1px solid #e5e7eb; border-radius:12px; background:#fff">
+  <div v-if="busy || hasData || isError" class="card shadow-sm border-0 mb-4 today-stats-widget" style="border:1px solid #e5e7eb; border-radius:12px; background:#fff">
     <div class="card-body p-3">
       <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap" style="gap:12px">
         <div class="today-stats-tabs">
@@ -61,9 +61,10 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, inject, watchEffect } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { dashboardApi } from '../../api/dashboard'
+import { useAuthStore } from '../../stores/auth'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { LineChart, BarChart } from 'echarts/charts'
@@ -81,10 +82,19 @@ const periods = [
   {label:'За месяц',value:'month_to_date'}, {label:'За прошлый месяц',value:'last_month'},
 ]
 
-const { data, isLoading, error } = useQuery({
-  queryKey: computed(()=> ['today-stats', period.value, tab.value] as const),
+const auth = useAuthStore()
+const { data, isLoading, isFetching, isError, error } = useQuery({
+  queryKey: computed(()=> ['today-stats', period.value, tab.value, auth.companyId] as const),
   queryFn: () => dashboardApi.todayStats(period.value as any, tab.value),
 })
+const hasData = computed(() => {
+  // категории статичны (часы/дни всегда есть) — смотрим итоги: хоть где-то заказы/сумма
+  const totals = ((data.value as any)?.totals || {}) as Record<string, any>
+  return Object.values(totals).some((t:any) => (Number(t?.cnt)||0) > 0 || (Number(t?.sum)||0) !== 0)
+})
+const busy = computed(() => isLoading.value || isFetching.value)
+const report = inject<(n:string,h:boolean)=>void>('dashReport', ()=>{})
+watchEffect(() => { if (!busy.value) report('today', hasData.value || !!isError.value) })
 
 const updatedAt = computed(()=>{
   const raw = (data.value as any)?.updated_at

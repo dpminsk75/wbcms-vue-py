@@ -78,8 +78,10 @@ class HeatmapService:
         card = None
         if nm_id:
             try:
-                card_sql = text("SELECT nmID, vendorCode, title, brand, photos FROM wbcards WHERE nmID=:nm_id LIMIT 1")
-                card_row = (await self.db.execute(card_sql, {"nm_id": nm_id})).mappings().first()
+                # мета карточки — тоже только своя (как wb_card_service), иначе чужое название при нулевой матрице
+                card_where = "WHERE nmID=:nm_id" if self.company_id is None else "WHERE nmID=:nm_id AND company_id = :company_id"
+                card_sql = text(f"SELECT nmID, vendorCode, title, brand, photos FROM wbcards {card_where} LIMIT 1")
+                card_row = (await self.db.execute(card_sql, {"nm_id": nm_id, **self._company_params()})).mappings().first()
                 if card_row:
                     card = dict(card_row)
             except Exception:

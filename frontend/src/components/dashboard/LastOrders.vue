@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div v-if="busy || hasData || isError">
     <div class="expandable-container" :class="{'is-expanded': expanded}" :style="{maxHeight: expanded ? '20000px' : '250px', overflow:'hidden', position:'relative', transition:'max-height .5s', border:'1px solid #e0e0e0', borderRadius:'12px', background:'#fff'}">
       <div class="card-header d-flex justify-content-between align-items-center text-white" style="background: linear-gradient(97.26deg,#ed3cca .49%,#df34d2 14.88%,#d02bd9 29.27%,#bf22e1 43.14%,#ae1ae8 57.02%,#9a10f0 70.89%,#8306f7 84.76%,#7c1af8 99.15%); padding:10px 15px; font-size:13px; font-weight:700; font-family:&quot;Segoe UI&quot;,Roboto,Helvetica,Arial,sans-serif">
         <span>
@@ -51,16 +51,20 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, inject, watchEffect } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { dashboardApi } from '../../api/dashboard'
+import { useAuthStore } from '../../stores/auth'
 const props = defineProps<{dateFrom:string, dateTo:string}>()
+const auth = useAuthStore()
+const report = inject<(n:string,h:boolean)=>void>('dashReport', ()=>{})
 const expanded = ref(false)
-const { data: raw } = useQuery({
-  queryKey: computed(() => ['last-orders', props.dateFrom, props.dateTo] as const),
+const { data: raw, isLoading, isFetching, isError } = useQuery({
+  queryKey: computed(() => ['last-orders', props.dateFrom, props.dateTo, auth.companyId] as const),
   queryFn: ()=> (dashboardApi as any).lastOrders({dateFrom: props.dateFrom, dateTo: props.dateTo}),
   initialData: {items:[], totals:{cnt:0,pwd:0,fp:0}} as any
 })
+const busy = computed(() => isLoading.value || isFetching.value)
 // бэкенд возвращает {items, totals}; legacy — массив
 const items = computed(()=> Array.isArray(raw.value) ? raw.value as any[] : (raw.value?.items as any[] ?? []))
 const totals = computed(()=> Array.isArray(raw.value) ? null : (raw.value?.totals as any ?? null))
@@ -70,6 +74,8 @@ const totalCnt = computed(()=> totals.value ? totals.value.cnt : items.value.red
 const totalPwd = computed(()=> totals.value ? totals.value.pwd : items.value.reduce((s:number,r:any)=>s+(r.pwd||0),0))
 const totalFp = computed(()=> totals.value ? totals.value.fp : items.value.reduce((s:number,r:any)=>s+(r.fp||0),0))
 const totalItems = computed(()=> items.value.length)
+const hasData = computed(()=> items.value.length > 0 || (totals.value?.cnt || 0) > 0)
+watchEffect(() => { if (!busy.value) report('last-orders', hasData.value || !!isError.value) })
 const fmt1 = (v:any)=> new Intl.NumberFormat('ru-RU', {minimumFractionDigits:1, maximumFractionDigits:1}).format(v||0)
 const fmt0 = (v:any)=> new Intl.NumberFormat('ru-RU').format(Math.round(v||0))
 const fmtDate = (d:string)=> d ? new Date(d).toLocaleDateString('ru-RU',{day:'numeric', month:'short', year:'numeric'}) : ''
