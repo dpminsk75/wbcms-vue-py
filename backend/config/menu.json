@@ -52,7 +52,8 @@
     "visibleIn": ["top", "side"],
     "roles": ["viewReports", "admin"],
     "items": [
-      {"label": "Заказы", "url": "/tag/view", "visibleIn": ["top", "side"]},
+      {"label": "Заказы", "url": "/tag/orders", "visibleIn": ["top", "side"]},
+      {"label": "Маржа", "url": "/tag/margin", "visibleIn": ["top", "side"]},
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Список тегов", "url": "/tag/index", "visibleIn": ["top", "side"]}
     ]

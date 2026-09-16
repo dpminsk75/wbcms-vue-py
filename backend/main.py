@@ -5,7 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database import get_db
 from backend.deps import get_current_user, get_optional_user, require_admin, get_current_company
-from backend.routers import auth_router, companies_router, dashboard_router, admin_router
+from backend.routers import auth_router, companies_router, dashboard_router, admin_router, tags_router, wb_search_router
 from backend.services import auth_service as AuthService
 from backend.services.orders_service import OrdersService
 from backend.services.orders_aggregated_service import OrdersAggregatedService
@@ -16,6 +16,7 @@ from backend.services.wb_card_service import WbCardService
 from backend.services.wb_detail_service import WbDetailService
 from backend.services.sales_funnel_service import SalesFunnelService
 from backend.services.adv_report_service import AdvReportService
+from backend.services.top_products_service import TopProductsService
 
 app = FastAPI(title="wbcms-py dashboard proto")
 app.add_middleware(
@@ -34,6 +35,8 @@ app.include_router(auth_router)
 app.include_router(companies_router)
 app.include_router(dashboard_router)
 app.include_router(admin_router)
+app.include_router(tags_router)
+app.include_router(wb_search_router)
 
 class QuickButton(BaseModel):
     icon: str
@@ -305,6 +308,18 @@ async def wb_sales_funnel_wbcard_export(
     svc = SalesFunnelService(db, company_id=company_id)
     rows = await svc.export_rows(nm_id, date_from, date_to)
     return svc.build_xlsx_response(rows, nm_id, date_from, date_to)
+
+@app.get("/api/wb-profit/top-products")
+async def wb_profit_top_products(
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    sort_by: str = Query(default="qnt"),
+    limit: int = Query(default=20),
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    svc = TopProductsService(db, company_id=company_id)
+    return await svc.get_top_products(date_from, date_to, sort_by, limit)
 
 @app.get("/api/config/quick-buttons")
 def get_quick_buttons():

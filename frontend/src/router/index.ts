@@ -43,10 +43,35 @@ const router = createRouter({
     { path: '/wb-order/feed-aggregated', name: 'feed-aggregated', component: () => import('../pages/OrdersFeedAggregated.vue'), meta: { title: 'Сводка по товарам (заказы) — wbcms' } },
     { path: '/wb-order/heatmap', name: 'heatmap', component: () => import('../pages/OrdersHeatmap.vue'), meta: { title: 'Тепловая карта заказов 7×24 — wbcms' } },
     { path: '/wb-adv-report', name: 'adv-report', component: () => import('../pages/AdvReportPage.vue'), alias: ['/wb-adv-report/'], meta: { title: 'Аналитика рекламы WB — wbcms' } },
+    { path: '/wb-profit/top-products', name: 'top-products', component: () => import('../pages/TopProductsPage.vue'), meta: { title: 'ТОП товаров за период — wbcms' } },
     { path: '/wb/detail', name: 'wb-detail', component: () => import('../pages/WbDetailPage.vue'), alias: ['/wb/detail/'], meta: { title: 'Карточка: Выберите артикул — wbcms' } },
     { path: '/wb/detail/:nm_id', redirect: (to:any)=> ({ path:'/wb/detail', query:{ nm_id: to.params.nm_id, ...to.query }}) },
     { path: '/admin/quick-buttons', name: 'admin-quick-buttons', component: () => import('../pages/AdminQuickButtons.vue'), meta: { title: 'Быстрые кнопки — wbcms', needAdmin: true } },
     { path: '/admin/menu', name: 'admin-menu', component: () => import('../pages/AdminMenu.vue'), meta: { title: 'Меню — wbcms', needAdmin: true } },
+    { path: '/tags', name: 'tags', component: () => import('../pages/TagsPage.vue'), alias: ['/tags/', '/tag', '/tag/', '/tag/index', '/tag/index/'], meta: { title: 'Теги' } },
+    { path: '/tags/create', name: 'tag-create', component: () => import('../pages/TagFormPage.vue'), alias: ['/tags/create/', '/tag/create', '/tag/create/'], meta: { title: 'Новый тег' } },
+    { path: '/tags/:id/edit', name: 'tag-edit', component: () => import('../pages/TagFormPage.vue'), meta: { title: 'Редактирование тега' } },
+    { path: '/tags/:id', name: 'tag-view', component: () => import('../pages/TagViewPage.vue'), meta: { title: 'Теги: Заказы по тегу' } },
+    { path: '/tag/orders', name: 'tag-orders', component: () => import('../pages/TagViewPage.vue'), meta: { title: 'Теги: Заказы по тегу' } },
+    { path: '/tag/margin', name: 'tag-margin', component: () => import('../pages/TagMarginPage.vue'), meta: { title: 'Маржа по тегам — wbcms' } },
+    { path: '/wb-search/card', name: 'wb-search-card', component: () => import('../pages/WbSearchCardPage.vue'), alias: ['/wb-search/card/'], meta: { title: 'Анализ поисковых фраз для карточки' } },
+    { path: '/wb-search/phrase', name: 'wb-search-phrase', component: () => import('../pages/WbSearchPhrasePage.vue'), alias: ['/wb-search/phrase/'], meta: { title: 'Анализ фразы' } },
+    { path: '/wb-search/trend', name: 'wb-search-trend', component: () => import('../pages/WbSearchTrendPage.vue'), alias: ['/wb-search/trend/'], meta: { title: 'Анализ фразы' } },
+    { path: '/tag/update', redirect: (to: any) => (to.query?.id ? { path: `/tags/${to.query.id}/edit` } : { path: '/tags' }) },
+    { path: '/tag/view', redirect: (to: any) => {
+      const q: Record<string, string> = {}
+      const dr = (to.query?.date_range ?? '') as string
+      if (dr.includes(' - ')) {
+        const [a, b] = dr.split(' - ')
+        q.date_from = a.trim()
+        q.date_to = b.trim()
+      } else {
+        if (to.query?.date_from) q.date_from = String(to.query.date_from)
+        if (to.query?.date_to) q.date_to = String(to.query.date_to)
+      }
+      if (to.query?.id) q.id = String(to.query.id)
+      return { path: '/tag/orders', query: q }
+    } },
   ]
 })
 

@@ -1,0 +1,12 @@
+/* page-tag-margin.css — чанк TagMarginPage. Каркас как top-products, таблица — shared MarginTable. */
+.page-tag-margin {
+  font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  max-width: 98%;
+  margin: 0px auto;
+}
+
+.page-tag-margin__filter-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+}
