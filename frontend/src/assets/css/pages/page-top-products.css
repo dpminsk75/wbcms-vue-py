@@ -1,0 +1,118 @@
+/* page-top-products.css — чанк TopProductsPage (Vite: грузится только со страницей).
+ * Title: route.meta 'ТОП товаров за период' + динамика (document.title в TopProductsPage).
+ * Лента 10+ колонок → резина + внутренняя прокрутка.
+ */
+.page-top-products {
+  font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  max-width: 98%;
+  margin: 0px auto;
+}
+
+.page-top-products__filter-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+}
+
+.page-top-products__table-wrap {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+  background: #fff;
+}
+
+.page-top-products__table {
+  font-size: 12px;
+  margin-bottom: 0;
+  white-space: nowrap;
+  table-layout: auto;
+  width: 100%;
+}
+
+.page-top-products__table th {
+  background-color: #f8f9fa;
+  font-weight: 500;
+  vertical-align: middle;
+  text-align: center;
+  padding: 8px 4px;
+  font-size: 11px;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.page-top-products__table td {
+  vertical-align: middle;
+  padding: 4px 3px;
+  font-size: 13px;
+}
+
+.page-top-products__cell-product {
+  max-width: 280px;
+  white-space: normal;
+  word-wrap: break-word;
+}
+
+.page-top-products__order-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.page-top-products__wb-link {
+  font-weight: 700;
+  color: #2980b9;
+  text-decoration: none;
+}
+
+.page-top-products__wb-link:hover {
+  text-decoration: underline;
+}
+
+.page-top-products__total-row {
+  background-color: #f8f9fa;
+  font-weight: 700;
+}
+
+.page-top-products__negative {
+  color: #dc3545 !important;
+  font-weight: 700;
+}
+
+.page-top-products__positive {
+  color: #198754 !important;
+  font-weight: 700;
+}
+
+.page-top-products__profit-cell {
+  background-color: #fcf3cf;
+}
+
+.page-top-products__margin-cell {
+  background-color: #d4efdf;
+}
+
+.page-top-products__net-cell {
+  background-color: #e8f8f5;
+}
+
+.page-top-products__per-item {
+  font-style: italic;
+  background-color: #fafafa;
+}
+
+.col-resizer:hover {
+  background: #0d6efd;
+  opacity: 0.5;
+}
+
+.cart-item-title {
+    font-weight: 700;
+    font-size: 12px;
+}
+
+.cart-item-details {
+    font-size: 10px;
+}
+
+/* Переехало из <style scoped> TopProductsPage.vue */
+.text-orange { color: #d35400; }

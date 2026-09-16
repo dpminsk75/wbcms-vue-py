@@ -1,0 +1,129 @@
+/* page-top-products-vxe.css — ПИЛОТ vxe-table (TopProductsVxePage).
+ * БЭМ-блок: page-top-products-vxe. Оригинал page-top-products.css не трогаем.
+ * Статика здесь, инлайн style= в шаблоне — только динамика vxe (width/minWidth).
+ */
+.page-top-products-vxe {
+  font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  max-width: 98%;
+  margin: 0 auto;
+}
+
+.page-top-products-vxe__filter-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+}
+
+.page-top-products-vxe__table-wrap {
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+  background: #fff;
+  overflow: hidden;
+}
+
+/* Подгонка vxe-темы под wb-ui: шапка как .page-top-products__table th */
+.page-top-products-vxe__grid {
+  font-size: 12px;
+}
+
+.page-top-products-vxe__grid .vxe-header--column {
+  background-color: #f8f9fa;
+  font-weight: 500;
+  font-size: 11px;
+}
+
+.page-top-products-vxe__grid .vxe-body--column {
+  padding: 4px 3px;
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+/* Плотность 1в1 с оригиналом: у vxe паддинг сидит на внутренней .vxe-cell.
+ * !important — только скоуп пилота: тема vxe кладёт .size--mini в селектор и перебивает обычное правило. */
+.page-top-products-vxe__grid .vxe-body--column > .vxe-cell,
+.page-top-products-vxe__grid .vxe-header--column > .vxe-cell,
+.page-top-products-vxe__grid .vxe-footer--column > .vxe-cell {
+  padding: 2px 3px !important;
+}
+
+/* Числа не рвём посередине ("98 21/4"): nowrap + родной title-тоултип из show-overflow */
+.page-top-products-vxe__grid .vxe-body--column > .vxe-cell,
+.page-top-products-vxe__grid .vxe-footer--column > .vxe-cell {
+  white-space: nowrap !important;
+  font-size: 12px;
+}
+
+/* Товар — исключение: переносы как в оригинале */
+.page-top-products-vxe__grid .vxe-body--column > .vxe-cell .page-top-products-vxe__product {
+  white-space: normal !important;
+}
+
+/* Шапка: слова не рвём ("Выручк/а") — режем многоточием, полный текст в title */
+.page-top-products-vxe__grid .vxe-header--column > .vxe-cell {
+  white-space: nowrap !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 10px;
+}
+
+/* Итоги как kv-totals: #f2e7c3 + фиолетовая кромка */
+.page-top-products-vxe__grid .vxe-footer--row .vxe-footer--column {
+  background-color: #f2e7c3 !important;
+  box-shadow: none !important;
+  font-weight: 700;
+  font-size: 11px;
+  color: #5a1c9c;
+  border-top: 2px solid #8a2be0;
+}
+
+/* Ячейка товара: перенос как в оригинале .page-top-products__cell-product */
+.page-top-products-vxe__product {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+.page-top-products-vxe__wb-link {
+  font-weight: 700;
+  color: #2980b9;
+  text-decoration: none;
+}
+
+.page-top-products-vxe__wb-link:hover {
+  text-decoration: underline;
+}
+
+.page-top-products-vxe__sub {
+  font-size: 10px;
+  color: #6c757d;
+}
+
+/* Цветные колонки должны бить stripe: селектор страйпа vxe тяжелее одиночного класса */
+.page-top-products-vxe__grid .vxe-body--column.page-top-products-vxe__net-cell,
+.page-top-products-vxe__grid .vxe-header--column.page-top-products-vxe__net-cell {
+  background-color: #e8f8f5 !important;
+}
+
+.page-top-products-vxe__grid .vxe-body--column.page-top-products-vxe__profit-cell,
+.page-top-products-vxe__grid .vxe-header--column.page-top-products-vxe__profit-cell {
+  background-color: #fcf3cf !important;
+}
+
+.page-top-products-vxe__grid .vxe-body--column.page-top-products-vxe__margin-cell,
+.page-top-products-vxe__grid .vxe-header--column.page-top-products-vxe__margin-cell {
+  background-color: #d4efdf !important;
+}
+
+.page-top-products-vxe__per-item {
+  font-style: italic;
+  background-color: #fafafa;
+}
+
+/* per-item колонки должны читаться И на stripe: stripe-тинт vxe ~#fafafa, поэтому темнее */
+.page-top-products-vxe__grid .vxe-body--column.page-top-products-vxe__per-item,
+.page-top-products-vxe__grid .vxe-header--column.page-top-products-vxe__per-item {
+  background-color: #e9ecef !important;
+}
