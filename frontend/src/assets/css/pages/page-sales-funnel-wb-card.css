@@ -1,0 +1,21 @@
+/* page-sales-funnel-wb-card.css — чанк SalesFunnelWbCard.
+ * Title: 'Воронка продаж: Карточка WB' (PageHeaderWidget + query nm_id — не трогать).
+ * График SalesFunnelChart (echarts) — не терять. Фильтр: WbFilterBar.
+ * Excel: exportExcel через salesFunnelApi (blob) — не терять.
+ * Таблица 12 колонок: внутренняя прокрутка. Ширины th — инлайн (размерный churn).
+ * Итоги — глобальный .kv-totals; drag-ресайз — JS, не трогать.
+ */
+.page-sales-funnel-wb-card { /* паддинги из wb-ui.css */ }
+.page-sales-funnel-wb-card__table-wrap { overflow-x: auto; }
+.page-sales-funnel-wb-card__table { font-size: 12px; width: 100%; table-layout: fixed; }
+
+/* Ячейки (legacy .funnel-table не переименовываем — правила переехали из scoped) */
+.page-sales-funnel-wb-card__cell-center { text-align: center; white-space: nowrap; }
+.page-sales-funnel-wb-card__cell-num { text-align: right; }
+.page-sales-funnel-wb-card__nm-link { text-decoration: none; }
+
+/* Перенесено 1в1 из <style scoped> SalesFunnelWbCard.vue */
+.funnel-table { table-layout: fixed; width: 100%; }
+.funnel-table th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.funnel-table td { overflow: hidden; text-overflow: ellipsis; }
+.funnel-table tbody td { white-space: nowrap; }

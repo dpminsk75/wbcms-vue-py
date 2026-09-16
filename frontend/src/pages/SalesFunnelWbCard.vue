@@ -28,18 +28,18 @@
     <template v-else-if="filters.nm_id">
       <SalesFunnelChart :data="chartData" />
 
-      <div class="card" style="border:1px solid #e0e0e0; border-radius:12px; overflow:hidden">
-        <div class="card-header text-white d-flex justify-content-between align-items-center" style="background:linear-gradient(97.26deg,#ed3cca .49%,#df34d2 14.88%,#d02bd9 29.27%,#bf22e1 43.14%,#ae1ae8 57.02%,#9a10f0 70.89%,#8306f7 84.76%,#7c1af8 99.15%); font-weight:700">
+      <div class="card wb-grid-card">
+        <div class="card-header text-white d-flex justify-content-between align-items-center wb-card-header">
           <span>Воронка - Переход / Корзина / Заказ WB</span>
-          <button class="btn btn-sm btn-light" style="font-size:12px; padding:4px 12px; border-radius:6px" @click="exportExcel" :disabled="!rows.length">
+          <button class="btn btn-sm btn-light wb-excel-btn" @click="exportExcel" :disabled="!rows.length">
             <i class="bi bi-file-earmark-excel me-1"></i> Excel
           </button>
         </div>
         <div v-if="!rows.length" class="p-4 text-center text-muted">
           Нет данных за выбранный период.
         </div>
-        <div v-else style="overflow-x:auto">
-          <table ref="tableRef" class="table table-bordered table-striped table-hover kv-grid-table funnel-table mb-0" style="font-size:12px; width:100%; table-layout:fixed">
+        <div v-else class="wb-table-wrap page-sales-funnel-wb-card__table-wrap">
+          <table ref="tableRef" class="table table-bordered table-striped table-hover kv-grid-table funnel-table mb-0 page-sales-funnel-wb-card__table">
             <thead>
               <tr>
                 <th style="width:110px; text-align:center; white-space:nowrap">Дата</th>
@@ -58,22 +58,22 @@
             </thead>
             <tbody>
               <tr v-for="(row, index) in rows" :key="row.date + '-' + row.nm_id">
-                <td style="text-align:center; white-space:nowrap">{{ fmtDate(row.date) }}</td>
-                <td style="text-align:center; white-space:nowrap"><a :href="`/wb/detail?nm_id=${row.nm_id}`" target="_blank" style="text-decoration:none">{{ row.nm_id }}</a></td>
-                <td style="text-align:right">{{ fmt0(row.open_count) }}</td>
-                <td style="text-align:right">{{ fmt0(row.cart_count) }}</td>
-                <td style="text-align:right">{{ row.open_to_cart !== null ? fmt2(row.open_to_cart) + '%' : '-' }}</td>
-                <td style="text-align:right">{{ fmt0(row.order_count) }}</td>
-                <td style="text-align:right">{{ row.cart_to_order !== null ? fmt2(row.cart_to_order) + '%' : '-' }}</td>
-                <td style="text-align:right">{{ fmt2(row.order_sum) }}</td>
-                <td style="text-align:right">{{ row.order_count > 0 ? fmt2(row.order_sum / row.order_count) : fmt2(0) }}</td>
-                <td style="text-align:right">{{ fmt0(row.buyout_count) }}</td>
-                <td style="text-align:right">{{ row.order_to_buyout !== null ? fmt2(row.order_to_buyout) + '%' : '-' }}</td>
-                <td style="text-align:right">{{ fmt2(row.buyout_sum) }}</td>
+                <td class="page-sales-funnel-wb-card__cell-center">{{ fmtDate(row.date) }}</td>
+                <td class="page-sales-funnel-wb-card__cell-center"><a :href="`/wb/detail?nm_id=${row.nm_id}`" target="_blank" class="page-sales-funnel-wb-card__nm-link">{{ row.nm_id }}</a></td>
+                <td class="page-sales-funnel-wb-card__cell-num">{{ fmt0(row.open_count) }}</td>
+                <td class="page-sales-funnel-wb-card__cell-num">{{ fmt0(row.cart_count) }}</td>
+                <td class="page-sales-funnel-wb-card__cell-num">{{ row.open_to_cart !== null ? fmt2(row.open_to_cart) + '%' : '-' }}</td>
+                <td class="page-sales-funnel-wb-card__cell-num">{{ fmt0(row.order_count) }}</td>
+                <td class="page-sales-funnel-wb-card__cell-num">{{ row.cart_to_order !== null ? fmt2(row.cart_to_order) + '%' : '-' }}</td>
+                <td class="page-sales-funnel-wb-card__cell-num">{{ fmt2(row.order_sum) }}</td>
+                <td class="page-sales-funnel-wb-card__cell-num">{{ row.order_count > 0 ? fmt2(row.order_sum / row.order_count) : fmt2(0) }}</td>
+                <td class="page-sales-funnel-wb-card__cell-num">{{ fmt0(row.buyout_count) }}</td>
+                <td class="page-sales-funnel-wb-card__cell-num">{{ row.order_to_buyout !== null ? fmt2(row.order_to_buyout) + '%' : '-' }}</td>
+                <td class="page-sales-funnel-wb-card__cell-num">{{ fmt2(row.buyout_sum) }}</td>
               </tr>
             </tbody>
             <tfoot v-if="rows.length">
-              <tr class="kv-totals" style="font-weight:700; background:#f2e7c3; font-size:11px">
+              <tr class="kv-totals">
                 <td colspan="2" style="padding:4px 6px; border-top:2px solid #8A2BE0"></td>
                 <td style="text-align:right; color:#5A1C9C; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(totals.open_count) }}</td>
                 <td style="text-align:right; color:#5A1C9C; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(totals.cart_count) }}</td>
@@ -278,11 +278,3 @@ onMounted(() => {
   nextTick(enableResize)
 })
 </script>
-
-<style scoped>
-.kv-totals > td { background-color:#f2e7c3 !important; box-shadow:none !important; }
-.funnel-table { table-layout:fixed; width:100%; }
-.funnel-table th { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.funnel-table td { overflow:hidden; text-overflow:ellipsis; }
-.funnel-table tbody td { white-space:nowrap; }
-</style>

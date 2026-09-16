@@ -1,0 +1,22 @@
+/* page-admin-invites.css — чанк AdminInvitesPage. Title: 'Инвайты'.
+ * Таблица — глобальный .wb-admin-table (+13px). Статусные бейджи — JS statusStyle(), не трогать.
+ */
+.page-admin-invites { /* паддинги из wb-ui.css */ }
+.page-admin-invites__table-wrap { overflow-x: auto; }
+.page-admin-invites__table { font-size: 13px; }
+.page-admin-invites__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.page-admin-invites__title { margin: 0; }
+.page-admin-invites__refresh { padding: 6px 12px; border: 1px solid #ccc; background: #fff; border-radius: 6px; }
+.page-admin-invites__error { margin-bottom: 12px; }
+.page-admin-invites__new-box { border: 1px solid #ddd; padding: 14px; border-radius: 8px; max-width: 520px; margin-bottom: 20px; }
+.page-admin-invites__new-title { margin: 0 0 10px; }
+.page-admin-invites__new-note { font-size: 12px; color: #666; margin-bottom: 10px; }
+.page-admin-invites__new-form { display: flex; flex-direction: column; gap: 8px; }
+.page-admin-invites__fresh { margin-top: 12px; padding: 10px; background: #eef7ee; border-radius: 6px; word-break: break-all; }
+.page-admin-invites__fresh-until { font-size: 12px; color: #555; }
+.page-admin-invites__copy { margin-left: 6px; }
+.page-admin-invites__cell-nowrap { white-space: nowrap; }
+.page-admin-invites__copy-btn { font-size: 12px; }
+.page-admin-invites__copy-empty { color: #999; font-size: 12px; }
+.page-admin-invites__empty { padding: 20px; text-align: center; color: #666; }
+.page-admin-invites__foot { font-size: 12px; color: #666; margin-top: 10px; }

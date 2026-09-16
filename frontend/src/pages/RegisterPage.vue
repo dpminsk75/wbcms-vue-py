@@ -1,53 +1,53 @@
 <template>
   <div class="container-xxl page-register">
-    <h2 style="margin-bottom:20px">Регистрация</h2>
+    <h2 class="page-register__title">Регистрация</h2>
     <form @submit.prevent="onSubmit" class="page-register__form">
       <label>
         <div>Invite-токен</div>
-        <input v-model="form.invite_token" required style="width:100%" placeholder="из ссылки/письма" @change="peek" />
+        <input v-model="form.invite_token" required class="wb-field" placeholder="из ссылки/письма" @change="peek" />
       </label>
-      <div v-if="peeking" style="font-size:13px; color:#666">Проверяем токен...</div>
-      <div v-if="peekError" style="font-size:13px; color:#c00">{{ peekError }}</div>
-      <div v-if="tokenInfo?.type === 'company'" style="font-size:13px; padding:10px; background:#eef4ff; border-radius:6px">
+      <div v-if="peeking" class="page-register__hint">Проверяем токен...</div>
+      <div v-if="peekError" class="wb-error">{{ peekError }}</div>
+      <div v-if="tokenInfo?.type === 'company'" class="page-register__token-info">
         Регистрация компании <b>«{{ tokenInfo.company_name }}»</b> — вы станете её owner.
         Название ниже должно совпасть с приглашением.
       </div>
-      <div v-if="tokenInfo?.type === 'user'" style="font-size:13px; padding:10px; background:#eef4ff; border-radius:6px">
+      <div v-if="tokenInfo?.type === 'user'" class="page-register__token-info">
         Приглашение в <b>«{{ tokenInfo.company?.name || ('#' + tokenInfo.company_id) }}»</b>
         (роль {{ tokenInfo.role }}) — email должен совпасть с
         <b>{{ tokenInfo.email_masked }}</b>.
       </div>
       <label>
         <div>Имя пользователя</div>
-        <input v-model="form.username" required minlength="3" maxlength="64" style="width:100%" />
+        <input v-model="form.username" required minlength="3" maxlength="64" class="wb-field" />
       </label>
       <label>
         <div>Email</div>
-        <input v-model="form.email" type="email" required style="width:100%" />
+        <input v-model="form.email" type="email" required class="wb-field" />
       </label>
       <label>
         <div>Пароль</div>
-        <input v-model="form.password" type="password" required minlength="6" style="width:100%" />
+        <input v-model="form.password" type="password" required minlength="6" class="wb-field" />
       </label>
       <template v-if="tokenInfo?.type === 'company'">
         <label>
           <div>Название компании</div>
-          <input v-model="form.company_name" required style="width:100%" />
+          <input v-model="form.company_name" required class="wb-field" />
         </label>
         <label>
           <div>Аббревиатура (необязательно)</div>
-          <input v-model="form.abbreviation" style="width:100%" />
+          <input v-model="form.abbreviation" class="wb-field" />
         </label>
         <label>
           <div>ИНН (необязательно)</div>
-          <input v-model="form.inn" style="width:100%" />
+          <input v-model="form.inn" class="wb-field" />
         </label>
       </template>
-      <button type="submit" :disabled="busy" style="padding:10px; background:#4A3A8C; color:#fff; border:none; border-radius:6px">
+      <button type="submit" :disabled="busy" class="wb-btn-brand wb-btn-brand--block">
         {{ busy ? 'Отправляем...' : 'Создать аккаунт' }}
       </button>
-      <div v-if="error" style="color:#c00">{{ error }}</div>
-      <div style="font-size:13px; color:#666">Уже есть аккаунт? <router-link to="/login">Войти</router-link></div>
+      <div v-if="error" class="wb-error">{{ error }}</div>
+      <div class="page-register__foot">Уже есть аккаунт? <router-link to="/login">Войти</router-link></div>
     </form>
   </div>
 </template>

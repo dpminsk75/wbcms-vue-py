@@ -1,0 +1,9 @@
+/* page-register.css — чанк RegisterPage. Title: 'Регистрация'.
+ * Узкая форма: max-width внутренней шириной (не смена контейнера).
+ */
+.page-register { max-width: 540px; }
+.page-register__form { display: flex; flex-direction: column; gap: 12px; }
+.page-register__title { margin-bottom: 20px; }
+.page-register__hint { font-size: 13px; color: #666; }
+.page-register__token-info { font-size: 13px; padding: 10px; background: #eef4ff; border-radius: 6px; }
+.page-register__foot { font-size: 13px; color: #666; }

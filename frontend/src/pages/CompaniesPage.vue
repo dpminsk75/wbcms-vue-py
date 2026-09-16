@@ -1,42 +1,42 @@
 <template>
   <div class="container-xxl page-companies">
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px">
-      <h2 style="margin:0">Мои компании</h2>
-      <button v-if="canCreate" @click="openCreate = true" style="padding:8px 14px; background:#4A3A8C; color:#fff; border:none; border-radius:6px">Создать компанию</button>
+    <div class="page-companies__head">
+      <h2 class="page-companies__title">Мои компании</h2>
+      <button v-if="canCreate" @click="openCreate = true" class="wb-btn-brand wb-btn-brand--lg">Создать компанию</button>
     </div>
 
-    <table style="width:100%; border-collapse:collapse">
+    <table class="wb-admin-table">
       <thead>
-        <tr style="background:#f4f4f8">
-          <th style="text-align:left; padding:8px">ID</th>
-          <th style="text-align:left; padding:8px">Название</th>
-          <th style="text-align:left; padding:8px">Аббревиатура</th>
-          <th style="text-align:left; padding:8px">ИНН</th>
+        <tr>
+          <th>ID</th>
+          <th>Название</th>
+          <th>Аббревиатура</th>
+          <th>ИНН</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="c in auth.companies" :key="c.id" style="border-bottom:1px solid #eee">
-          <td style="padding:8px">{{ c.id }}</td>
-          <td style="padding:8px">{{ c.name }}</td>
-          <td style="padding:8px">{{ c.abbreviation || '—' }}</td>
-          <td style="padding:8px">{{ c.inn || '—' }}</td>
-          <td style="padding:8px"><router-link :to="`/companies/${c.id}`">Открыть</router-link></td>
+        <tr v-for="c in auth.companies" :key="c.id">
+          <td>{{ c.id }}</td>
+          <td>{{ c.name }}</td>
+          <td>{{ c.abbreviation || '—' }}</td>
+          <td>{{ c.inn || '—' }}</td>
+          <td><router-link :to="`/companies/${c.id}`">Открыть</router-link></td>
         </tr>
-        <tr v-if="!auth.companies.length"><td colspan="5" style="padding:20px; text-align:center; color:#666">Нет компаний</td></tr>
+        <tr v-if="!auth.companies.length"><td colspan="5" class="page-companies__empty">Нет компаний</td></tr>
       </tbody>
     </table>
 
-    <div v-if="openCreate" style="position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center">
-      <form @submit.prevent="onCreate" style="background:#fff; padding:20px; border-radius:8px; min-width:360px; display:flex; flex-direction:column; gap:10px">
-        <h3 style="margin:0">Создать компанию</h3>
-        <label>Название<input v-model="createForm.name" required style="width:100%" /></label>
-        <label>Аббревиатура<input v-model="createForm.abbreviation" style="width:100%" /></label>
-        <label>ИНН<input v-model="createForm.inn" style="width:100%" /></label>
-        <div v-if="createError" style="color:#c00">{{ createError }}</div>
-        <div style="display:flex; gap:8px; justify-content:flex-end">
+    <div v-if="openCreate" class="wb-modal-backdrop">
+      <form @submit.prevent="onCreate" class="wb-modal-box wb-modal-box--wide">
+        <h3 class="page-companies__modal-title">Создать компанию</h3>
+        <label>Название<input v-model="createForm.name" required class="wb-field" /></label>
+        <label>Аббревиатура<input v-model="createForm.abbreviation" class="wb-field" /></label>
+        <label>ИНН<input v-model="createForm.inn" class="wb-field" /></label>
+        <div v-if="createError" class="wb-error">{{ createError }}</div>
+        <div class="wb-modal-actions">
           <button type="button" @click="openCreate = false">Отмена</button>
-          <button type="submit" :disabled="creating" style="background:#4A3A8C; color:#fff; border:none; padding:6px 12px; border-radius:6px">Создать</button>
+          <button type="submit" :disabled="creating" class="wb-btn-brand wb-btn-brand--md">Создать</button>
         </div>
       </form>
     </div>

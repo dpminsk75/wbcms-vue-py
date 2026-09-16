@@ -1,0 +1,8 @@
+/* page-adv-report.css — чанк AdvReportPage (Vite: грузится только со страницей).
+ * Title: route.meta 'Аналитика рекламы WB' + динамика 'Компания: name' (PageHeaderWidget,
+ * document.title в fetchDetail — не трогать). Графики AdvCharts (echarts) и Excel-экспорт
+ * таблиц Adv*Table (xlsx) — остаются в .vue, не терять.
+ * Фильтр: UniversalFilter (campaign_id); WbFilterBar сюда не применим (нет nm_id).
+ */
+.page-adv-report { font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+.page-adv-report__grid { overflow-x: auto; }

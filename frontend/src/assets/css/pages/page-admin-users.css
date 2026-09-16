@@ -1,0 +1,17 @@
+/* page-admin-users.css — чанк AdminUsersPage. Title: 'Пользователи'.
+ * Таблица — глобальный .wb-admin-table; модалки — .wb-modal-backdrop/.wb-modal-box.
+ * Кнопка блокировки — динамический :style, остаётся.
+ */
+.page-admin-users { /* паддинги из wb-ui.css */ }
+.page-admin-users__table-wrap { overflow-x: auto; }
+.page-admin-users__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.page-admin-users__title { margin: 0; }
+.page-admin-users__scope-note { font-size: 13px; color: #666; margin-bottom: 12px; }
+.page-admin-users__company { margin-right: 8px; }
+.page-admin-users__none { color: #999; }
+.page-admin-users__rbac { display: inline-block; background: #f1f1f4; border-radius: 8px; padding: 1px 6px; margin: 0 4px 2px 0; font-size: 12px; }
+.page-admin-users__rbac-drop { margin-left: 4px; color: #c00; text-decoration: none; }
+.page-admin-users__rbac-select { font-size: 12px; max-width: 150px; }
+.page-admin-users__row-actions { white-space: nowrap; }
+.page-admin-users__pwd-btn { margin-right: 6px; }
+.page-admin-users__modal-title { margin: 0; }

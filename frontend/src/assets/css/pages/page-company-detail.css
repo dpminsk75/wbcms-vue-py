@@ -1,0 +1,25 @@
+/* page-company-detail.css — чанк CompanyDetailPage. Title: 'Компания' (динамика имени).
+ * Таблица участников — глобальный .wb-admin-table. Бейдж «задан» — .wb-key-badge.
+ */
+.page-company-detail { /* паддинги из wb-ui.css */ }
+.page-company-detail__table-wrap { overflow-x: auto; }
+.page-company-detail__title { margin-bottom: 16px; }
+.page-company-detail__stack { display: flex; flex-direction: column; gap: 16px; }
+.page-company-detail__card-main { border: 1px solid #ddd; border-radius: 8px; }
+.page-company-detail__card-seo { border: 1px solid #b6d4fe; border-radius: 8px; }
+.page-company-detail__seo-head { background: #e7f1ff; font-weight: 600; }
+.page-company-detail__seo-note { font-weight: 400; color: #666; }
+.page-company-detail__save-row { margin-top: 10px; display: flex; gap: 8px; align-items: center; }
+.page-company-detail__saved { font-size: 13px; color: #1E9E7C; }
+.page-company-detail__perm { display: inline-block; background: #eef4ff; border-radius: 8px; padding: 1px 6px; margin: 0 4px 2px 0; font-size: 12px; }
+.page-company-detail__perm-drop { margin-left: 4px; color: #c00; text-decoration: none; }
+.page-company-detail__perm-select { font-size: 12px; max-width: 140px; }
+.page-company-detail__delete { color: #c00; }
+.page-company-detail__invite-box { border: 1px solid #ddd; padding: 14px; border-radius: 8px; max-width: 480px; }
+.page-company-detail__invite-title { margin: 0 0 10px; }
+.page-company-detail__invite-form { display: flex; flex-direction: column; gap: 8px; }
+.page-company-detail__perms-note { font-size: 13px; }
+.page-company-detail__perms-label { margin-bottom: 4px; color: #555; }
+.page-company-detail__perm-check { display: block; font-weight: normal; }
+.page-company-detail__invite-ok { margin-top: 12px; padding: 10px; background: #eef7ee; border-radius: 6px; word-break: break-all; }
+.page-company-detail__invite-until { font-size: 12px; color: #555; }

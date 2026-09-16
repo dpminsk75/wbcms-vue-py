@@ -1,0 +1,65 @@
+/* page-admin-menu.css — чанк AdminMenu. Title: 'Меню'.
+ * Было container max-width:1200px -> container-xxl. Редактор menu.json.
+ * Контролы ширины инпутов (width:200px и т.п.) оставлены инлайном (размерный churn).
+ * Scoped-дубли .bg-wb/.icon-grid удалены (канон: site.css / wb-ui.css).
+ */
+.page-admin-menu { /* паддинги из wb-ui.css */ }
+.page-admin-menu__crumbs { margin-bottom: 12px; }
+.page-admin-menu__crumbs-list { font-size: 12px; }
+.page-admin-menu__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.page-admin-menu__title { font-size: 22px; font-weight: 700; margin: 0; }
+.page-admin-menu__title-sub { font-weight: 400; font-size: 13px; }
+.page-admin-menu__count { align-self: center; font-size: 11px; }
+.page-admin-menu__msg { font-size: 13px; padding: 8px 12px; }
+
+/* Предпросмотр навбара */
+.page-admin-menu__preview-card { border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden; }
+.page-admin-menu__preview-head { background: #f8f9fa; font-size: 12px; font-weight: 600; }
+.page-admin-menu__preview-meta { font-weight: 400; }
+.page-admin-menu__preview-body { padding: 0; }
+.page-admin-menu__preview-nav { padding: 6px 12px; flex-wrap: nowrap; overflow-x: auto; gap: 8px; }
+.page-admin-menu__preview-brand { color: #fff; font-weight: 700; font-size: 13px; white-space: nowrap; margin-right: 12px; }
+.page-admin-menu__preview-brand-mark { margin-right: 6px; }
+.page-admin-menu__preview-sections { display: flex; gap: 6px; flex-wrap: nowrap; align-items: flex-start; }
+.page-admin-menu__preview-section { display: flex; flex-direction: column; align-items: center; color: #fff; font-size: 10px; text-align: center; min-width: 72px; max-width: 90px; opacity: .95; }
+.page-admin-menu__preview-icon { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; font-size: 16px; }
+.page-admin-menu__preview-label { margin-top: 4px; line-height: 11px; font-weight: 600; white-space: normal; word-break: break-word; }
+.page-admin-menu__preview-sub { font-size: 9px; opacity: .7; }
+.page-admin-menu__preview-note { padding: 6px 12px; background: #fafafa; border-top: 1px solid #eee; font-size: 11px; color: #6b7280; }
+
+/* Карточка раздела */
+.page-admin-menu__section-card { border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden; }
+.page-admin-menu__section-head { background: #fff; padding: 10px 12px; flex-wrap: wrap; }
+.page-admin-menu__section-num { font-size: 11px; }
+.page-admin-menu__section-name { font-weight: 600; }
+.page-admin-menu__section-body { padding: 0; }
+.page-admin-menu__section-icon { width: 22px; height: 22px; display: inline-flex; font-size: 16px; }
+.page-admin-menu__section-icon-sm { font-size: 14px; }
+.page-admin-menu__vis { font-size: 11px; }
+.page-admin-menu__vis--sm { font-size: 10px; }
+.page-admin-menu__table { font-size: 12px; }
+.page-admin-menu__table-head { background: #f8f9fa; }
+.page-admin-menu__actions { text-align: right; white-space: nowrap; }
+.page-admin-menu__row-add { padding: 8px 12px; display: flex; gap: 6px; background: #fafafa; border-top: 1px solid #eee; }
+.page-admin-menu__row-hint { font-size: 11px; align-self: center; }
+.page-admin-menu__item-note { font-style: italic; }
+.page-admin-menu__mini-note { font-size: 11px; }
+
+/* Сырой JSON */
+.page-admin-menu__json-card { border: 1px dashed #ccc; border-radius: 12px; }
+.page-admin-menu__json-head { background: #fff; font-size: 12px; font-weight: 600; }
+.page-admin-menu__json-area { font-family: monospace; font-size: 11px; min-height: 220px; border: none; border-radius: 0 0 12px 12px; }
+.page-admin-menu__foot { font-size: 11px; }
+
+/* Пикер иконок */
+.page-admin-menu__picker-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 1050; display: flex; align-items: center; justify-content: center; padding: 12px; }
+.page-admin-menu__picker-card { width: min(920px,100%); max-height: 90vh; display: flex; flex-direction: column; border-radius: 12px; }
+.page-admin-menu__picker-head { gap: 8px; flex-wrap: wrap; }
+.page-admin-menu__picker-title { font-size: 14px; }
+.page-admin-menu__picker-sub { font-size: 11px; }
+.page-admin-menu__picker-search { width: 220px; }
+.page-admin-menu__picker-tabs { padding: 8px 12px; border-bottom: 1px solid #eee; display: flex; gap: 6px; }
+.page-admin-menu__picker-pick { align-self: center; font-size: 11px; }
+.page-admin-menu__picker-body { overflow: auto; padding: 10px; flex: 1 1 auto; }
+.page-admin-menu__picker-empty { font-size: 12px; }
+.page-admin-menu__picker-foot { font-size: 11px; }

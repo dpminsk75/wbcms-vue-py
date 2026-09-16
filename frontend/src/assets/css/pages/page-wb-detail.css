@@ -1,0 +1,45 @@
+/* page-wb-detail.css — чанк WbDetailPage (/wb/detail).
+ * Title: route.meta + динамика card.title (updateDetailTitle — не трогать).
+ * Исключение fluid -> container-xxl по решению 15.09; широкие таблицы — внутренней обёрткой.
+ * Графики DetailCharts (echarts), OrderFunnel, DailyTables, WeeklyFinanceTable,
+ * PhrasesMatrix, Excel в wb-detail-компонентах — не терять, сами компоненты не трогаем.
+ * Фильтр: WbFilterBar. Динамические :style (expand-maxHeight, buyoutClass) остаются в шаблоне.
+ */
+.page-wb-detail { /* паддинги из wb-ui.css */ }
+.page-wb-detail__table-wrap { overflow-x: auto; }
+
+/* Хлебные крошки */
+.page-wb-detail__crumbs { font-size: 12px; color: #6b7280; }
+.page-wb-detail__crumbs-link { text-decoration: none; }
+
+/* Шапка карточки */
+.page-wb-detail__head { display: flex; align-items: center; gap: 12px; }
+.page-wb-detail__title { font-size: 28px; font-weight: 700; flex: 1 1 auto; min-width: 0; }
+.page-wb-detail__id-group { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
+.page-wb-detail__id-label { font-size: 12px; }
+.page-wb-detail__id-badge { font-size: 12px; }
+.page-wb-detail__icon-btn { width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; }
+
+/* Карточка товара */
+.page-wb-detail__product-card { border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden; }
+.page-wb-detail__product-head { background: #f8f9fa; font-weight: 700; font-size: 13px; display: flex; justify-content: space-between; }
+.page-wb-detail__product-wb { font-size: 11px; color: #6b7280; }
+.page-wb-detail__facts { font-size: 12px; }
+.page-wb-detail__card-actions { flex: 1; }
+.page-wb-detail__period { text-align: center; }
+
+/* Галерея (legacy .wb-card-gallery-scroll не переименовываем — скроллбары в scoped) */
+.page-wb-detail__gallery { display: flex; flex-direction: row; overflow-x: auto; gap: 10px; padding: 10px; background: #fdfdfd; border: 1px solid #eee; border-radius: 8px; height: 200px; align-items: center; }
+.page-wb-detail__gallery-video { flex: 0 0 auto; position: relative; height: 180px; }
+.page-wb-detail__gallery-video-el { height: 180px; width: auto; border-radius: 4px; background: #000; }
+.page-wb-detail__gallery-photo { height: 180px; width: auto; flex: 0 0 auto; border-radius: 4px; border: 1px solid #ddd; }
+.page-wb-detail__gallery-empty { padding: 10px; }
+
+/* Характеристики / описание */
+.page-wb-detail__section-title { font-size: 11px; font-weight: 700; margin-bottom: 6px; }
+.page-wb-detail__empty { font-size: 12px; }
+.page-wb-detail__description { font-size: 11px; white-space: pre-wrap; border-left: 1px dashed #ddd; padding-left: 10px; }
+
+/* Кнопка «Увидеть больше» */
+.page-wb-detail__expand-btn { text-align: center; margin: 10px 0 0; }
+.page-wb-detail__more-btn { font-size: 12px; padding: 4px 16px; border-radius: 6px; }

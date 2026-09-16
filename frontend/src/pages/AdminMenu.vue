@@ -1,61 +1,61 @@
 <template>
   <div class="container-xxl page-admin-menu">
-    <nav aria-label="breadcrumb" style="margin-bottom:12px">
-      <ol class="breadcrumb" style="font-size:12px">
+    <nav aria-label="breadcrumb" class="page-admin-menu__crumbs">
+      <ol class="breadcrumb page-admin-menu__crumbs-list">
         <li class="breadcrumb-item"><router-link to="/">Главная</router-link></li>
         <li class="breadcrumb-item">Админка</li>
         <li class="breadcrumb-item active">Меню</li>
       </ol>
     </nav>
-    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px">
-      <h1 style="font-size:22px; font-weight:700; margin:0">Меню <span class="text-muted" style="font-weight:400; font-size:13px">config / menu.json</span></h1>
+    <div class="page-admin-menu__head">
+      <h1 class="page-admin-menu__title">Меню <span class="text-muted page-admin-menu__title-sub">config / menu.json</span></h1>
       <div class="d-flex gap-2">
-        <span class="badge bg-light text-dark border" style="align-self:center; font-size:11px">{{ sections.length }} разделов</span>
+        <span class="badge bg-light text-dark border page-admin-menu__count">{{ sections.length }} разделов</span>
         <button class="btn btn-sm btn-outline-secondary" @click="reload" :disabled="loading">Перезагрузить</button>
         <button class="btn btn-sm btn-primary" @click="save" :disabled="saving"><span v-if="saving" class="spinner-border spinner-border-sm me-1"></span>Сохранить в menu.json</button>
       </div>
     </div>
 
-    <div v-if="msg" :class="['alert', msgOk?'alert-success':'alert-danger']" style="font-size:13px; padding:8px 12px">{{ msg }}</div>
+    <div v-if="msg" :class="['alert', msgOk?'alert-success':'alert-danger', 'page-admin-menu__msg']">{{ msg }}</div>
 
     <!-- предпросмотр как TopNavbar — упрощён, без каши -->
-    <div class="card mb-3" style="border:1px solid #e0e0e0; border-radius:12px; overflow:hidden">
-      <div class="card-header d-flex justify-content-between align-items-center" style="background:#f8f9fa; font-size:12px; font-weight:600">
+    <div class="card mb-3 page-admin-menu__preview-card">
+      <div class="card-header d-flex justify-content-between align-items-center page-admin-menu__preview-head">
         <span>Предпросмотр (как TopNavbar)</span>
-        <span class="text-muted" style="font-weight:400">bg-wb · {{ sections.length }} разделов · {{ sections.reduce((s:number,sec:any)=>s+sec.items.filter((x:any)=>!x.divider).length,0) }} пунктов · иконки bi/fas</span>
+        <span class="text-muted page-admin-menu__preview-meta">bg-wb · {{ sections.length }} разделов · {{ sections.reduce((s:number,sec:any)=>s+sec.items.filter((x:any)=>!x.divider).length,0) }} пунктов · иконки bi/fas</span>
       </div>
-      <div class="card-body" style="padding:0">
-        <nav class="navbar bg-wb w-100" style="padding:6px 12px; flex-wrap:nowrap; overflow-x:auto; gap:8px">
-          <span class="navbar-brand d-flex align-items-center" style="color:#fff; font-weight:700; font-size:13px; white-space:nowrap; margin-right:12px"><span style="margin-right:6px">◈</span>Аналитика WB</span>
-          <div style="display:flex; gap:6px; flex-wrap:nowrap; align-items:flex-start">
-            <div v-for="sec in sections" :key="sec.label" style="display:flex; flex-direction:column; align-items:center; color:#fff; font-size:10px; text-align:center; min-width:72px; max-width:90px; opacity:.95">
-              <i :class="sectionIconClass(sec)" style="display:flex; align-items:center; justify-content:center; width:28px; height:28px; font-size:16px"></i>
-              <span style="margin-top:4px; line-height:11px; font-weight:600; white-space:normal; word-break:break-word">{{ sec.label }}</span>
-              <span style="font-size:9px; opacity:.7">{{ sec.items.filter((x:any)=>!x.divider).length }} п.</span>
+      <div class="card-body page-admin-menu__preview-body">
+        <nav class="navbar bg-wb w-100 page-admin-menu__preview-nav">
+          <span class="navbar-brand d-flex align-items-center page-admin-menu__preview-brand"><span class="page-admin-menu__preview-brand-mark">◈</span>Аналитика WB</span>
+          <div class="page-admin-menu__preview-sections">
+            <div v-for="sec in sections" :key="sec.label" class="page-admin-menu__preview-section">
+              <i :class="sectionIconClass(sec)" class="page-admin-menu__preview-icon"></i>
+              <span class="page-admin-menu__preview-label">{{ sec.label }}</span>
+              <span class="page-admin-menu__preview-sub">{{ sec.items.filter((x:any)=>!x.divider).length }} п.</span>
             </div>
           </div>
         </nav>
-        <div style="padding:6px 12px; background:#fafafa; border-top:1px solid #eee; font-size:11px; color:#6b7280">Иконки <code>bi …</code>/<code>fas fa-…</code> · детальный список пунктов — в карточках ниже.</div>
+        <div class="page-admin-menu__preview-note">Иконки <code>bi …</code>/<code>fas fa-…</code> · детальный список пунктов — в карточках ниже.</div>
       </div>
     </div>
 
     <div v-if="loading" class="text-center p-4"><span class="spinner-border spinner-border-sm"></span> Загрузка меню…</div>
     <template v-else>
-      <div v-for="(sec, si) in sections" :key="sec._key" class="card mb-3" style="border:1px solid #e0e0e0; border-radius:12px; overflow:hidden">
-        <div class="card-header d-flex align-items-center gap-2" style="background:#fff; padding:10px 12px; flex-wrap:wrap">
+      <div v-for="(sec, si) in sections" :key="sec._key" class="card mb-3 page-admin-menu__section-card">
+        <div class="card-header d-flex align-items-center gap-2 page-admin-menu__section-head">
           <button class="btn btn-sm btn-outline-secondary" :disabled="si===0" @click="moveSection(si,-1)" title="вверх"><i class="bi bi-chevron-up"></i></button>
           <button class="btn btn-sm btn-outline-secondary" :disabled="si===sections.length-1" @click="moveSection(si,1)" title="вниз"><i class="bi bi-chevron-down"></i></button>
-          <span class="badge bg-light text-dark border" style="font-size:11px">#{{ si+1 }}</span>
-          <i :class="sectionIconClass(sec)" class="wb-icon" style="width:22px; height:22px; display:inline-flex; font-size:16px"></i>
-          <input v-model="sec.label" class="form-control form-control-sm" style="width:200px; font-weight:600" placeholder="Название раздела" />
+          <span class="badge bg-light text-dark border page-admin-menu__section-num">#{{ si+1 }}</span>
+          <i :class="sectionIconClass(sec)" class="wb-icon page-admin-menu__section-icon"></i>
+          <input v-model="sec.label" class="form-control form-control-sm page-admin-menu__section-name" style="width:200px" placeholder="Название раздела" />
           <div class="input-group input-group-sm" style="width:220px">
-            <span class="input-group-text"><i :class="sectionIconClass(sec)" style="font-size:14px"></i></span>
+            <span class="input-group-text"><i :class="sectionIconClass(sec)" class="page-admin-menu__section-icon-sm"></i></span>
             <input class="form-control" :value="sectionIconClass(sec)" readonly />
             <button class="btn btn-outline-primary" @click="openIconPicker(sec)">Выбрать</button>
           </div>
           <input v-model="sec.url" class="form-control form-control-sm" style="width:90px" placeholder="url" />
-          <label class="form-check form-check-inline mb-0" style="font-size:11px"><input class="form-check-input" type="checkbox" :checked="hasVis(sec,'top')" @change="toggleVis(sec,'top')"> top</label>
-          <label class="form-check form-check-inline mb-0" style="font-size:11px"><input class="form-check-input" type="checkbox" :checked="hasVis(sec,'side')" @change="toggleVis(sec,'side')"> side</label>
+          <label class="form-check form-check-inline mb-0 page-admin-menu__vis"><input class="form-check-input" type="checkbox" :checked="hasVis(sec,'top')" @change="toggleVis(sec,'top')"> top</label>
+          <label class="form-check form-check-inline mb-0 page-admin-menu__vis"><input class="form-check-input" type="checkbox" :checked="hasVis(sec,'side')" @change="toggleVis(sec,'side')"> side</label>
           <input :value="(sec.roles||[]).join(', ')" @input="sec.roles = ($event.target as HTMLInputElement).value.split(',').map((s:string)=>s.trim()).filter(Boolean)" class="form-control form-control-sm" style="width:160px" placeholder="roles: admin, viewReports" />
           <div class="ms-auto d-flex gap-1">
             <button class="btn btn-sm btn-outline-secondary" @click="sec._collapsed=!sec._collapsed">{{ sec._collapsed ? 'Развернуть' : 'Свернуть' }}</button>
@@ -64,10 +64,10 @@
           </div>
         </div>
 
-        <div v-show="!sec._collapsed" style="padding:0">
+        <div v-show="!sec._collapsed" class="page-admin-menu__section-body">
           <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0" style="font-size:12px">
-              <thead style="background:#f8f9fa">
+            <table class="table table-sm table-hover mb-0 page-admin-menu__table">
+              <thead class="page-admin-menu__table-head">
                 <tr>
                   <th style="width:30px">#</th>
                   <th style="width:36px"></th>
@@ -83,26 +83,26 @@
                 <tr v-for="(it, ii) in sec.items" :key="ii" :class="{'table-light': it.divider}">
                   <td class="text-muted text-center">{{ ii+1 }}</td>
                   <td class="text-center">
-                    <span v-if="it.divider" class="badge bg-secondary" style="font-size:9px">—</span>
+                    <span v-if="it.divider" class="badge bg-secondary page-admin-menu__mini-note">—</span>
                     <i v-else class="bi bi-link-45deg"></i>
                   </td>
                   <td>
-                    <div v-if="it.divider" class="text-muted" style="font-style:italic">— разделитель —</div>
+                    <div v-if="it.divider" class="text-muted page-admin-menu__item-note">— разделитель —</div>
                     <input v-else v-model="it.label" class="form-control form-control-sm" placeholder="ТОП продаж" />
                   </td>
                   <td>
-                    <span v-if="it.divider" class="text-muted" style="font-size:11px">—</span>
+                    <span v-if="it.divider" class="text-muted page-admin-menu__mini-note">—</span>
                     <input v-else v-model="it.url" class="form-control form-control-sm" placeholder="/wb/path?nm_id=..." />
                   </td>
                   <td>
-                    <label class="form-check form-check-inline mb-0" style="font-size:10px"><input class="form-check-input" type="checkbox" :checked="hasVis(it,'top')" @change="toggleVis(it,'top')"> top</label>
-                    <label class="form-check form-check-inline mb-0" style="font-size:10px"><input class="form-check-input" type="checkbox" :checked="hasVis(it,'side')" @change="toggleVis(it,'side')"> side</label>
+                    <label class="form-check form-check-inline mb-0 page-admin-menu__vis page-admin-menu__vis--sm"><input class="form-check-input" type="checkbox" :checked="hasVis(it,'top')" @change="toggleVis(it,'top')"> top</label>
+                    <label class="form-check form-check-inline mb-0 page-admin-menu__vis page-admin-menu__vis--sm"><input class="form-check-input" type="checkbox" :checked="hasVis(it,'side')" @change="toggleVis(it,'side')"> side</label>
                   </td>
                   <td>
                     <input v-if="!it.divider" :value="(it.roles||[]).join(', ')" @input="it.roles = ($event.target as HTMLInputElement).value.split(',').map((s:string)=>s.trim()).filter(Boolean); if(!it.roles.length) delete it.roles" class="form-control form-control-sm" placeholder="viewReports, admin" />
-                    <span v-else class="text-muted" style="font-size:11px">—</span>
+                    <span v-else class="text-muted page-admin-menu__mini-note">—</span>
                   </td>
-                  <td style="text-align:right; white-space:nowrap">
+                  <td class="page-admin-menu__actions">
                     <div class="btn-group btn-group-sm">
                       <button class="btn btn-outline-secondary" :disabled="ii===0" @click="moveItem(si,ii,-1)"><i class="bi bi-chevron-up"></i></button>
                       <button class="btn btn-outline-secondary" :disabled="ii===sec.items.length-1" @click="moveItem(si,ii,1)"><i class="bi bi-chevron-down"></i></button>
@@ -113,10 +113,10 @@
               </tbody>
             </table>
           </div>
-          <div style="padding:8px 12px; display:flex; gap:6px; background:#fafafa; border-top:1px solid #eee">
+          <div class="page-admin-menu__row-add">
             <button class="btn btn-sm btn-outline-primary" @click="addItem(si,false)"><i class="bi bi-plus-lg me-1"></i>Пункт</button>
             <button class="btn btn-sm btn-outline-secondary" @click="addItem(si,true)">+ Разделитель</button>
-            <span class="ms-auto text-muted" style="font-size:11px; align-self:center">url `#` для заголовка раздела · разделитель = <code>{"divider":true}</code></span>
+            <span class="ms-auto text-muted page-admin-menu__row-hint">url `#` для заголовка раздела · разделитель = <code>{"divider":true}</code></span>
           </div>
         </div>
       </div>
@@ -127,45 +127,45 @@
         <button class="btn btn-primary" @click="save" :disabled="saving"><span v-if="saving" class="spinner-border spinner-border-sm me-1"></span>Сохранить в menu.json</button>
       </div>
 
-      <div class="card" style="border:1px dashed #ccc; border-radius:12px">
-        <div class="card-header" style="background:#fff; font-size:12px; font-weight:600">Сырой JSON (для копипасты)</div>
+      <div class="card page-admin-menu__json-card">
+        <div class="card-header page-admin-menu__json-head">Сырой JSON (для копипасты)</div>
         <div class="card-body p-0">
-          <textarea class="form-control" style="font-family:monospace; font-size:11px; min-height:220px; border:none; border-radius:0 0 12px 12px" :value="jsonPreview" readonly></textarea>
+          <textarea class="form-control page-admin-menu__json-area" :value="jsonPreview" readonly></textarea>
         </div>
       </div>
 
-      <div class="text-muted mt-2" style="font-size:11px">
+      <div class="text-muted mt-2 page-admin-menu__foot">
         Файл <code>backend/config/menu.json</code> — массив разделов <code>{label,icon,iconClass,url,visibleIn,roles,items}</code>. API <code>GET /api/config/menu</code> (raw) и <code>PUT /api/config/menu</code>. Фильтрация для фронта — <code>GET /api/menu?type=top|side&role=...</code> как <code>MenuHelper.php:40</code>.
       </div>
 
       <!-- пикер иконок -->
-      <div v-if="iconPickerOpen" style="position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:1050; display:flex; align-items:center; justify-content:center; padding:12px" @click.self="iconPickerOpen=false">
-        <div class="card" style="width:min(920px,100%); max-height:90vh; display:flex; flex-direction:column; border-radius:12px">
-          <div class="card-header d-flex align-items:center; justify-content:space-between" style="gap:8px; flex-wrap:wrap">
+      <div v-if="iconPickerOpen" class="page-admin-menu__picker-backdrop" @click.self="iconPickerOpen=false">
+        <div class="card page-admin-menu__picker-card">
+          <div class="card-header d-flex align-items:center; justify-content:space-between page-admin-menu__picker-head">
             <div>
-              <strong style="font-size:14px">Выбор иконки раздела</strong>
-              <span class="text-muted ms-2" style="font-size:11px">2 шрифта — bi и fas</span>
+              <strong class="page-admin-menu__picker-title">Выбор иконки раздела</strong>
+              <span class="text-muted ms-2 page-admin-menu__picker-sub">2 шрифта — bi и fas</span>
             </div>
             <div class="ms-auto d-flex gap-2 align-items-center">
-              <input v-model="iconQ" placeholder="поиск: journal, book, palette…" class="form-control form-control-sm" style="width:220px" />
+              <input v-model="iconQ" placeholder="поиск: journal, book, palette…" class="form-control form-control-sm page-admin-menu__picker-search" />
               <button class="btn btn-sm btn-light" @click="iconPickerOpen=false">Закрыть</button>
             </div>
           </div>
-          <div style="padding:8px 12px; border-bottom:1px solid #eee; display:flex; gap:6px">
+          <div class="page-admin-menu__picker-tabs">
             <button :class="['btn btn-sm', iconTab==='bi' ? 'btn-primary':'btn-outline-secondary']" @click="iconTab='bi'">Bootstrap Icons ({{ filteredBi.length }}) <i class="bi bi-journal-text ms-1"></i></button>
             <button :class="['btn btn-sm', iconTab==='fa' ? 'btn-primary':'btn-outline-secondary']" @click="iconTab='fa'">Font Awesome ({{ filteredFa.length }}) <i class="fas fa-star ms-1"></i></button>
-            <span class="ms-auto badge bg-light text-dark border" style="align-self:center; font-size:11px">выбрано: <i :class="iconPickerValue"></i> {{ iconPickerValue }}</span>
+            <span class="ms-auto badge bg-light text-dark border page-admin-menu__picker-pick">выбрано: <i :class="iconPickerValue"></i> {{ iconPickerValue }}</span>
           </div>
-          <div style="overflow:auto; padding:10px; flex:1 1 auto">
+          <div class="page-admin-menu__picker-body">
             <div v-if="iconTab==='bi'" class="icon-grid">
               <button v-for="ic in filteredBi" :key="ic" @click="selectIcon(ic)" :class="['icon-cell', iconPickerValue===ic ? 'active':'']" :title="ic"><i :class="ic"></i><span>{{ ic.replace('bi bi-','') }}</span></button>
             </div>
             <div v-else class="icon-grid">
               <button v-for="ic in filteredFa" :key="ic" @click="selectIcon(ic)" :class="['icon-cell', iconPickerValue===ic ? 'active':'']" :title="ic"><i :class="ic"></i><span>{{ ic.replace('fas fa-','') }}</span></button>
             </div>
-            <div v-if="(iconTab==='bi' ? filteredBi : filteredFa).length===0" class="text-muted text-center p-4" style="font-size:12px">Ничего не найдено.</div>
+            <div v-if="(iconTab==='bi' ? filteredBi : filteredFa).length===0" class="text-muted text-center p-4 page-admin-menu__picker-empty">Ничего не найдено.</div>
           </div>
-          <div class="card-footer text-muted" style="font-size:11px">Иконка сохранится в <code>iconClass</code> выбранного раздела menu.json.</div>
+          <div class="card-footer text-muted page-admin-menu__picker-foot">Иконка сохранится в <code>iconClass</code> выбранного раздела menu.json.</div>
         </div>
       </div>
     </template>
@@ -313,16 +313,6 @@ async function save(){
 
 onMounted(()=>{ reload(); loadIcons() })
 </script>
-<style scoped>
-.bg-wb{ background: linear-gradient(97.26deg,#ed3cca .49%,#df34d2 14.88%,#d02bd9 29.27%,#bf22e1 43.14%,#ae1ae8 57.02%,#9a10f0 70.89%,#8306f7 84.76%,#7c1af8 99.15%),linear-gradient(#0000000d,#0000000d) !important }
-.icon-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(110px,1fr)); gap:6px }
-.icon-cell{ display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; cursor:pointer; font-size:11px; transition:all .15s }
-.icon-cell i{ font-size:18px }
-.icon-cell span{ font-size:9px; color:#6b7280; word-break:break-all; text-align:center }
-.icon-cell:hover{ border-color:#a73afd; background:#f5f0ff }
-.icon-cell.active{ border-color:#a73afd; background:#a73afd; color:#fff }
-.icon-cell.active span{ color:#fff }
-</style>
 export default {
   name: 'AdminMenu'
 }

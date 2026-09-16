@@ -1,0 +1,105 @@
+/* wb-ui.css — глобальные UI-паттерны (Bootstrap 5 + BEM).
+ * Сюда: типографика страниц, паддинги каркаса, градиент шапок,
+ * kv-totals, ссылки, широкие таблицы. Статика — только здесь,
+ * инлайн style в .vue — лишь динамика (:style биндинги).
+ */
+
+/* Каркас страницы: корень = container-xxl + page-{name}, паддинги из CSS */
+.container-xxl[class*="page-"] {
+  padding: 20px 15px;
+}
+
+/* Исключение: Login — центровка без контейнера */
+.page-login {
+  min-height: 80vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.page-login__card { width: 360px; }
+
+/* Register — узкая форма: внутренняя ширина, не смена контейнера */
+.page-register { max-width: 540px; }
+.page-register__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Широкие таблицы 10+ колонок: внутренняя обёртка, не смена контейнера */
+.wb-table-wrap { overflow-x: auto; }
+.wb-table-wrap table { font-size: 12px; width: 100%; }
+
+/* Градиент шапок карточек (бывший инлайн-копипаст, ~20 мест) */
+.wb-card-header {
+  background: linear-gradient(97.26deg,#ed3cca .49%,#df34d2 14.88%,#d02bd9 29.27%,#bf22e1 43.14%,#ae1ae8 57.02%,#9a10f0 70.89%,#8306f7 84.76%,#7c1af8 99.15%);
+  font-weight: 700;
+  font-size: 13px;
+}
+/* Компактная шапка adv/wb-detail гридов (было font-size:13px + padding:4px 8px инлайном) */
+.wb-card-header--sm { line-height: 1.5; padding: 4px 8px; }
+
+/* Карточка грида (было border/radius/overflow инлайном) */
+.wb-grid-card { border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden; }
+
+/* Кнопка Excel в шапке грида */
+.wb-excel-btn { font-size: 12px; padding: 4px 12px; border-radius: 6px; }
+.wb-excel-btn--sm { font-size: 11px; padding: 2px 10px; border-radius: 6px; }
+
+/* Итоговые строки гридов (дедуп .kv-totals: 10+ scoped-копий + инлайн на <tr>) */
+.kv-totals { font-weight: 700; background: #f2e7c3; font-size: 11px; }
+.kv-totals > td { background-color: #f2e7c3 !important; box-shadow: none !important; }
+
+/* Ссылки на артикулы (дедуп .adv-link из adv-таблиц) */
+.adv-link { color: #8A2BE0; font-weight: 600; text-decoration: none; }
+
+/* Общая типографика adv-гридов (дедуп .adv-grid из 4 scoped-копий) */
+.adv-grid { table-layout: auto; }
+.adv-grid th { white-space: normal; overflow-wrap: break-word; font-weight: 500; font-size: 11px; text-align: center; vertical-align: middle; padding: 4px !important; }
+.adv-grid td { font-size: 12px; vertical-align: middle; }
+
+/* Ручка drag-ресайза колонок (JS из enableResize создаёт .col-resizer) */
+.col-resizer:hover { background: #4A3A8C; opacity: 0.2; }
+
+/* Заголовки страниц (наследуют title из route.meta.title, h1 — визуал) */
+.page-title { font-size: 20px; font-weight: 700; margin-bottom: 12px; }
+
+/* Админ-таблицы (дедуп: Companies/CompanyDetail/AdminCompanies/AdminInvites/AdminUsers) */
+.wb-admin-table { width: 100%; border-collapse: collapse; }
+.wb-admin-table thead tr { background: #f4f4f8; }
+.wb-admin-table th { text-align: left; padding: 8px; }
+.wb-admin-table tbody tr { border-bottom: 1px solid #eee; }
+.wb-admin-table td { padding: 8px; }
+
+/* Модалки админок (дедуп: Companies create, AdminUsers pwd/create) */
+.wb-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; }
+.wb-modal-box { background: #fff; padding: 20px; border-radius: 8px; min-width: 340px; display: flex; flex-direction: column; gap: 10px; }
+.wb-modal-box--wide { min-width: 360px; }
+.wb-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* Фирменная кнопка #4A3A8C (дедуп ~10 мест в админках/регистрации) */
+.wb-btn-brand { background: #4A3A8C; color: #fff; border: none; }
+.wb-btn-brand--sm { padding: 4px 10px; border-radius: 6px; }
+.wb-btn-brand--md { padding: 6px 12px; border-radius: 6px; }
+.wb-btn-brand--lg { padding: 8px 14px; border-radius: 6px; }
+.wb-btn-brand--xl { padding: 8px 16px; border-radius: 6px; }
+.wb-btn-brand--block { padding: 10px; border-radius: 6px; }
+.wb-btn-brand--form { padding: 8px; border-radius: 6px; }
+
+/* Текст ошибки форм */
+.wb-error { color: #c00; }
+
+/* Зелёный бейдж «задан» (дедуп CompanyDetail ×2) */
+.wb-key-badge { background: #E4F5EF; color: #1E9E7C; }
+
+/* Поля форм на всю ширину (дедуп модалок/регистрации) */
+.wb-field { width: 100%; }
+
+/* Сетка пикера иконок (дедуп AdminMenu/AdminQuickButtons scoped) */
+.icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px,1fr)); gap: 6px; }
+.icon-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; cursor: pointer; font-size: 11px; transition: all .15s; }
+.icon-cell i { font-size: 18px; }
+.icon-cell span { font-size: 9px; color: #6b7280; word-break: break-all; text-align: center; }
+.icon-cell:hover { border-color: #a73afd; background: #f5f0ff; }
+.icon-cell.active { border-color: #a73afd; background: #a73afd; color: #fff; }
+.icon-cell.active span { color: #fff; }

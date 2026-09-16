@@ -1,0 +1,48 @@
+/* page-orders-feed.css — чанк OrdersFeed (/feed).
+ * Title: 'Лента заказов' (route.meta; h1 — класс .page-title, текст не трогать).
+ * Лента 15 колонок: обёртка .page-orders-feed__table-wrap (overflow-x:auto, не смена контейнера).
+ * Фильтр: WbFilterBar (эталон, в шаблоне). Excel: exportExcel (xlsx) — не терять.
+ * Ширины колонок th/td оставлены инлайном сознательно (размерный churn, следующий проход).
+ */
+.page-orders-feed { font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+
+/* Саммари над лентой (БЭМ) */
+.page-orders-feed__summary { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0 24px; }
+.page-orders-feed__card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px 22px; min-width: 160px; flex: 1 1 160px; }
+.page-orders-feed__card-label { font-size: 12px; color: #8a8f98; margin-bottom: 8px; }
+.page-orders-feed__card-value { font-size: 24px; font-weight: 700; color: #1f2937; }
+.page-orders-feed__card-split { display: flex; gap: 16px; margin-top: 4px; }
+.page-orders-feed__split-item { font-size: 20px; display: inline-flex; align-items: center; gap: 6px; }
+.page-orders-feed__badge { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 8px; }
+.page-orders-feed__badge--fbs { background: #fef3c7; color: #d97706; }
+.page-orders-feed__badge--fbo { background: #ffedd5; color: #ea580c; }
+
+/* Карточка грида + таблица (legacy .grid_orderfeed не переименовываем) */
+.page-orders-feed__grid { border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden; }
+.page-orders-feed__table-wrap { overflow-x: auto; }
+.page-orders-feed__table { font-size: 12px; width: 100%; }
+
+/* Ячейка заказа: фото + текст */
+.page-orders-feed__order { display: flex; gap: 10px; align-items: flex-start; }
+.page-orders-feed__photo { width: 50px; height: 66px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
+.page-orders-feed__order-text { min-width: 0; overflow: hidden; }
+.page-orders-feed__date-main { font-weight: 600; }
+.page-orders-feed__date-sub { font-size: 11px; color: #888; }
+.page-orders-feed__place-main { font-weight: 600; }
+.page-orders-feed__place-sub { font-size: 11px; color: #888; }
+
+/* Пагинация */
+.page-orders-feed__pager { display: flex; gap: 8px; justify-content: center; margin: 12px 0; }
+.page-orders-feed__pager-label { align-self: center; font-size: 12px; }
+
+/* Перенесено 1в1 из <style> OrdersFeed.vue (бывший feed.php:517) */
+.grid_orderfeed .cart-item-title{font-weight:bold; color:#2c3e50; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:210px}
+.grid_orderfeed .cart-item-details{color:#666; font-size:11px}
+.grid_orderfeed td:not(:first-child){font-size:12px !important; vertical-align:middle}
+.grid_orderfeed td:nth-child(2), .grid_orderfeed td:nth-child(3), .grid_orderfeed td:nth-child(4){text-align:center}
+.grid_orderfeed th{white-space:normal !important; word-break:break-word; font-weight:500 !important; color:#444; text-align:center; vertical-align:middle}
+.grid_orderfeed th:not(:first-child){font-size:11px !important}
+.grid_orderfeed .form-select{padding:3px; font-size:12px; width:92%; margin:0 auto}
+.status-badge{display:inline-block; padding:3px 10px; border-radius:12px; font-size:12px !important; font-weight:500; white-space:nowrap; margin-top:5px}
+.status-badge.st-blue{background:#e3edff; color:#1a56db} .status-badge.st-lightgreen{background:#e3f9ec; color:#1e7e45} .status-badge.st-green{background:#c9f2d8; color:#0f5132; font-weight:600} .status-badge.st-lightred{background:#fde2e2; color:#c0392b} .status-badge.st-darkred{background:#8b1e1e; color:#fff; font-weight:600} .status-badge.st-unknown{background:#eee; color:#888}
+@media (max-width:767px){ .grid_orderfeed .mobile-hide-col{display:none !important} }

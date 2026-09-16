@@ -1,28 +1,28 @@
 <template>
   <div class="container-xxl page-admin-companies">
-    <h2 style="margin-bottom:16px">Компании (админ)</h2>
-    <div v-if="error" style="color:#c00">{{ error }}</div>
-    <table style="width:100%; border-collapse:collapse">
+    <h2 class="page-admin-companies__title">Компании (админ)</h2>
+    <div v-if="error" class="wb-error">{{ error }}</div>
+    <table class="wb-admin-table">
       <thead>
-        <tr style="background:#f4f4f8">
-          <th style="text-align:left; padding:8px">ID</th>
-          <th style="text-align:left; padding:8px">Название</th>
-          <th style="text-align:left; padding:8px">Аббревиатура</th>
-          <th style="text-align:left; padding:8px">ИНН</th>
-          <th style="text-align:left; padding:8px">Членов</th>
-          <th style="text-align:left; padding:8px">Активна</th>
+        <tr>
+          <th>ID</th>
+          <th>Название</th>
+          <th>Аббревиатура</th>
+          <th>ИНН</th>
+          <th>Членов</th>
+          <th>Активна</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="c in companies" :key="c.id" style="border-bottom:1px solid #eee">
-          <td style="padding:8px">{{ c.id }}</td>
-          <td style="padding:8px">{{ c.name }}</td>
-          <td style="padding:8px">{{ c.abbreviation || '—' }}</td>
-          <td style="padding:8px">{{ c.inn || '—' }}</td>
-          <td style="padding:8px">{{ c.members_count }}</td>
-          <td style="padding:8px">{{ c.is_active ? 'Да' : 'Нет' }}</td>
-          <td style="padding:8px">
+        <tr v-for="c in companies" :key="c.id">
+          <td>{{ c.id }}</td>
+          <td>{{ c.name }}</td>
+          <td>{{ c.abbreviation || '—' }}</td>
+          <td>{{ c.inn || '—' }}</td>
+          <td>{{ c.members_count }}</td>
+          <td>{{ c.is_active ? 'Да' : 'Нет' }}</td>
+          <td>
             <button @click="toggle(c)" :disabled="busy === c.id" :style="{background: c.is_active ? '#c00' : '#0a0', color:'#fff', border:'none', padding:'4px 10px', borderRadius:'6px'}">
               {{ c.is_active ? 'Деактивировать' : 'Активировать' }}
             </button>

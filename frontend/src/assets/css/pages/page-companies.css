@@ -1,0 +1,8 @@
+/* page-companies.css — чанк CompaniesPage. Title: 'Компании'.
+ * Таблица — глобальный .wb-admin-table; модалка — .wb-modal-backdrop/.wb-modal-box.
+ */
+.page-companies { /* паддинги из wb-ui.css */ }
+.page-companies__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.page-companies__title { margin: 0; }
+.page-companies__empty { padding: 20px; text-align: center; color: #666; }
+.page-companies__modal-title { margin: 0; }

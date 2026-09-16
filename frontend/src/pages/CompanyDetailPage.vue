@@ -1,13 +1,13 @@
 <template>
   <div class="container-xxl page-company-detail">
-    <h2 style="margin-bottom:16px">{{ data?.company?.name || 'Компания' }}</h2>
-    <div v-if="error" style="color:#c00">{{ error }}</div>
+    <h2 class="page-company-detail__title">{{ data?.company?.name || 'Компания' }}</h2>
+    <div v-if="error" class="wb-error">{{ error }}</div>
 
-    <div v-if="data" style="display:flex; flex-direction:column; gap:16px">
+    <div v-if="data" class="page-company-detail__stack">
       <form @submit.prevent="onSaveCompany">
         <div class="row">
           <div class="col-md-6">
-            <div class="card h-100" style="border:1px solid #ddd; border-radius:8px">
+            <div class="card h-100 page-company-detail__card-main">
               <div class="card-header bg-light fw-semibold">Основное</div>
               <div class="card-body">
                 <div class="mb-2">
@@ -26,7 +26,7 @@
                 </div>
                 <div class="mb-2">
                   <label class="form-label mb-1">API ключ WB
-                    <span v-if="hasApiKey" class="badge" style="background:#E4F5EF; color:#1E9E7C">задан</span>
+                    <span v-if="hasApiKey" class="badge wb-key-badge">задан</span>
                     <span v-else class="badge bg-light text-muted border">не задан</span>
                   </label>
                   <div class="input-group input-group-sm">
@@ -53,12 +53,12 @@
             </div>
           </div>
           <div v-if="auth.can('viewSeo')" class="col-md-6">
-            <div class="card h-100" style="border:1px solid #b6d4fe; border-radius:8px">
-              <div class="card-header" style="background:#e7f1ff; font-weight:600">SEO <small style="font-weight:400; color:#666">пусто = из params.php</small></div>
+            <div class="card h-100 page-company-detail__card-seo">
+              <div class="card-header page-company-detail__seo-head">SEO <small class="page-company-detail__seo-note">пусто = из params.php</small></div>
               <div class="card-body">
                 <div class="mb-2">
                   <label class="form-label mb-1">OpenRouter API key
-                    <span v-if="hasSeoKey" class="badge" style="background:#E4F5EF; color:#1E9E7C">задан</span>
+                    <span v-if="hasSeoKey" class="badge wb-key-badge">задан</span>
                     <span v-else class="badge bg-light text-muted border">из params</span>
                   </label>
                   <div class="input-group input-group-sm">
@@ -125,30 +125,30 @@
             </div>
           </div>
         </div>
-        <div style="margin-top:10px; display:flex; gap:8px; align-items:center">
-          <button type="submit" :disabled="savingCompany" style="background:#4A3A8C; color:#fff; border:none; padding:8px 16px; border-radius:6px">Сохранить компанию</button>
-          <span v-if="companySaved" style="font-size:13px; color:#1E9E7C">Сохранено</span>
+        <div class="page-company-detail__save-row">
+          <button type="submit" :disabled="savingCompany" class="wb-btn-brand wb-btn-brand--xl">Сохранить компанию</button>
+          <span v-if="companySaved" class="page-company-detail__saved">Сохранено</span>
         </div>
       </form>
 
-      <table style="width:100%; border-collapse:collapse">
+      <table class="wb-admin-table">
         <thead>
-          <tr style="background:#f4f4f8">
-            <th style="text-align:left; padding:8px">ID</th>
-            <th style="text-align:left; padding:8px">Пользователь</th>
-            <th style="text-align:left; padding:8px">Email</th>
-            <th style="text-align:left; padding:8px">Роль</th>
-            <th style="text-align:left; padding:8px">Статус</th>
-            <th style="text-align:left; padding:8px">Пермы</th>
+          <tr>
+            <th>ID</th>
+            <th>Пользователь</th>
+            <th>Email</th>
+            <th>Роль</th>
+            <th>Статус</th>
+            <th>Пермы</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="m in data.members" :key="m.id" style="border-bottom:1px solid #eee">
-            <td style="padding:8px">{{ m.id }}</td>
-            <td style="padding:8px">{{ m.username }}</td>
-            <td style="padding:8px">{{ m.email || '—' }}</td>
-            <td style="padding:8px">
+          <tr v-for="m in data.members" :key="m.id">
+            <td>{{ m.id }}</td>
+            <td>{{ m.username }}</td>
+            <td>{{ m.email || '—' }}</td>
+            <td>
               <select v-model="editRoles[m.id]" @change="onUpdate(m.id)">
                 <option value="owner">owner</option>
                 <option value="admin">admin</option>
@@ -156,43 +156,43 @@
                 <option value="viewer">viewer</option>
               </select>
             </td>
-            <td style="padding:8px">{{ m.status }}</td>
-            <td style="padding:8px">
-              <span v-for="p in (m.perms || [])" :key="p" style="display:inline-block; background:#eef4ff; border-radius:8px; padding:1px 6px; margin:0 4px 2px 0; font-size:12px">
-                {{ p }}<a href="#" @click.prevent="removePerm(m.id, p)" style="margin-left:4px; color:#c00; text-decoration:none" title="Снять">×</a>
+            <td>{{ m.status }}</td>
+            <td>
+              <span v-for="p in (m.perms || [])" :key="p" class="page-company-detail__perm">
+                {{ p }}<a href="#" @click.prevent="removePerm(m.id, p)" class="page-company-detail__perm-drop" title="Снять">×</a>
               </span>
-              <select v-model="addSel[m.id]" @change="addPerm(m.id)" style="font-size:12px; max-width:140px">
+              <select v-model="addSel[m.id]" @change="addPerm(m.id)" class="page-company-detail__perm-select">
                 <option value="">+ перм...</option>
                 <option v-for="g in grantable" :key="g.name" :value="g.name" :disabled="(m.perms || []).includes(g.name)">{{ g.name }}</option>
               </select>
             </td>
-            <td style="padding:8px"><button @click="onDelete(m.id)" style="color:#c00">Удалить</button></td>
+            <td><button @click="onDelete(m.id)" class="page-company-detail__delete">Удалить</button></td>
           </tr>
         </tbody>
       </table>
 
-      <div style="border:1px solid #ddd; padding:14px; border-radius:8px; max-width:480px">
-        <h3 style="margin:0 0 10px">Пригласить пользователя</h3>
-        <form @submit.prevent="onInvite" style="display:flex; flex-direction:column; gap:8px">
-          <label>Email<input v-model="invite.email" type="email" required style="width:100%" /></label>
+      <div class="page-company-detail__invite-box">
+        <h3 class="page-company-detail__invite-title">Пригласить пользователя</h3>
+        <form @submit.prevent="onInvite" class="page-company-detail__invite-form">
+          <label>Email<input v-model="invite.email" type="email" required class="wb-field" /></label>
           <label>Роль
-            <select v-model="invite.role" style="width:100%">
+            <select v-model="invite.role" class="wb-field">
               <option value="member">member</option>
               <option value="admin">admin</option>
               <option value="viewer">viewer</option>
             </select>
           </label>
-          <div v-if="grantable.length" style="font-size:13px">
-            <div style="margin-bottom:4px; color:#555">Доп. доступ (только из вашего):</div>
-            <label v-for="g in grantable" :key="g.name" style="display:block; font-weight:normal" :title="g.description || g.name">
+          <div v-if="grantable.length" class="page-company-detail__perms-note">
+            <div class="page-company-detail__perms-label">Доп. доступ (только из вашего):</div>
+            <label v-for="g in grantable" :key="g.name" class="page-company-detail__perm-check" :title="g.description || g.name">
               <input type="checkbox" :value="g.name" v-model="invite.perms" /> {{ g.name }}
             </label>
           </div>
-          <button type="submit" :disabled="inviting" style="background:#4A3A8C; color:#fff; border:none; padding:8px; border-radius:6px">Пригласить</button>
+          <button type="submit" :disabled="inviting" class="wb-btn-brand wb-btn-brand--form">Пригласить</button>
         </form>
-        <div v-if="lastInvite" style="margin-top:12px; padding:10px; background:#eef7ee; border-radius:6px; word-break:break-all">
+        <div v-if="lastInvite" class="page-company-detail__invite-ok">
           <div>Токен: <code>{{ lastInvite.invite_token }}</code></div>
-          <div style="font-size:12px; color:#555">до {{ fmtDT(lastInvite.expires_at) }}</div>
+          <div class="page-company-detail__invite-until">до {{ fmtDT(lastInvite.expires_at) }}</div>
         </div>
       </div>
     </div>

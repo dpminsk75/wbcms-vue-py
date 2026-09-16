@@ -1,0 +1,6 @@
+/* page-admin-companies.css — чанк AdminCompaniesPage. Title: 'Компании (админ)'.
+ * Таблица — глобальный .wb-admin-table. Кнопка toggle — динамический :style, остаётся.
+ */
+.page-admin-companies { /* паддинги из wb-ui.css */ }
+.page-admin-companies__table-wrap { overflow-x: auto; }
+.page-admin-companies__title { margin-bottom: 16px; }

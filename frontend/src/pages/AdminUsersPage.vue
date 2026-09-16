@@ -1,46 +1,46 @@
 <template>
   <div class="container-xxl page-admin-users">
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px">
-      <h2 style="margin:0">Пользователи{{ isGlobal ? ' (админ)' : '' }}</h2>
-      <button @click="openCreate = true" style="padding:8px 14px; background:#4A3A8C; color:#fff; border:none; border-radius:6px">Создать пользователя</button>
+    <div class="page-admin-users__head">
+      <h2 class="page-admin-users__title">Пользователи{{ isGlobal ? ' (админ)' : '' }}</h2>
+      <button @click="openCreate = true" class="wb-btn-brand wb-btn-brand--lg">Создать пользователя</button>
     </div>
-    <div v-if="!isGlobal" style="font-size:13px; color:#666; margin-bottom:12px">Показаны только пользователи ваших компаний ({{ managedNames }}).</div>
-    <div v-if="error" style="color:#c00">{{ error }}</div>
-    <table style="width:100%; border-collapse:collapse">
+    <div v-if="!isGlobal" class="page-admin-users__scope-note">Показаны только пользователи ваших компаний ({{ managedNames }}).</div>
+    <div v-if="error" class="wb-error">{{ error }}</div>
+    <table class="wb-admin-table">
       <thead>
-        <tr style="background:#f4f4f8">
-          <th style="text-align:left; padding:8px">ID</th>
-          <th style="text-align:left; padding:8px">Логин</th>
-          <th style="text-align:left; padding:8px">Email</th>
-          <th style="text-align:left; padding:8px">Статус</th>
-          <th style="text-align:left; padding:8px">Компании</th>
-          <th v-if="isGlobal" style="text-align:left; padding:8px">Роли/пермы</th>
+        <tr>
+          <th>ID</th>
+          <th>Логин</th>
+          <th>Email</th>
+          <th>Статус</th>
+          <th>Компании</th>
+          <th v-if="isGlobal">Роли/пермы</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="u in users" :key="u.id" style="border-bottom:1px solid #eee">
-          <td style="padding:8px">{{ u.id }}</td>
-          <td style="padding:8px">{{ u.username }}</td>
-          <td style="padding:8px">{{ u.email }}</td>
-          <td style="padding:8px">{{ u.blocked ? 'Заблокирован' : 'Активен' }}</td>
-          <td style="padding:8px">
-            <span v-for="c in u.companies" :key="c.company_id" style="margin-right:8px">
+        <tr v-for="u in users" :key="u.id">
+          <td>{{ u.id }}</td>
+          <td>{{ u.username }}</td>
+          <td>{{ u.email }}</td>
+          <td>{{ u.blocked ? 'Заблокирован' : 'Активен' }}</td>
+          <td>
+            <span v-for="c in u.companies" :key="c.company_id" class="page-admin-users__company">
               {{ c.company_name }} <small>({{ c.role }}/{{ c.status }})</small>
             </span>
-            <span v-if="!u.companies.length" style="color:#999">—</span>
+            <span v-if="!u.companies.length" class="page-admin-users__none">—</span>
           </td>
-          <td v-if="isGlobal" style="padding:8px">
-            <span v-for="it in (u.items || [])" :key="it.name" style="display:inline-block; background:#f1f1f4; border-radius:8px; padding:1px 6px; margin:0 4px 2px 0; font-size:12px" :title="it.type === 1 ? 'роль' : 'перм'">
-              {{ it.name }}<a href="#" @click.prevent="dropRole(u.id, it.name)" style="margin-left:4px; color:#c00; text-decoration:none" title="Снять">×</a>
+          <td v-if="isGlobal">
+            <span v-for="it in (u.items || [])" :key="it.name" class="page-admin-users__rbac" :title="it.type === 1 ? 'роль' : 'перм'">
+              {{ it.name }}<a href="#" @click.prevent="dropRole(u.id, it.name)" class="page-admin-users__rbac-drop" title="Снять">×</a>
             </span>
-            <select v-model="addSel[u.id]" @change="addRole(u.id)" style="font-size:12px; max-width:150px">
+            <select v-model="addSel[u.id]" @change="addRole(u.id)" class="page-admin-users__rbac-select">
               <option value="">+ дать...</option>
               <option v-for="r in rbacItems" :key="r.name" :value="r.name" :disabled="(u.items || []).some((x: any) => x.name === r.name) || r.name === 'global_admin'">{{ r.name }}</option>
             </select>
           </td>
-          <td style="padding:8px; white-space:nowrap">
-            <button @click="openPwd(u)" style="background:#4A3A8C; color:#fff; border:none; padding:4px 10px; border-radius:6px; margin-right:6px">Изменить пароль</button>
+          <td class="page-admin-users__row-actions">
+            <button @click="openPwd(u)" class="wb-btn-brand wb-btn-brand--sm page-admin-users__pwd-btn">Изменить пароль</button>
             <button v-if="isGlobal" @click="toggle(u)" :disabled="busy === u.id" :style="{background: u.blocked ? '#0a0' : '#c00', color:'#fff', border:'none', padding:'4px 10px', borderRadius:'6px'}">
               {{ u.blocked ? 'Разблокировать' : 'Заблокировать' }}
             </button>
@@ -49,42 +49,42 @@
       </tbody>
     </table>
 
-    <div v-if="pwdTarget" style="position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center">
-      <form @submit.prevent="savePwd" style="background:#fff; padding:20px; border-radius:8px; min-width:340px; display:flex; flex-direction:column; gap:10px">
-        <h3 style="margin:0">Новый пароль — {{ pwdTarget.username }}</h3>
-        <label>Пароль (мин. 6)<input v-model="pwd" type="password" required minlength="6" autocomplete="new-password" style="width:100%" /></label>
-        <label>Повтор<input v-model="pwd2" type="password" required minlength="6" autocomplete="new-password" style="width:100%" /></label>
-        <div v-if="pwdError" style="color:#c00">{{ pwdError }}</div>
-        <div style="display:flex; gap:8px; justify-content:flex-end">
+    <div v-if="pwdTarget" class="wb-modal-backdrop">
+      <form @submit.prevent="savePwd" class="wb-modal-box">
+        <h3 class="page-admin-users__modal-title">Новый пароль — {{ pwdTarget.username }}</h3>
+        <label>Пароль (мин. 6)<input v-model="pwd" type="password" required minlength="6" autocomplete="new-password" class="wb-field" /></label>
+        <label>Повтор<input v-model="pwd2" type="password" required minlength="6" autocomplete="new-password" class="wb-field" /></label>
+        <div v-if="pwdError" class="wb-error">{{ pwdError }}</div>
+        <div class="wb-modal-actions">
           <button type="button" @click="pwdTarget = null">Отмена</button>
-          <button type="submit" :disabled="pwdBusy" style="background:#4A3A8C; color:#fff; border:none; padding:6px 12px; border-radius:6px">Сохранить</button>
+          <button type="submit" :disabled="pwdBusy" class="wb-btn-brand wb-btn-brand--md">Сохранить</button>
         </div>
       </form>
     </div>
 
-    <div v-if="openCreate" style="position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center">
-      <form @submit.prevent="createUser" style="background:#fff; padding:20px; border-radius:8px; min-width:360px; display:flex; flex-direction:column; gap:10px">
-        <h3 style="margin:0">Новый пользователь{{ isGlobal ? '' : ' в мою компанию' }}</h3>
-        <label>Логин<input v-model="createForm.username" required minlength="3" style="width:100%" /></label>
-        <label>Email<input v-model="createForm.email" type="email" required style="width:100%" /></label>
-        <label>Пароль (мин. 6)<input v-model="createForm.password" type="password" required minlength="6" autocomplete="new-password" style="width:100%" /></label>
+    <div v-if="openCreate" class="wb-modal-backdrop">
+      <form @submit.prevent="createUser" class="wb-modal-box wb-modal-box--wide">
+        <h3 class="page-admin-users__modal-title">Новый пользователь{{ isGlobal ? '' : ' в мою компанию' }}</h3>
+        <label>Логин<input v-model="createForm.username" required minlength="3" class="wb-field" /></label>
+        <label>Email<input v-model="createForm.email" type="email" required class="wb-field" /></label>
+        <label>Пароль (мин. 6)<input v-model="createForm.password" type="password" required minlength="6" autocomplete="new-password" class="wb-field" /></label>
         <label>Компания
-          <select v-model="createForm.company_id" :required="!isGlobal" style="width:100%">
+          <select v-model="createForm.company_id" :required="!isGlobal" class="wb-field">
             <option v-if="isGlobal" :value="null">— без компании —</option>
             <option v-for="c in companyOptions" :key="c.id" :value="c.id">{{ c.name }}</option>
           </select>
         </label>
         <label v-if="createForm.company_id">Роль в компании
-          <select v-model="createForm.role" style="width:100%">
+          <select v-model="createForm.role" class="wb-field">
             <option value="member">member</option>
             <option value="viewer">viewer</option>
             <option value="admin">admin</option>
           </select>
         </label>
-        <div v-if="createError" style="color:#c00">{{ createError }}</div>
-        <div style="display:flex; gap:8px; justify-content:flex-end">
+        <div v-if="createError" class="wb-error">{{ createError }}</div>
+        <div class="wb-modal-actions">
           <button type="button" @click="openCreate = false">Отмена</button>
-          <button type="submit" :disabled="creating" style="background:#4A3A8C; color:#fff; border:none; padding:6px 12px; border-radius:6px">Создать</button>
+          <button type="submit" :disabled="creating" class="wb-btn-brand wb-btn-brand--md">Создать</button>
         </div>
       </form>
     </div>

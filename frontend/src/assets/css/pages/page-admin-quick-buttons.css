@@ -1,0 +1,71 @@
+/* page-admin-quick-buttons.css — чанк AdminQuickButtons. Title: 'Быстрые кнопки'.
+ * Было container max-width:1100px -> container-xxl. Редактор quick_buttons.json.
+ * Scoped-дубли .icon-grid удалены (канон в wb-ui.css); .panel-btns — site.css.
+ */
+.page-admin-quick-buttons { /* паддинги из wb-ui.css */ }
+.page-admin-quick-buttons__crumbs { margin-bottom: 12px; }
+.page-admin-quick-buttons__crumbs-list { font-size: 12px; }
+.page-admin-quick-buttons__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.page-admin-quick-buttons__title { font-size: 22px; font-weight: 700; margin: 0; }
+.page-admin-quick-buttons__title-sub { font-weight: 400; font-size: 13px; }
+.page-admin-quick-buttons__count { font-size: 11px; }
+.page-admin-quick-buttons__msg { font-size: 13px; padding: 8px 12px; }
+
+/* Предпросмотр */
+.page-admin-quick-buttons__preview-card { border: 1px solid #e0e0e0; border-radius: 12px; }
+.page-admin-quick-buttons__preview-head { background: #f8f9fa; font-size: 12px; font-weight: 600; }
+.page-admin-quick-buttons__preview-meta { font-weight: 400; }
+.page-admin-quick-buttons__preview-body { padding: 12px; }
+.page-admin-quick-buttons__preview-empty { font-size: 12px; }
+.page-admin-quick-buttons__preview-btns { margin: 0; }
+.page-admin-quick-buttons__preview-icon { margin-right: 4px; }
+.page-admin-quick-buttons__preview-note { font-size: 11px; margin-top: 8px; }
+
+/* Список */
+.page-admin-quick-buttons__list-card { border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden; }
+.page-admin-quick-buttons__list-head { background: #fff; border-bottom: 1px solid #eee; }
+.page-admin-quick-buttons__list-title { font-weight: 600; font-size: 13px; }
+.page-admin-quick-buttons__add-btn { font-size: 12px; }
+.page-admin-quick-buttons__table { font-size: 12px; }
+.page-admin-quick-buttons__table-head { background: #f8f9fa; }
+.page-admin-quick-buttons__table-sub { font-weight: 400; }
+.page-admin-quick-buttons__icon-name { font-size: 9px; color: #888; margin-top: 2px; word-break: break-all; }
+.page-admin-quick-buttons__row-icon { font-size: 16px; }
+.page-admin-quick-buttons__ext-icon { font-size: 10px; }
+.page-admin-quick-buttons__label-cell { font-weight: 600; }
+.page-admin-quick-buttons__card-cell { font-size: 11px; color: #555; }
+.page-admin-quick-buttons__row-actions { text-align: right; white-space: nowrap; }
+.page-admin-quick-buttons__edit-btn { font-size: 11px; }
+.page-admin-quick-buttons__foot { background: #fff; }
+.page-admin-quick-buttons__foot-btn { font-size: 12px; }
+
+/* Форма */
+.page-admin-quick-buttons__form-card { border: 1px solid #a73afd; border-radius: 12px; }
+.page-admin-quick-buttons__form-head { background: #f3e8ff; font-weight: 600; font-size: 13px; }
+.page-admin-quick-buttons__form-close { font-size: 11px; }
+.page-admin-quick-buttons__form-body { padding: 16px; }
+.page-admin-quick-buttons__field-label { font-size: 11px; font-weight: 600; }
+.page-admin-quick-buttons__field-hint { font-size: 10px; }
+.page-admin-quick-buttons__search-wrap { position: relative; }
+.page-admin-quick-buttons__search-drop { position: absolute; top: 100%; left: 0; right: 0; max-height: 240px; overflow: auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; z-index: 10; box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+.page-admin-quick-buttons__search-row { padding: 6px 10px; cursor: pointer; font-size: 12px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; gap: 8px; }
+.page-admin-quick-buttons__search-brand { font-size: 10px; }
+.page-admin-quick-buttons__search-status { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+.page-admin-quick-buttons__picked { font-size: 11px; }
+.page-admin-quick-buttons__reset-btn { font-size: 11px; }
+.page-admin-quick-buttons__searching { font-size: 11px; }
+.page-admin-quick-buttons__form-actions-hint { font-size: 11px; align-self: center; }
+
+/* Пикер иконок */
+.page-admin-quick-buttons__picker-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 1050; display: flex; align-items: center; justify-content: center; padding: 12px; }
+.page-admin-quick-buttons__picker-card { width: min(920px,100%); max-height: 90vh; display: flex; flex-direction: column; border-radius: 12px; }
+.page-admin-quick-buttons__picker-head { gap: 8px; flex-wrap: wrap; }
+.page-admin-quick-buttons__picker-title { font-size: 14px; }
+.page-admin-quick-buttons__picker-sub { font-size: 11px; }
+.page-admin-quick-buttons__picker-search { width: 220px; }
+.page-admin-quick-buttons__picker-tabs { padding: 8px 12px; border-bottom: 1px solid #eee; display: flex; gap: 6px; }
+.page-admin-quick-buttons__picker-pick { align-self: center; font-size: 11px; }
+.page-admin-quick-buttons__picker-body { overflow: auto; padding: 10px; flex: 1 1 auto; }
+.page-admin-quick-buttons__picker-empty { font-size: 12px; }
+.page-admin-quick-buttons__picker-foot { font-size: 11px; }
+.page-admin-quick-buttons__foot-note { font-size: 11px; }

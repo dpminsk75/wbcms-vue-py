@@ -1,0 +1,55 @@
+/* page-unclaimed-orders.css — чанк UnclaimedOrdersPage.
+ * Title: 'Невыкупленные товары (Unclaimed)' (route.meta; h1.page-title).
+ * Грид 8 колонок: внутренняя прокрутка (не смена контейнера).
+ * Фильтр: WbFilterBar (эталон) + 4 локальных select. Excel: exportExcel (xlsx) — не терять.
+ * Динамические :style подсветки (cancel/rate) остаются в шаблоне.
+ * Ширины колонок th оставлены инлайном (размерный churn, следующий проход).
+ */
+.page-unclaimed-orders { font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+
+/* Локальные select фильтра */
+.page-unclaimed-orders__filter-label { font-size: 12px; font-weight: 600; }
+.page-unclaimed-orders__filter-select { height: 38px; font-size: 13px; }
+
+/* Карточка грида + шапка */
+.page-unclaimed-orders__grid { border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden; margin-top: 16px; }
+.page-unclaimed-orders__head-count { font-size: 12px; font-weight: 400; }
+.page-unclaimed-orders__table-wrap { overflow-x: auto; }
+.page-unclaimed-orders__table { font-size: 12px; width: 100%; table-layout: fixed; }
+
+/* Ячейки (legacy .unclaimed-table не переименовываем) */
+.page-unclaimed-orders__cell-id { text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-unclaimed-orders__nm-link { text-decoration: none; font-weight: 600; }
+.page-unclaimed-orders__cell-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.page-unclaimed-orders__cell-num { text-align: right; font-weight: 600; }
+
+/* Пагинация */
+.page-unclaimed-orders__pager { display: flex; gap: 8px; justify-content: center; margin: 12px 0; }
+
+/* Перенесено 1в1 из <style scoped> UnclaimedOrdersPage.vue */
+.unclaimed-table th,
+.unclaimed-table td {
+  padding: 6px 4px !important;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.unclaimed-table th {
+  font-size: 11px !important;
+  font-weight: 600;
+  color: #343a40;
+  background: #f8f9fa;
+}
+.unclaimed-table td {
+  font-size: 12px;
+}
+.unclaimed-table-card .card-header {
+  padding: 8px 12px;
+}
+@media (max-width: 767px) {
+  .unclaimed-orders-page {
+    padding: 16px 10px;
+  }
+  .unclaimed-table {
+    min-width: 880px;
+  }
+}

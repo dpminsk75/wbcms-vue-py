@@ -1,0 +1,68 @@
+/* page-orders-heatmap.css — чанк OrdersHeatmap (тепловая карта 7x24).
+ * Title: 'Тепловая карта заказов 7×24' (route.meta; h1.page-title).
+ * График-матрица 7×24 — кастом (cellStyle :style-биндинг остаётся в шаблоне).
+ * Фильтр: WbFilterBar (nm_id + даты). Excel на странице нет.
+ */
+.page-orders-heatmap { font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+
+/* Шапка выбранной карточки */
+.page-orders-heatmap__card-head { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+.page-orders-heatmap__card-photo { width: 60px; height: 80px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+.page-orders-heatmap__card-title { font-size: 18px; font-weight: 700; margin: 0; }
+.page-orders-heatmap__card-sub { font-size: 12px; color: #6b7280; }
+.page-orders-heatmap__lede { font-size: 13px; }
+
+/* Сводка периода (legacy .heatmap-top/.heatmap-summary не переименовываем) */
+.heatmap-top { display: flex; flex-wrap: wrap; gap: 16px; margin: 12px 0 16px; }
+.heatmap-summary { font-size: 13px; color: #6b7280; }
+
+/* Карточка матрицы */
+.page-orders-heatmap__matrix-card { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
+.page-orders-heatmap__matrix-head { background: #fff; font-size: 13px; font-weight: 600; }
+.page-orders-heatmap__matrix-hint { font-weight: 400; font-size: 12px; }
+.page-orders-heatmap__matrix-wrap { overflow-x: auto; }
+.page-orders-heatmap__matrix-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.page-orders-heatmap__matrix-table th { background: #f9fafb; border: 1px solid #e5e7eb; }
+.page-orders-heatmap__matrix-corner { padding: 8px; min-width: 60px; }
+.page-orders-heatmap__matrix-hour { padding: 6px 2px; text-align: center; min-width: 36px; }
+.page-orders-heatmap__matrix-day { padding: 6px 8px; text-align: left; }
+
+/* Легенда шкалы */
+.page-orders-heatmap__legend { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 11px; color: #6b7280; }
+.page-orders-heatmap__legend-bar { flex: 1; height: 10px; background: linear-gradient(to right, #ffffff, rgba(47,107,255,1)); border: 1px solid #e5e7eb; border-radius: 4px; }
+.page-orders-heatmap__legend-gap { margin-left: 8px; }
+
+/* Панель деталей часа */
+.page-orders-heatmap__detail-card { border: 1px solid #e5e7eb; border-radius: 10px; position: sticky; top: 12px; }
+.page-orders-heatmap__detail-head { background: #fff; font-weight: 600; font-size: 13px; }
+.page-orders-heatmap__detail-body { font-size: 13px; }
+.page-orders-heatmap__detail-hint { font-size: 12px; margin-bottom: 8px; }
+.page-orders-heatmap__detail-title { font-weight: 700; margin-bottom: 10px; }
+.page-orders-heatmap__detail-stats { font-size: 12px; }
+.page-orders-heatmap__stat-value { font-weight: 700; font-size: 16px; }
+.page-orders-heatmap__stat-value--sm { font-weight: 700; }
+.page-orders-heatmap__detail-foot { font-size: 11px; margin-top: 10px; }
+
+/* Рекомендации окон */
+.page-orders-heatmap__reco { margin-top: 18px; }
+.page-orders-heatmap__reco-title { font-weight: 700; margin-bottom: 4px; }
+.page-orders-heatmap__reco-lede { font-size: 12px; margin-bottom: 12px; }
+.page-orders-heatmap__reco-card { border: 1px solid #e5e7eb; border-radius: 10px; }
+.page-orders-heatmap__reco-head { margin-bottom: 8px; }
+.page-orders-heatmap__reco-name { font-weight: 700; font-size: 13px; }
+.page-orders-heatmap__reco-badge { font-size: 10px; color: #fff; }
+.page-orders-heatmap__reco-sub { font-size: 11px; margin-bottom: 8px; }
+.page-orders-heatmap__reco-best { background: #f8fafc; }
+.page-orders-heatmap__reco-best-title { font-weight: 800; font-size: 14px; }
+.page-orders-heatmap__reco-best-sub { font-size: 11px; }
+.page-orders-heatmap__reco-list { font-size: 11px; }
+.page-orders-heatmap__reco-list-title { font-weight: 700; font-size: 11px; margin: 10px 0 6px; }
+.page-orders-heatmap__reco-item { font-size: 11px; }
+.page-orders-heatmap__reco-item-title { font-weight: 600; }
+.page-orders-heatmap__reco-mini { font-size: 11px; }
+
+/* Перенесено 1в1 из <style> OrdersHeatmap.vue */
+.heatmap-table th { white-space:nowrap; }
+.heatmap-cell:hover { outline:2px solid #2f6bff; outline-offset:-2px; }
+.heatmap-cell.is-active { outline:2px solid #111827 !important; outline-offset:-2px; box-shadow:inset 0 0 0 1px #111827; }
+@media (max-width: 992px) { .heatmap-table { font-size:11px; } }
