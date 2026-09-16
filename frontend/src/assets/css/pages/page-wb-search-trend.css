@@ -1,0 +1,10 @@
+/* page-wb-search-trend.css — чанк WbSearchTrendPage. */
+.page-wb-search-trend__title { font-weight: 400; }
+.page-wb-search-trend__table-wrap { max-height: 70vh; overflow: auto; }
+.page-wb-search-trend__table { font-size: 12px; }
+.page-wb-search-trend__table thead th { position: sticky; top: 0; background: #fff; z-index: 10; }
+.page-wb-search-trend__phrase { position: sticky; left: 0; background: #fff; min-width: 300px; white-space: normal; box-shadow: 2px 0 5px rgba(0,0,0,.05); }
+.page-wb-search-trend__table tbody tr:nth-of-type(odd) .page-wb-search-trend__phrase { background-color: #f9f9f9; }
+.page-wb-search-trend__row { cursor: pointer; }
+.page-wb-search-trend__row--selected > td { background-color: #ffb7f8 !important; color: #000 !important; }
+.page-wb-search-trend__chart { width: 100%; height: 600px; }

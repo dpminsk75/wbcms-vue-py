@@ -24,7 +24,10 @@
               <i class="bi bi-search" style="position:absolute; right:14px; top:50%; transform:translateY(-50%); color:#adb5bd; font-size:12px;"></i>
             </div>
             <div style="max-height:240px; overflow:auto;">
-              <div v-if="!filteredOptions.length" style="padding:10px; font-size:12px; color:#6c757d; text-align:center;">Ничего не найдено</div>
+              <div v-if="!filteredOptions.length && !(allowCustom && searchQuery.trim())" style="padding:10px; font-size:12px; color:#6c757d; text-align:center;">Ничего не найдено</div>
+              <div v-if="allowCustom && searchQuery.trim()" @mousedown.prevent="selectCustom(searchQuery.trim())" style="padding:6px 10px; cursor:pointer; font-size:12px; border-bottom:1px solid #f1f5f9; background:#eef4ff">
+                Использовать «{{ searchQuery.trim() }}»
+              </div>
               <div v-for="opt in filteredOptions.slice(0,50)" :key="String(opt.value)" @mousedown.prevent="selectOption(opt)" style="padding:6px 10px; cursor:pointer; font-size:12px; border-bottom:1px solid #f1f5f9" :style="{background: String(opt.value)===String(modelValue) ? '#0d6efd' : '#fff', color: String(opt.value)===String(modelValue) ? '#fff' : '#212529'}">
                 {{ opt.label }}
               </div>
@@ -72,6 +75,7 @@ const props = withDefaults(defineProps<{
   initValueText?: string
   quickButtons?: any[]
   defaultDays?: number
+  allowCustom?: boolean // как tags:true в trend.php:31 — свой текст вместо выбора из списка
 }>(), {
   label: 'Выбор',
   placeholder: 'Выберите...',
@@ -81,6 +85,7 @@ const props = withDefaults(defineProps<{
   initValueText: '',
   quickButtons: () => [],
   defaultDays: 30,
+  allowCustom: false,
 })
 
 const modelValue = defineModel<string>('modelValue', { default: '' })
@@ -136,6 +141,12 @@ const toggleList = ()=>{
 
 const selectOption = (opt:any)=>{
   modelValue.value = String(opt.value)
+  showList.value = false
+  searchQuery.value = ''
+}
+
+const selectCustom = (text:string)=>{
+  modelValue.value = text
   showList.value = false
   searchQuery.value = ''
 }
