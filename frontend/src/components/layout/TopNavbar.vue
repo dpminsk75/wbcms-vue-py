@@ -45,8 +45,8 @@
               </template>
             </ul>
           </li>
-          <!-- компания + выход — flex справа, без absolute (фикс наслоения) -->
-          <li class="nav-item wb-menu__item dropdown ms-auto">
+          <!-- компания — вправо к «Выходу», выход — у правого края -->
+          <li class="nav-item wb-menu__item dropdown ms-auto wb-menu__company">
             <a class="nav-link dropdown-toggle" href="#" @click.prevent>
               <span class="wb-icon"><i class="bi bi-building"></i></span>
               <span class="wb-text">{{ companyLabel }}</span>
@@ -61,7 +61,7 @@
               </li>
             </ul>
           </li>
-          <li class="nav-item ms-2" style="position:static !important; right:auto !important">
+          <li class="nav-item ms-2 wb-menu__logout">
             <!-- Компании/Пользователи идут из backend/config/menu.json (секция Админка), хардкода тут нет -->
             <button class="wb-logout-btn" @click="doLogout">
               <i class="bi bi-box-arrow-right wb-icon"></i>
@@ -140,7 +140,19 @@ const sectionIconClass = (section:any): string => {
   return iconClassMap[value] || value
 }
 
-const spaMap: Record<string,string> = { '/wb-order/feed': '/feed', '/wb-sales-analysis': '/wb-sales-analysis', '/wb-sales-analysis/': '/wb-sales-analysis', '/wb/detail': '/wb/detail', '/wb/detail/': '/wb/detail', '/admin/quick-buttons': '/admin/quick-buttons', '/admin/menu': '/admin/menu', '/admin/invites': '/admin/invites', '/companies': '/companies', '/admin/users': '/admin/users' }
+const spaMap: Record<string,string> = { 
+  '/wb-order/feed': '/feed', 
+  '/wb-sales-analysis': '/wb-sales-analysis', 
+  '/wb-sales-analysis/': '/wb-sales-analysis', 
+  '/wb/detail': '/wb/detail', 
+  '/wb/detail/': '/wb/detail', 
+  '/admin/quick-buttons': '/admin/quick-buttons', 
+  '/admin/menu': '/admin/menu', 
+  '/admin/invites': '/admin/invites', 
+  '/companies': '/companies', 
+  '/admin/users': '/admin/users',
+  '/wb-profit/top-products': '/wb-profit/top-products'
+}
 const toSpa = (url?: string): string | null => {
   if (!url || url==='#') return null
   if (spaMap[url]) return spaMap[url]

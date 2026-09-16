@@ -97,7 +97,7 @@
     flex-direction: column !important; /* Иконка над текстом */
     align-items: center !important;    /* Центрирует текст под иконкой */
     justify-content: center;
-    padding: 5px 15px !important;
+    padding: 5px 7px !important;
     color: #fff !important;           /* Белый цвет текста */
     line-height: 1.2;
 }
@@ -138,7 +138,7 @@
 .wb-logout-btn {
     background: transparent !important; /* Убираем серый фон */
     border: none !important;           /* Убираем рамку */
-    padding: 10px 15px !important;     /* Подгоняем под отступы других пунктов */
+    padding: 5px 7px !important;     /* Как у .nav-link — меню влезает в экран */
     color: #fff !important;            /* Белый текст */
     display: flex !important;
     flex-direction: column !important; /* Иконка над текстом */
@@ -169,6 +169,19 @@
 .wb-logout-btn .wb-text {
     font-size: 12px;
     font-weight: 400;
+}
+
+/* Компания — вправо, вплотную к «Выходу»; «Выход» — у правого края, не сжимать */
+.wb-menu__company {
+    margin-left: auto !important;
+    flex-shrink: 0;
+}
+.wb-menu__logout {
+    flex-shrink: 0;
+}
+/* Подтянуть «Выход» левее — только здесь, глобальный .ms-2 не трогаем */
+.wb-menu__logout.ms-2 {
+    margin-left: -20px !important;
 }
 
 .navbar__logout, navbar__login {
