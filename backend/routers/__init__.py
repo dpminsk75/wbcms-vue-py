@@ -5,3 +5,5 @@ from .admin import router as admin_router
 from .tags import router as tags_router
 from .wb_search import router as wb_search_router
 from .cost import router as cost_router
+from .wb_orders import router as wb_orders_router
+from .wb_sales import router as wb_sales_router
