@@ -1,0 +1,19 @@
+/* page-cost-list.css — чанк CostListPage (vxe edit-таблица). */
+.page-cost-list__grid { font-size: 12px; }
+.page-cost-list__grid .vxe-cell { padding: 2px 3px !important; }
+/* редактируемые колонки (Дата, Себестоимость) — фоновая подсветка поверх stripe */
+.page-cost-list__grid .vxe-body--column.page-cost-list__editable { background-color: #fef9e7 !important; }
+.page-cost-list__price { display: inline-block; text-align: right; min-width: 60px; }
+.page-cost-list__date-input { min-width: 130px; }
+.page-cost-list__filter { border: 1px solid #e5e7eb; border-radius: 12px; }
+.page-cost-list__combo { position: relative; }
+.page-cost-list__combo-list { position: absolute; top: 100%; left: 0; right: 0; max-height: 260px; overflow: auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; z-index: 10; box-shadow: 0 4px 12px rgba(0,0,0,.1); }
+.page-cost-list__combo-item { padding: 6px 10px; cursor: pointer; font-size: 12px; border-bottom: 1px solid #f1f5f9; }
+.page-cost-list__combo-item:hover { background: #f1f6ff; }
+.page-cost-list__actions { position: relative; }
+.page-cost-list__actions-btn { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.page-cost-list__actions-list { position: absolute; top: 100%; right: 0; min-width: 200px; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; z-index: 10; box-shadow: 0 4px 12px rgba(0,0,0,.1); padding: 4px; }
+.page-cost-list__actions-item { display: block; width: 100%; text-align: left; padding: 6px 10px; font-size: 13px; color: #212529; text-decoration: none; background: none; border: none; border-radius: 4px; cursor: pointer; }
+.page-cost-list__actions-item:hover { background: #f1f6ff; }
+.page-cost-list__actions-item:disabled { color: #adb5bd; cursor: default; background: none; }
+.page-cost-list__modal-title { font-size: 18px; font-weight: 700; margin: 0; }
