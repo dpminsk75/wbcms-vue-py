@@ -1,0 +1,15 @@
+/* page-reply-rules.css — чанк ReplyRulesPage/ReplyRuleFormPage (/wb-reply-rules, «Автоответы на отзывы»).
+ * Порт views/wb-reply-rules/index.php + _form.php: пилюли типов, btn-group radio, динамические textarea.
+ */
+.page-reply-rules__scope { max-width: 320px; }
+.page-reply-rules__title-sub { font-size: 12px; }
+.page-reply-rules__pill { display: inline-block; padding: 5px 10px; border-radius: 6px; font-size: 13px; }
+.page-reply-rules__pill--general { background-color: #e6f7ed; color: #1e7e34; }
+.page-reply-rules__pill--brand { background-color: #e1f5fe; color: #01579b; }
+.page-reply-rules__pill--product { background-color: #fff8e1; border: 1px solid #ffe082; color: #000; }
+.page-reply-rules__type--none { font-size: 13px; }
+.page-reply-rules__notext { background-color: #fff3cd; color: #856404; }
+.page-reply-rules__action { margin-right: 4px; }
+.page-reply-rules__pager { display: flex; gap: 8px; justify-content: center; margin: 12px 0; }
+.page-reply-rules__pager-label { align-self: center; font-size: 12px; }
+.page-reply-rules__part-add { white-space: nowrap; }

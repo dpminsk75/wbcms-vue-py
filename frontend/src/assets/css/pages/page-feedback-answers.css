@@ -1,0 +1,13 @@
+/* page-feedback-answers.css — чанк FeedbackAnswersPage (/wb-feedback-answers, «Отзывы и ответы»).
+ * Порт views/wb-feedback-answers/index.php: фильтр bg-light p-3 rounded,
+ * грид Товар 25 / Отзыв 45 / Ответ 25 / Правило 5%, платные #fff8e1.
+ */
+.page-feedback-answers__filter { border: 1px solid #e5e7eb; border-radius: 12px; }
+.page-feedback-answers__quick { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.page-feedback-answers__answer { font-size: 0.9em; }
+.page-feedback-answers__rule { cursor: help; border-bottom: 1px dotted #999; }
+.page-feedback-answers__paid { background-color: #fff8e1; }
+.page-feedback-answers__photo { height: 120px; }
+.page-feedback-answers__video { max-width: 100%; }
+.page-feedback-answers__pager { display: flex; gap: 8px; justify-content: center; margin: 12px 0; }
+.page-feedback-answers__pager-label { align-self: center; font-size: 12px; }

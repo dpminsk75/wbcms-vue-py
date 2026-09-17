@@ -7,3 +7,5 @@ from .wb_search import router as wb_search_router
 from .cost import router as cost_router
 from .wb_orders import router as wb_orders_router
 from .wb_sales import router as wb_sales_router
+from .feedback import router as feedback_router
+from .reply_rules import router as reply_rules_router

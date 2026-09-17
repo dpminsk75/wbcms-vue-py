@@ -1,0 +1,6 @@
+/* page-feedback-tags.css — чанк FeedbackTagsPage (/wb-feedback-tags, «Разметка тегов отзывов»).
+ * Порт views/wb-feedback-tags/index.php: кнопки-фильтры, таблица Тег/Встречается/Статус/Действия.
+ */
+.page-feedback-tags__hint { font-size: 13px; }
+.page-feedback-tags__table-wrap { overflow-x: auto; }
+.page-feedback-tags__actions { display: inline-flex; gap: 4px; flex-wrap: wrap; }
