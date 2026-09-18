@@ -9,3 +9,4 @@ from .wb_orders import router as wb_orders_router
 from .wb_sales import router as wb_sales_router
 from .feedback import router as feedback_router
 from .reply_rules import router as reply_rules_router
+from .wb_tokens import router as wb_tokens_router, expiring_router as wb_tokens_expiring_router

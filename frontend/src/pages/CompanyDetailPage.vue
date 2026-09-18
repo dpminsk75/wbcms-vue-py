@@ -33,6 +33,56 @@
                     <input v-model="companyForm.api_key" :type="showApi ? 'text' : 'password'" autocomplete="new-password" placeholder="JWT WB" class="form-control" />
                     <button type="button" @click="toggleApi" class="btn btn-outline-secondary" title="Показать/скрыть">👁</button>
                   </div>
+                  <div class="page-company-detail__wb-row">
+                    <button type="button" @click="checkWb" :disabled="wbChecking" class="btn btn-outline-secondary btn-sm" title="Этап 1: пинг категорий, этап 2: профиль продавца">
+                      <i class="bi bi-activity"></i> Проверить
+                    </button>
+                    <button type="button" @click="loadWbStatus" :disabled="wbLoading" class="btn btn-outline-secondary btn-sm" title="Только декодировать сохранённый токен (без запросов к WB)">
+                      Статус
+                    </button>
+                    <span v-if="wbChecking" class="page-company-detail__wb-hint">проверяю WB: {{ wbCheckingPhase }}…</span>
+                    <span v-else-if="wbError" class="wb-error">{{ wbError }}</span>
+                  </div>
+                  <div v-if="wbToken && wbToken.has_token && wbToken.valid" class="page-company-detail__wb-status">
+                    <div class="page-company-detail__wb-line">
+                      <span>до {{ fmtDate(wbToken.exp_at) }}</span>
+                      <span :class="daysClass">осталось {{ wbToken.days_left }} дн.</span>
+                      <span v-if="wbToken.expired" class="badge bg-danger">просрочен</span>
+                      <span v-if="wbToken.is_readonly" class="badge bg-danger" title="Бит 30 маски s — токен только на чтение, менять данные через API нельзя">только чтение</span>
+                      <span v-else class="badge bg-success" title="Бит 30 маски s не установлен — токен на чтение и запись">чтение и запись</span>
+                      <span :class="typeClass" :title="typeTitle">{{ wbToken.token_type_ru || '—' }}</span>
+                      <span v-if="wbToken.is_test" class="badge bg-light text-muted border" title="Бит 0 маски s — тестовый контур, боевых данных нет">test</span>
+                    </div>
+                    <div class="page-company-detail__wb-cats" title="Категории из битмаски s токена. Зелёная — доступ есть, серая — нет. Наведите на букву для деталей.">
+                      <span v-for="c in WB_TOKEN_CATS" :key="c.key" :class="catClass(c.key)" :title="catTitle(c.key)">{{ c.letter }}</span>
+                    </div>
+                    <div v-if="wbToken.source === 'draft'" class="page-company-detail__wb-hint">проверен черновик из поля (не сохранён)</div>
+                  </div>
+                  <div v-else-if="wbToken && wbToken.has_token && wbToken.valid === false" class="wb-error">Токен не разбирается: {{ wbToken.error }}</div>
+                  <div v-else-if="wbToken && !wbToken.has_token" class="page-company-detail__wb-hint">токен не задан</div>
+                  <div v-if="wbProfile && wbProfile.has_profile" class="page-company-detail__wb-profile">
+                    <div class="page-company-detail__wb-line">
+                      <i class="bi bi-shop"></i>
+                      <strong>{{ wbProfile.seller_name || 'Продавец' }}</strong>
+                      <span v-if="wbProfile.trademark" class="page-company-detail__wb-tariff" :title="`Марка (tradeMark)`">«{{ wbProfile.trademark }}»</span>
+                      <span v-if="wbProfile.tin" class="page-company-detail__wb-tariff" title="ИНН из seller-info (tin)">ИНН {{ wbProfile.tin }}</span>
+                      <span v-if="wbProfile.rating != null" class="page-company-detail__wb-rating" :title="`Отзывов: ${wbProfile.reviews_count ?? '—'}`">
+                        <i class="bi bi-star-fill"></i> {{ wbProfile.rating }}
+                      </span>
+                      <span v-if="wbProfile.has_jam === true" class="badge bg-success" title="WB вернул данные подписки Jam">Джем</span>
+                      <span v-else-if="wbProfile.has_jam === false" class="badge bg-light text-muted border" title="Пустой ответ WB — подписки Джем не было">без Джема</span>
+                      <span v-if="tariffSummary" class="page-company-detail__wb-tariff" :title="tariffTitle">{{ tariffSummary }}</span>
+                    </div>
+                    <details v-if="tariffItems.length" class="page-company-detail__wb-details">
+                      <summary>Конструктор тарифов ({{ tariffItems.length }})</summary>
+                      <ul class="page-company-detail__wb-tariff-list">
+                        <li v-for="(t, i) in tariffItems" :key="i">
+                          {{ t.name }} — {{ t.statusRu }}<span v-if="t.rate != null">, {{ t.rate }}%</span><span v-if="t.until">, до {{ fmtDate(t.until) }}</span>
+                        </li>
+                      </ul>
+                    </details>
+                    <div class="page-company-detail__wb-hint">профиль от {{ fmtDateTime(wbProfile.fetched_at) }}</div>
+                  </div>
                 </div>
                 <hr class="my-2" />
                 <div class="form-check mb-1">
@@ -201,9 +251,9 @@
 
 <script setup lang="ts">
 import '@/assets/css/pages/page-company-detail.css'
-import { ref, reactive, watch, onMounted } from 'vue'
+import { ref, reactive, watch, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { authApi } from '../api/auth'
+import { authApi, WB_TOKEN_CATS, type WbTokenState, type WbProfile } from '../api/auth'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
@@ -230,6 +280,123 @@ const showApi = ref(false)
 const showSeo = ref(false)
 const hasApiKey = ref(false)
 const hasSeoKey = ref(false)
+// WB-токен: статус/проверка (decode — дёшево, check — живой ping, троттлинг 60с на бэке)
+const wbToken = ref<WbTokenState | null>(null)
+const wbProfile = ref<WbProfile | null>(null)
+const wbLoading = ref(false)
+const wbChecking = ref(false)
+const wbCheckingPhase = ref('')
+const wbError = ref('')
+const fmtDate = (v: any) => v ? new Date(String(v)).toLocaleDateString('ru-RU') : '—'
+const fmtDateTime = (v: any) => v ? new Date(String(v).replace(' ', 'T')).toLocaleString('ru-RU') : '—'
+// Тип токена по acc/for/t: personal — наш случай (on-premise), service — чужой SaaS (нам нельзя)
+const TYPE_CLASS: Record<string, string> = { personal: 'bg-success', service: 'bg-info text-dark', basic: 'bg-secondary', test: 'bg-warning text-dark', unknown: 'bg-danger' }
+const TYPE_HINT: Record<string, string> = {
+  personal: 'Персональный (acc=3, for=self) — для своих программ, полные лимиты',
+  service: 'Сервисный (acc=4) — для облачных сервисов из каталога WB, нам не подходит',
+  basic: 'Базовый (acc=1) — сниженные лимиты, часть категорий недоступна',
+  test: 'Тестовый (t=true) — только песочница, боевых данных нет',
+  unknown: 'Тип не распознан по acc/for/t',
+}
+const typeClass = computed(() => ['badge', TYPE_CLASS[wbToken.value?.token_type || 'unknown'] || 'bg-danger'])
+const typeTitle = computed(() => {
+  const t = wbToken.value?.token_type || 'unknown'
+  const acc = wbToken.value?.acc ?? '?'
+  const fv = wbToken.value?.for ?? '—'
+  return `${TYPE_HINT[t] || ''} (acc=${acc}, for=${fv})`
+})
+const STATUS_RU: Record<string, string> = { active: 'активна', pendingDeactivation: 'снимается', pendingActivation: 'включается' }
+const tariffItems = computed(() => {
+  const t = wbProfile.value?.tariffs
+  if (!t) return [] as Array<{ name: string; statusRu: string; rate?: number | null; until?: string | null }>
+  const pkgs = (t.packages || []).map((p) => ({ name: `Пакет «${p.name || p.slug}»`, statusRu: STATUS_RU[p.status || ''] || p.status || '?', rate: p.commissionRate ?? null, until: p.expiresAt ?? null }))
+  const opts = (t.options || []).map((o) => ({ name: o.name || o.slug || '?', statusRu: STATUS_RU[o.status || ''] || o.status || '?', rate: o.commissionRate ?? null, until: o.expiresAt ?? null }))
+  return [...pkgs, ...opts]
+})
+const tariffSummary = computed(() => {
+  const t = wbProfile.value?.tariffs
+  if (!t) return ''
+  const parts = [`комиссия ${(t.totalCommissionRate ?? '—')}%`]
+  if (t.activePackageCount != null) parts.push(`пакетов: ${t.activePackageCount}`)
+  if (t.activeOptionCount != null) parts.push(`опций: ${t.activeOptionCount}`)
+  return parts.join(', ')
+})
+const tariffTitle = computed(() => tariffItems.value.map((t) => `${t.name} — ${t.statusRu}`).join('\n'))
+const daysClass = computed(() => {
+  const d = wbToken.value?.days_left
+  if (d == null) return 'page-company-detail__wb-days'
+  if (wbToken.value?.expired || d <= 3) return 'page-company-detail__wb-days page-company-detail__wb-days--danger'
+  if (d <= 14) return 'page-company-detail__wb-days page-company-detail__wb-days--warn'
+  return 'page-company-detail__wb-days page-company-detail__wb-days--ok'
+})
+const catInToken = (key: string) => wbToken.value?.categories?.find((c) => c.key === key)?.in_token ?? false
+function catClass(key: string) {
+  const p = wbToken.value?.ping?.[key]
+  const on = p && !p.skipped ? p.ok : catInToken(key)
+  return ['page-company-detail__wb-cat', on ? 'page-company-detail__wb-cat--on' : 'page-company-detail__wb-cat--off']
+}
+function catTitle(key: string) {
+  const meta = WB_TOKEN_CATS.find((c) => c.key === key)
+  const name = meta ? `${meta.letter} — ${meta.name}` : key
+  if (!catInToken(key)) return `${name}: нет в токене (бит маски s)`
+  const p = wbToken.value?.ping?.[key]
+  if (!p || p.skipped || p.http == null) return `${name}: есть в токене, живой ping не проверялся (нажмите Проверить)`
+  if (p.ok) return `${name}: доступ есть (HTTP ${p.http}, ${p.ms} мс)`
+  if (p.http === 403) return `${name}: 403 — ${p.no_jam ? 'нет подписки Jam' : 'нет доступа'} (проверьте категории/тариф)`
+  if (p.http === 401) return `${name}: 401 — токен мёртв (истёк/отозван)`
+  if (!p.http) return `${name}: сеть — ${p.error || 'timeout'}`
+  return `${name}: HTTP ${p.http}`
+}
+async function loadWbStatus() {
+  wbLoading.value = true
+  wbError.value = ''
+  try {
+    wbToken.value = await authApi.wbTokenStatus(companyId)
+  } catch (e: any) {
+    wbError.value = e?.response?.data?.detail || String(e)
+  } finally {
+    wbLoading.value = false
+  }
+}
+async function loadWbProfile() {
+  try {
+    const p = await authApi.wbTokenProfile(companyId)
+    wbProfile.value = p.has_profile ? p : null
+  } catch {
+    wbProfile.value = null
+  }
+}
+async function checkWb() {
+  wbChecking.value = true
+  wbError.value = ''
+  try {
+    const draft = companyForm.api_key?.trim() ? companyForm.api_key.trim() : undefined
+    // Этап 1: decode + ping категорий (~5-10с)
+    wbCheckingPhase.value = 'пинг категорий'
+    const res = await authApi.wbTokenCheck(companyId, draft)
+    wbToken.value = res
+    // Этап 2: профиль продавца, 4 метода common-api с паузами (~10-15с)
+    wbCheckingPhase.value = 'профиль продавца'
+    try {
+      const pr = await authApi.wbTokenProfileRefresh(companyId, draft)
+      if (pr.profile) wbProfile.value = { has_profile: true, company_id: companyId, ...pr.profile } as WbProfile
+      else loadWbProfile()
+    } catch {
+      loadWbProfile() // 429/ошибка профиля — показываем сохранённый, токен уже проверен
+    }
+  } catch (e: any) {
+    // Сразу после ручной проверки бэк троттлит (60с) — тогда просто обновляем статус без сети
+    if (e?.response?.status === 429) {
+      wbError.value = ''
+      loadWbStatus()
+    } else {
+      wbError.value = e?.response?.data?.detail || String(e)
+    }
+  } finally {
+    wbChecking.value = false
+    wbCheckingPhase.value = ''
+  }
+}
 function toggleApi() { showApi.value = !showApi.value }
 function toggleSeo() { showSeo.value = !showSeo.value }
 const savingCompany = ref(false)
@@ -275,6 +442,8 @@ async function load() {
 
 onMounted(async () => {
   load()
+  loadWbStatus()
+  loadWbProfile()
   try { grantable.value = await authApi.grantablePerms() } catch { grantable.value = [] }
 })
 watch(() => route.params.id, load)
@@ -332,10 +501,14 @@ async function onSaveCompany() {
       if (companyForm.seo_openrouter_key) payload.seo_openrouter_key = companyForm.seo_openrouter_key
     }
     await authApi.updateCompany(companyId, payload)
+    const hadNewKey = !!payload.api_key
     companyForm.api_key = ''
     companyForm.seo_openrouter_key = ''
     companySaved.value = true
     await load()
+    // Новый токен — сразу живая проверка с лоадером (wbChecking), иначе дешёвый статус
+    if (hadNewKey) await checkWb()
+    else loadWbStatus()
   } catch (e: any) { error.value = e?.response?.data?.detail || String(e) }
   finally { savingCompany.value = false }
 }

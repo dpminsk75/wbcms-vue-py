@@ -1,0 +1,10 @@
+[Unit]
+Description=wbcms WB tokens daily health-check
+After=network.target mysql.service
+
+[Service]
+Type=oneshot
+User=www-data
+WorkingDirectory=/var/www/wb/wbcms-py
+EnvironmentFile=/var/www/wb/wbcms-py/.env
+ExecStart=/var/www/wb/wbcms-py/.venv/bin/python backend/scripts/wb_token_healthcheck.py

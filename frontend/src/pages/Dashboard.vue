@@ -15,6 +15,7 @@
           Данных еще нет. Если вы заполнили <router-link :to="companyEditLink">WB API key</router-link>,
           то обратитесь в поддержку.
         </div>
+        <WbTokenAlert />
         <div class="dash-stack">
           <NewCards />
           <TopMetrics :date-from="dateFrom" :date-to="dateTo" />
@@ -44,6 +45,7 @@ import LastSales from '../components/dashboard/LastSales.vue'
 import MonthlyFinance from '../components/dashboard/MonthlyFinance.vue'
 import NewCards from '../components/dashboard/NewCards.vue'
 import SideMenu from '../components/dashboard/SideMenu.vue'
+import WbTokenAlert from '../components/dashboard/WbTokenAlert.vue'
 import { useAuthStore } from '../stores/auth'
 
 const dateFrom = ref(new Date(Date.now()-3*864e5).toISOString().slice(0,10))
