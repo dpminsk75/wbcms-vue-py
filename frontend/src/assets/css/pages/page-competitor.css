@@ -1,0 +1,57 @@
+/* page-competitor.css — чанк CompetitorIndexPage. Title: 'Конкуренты — анализ'.
+ * Таблица — глобальный .wb-admin-table.
+ */
+.page-competitor__title { margin-bottom: 4px; }
+.page-competitor__actions { white-space: nowrap; }
+.page-competitor__actions .btn + .btn { margin-left: 6px; }
+/* Витрина index: товар с фото, понятные колонки */
+.page-competitor__grid td { vertical-align: middle; }
+.page-competitor__col-product { min-width: 320px; }
+.page-competitor__col-num { width: 110px; }
+.page-competitor__col-actions { width: 250px; }
+.page-competitor__product { display: flex; gap: 10px; align-items: center; }
+.page-competitor__thumb { width: 50px; height: 66px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
+.page-competitor__thumb--lg { width: 60px; height: 80px; }
+.page-competitor__crumbs { margin-bottom: 4px; font-size: 13px; }
+.page-competitor__own-card { margin-bottom: 16px; }
+.page-competitor__own-body { display: flex; gap: 12px; align-items: center; }
+.page-competitor__own-text { min-width: 0; }
+.page-competitor__own-actions { margin-left: auto; display: flex; gap: 8px; flex-shrink: 0; }
+.page-competitor__product-text { min-width: 0; }
+.page-competitor__product-title { font-weight: 600; color: #2c3e50; white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
+.page-competitor__product-sub { font-size: 11px; color: #888; margin-top: 2px; }
+.page-competitor__wb-link { font-size: 11px; font-weight: 600; }
+.page-competitor__dash { color: #bbb; }
+.page-competitor__card-head { margin-bottom: 12px; }
+.page-competitor__block { margin-bottom: 12px; }
+.page-competitor__block-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; }
+.page-competitor__block-head .btn + .btn { margin-left: 6px; }
+.page-competitor__phrases { max-height: 400px; overflow-y: auto; }
+.page-competitor__head-btn { margin-left: 8px; }
+.page-competitor__job { margin-bottom: 12px; }
+.page-competitor__job-items { list-style: none; padding: 0; margin: 8px 0 0; max-height: 200px; overflow: auto; }
+.page-competitor__queries { margin-top: 4px; }
+.page-competitor__query { margin: 0 4px 2px 0; font-weight: 400; }
+.page-competitor__comp-desc { font-size: 13px; color: #555; margin-top: 6px; white-space: pre-wrap; }
+.page-competitor__row-btns { margin-top: 8px; display: flex; gap: 6px; align-items: center; flex-wrap: nowrap; }
+.page-competitor__result-actions { margin-top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; }
+.page-competitor__inline-loader { display: inline-flex; gap: 8px; align-items: center; margin-left: 8px; white-space: nowrap; flex-shrink: 0; }
+.page-competitor__details { margin-top: 8px; font-size: 13px; }
+.page-competitor__details summary { cursor: pointer; color: #555; }
+.page-competitor__pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.page-competitor__ai-block { margin-top: 6px; }
+.page-competitor__summary-title { font-weight: 700; margin-bottom: 6px; }
+/* Страница результатов: две колонки как в yii */
+.page-competitor__result-grid { display: grid; grid-template-columns: 4fr 8fr; gap: 16px; }
+.page-competitor__result-left { border-right: 1px solid #eee; padding-right: 12px; min-width: 0; }
+.page-competitor__result-top { display: flex; gap: 10px; align-items: flex-start; }
+.page-competitor__result-img { max-width: 100%; max-height: 200px; object-fit: contain; border-radius: 6px; background: #f8f9fa; flex-shrink: 0; }
+.page-competitor__result-actions { margin-top: 8px; }
+.page-competitor__specs { font-size: 12px; margin-top: 8px; }
+.page-competitor__specs td { padding: 1px 6px 1px 0; }
+.page-competitor__result-desc { margin-top: 8px; }
+.page-competitor__result-desc-body { max-height: 250px; overflow-y: auto; font-size: 13px; color: #333; white-space: pre-wrap; }
+.page-competitor__title-len { font-size: 10px; margin-left: 4px; }
+.page-competitor__result-right { min-width: 0; font-size: 13px; }
+.page-competitor__ai-meta { margin-bottom: 6px; }
+@media (max-width: 767px) { .page-competitor__result-grid { grid-template-columns: 1fr; } .page-competitor__result-left { border-right: none; padding-right: 0; } }

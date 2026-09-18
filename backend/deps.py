@@ -43,6 +43,18 @@ async def require_admin(user: dict = Depends(get_current_user)) -> dict:
     return user
 
 
+async def require_seo(
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Доступ к SEO/конкурентам: global_admin/admin или явный перм viewSeo (порт matchCallback viewSeo|admin)."""
+    if await auth_service.is_global_admin(db, user["id"]):
+        return user
+    if "viewSeo" in await auth_service.effective_perms(db, user["id"]):
+        return user
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="seo access denied (need viewSeo)")
+
+
 async def _resolve_company_id(request: Request) -> int | None:
     cid = request.path_params.get("company_id")
     if cid is not None:

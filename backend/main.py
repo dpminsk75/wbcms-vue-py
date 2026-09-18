@@ -5,7 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database import get_db
 from backend.deps import get_current_user, get_optional_user, require_admin, get_current_company
-from backend.routers import auth_router, companies_router, dashboard_router, admin_router, tags_router, wb_search_router, cost_router, wb_orders_router, wb_sales_router, feedback_router, reply_rules_router, wb_tokens_router, wb_tokens_expiring_router
+from backend.routers import auth_router, companies_router, dashboard_router, admin_router, tags_router, wb_search_router, cost_router, wb_orders_router, wb_sales_router, feedback_router, reply_rules_router, wb_tokens_router, wb_tokens_expiring_router, competitor_router, ai_jobs_router, seo_router
 from backend.services import auth_service as AuthService
 from backend.services.orders_service import OrdersService
 from backend.services.orders_aggregated_service import OrdersAggregatedService
@@ -44,6 +44,19 @@ app.include_router(feedback_router)
 app.include_router(reply_rules_router)
 app.include_router(wb_tokens_router)
 app.include_router(wb_tokens_expiring_router)
+app.include_router(competitor_router)
+app.include_router(ai_jobs_router)
+app.include_router(seo_router)
+
+
+@app.on_event("startup")
+async def _recover_ai_jobs():
+    """Вариант B: зависшие queued/running джобы (рестарт между делом) → interrupted."""
+    try:
+        from backend.services import ai_job_service as _jobs
+        await _jobs.recover_interrupted()
+    except Exception:
+        pass
 
 class QuickButton(BaseModel):
     icon: str

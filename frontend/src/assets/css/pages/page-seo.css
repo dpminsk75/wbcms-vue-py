@@ -1,0 +1,72 @@
+/* page-seo.css — чанки SeoIndexPage / SeoViewPage. Title: 'SEO рекомендации'.
+ * Широкая 5-колоночная лента — паттерн A (fixed + внутренняя прокрутка):
+ * Товар 280 / Rationale 300 / Старое 320 / Новое 320 / Ключи 130.
+ */
+.page-seo__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+.page-seo__title { margin: 0; }
+.page-seo__tabs { display: flex; gap: 6px; }
+.page-seo__filter-card { margin-bottom: 12px; }
+.page-seo__filter-form { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.page-seo__q { width: 280px; }
+.page-seo__filter-btns { display: flex; gap: 6px; align-items: center; }
+.page-seo__filter-note { margin-left: auto; font-size: 12px; color: #888; align-self: center; }
+.page-seo__unprocessed { margin-bottom: 12px; border-color: #ffc107; }
+.page-seo__unprocessed-head { display: flex; justify-content: space-between; align-items: center; }
+.page-seo__empty { padding: 12px; color: #666; }
+.page-seo__thumb { width: 50px; height: 66px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
+.page-seo__thumb--lg { width: 60px; height: 80px; }
+.page-seo__photo-col { width: 50px; }
+.page-seo__act-col { width: 170px; }
+.page-seo__mini-table { font-size: 12px; }
+.page-seo__table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 14px; border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden; }
+.page-seo__table th { font-size: 12px; font-weight: 600; color: #333; text-align: center; background: #f1f3f5; padding: 8px; border-bottom: 2px solid #dee2e6; position: sticky; top: 0; z-index: 1; }
+.page-seo__table td { padding: 10px 8px; border-bottom: 1px solid #eef0f2; vertical-align: top; overflow: hidden; }
+.page-seo__table tbody tr:hover td { background: #f8fbff; }
+.page-seo__col-product { width: 280px; }
+.page-seo__col-rationale { width: 300px; }
+.page-seo__col-old { width: 320px; }
+.page-seo__col-new { width: 320px; }
+.page-seo__col-keys { width: 130px; }
+.page-seo__product-top { display: flex; gap: 8px; align-items: flex-start; }
+.page-seo__product-text { min-width: 0; }
+.page-seo__product-title { font-weight: 600; color: #2c3e50; white-space: normal; font-size: 14px; line-height: 1.3; overflow-wrap: anywhere; }
+.page-seo__product-sub { font-size: 12px; color: #888; }
+.page-seo__ext-link { font-size: 12px; margin-right: 6px; }
+.page-seo__row-btns { margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap; }
+.page-seo__rec-id { font-size: 11px; color: #999; margin-top: 4px; }
+.page-seo__admin-block { border-top: 1px solid #eee; margin-top: 8px; padding-top: 6px; font-size: 11px; line-height: 1.4; color: #666; overflow-wrap: anywhere; }
+.page-seo__rationale { white-space: normal; font-size: 13.5px; line-height: 1.45; }
+.page-seo__pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.page-seo__old { white-space: normal; }
+.page-seo__new { white-space: normal; }
+.page-seo__keys { white-space: normal; font-size: 13px; }
+/* Ключи всегда видны при горизонтальном скролле */
+.page-seo__table th:last-child, .page-seo__table td:last-child { position: sticky; right: 0; background: #fff; box-shadow: -2px 0 4px rgba(0, 0, 0, 0.06); }
+.page-seo__table thead th:last-child { background: #f1f3f5; }
+.page-seo__table tbody tr:hover td:last-child { background: #f8fbff; }
+.page-seo__phrases-line { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; color: #666; }
+.page-seo__text-box { font-size: 13.5px; background: #f8f9fa; border: 1px solid #eee; border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; white-space: normal; overflow-wrap: anywhere; line-height: 1.45; }
+.page-seo__text-box--scroll { white-space: pre-wrap; max-height: 300px; overflow: auto; }
+.page-seo__text-box--new { background: #e8f5e9; border-color: #c8e6c9; }
+.page-seo__key { font-weight: 400; margin: 2px; font-size: 12px; }
+.page-seo__cards-card { margin-top: 16px; }
+.page-seo__cards-head { display: flex; justify-content: space-between; align-items: center; }
+.page-seo__view-stack { display: flex; flex-direction: column; gap: 12px; }
+.page-seo__view-product { display: flex; gap: 12px; align-items: flex-start; }
+.page-seo__view-actions { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; }
+.page-seo__view-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.page-seo__new-head { background: #e8f5e9; }
+.page-seo__targets { list-style: none; padding: 0; margin: 0 0 8px; }
+.page-seo__targets li { padding: 2px 0; }
+.page-seo__perm-drop { margin-left: 6px; color: #c00; text-decoration: none; }
+.page-seo__target-form { display: flex; gap: 6px; }
+.page-seo__target-input { max-width: 320px; }
+.page-seo__modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 1050; }
+.page-seo__modal-box { background: #fff; border-radius: 8px; padding: 16px; width: 480px; max-width: 92vw; max-height: 84vh; overflow: auto; }
+.page-seo__modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.page-seo__modal-title { margin: 0; }
+.page-seo__modal-progress { height: 6px; margin-top: 8px; }
+.page-seo__modal-items { list-style: none; padding: 0; margin: 12px 0 0; max-height: 240px; overflow: auto; }
+.page-seo__modal-item { padding: 3px 0; font-size: 13px; border-bottom: 1px solid #f0f0f0; }
+.page-seo__modal-foot { display: flex; justify-content: space-between; margin-top: 12px; }
+@media (max-width: 767px) { .page-seo__view-cols { grid-template-columns: 1fr; } }
