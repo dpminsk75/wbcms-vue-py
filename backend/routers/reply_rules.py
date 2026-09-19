@@ -21,6 +21,66 @@ async def rules_list(
     return await svc.list(page, page_size)
 
 
+@router.get("/test-generation")
+async def rules_test_generation(
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    """100 последних отзывов + сгенерированные ответы. Ничего не отправляет.
+    Shared-матчинг с будущим cron-воркером (feedback_reply_service)."""
+    from backend.services.feedback_reply_service import FeedbackReplyService
+    svc = FeedbackReplyService(db, company_id=company_id)
+    return await svc.preview()
+
+
+@router.get("/stop-words")
+async def stop_words_list(
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    from backend.services.stop_words_service import StopWordsService
+    return await StopWordsService(db, company_id=company_id).list()
+
+
+@router.post("/stop-words")
+async def stop_words_create(
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    from backend.services.stop_words_service import StopWordsService
+    try:
+        return await StopWordsService(db, company_id=company_id).create(
+            str(payload.get("word") or ""))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.patch("/stop-words/{word_id}/active")
+async def stop_words_toggle(
+    word_id: int,
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    from backend.services.stop_words_service import StopWordsService
+    new = await StopWordsService(db, company_id=company_id).toggle(word_id)
+    if new is None:
+        raise HTTPException(status_code=404, detail="Слово не найдено")
+    return {"ok": True, "is_active": new}
+
+
+@router.delete("/stop-words/{word_id}")
+async def stop_words_delete(
+    word_id: int,
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    from backend.services.stop_words_service import StopWordsService
+    if not await StopWordsService(db, company_id=company_id).remove(word_id):
+        raise HTTPException(status_code=404, detail="Слово не найдено")
+    return {"ok": True}
+
+
 @router.get("/product-list")
 async def rules_product_list(
     q: str = Query(default=""),

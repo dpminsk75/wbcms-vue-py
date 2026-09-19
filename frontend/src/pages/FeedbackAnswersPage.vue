@@ -70,9 +70,19 @@
           <thead>
             <tr>
               <th>Товар</th>
-              <th>Отзыв</th>
+              <th>
+                Отзыв
+                <a href="#" class="page-feedback-answers__sort" title="Сортировка по дате" @click.prevent="onSort('createdDate')">
+                  Дата <i class="bi" :class="sortIcon('createdDate')"></i>
+                </a>
+              </th>
               <th v-if="!filters.hide_answers">Ответ</th>
-              <th class="text-center">Правило</th>
+              <th class="text-center">
+                Правило
+                <a href="#" class="page-feedback-answers__sort" title="Сортировка по оценке" @click.prevent="onSort('productValuation')">
+                  ★ <i class="bi" :class="sortIcon('productValuation')"></i>
+                </a>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -92,6 +102,19 @@
                 <div v-if="fb.text" class="mb-1"><b>Отзыв:</b> {{ fb.text }}</div>
                 <div v-if="fb.pros" class="mb-1"><b>Плюсы:</b> {{ fb.pros }}</div>
                 <div v-if="fb.cons" class="mb-1"><b>Минусы:</b> {{ fb.cons }}</div>
+                <div v-if="mediaOf(fb).video || mediaOf(fb).photos.length" class="mt-3 page-feedback-answers__media">
+                  <div v-if="mediaOf(fb).video" class="page-feedback-answers__media-item">
+                    <video :src="mediaOf(fb).video.link" controls :poster="mediaOf(fb).video.poster" class="page-feedback-answers__video" :style="{ height: (bigVideo[fb.id] ? 360 : 120) + 'px' }"></video>
+                    <div class="mt-1 d-flex align-items-center justify-content-center">
+                      <a href="#" class="text-decoration-none text-primary fw-medium me-2 page-feedback-answers__media-btn" @click.prevent="bigVideo[fb.id] = !bigVideo[fb.id]">{{ bigVideo[fb.id] ? 'Уменьшить' : '+' }}</a>
+                      <span class="text-muted small me-2">•</span>
+                      <a :href="mediaOf(fb).video.link" target="_blank" rel="noopener" class="text-decoration-none text-secondary fw-medium page-feedback-answers__media-btn">&gt;&gt;</a>
+                    </div>
+                  </div>
+                  <a v-for="(p, i) in mediaOf(fb).photos" :key="i" :href="p.full" target="_blank" rel="noopener">
+                    <img :src="p.mini" loading="lazy" class="page-feedback-answers__photo" />
+                  </a>
+                </div>
                 <div v-if="fb.bables?.length" class="d-flex flex-wrap gap-1">
                   <span v-for="t in fb.bables" :key="t" class="badge" :class="tagClass(t)">{{ t }}</span>
                 </div>
@@ -150,8 +173,11 @@ const filters = ref({
 })
 const cardQuery = ref(filters.value.nm_id)
 const rows = ref<FeedbackAnswer[]>([])
+const bigVideo = ref<Record<string, boolean>>({})
 const total = ref(0)
 const page = ref(Number(route.query.page || 1))
+const sort = ref(String(route.query.sort || 'createdDate'))
+const order = ref(String(route.query.order || 'desc'))
 const pageSize = 30
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 const isLoading = ref(false)
@@ -165,6 +191,8 @@ function buildParams() {
     nm_id: filters.value.nm_id || undefined,
     rating: filters.value.rating || undefined,
     status: filters.value.status || undefined,
+    sort: sort.value,
+    order: order.value,
     page: page.value,
     page_size: pageSize,
   }
@@ -184,6 +212,10 @@ function syncRoute() {
   if (filters.value.has_media) q.has_media = '1'
   if (filters.value.paid_only) q.paid_only = '1'
   if (filters.value.hide_answers) q.hide_answers = '1'
+  if (sort.value !== 'createdDate' || order.value !== 'desc') {
+    q.sort = sort.value
+    q.order = order.value
+  }
   if (page.value > 1) q.page = String(page.value)
   syncing = true
   router.replace({ path: '/wb-feedback-answers', query: q }).finally(() => setTimeout(() => (syncing = false), 50))
@@ -233,6 +265,21 @@ function goPage(p: number) {
   fetchData()
 }
 
+function onSort(col: string) {
+  if (sort.value === col) {
+    order.value = order.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sort.value = col
+    order.value = col === 'createdDate' ? 'desc' : 'asc'
+  }
+  page.value = 1
+  fetchData()
+}
+function sortIcon(col: string) {
+  if (sort.value !== col) return 'bi-arrow-down-up'
+  return order.value === 'asc' ? 'bi-sort-up' : 'bi-sort-down'
+}
+
 function fmtDate(v: any) {
   if (!v) return ''
   const d = new Date(String(v).replace(' ', 'T'))
@@ -252,6 +299,30 @@ function tagClass(t: string) {
 }
 function ruleTitle(fb: FeedbackAnswer) {
   return rulesById.value[String(fb.rule_id)] || 'Неизвестное правило'
+}
+function mediaOf(fb: FeedbackAnswer) {
+  // Порт views/wb-feedback-answers/index.php:229-281:
+  // video: link (массив: video['link'], строка: сама ссылка); poster = previewImage || первое фото
+  // photos: miniSize || fullSize, ссылка на fullSize; height 120px, lazy
+  const photos: Array<{ mini: string; full: string }> = []
+  const rawPhotos = Array.isArray(fb.photoLinks) ? fb.photoLinks : []
+  for (const p of rawPhotos) {
+    if (!p || typeof p !== 'object') continue
+    const mini = String(p.miniSize || p.fullSize || '')
+    if (mini) photos.push({ mini, full: String(p.fullSize || mini) })
+  }
+  let video: { link: string; poster: string } | null = null
+  const v = fb.video
+  if (v) {
+    const link = typeof v === 'object' && v !== null ? String(v.link || '') : typeof v === 'string' ? v : ''
+    if (link) {
+      const poster = (typeof v === 'object' && v !== null && v.previewImage)
+        ? String(v.previewImage)
+        : (photos.length ? photos[0].mini : '')
+      video = { link, poster }
+    }
+  }
+  return { video, photos }
 }
 
 onMounted(fetchData)

@@ -3,6 +3,9 @@
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h1 class="page-title mb-0">{{ $route.meta.title || 'Автоответы на отзывы' }}</h1>
       <div class="d-flex gap-2">
+        <router-link to="/wb-reply-rules/stop-words" class="btn btn-outline-danger">
+          <i class="bi bi-slash-circle me-1"></i>Стоп-слова
+        </router-link>
         <router-link to="/wb-reply-rules/test-generation" class="btn btn-outline-secondary">
           <i class="bi bi-flask me-1"></i>Тест генерации
         </router-link>

@@ -7,7 +7,12 @@
 .page-feedback-answers__answer { font-size: 0.9em; }
 .page-feedback-answers__rule { cursor: help; border-bottom: 1px dotted #999; }
 .page-feedback-answers__paid { background-color: #fff8e1; }
-.page-feedback-answers__photo { height: 120px; }
+.page-feedback-answers__photo { height: 120px; width: auto; flex: 0 0 auto; margin-right: 10px; margin-bottom: 10px; border-radius: 4px; border: 1px solid #ddd; }
+.page-feedback-answers__media { display: flex; flex-wrap: wrap; }
+.page-feedback-answers__media-item { flex: 0 0 auto; margin-right: 10px; margin-bottom: 10px; text-align: center; }
+.page-feedback-answers__video { width: auto; border-radius: 4px; background: #000; max-width: 100%; display: block; }
+.page-feedback-answers__media-btn { font-size: 12px; cursor: pointer; }
+.page-feedback-answers__sort { font-size: 11px; color: #6c757d; text-decoration: none; }
 .page-feedback-answers__video { max-width: 100%; }
 .page-feedback-answers__pager { display: flex; gap: 8px; justify-content: center; margin: 12px 0; }
 .page-feedback-answers__pager-label { align-self: center; font-size: 12px; }

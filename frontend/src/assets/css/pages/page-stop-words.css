@@ -1,0 +1,5 @@
+/* page-stop-words.css — чанк StopWordsPage (/wb-reply-rules/stop-words, «Стоп-слова»).
+ * Маленькая справочная таблица: слово / статус / тоггл / удалить.
+ */
+.page-stop-words__form { max-width: 520px; }
+.page-stop-words__word { font-weight: 600; }

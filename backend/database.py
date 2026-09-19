@@ -12,3 +12,8 @@ SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 async def get_db():
     async with SessionLocal() as session:
         yield session
+
+
+def get_session():
+    """Контекстный менеджер сессии для воркеров (cron): `async with get_session() as db`."""
+    return SessionLocal()

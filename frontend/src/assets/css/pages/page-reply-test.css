@@ -1,0 +1,8 @@
+/* page-reply-test.css — чанк ReplyTestPage (/wb-reply-rules/test-generation).
+ * Порт views/wb-reply-rules/test-generation.php: бейджи оценок, зелёная рамка ответа.
+ */
+.page-reply-test__rating { color: #fff; font-size: 14px; padding: 5px 10px; border-radius: 4px; font-weight: bold; min-width: 45px; }
+.page-reply-test__pill--general { background-color: #e6f7ed; color: #1e7e34; }
+.page-reply-test__pill--brand { background-color: #e1f5fe; color: #01579b; }
+.page-reply-test__pill--product { background-color: #fff8e1; color: #000; }
+.page-reply-test__answer { font-size: 13px; border-left: 4px solid #28a745 !important; white-space: pre-wrap; }

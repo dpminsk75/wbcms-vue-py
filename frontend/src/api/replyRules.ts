@@ -35,6 +35,20 @@ export interface ReplyRulePayload {
   product_ids: number[]
 }
 
+export interface StopWord {
+  id: number
+  word: string
+  is_active: number
+}
+
+export interface ReplyTestItem {
+  feedback: Record<string, any>
+  matched_rule: ReplyRuleItem | null
+  generated_text: string | null
+  part_ids: Record<string, any>
+  stop_hit?: string | null
+}
+
 export const replyRulesApi = {
   async list(page = 1): Promise<{ items: ReplyRuleItem[]; total: number; page: number; page_size: number }> {
     const { data } = await api.get('/api/reply-rules', { params: { page } })
@@ -67,5 +81,25 @@ export const replyRulesApi = {
   async brandList(q: string): Promise<Array<{ id: string; text: string }>> {
     const { data } = await api.get('/api/reply-rules/brand-list', { params: { q } })
     return data.results || []
+  },
+  async testGeneration(): Promise<ReplyTestItem[]> {
+    const { data } = await api.get('/api/reply-rules/test-generation')
+    return Array.isArray(data) ? data : (data.items ?? [])
+  },
+  async stopWords(): Promise<StopWord[]> {
+    const { data } = await api.get('/api/reply-rules/stop-words')
+    return Array.isArray(data) ? data : []
+  },
+  async addStopWord(word: string) {
+    const { data } = await api.post('/api/reply-rules/stop-words', { word })
+    return data
+  },
+  async toggleStopWord(id: number | string): Promise<{ ok: boolean; is_active: number }> {
+    const { data } = await api.patch(`/api/reply-rules/stop-words/${id}/active`)
+    return data
+  },
+  async removeStopWord(id: number | string) {
+    const { data } = await api.delete(`/api/reply-rules/stop-words/${id}`)
+    return data
   },
 }
