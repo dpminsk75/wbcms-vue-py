@@ -1,0 +1,14 @@
+/* page-admin-seo-models.css — чанк AdminSeoModelsPage. Широкая таблица — во внутренней прокрутке. */
+.page-admin-seo-models { /* паддинги из wb-ui.css */ }
+.page-admin-seo-models__title { margin-bottom: 4px; }
+.page-admin-seo-models__apply { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
+.page-admin-seo-models__apply-input { max-width: 320px; }
+.page-admin-seo-models__apply-result { font-weight: 600; color: #1E9E7C; }
+.page-admin-seo-models__preview { margin-bottom: 12px; }
+.page-admin-seo-models__grid { margin-top: 4px; }
+.page-admin-seo-models__model { word-break: break-all; font-size: 13px; }
+.page-admin-seo-models__row--off { opacity: 0.55; }
+.page-admin-seo-models__prio { display: flex; gap: 4px; align-items: center; }
+.page-admin-seo-models__prio-input { max-width: 76px; }
+.page-admin-seo-models__reset { padding: 0 4px; font-size: 12px; }
+.page-admin-seo-models__err { max-width: 280px; word-break: break-word; font-size: 12px; }

@@ -4,12 +4,30 @@
     <div v-if="error" class="wb-error">{{ error }}</div>
 
     <div v-if="data" class="page-company-detail__stack">
+      <ul class="nav nav-tabs page-company-detail__tabs">
+        <li class="nav-item">
+          <button type="button" :class="['nav-link', { active: tab === 'main' }]" @click="tab = 'main'"><i class="bi bi-building"></i> Основное</button>
+        </li>
+        <li class="nav-item">
+          <button type="button" :class="['nav-link', { active: tab === 'wb' }]" @click="tab = 'wb'"><i class="bi bi-key"></i> WB-ключ <span v-if="wbToken?.expired" class="badge bg-danger" title="Токен просрочен">!</span></button>
+        </li>
+        <li v-if="auth.can('viewSeo')" class="nav-item">
+          <button type="button" :class="['nav-link', { active: tab === 'seo' }]" @click="tab = 'seo'"><i class="bi bi-search"></i> SEO</button>
+        </li>
+        <li v-if="auth.can('viewSeo')" class="nav-item">
+          <button type="button" :class="['nav-link', { active: tab === 'ext' }]" @click="tab = 'ext'"><i class="bi bi-puzzle"></i> Расширение</button>
+        </li>
+        <li class="nav-item">
+          <button type="button" :class="['nav-link', { active: tab === 'members' }]" @click="tab = 'members'"><i class="bi bi-people"></i> Участники <span class="badge bg-secondary">{{ data.members.length }}</span></button>
+        </li>
+      </ul>
       <form @submit.prevent="onSaveCompany">
-        <div class="row">
-          <div class="col-md-6">
-            <div class="card h-100 page-company-detail__card-main">
-              <div class="card-header bg-light fw-semibold">Основное</div>
-              <div class="card-body">
+        <div v-show="tab === 'main'" class="page-company-detail__pane">
+          <div class="row">
+            <div class="col-12">
+              <div class="card h-100 page-company-detail__card-main">
+                <div class="card-header bg-light fw-semibold">Основное</div>
+                <div class="card-body">
                 <div class="mb-2">
                   <label class="form-label mb-1">Название</label>
                   <input v-model="companyForm.name" required maxlength="255" class="form-control form-control-sm" />
@@ -24,14 +42,40 @@
                     <input v-model="companyForm.inn" maxlength="12" placeholder="10/12 цифр" class="form-control form-control-sm" />
                   </div>
                 </div>
-                <div class="mb-2">
-                  <label class="form-label mb-1">API ключ WB
+                <hr class="my-2" />
+                <div class="form-check mb-1">
+                  <input type="checkbox" v-model="companyForm.is_active" class="form-check-input" id="cf-active" />
+                  <label class="form-check-label text-danger" for="cf-active">Активна <small class="text-muted">(снятие скроет компанию из списков!)</small></label>
+                </div>
+                <template v-if="auth.can('manageFbsStocks')">
+                  <div class="form-check">
+                    <input type="checkbox" v-model="companyForm.fbs_deduct_enabled" class="form-check-input" id="cf-fbs" />
+                    <label class="form-check-label" for="cf-fbs">Списание FBS</label>
+                  </div>
+                  <div class="form-check">
+                    <input type="checkbox" v-model="companyForm.fbs_deduct_test" class="form-check-input" id="cf-fbst" />
+                    <label class="form-check-label" for="cf-fbst">Тестовый режим FBS <small class="text-muted">(сухое списание в лог)</small></label>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+        </div>
+        <div v-show="tab === 'wb'" class="page-company-detail__pane">
+          <div class="row">
+            <div class="col-12">
+              <div class="card h-100 page-company-detail__card-main">
+                <div class="card-header bg-light fw-semibold">WB-ключ <small class="page-company-detail__seo-note">проверка проходит по черновику из поля, сохраняется кнопкой ниже</small></div>
+                <div class="card-body">
+                  <div class="mb-2">
+                    <label class="form-label mb-1">API ключ WB
                     <span v-if="hasApiKey" class="badge wb-key-badge">задан</span>
                     <span v-else class="badge bg-light text-muted border">не задан</span>
                   </label>
                   <div class="input-group input-group-sm">
                     <input v-model="companyForm.api_key" :type="showApi ? 'text' : 'password'" autocomplete="new-password" placeholder="JWT WB" class="form-control" />
-                    <button type="button" @click="toggleApi" class="btn btn-outline-secondary" title="Показать/скрыть">👁</button>
+                    <button type="button" @click="toggleApi" class="btn btn-outline-secondary" title="Показать/скрыть"><i class="bi bi-eye"></i></button>
                   </div>
                   <div class="page-company-detail__wb-row">
                     <button type="button" @click="checkWb" :disabled="wbChecking" class="btn btn-outline-secondary btn-sm" title="Этап 1: пинг категорий, этап 2: профиль продавца">
@@ -84,25 +128,12 @@
                     <div class="page-company-detail__wb-hint">профиль от {{ fmtDateTime(wbProfile.fetched_at) }}</div>
                   </div>
                 </div>
-                <hr class="my-2" />
-                <div class="form-check mb-1">
-                  <input type="checkbox" v-model="companyForm.is_active" class="form-check-input" id="cf-active" />
-                  <label class="form-check-label text-danger" for="cf-active">Активна <small class="text-muted">(снятие скроет компанию из списков!)</small></label>
-                </div>
-                <template v-if="auth.can('manageFbsStocks')">
-                  <div class="form-check">
-                    <input type="checkbox" v-model="companyForm.fbs_deduct_enabled" class="form-check-input" id="cf-fbs" />
-                    <label class="form-check-label" for="cf-fbs">Списание FBS</label>
-                  </div>
-                  <div class="form-check">
-                    <input type="checkbox" v-model="companyForm.fbs_deduct_test" class="form-check-input" id="cf-fbst" />
-                    <label class="form-check-label" for="cf-fbst">Тестовый режим FBS <small class="text-muted">(сухое списание в лог)</small></label>
-                  </div>
-                </template>
               </div>
             </div>
           </div>
-          <div v-if="auth.can('viewSeo')" class="col-md-6">
+        </div>
+        </div>
+          <div v-if="auth.can('viewSeo')" v-show="tab === 'seo'" class="page-company-detail__pane">
             <div class="card h-100 page-company-detail__card-seo">
               <div class="card-header page-company-detail__seo-head">SEO <small class="page-company-detail__seo-note">пусто = из params.php</small></div>
               <div class="card-body">
@@ -113,7 +144,7 @@
                   </label>
                   <div class="input-group input-group-sm">
                     <input v-model="companyForm.seo_openrouter_key" :type="showSeo ? 'text' : 'password'" autocomplete="off" placeholder="sk-or-..." class="form-control" />
-                    <button type="button" @click="toggleSeo" class="btn btn-outline-secondary" title="Показать/скрыть">👁</button>
+                    <button type="button" @click="toggleSeo" class="btn btn-outline-secondary" title="Показать/скрыть"><i class="bi bi-eye"></i></button>
                   </div>
                 </div>
                 <div class="row g-2 mb-2">
@@ -174,13 +205,18 @@
               </div>
             </div>
           </div>
-        </div>
-        <div class="page-company-detail__save-row">
+        <div v-if="isFormTab" class="page-company-detail__save-row">
           <button type="submit" :disabled="savingCompany" class="wb-btn-brand wb-btn-brand--xl">Сохранить компанию</button>
           <span v-if="companySaved" class="page-company-detail__saved">Сохранено</span>
         </div>
       </form>
 
+      <div v-show="tab === 'ext'">
+        <ExtTokensBlock v-if="auth.can('viewSeo')" :companyId="companyId" />
+      </div>
+
+      <div v-show="tab === 'members'">
+      <div class="page-company-detail__table-wrap">
       <table class="wb-admin-table">
         <thead>
           <tr>
@@ -220,6 +256,7 @@
           </tr>
         </tbody>
       </table>
+      </div>
 
       <div class="page-company-detail__invite-box">
         <h3 class="page-company-detail__invite-title">Пригласить пользователя</h3>
@@ -245,6 +282,7 @@
           <div class="page-company-detail__invite-until">до {{ fmtDT(lastInvite.expires_at) }}</div>
         </div>
       </div>
+      </div>
     </div>
   </div>
 </template>
@@ -254,11 +292,15 @@ import '@/assets/css/pages/page-company-detail.css'
 import { ref, reactive, watch, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { authApi, WB_TOKEN_CATS, type WbTokenState, type WbProfile } from '../api/auth'
+import ExtTokensBlock from '../components/ext/ExtTokensBlock.vue'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
 const route = useRoute()
 const companyId = Number(route.params.id)
+// Табы: одна тема на экран вместо стены блоков (состояние форм — в companyForm, не теряется)
+const tab = ref<'main' | 'wb' | 'seo' | 'ext' | 'members'>('main')
+const isFormTab = computed(() => tab.value === 'main' || tab.value === 'wb' || tab.value === 'seo')
 const fmtDT = (v: any) => v ? new Date(String(v).replace(' ', 'T')).toLocaleString('ru-RU') : '—'
 const data = ref<{ company: any; members: any[] } | null>(null)
 const error = ref('')

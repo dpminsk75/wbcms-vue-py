@@ -43,3 +43,6 @@
 .page-company-detail__wb-details { margin-top: 6px; font-size: 13px; }
 .page-company-detail__wb-details summary { cursor: pointer; color: #555; }
 .page-company-detail__wb-tariff-list { margin: 4px 0 0; padding-left: 20px; }
+/* Табы: одна тема на экран (состояние форм хранится в companyForm, переключение ничего не сбрасывает) */
+.page-company-detail__tabs { margin-bottom: 16px; }
+.page-company-detail__pane { max-width: 780px; }

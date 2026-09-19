@@ -5,7 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database import get_db
 from backend.deps import get_current_user, get_optional_user, require_admin, get_current_company
-from backend.routers import auth_router, companies_router, dashboard_router, admin_router, tags_router, wb_search_router, cost_router, wb_orders_router, wb_sales_router, feedback_router, reply_rules_router, wb_tokens_router, wb_tokens_expiring_router, competitor_router, ai_jobs_router, seo_router
+from backend.routers import auth_router, companies_router, dashboard_router, admin_router, tags_router, wb_search_router, cost_router, wb_orders_router, wb_sales_router, feedback_router, reply_rules_router, wb_tokens_router, wb_tokens_expiring_router, competitor_router, ai_jobs_router, seo_router, seo_models_router, ext_router, ext_tokens_admin_router, ext_diag_admin_router, ext_download_router
 from backend.services import auth_service as AuthService
 from backend.services.orders_service import OrdersService
 from backend.services.orders_aggregated_service import OrdersAggregatedService
@@ -30,6 +30,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
+    # Расширение ходит из chrome-extension:// — без regex его режет CORS (§10).
+    allow_origin_regex=r"chrome-extension://.*",
 )
 app.include_router(auth_router)
 app.include_router(companies_router)
@@ -47,6 +49,11 @@ app.include_router(wb_tokens_expiring_router)
 app.include_router(competitor_router)
 app.include_router(ai_jobs_router)
 app.include_router(seo_router)
+app.include_router(seo_models_router)
+app.include_router(ext_router)
+app.include_router(ext_tokens_admin_router)
+app.include_router(ext_diag_admin_router)
+app.include_router(ext_download_router)
 
 
 @app.on_event("startup")

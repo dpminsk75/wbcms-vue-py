@@ -21,7 +21,7 @@
           <td>{{ c.name }}</td>
           <td>{{ c.abbreviation || '—' }}</td>
           <td>{{ c.inn || '—' }}</td>
-          <td><router-link :to="`/companies/${c.id}`">Открыть</router-link></td>
+          <td><router-link :to="`/companies/${c.id}`" class="btn btn-sm btn-outline-primary" :title="`Открыть ${c.name}`"><i class="bi bi-box-arrow-up-right"></i> Открыть</router-link></td>
         </tr>
         <tr v-if="!auth.companies.length"><td colspan="5" class="page-companies__empty">Нет компаний</td></tr>
       </tbody>

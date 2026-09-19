@@ -13,3 +13,5 @@ from .wb_tokens import router as wb_tokens_router, expiring_router as wb_tokens_
 from .competitor import router as competitor_router
 from .ai_jobs import router as ai_jobs_router
 from .seo import router as seo_router
+from .seo_models import router as seo_models_router
+from .ext import router as ext_router, admin_router as ext_tokens_admin_router, diag_admin_router as ext_diag_admin_router, dl_router as ext_download_router

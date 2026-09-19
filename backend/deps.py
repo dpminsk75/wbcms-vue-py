@@ -136,3 +136,38 @@ async def require_company_owner(
     if not member or member.get("status") != "active" or member.get("role") != "owner":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="company owner access denied")
     return user
+
+
+# last_used_at пишем не чаще раза в минуту на токен (расширение поллит next/status каждые 0.5-2с).
+_EXT_TOUCH: dict[int, float] = {}
+_EXT_TOUCH_TTL = 60.0
+
+
+async def require_ext_token(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Гейт расширения (§10): только Bearer ext-токена, компанию берём из токена.
+    JWT сюда не подходит — расширение ходит без пользовательской сессии."""
+    import time as _time
+
+    authorization = request.headers.get("Authorization", "")
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="ext token required")
+    raw = authorization[7:].strip()
+    try:
+        from backend.services import ext_service
+        tok = await ext_service.lookup_token(db, raw)
+    except Exception:
+        raise HTTPException(status_code=500, detail="ext_tokens missing: apply 20260924 migration")
+    if not tok:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="invalid or revoked ext token")
+    now = _time.monotonic()
+    if now - _EXT_TOUCH.get(int(tok["id"]), 0.0) >= _EXT_TOUCH_TTL:
+        _EXT_TOUCH[int(tok["id"])] = now
+        try:
+            from backend.services import ext_service as _ext
+            await _ext.touch_token(db, int(tok["id"]))
+        except Exception:
+            pass
+    return tok

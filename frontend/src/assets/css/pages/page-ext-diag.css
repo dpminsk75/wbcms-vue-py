@@ -1,0 +1,13 @@
+/* page-ext-diag.css — чанк ExtDiagPage. Таблица — глобальный .wb-admin-table. */
+.page-ext-diag { /* паддинги из wb-ui.css */ }
+.page-ext-diag__title { margin-bottom: 4px; }
+.page-ext-diag__grid { margin-top: 12px; }
+.page-ext-diag__wb-link { white-space: nowrap; }
+.page-ext-diag__detail { margin-top: 20px; }
+.page-ext-diag__detail-title { margin-bottom: 8px; }
+.page-ext-diag__meta { display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; margin-bottom: 10px; font-size: 14px; }
+.page-ext-diag__url { color: #666; font-size: 12px; word-break: break-all; }
+.page-ext-diag__checks { margin-bottom: 12px; }
+.page-ext-diag__block { margin-top: 8px; font-size: 13px; }
+.page-ext-diag__block summary { cursor: pointer; color: #555; }
+.page-ext-diag__list { margin: 6px 0 0; padding-left: 20px; word-break: break-word; }

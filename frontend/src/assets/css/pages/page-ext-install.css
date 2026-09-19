@@ -1,0 +1,5 @@
+/* page-ext-install.css — чанк ExtInstallPage. */
+.page-ext-install { /* паддинги из wb-ui.css */ }
+.page-ext-install__title { margin-bottom: 4px; }
+.page-ext-install__steps { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; max-width: 760px; }
+.page-ext-install__note { margin-top: 16px; max-width: 760px; }
