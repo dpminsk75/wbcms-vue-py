@@ -1,14 +1,18 @@
 [Unit]
 Description=wbcms-py FastAPI
 After=network.target mysql.service redis-server.service
+StartLimitIntervalSec=0
 
 [Service]
 User=www-data
 WorkingDirectory=/var/www/wb/wbcms-py
 EnvironmentFile=/var/www/wb/wbcms-py/.env
+Environment=PYTHONUNBUFFERED=1
 ExecStart=/var/www/wb/wbcms-py/.venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1
 Restart=always
-RestartSec=3
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

@@ -34,6 +34,24 @@ def verify_password(plain: str, password_hash: str) -> bool:
         return False
 
 
+try:
+    _DUMMY_HASH = bcrypt.hashpw(b"wbcms-never-matches-any-real-password", bcrypt.gensalt()).decode("utf-8")
+except Exception:
+    _DUMMY_HASH = "$2b$12$wbcmsdummyhashnevermatchesanything00000000000000000"
+
+
+def verify_password_uniform(plain: str, password_hash: str | None) -> bool:
+    """Проверка с ровным временем: неизвестный логин тоже гоняем через bcrypt (dummy-хэш),
+    иначе несуществующий юзер отвечает быстрее (timing-oracle, md 2026-09-20_LOGIN_antibruteforce)."""
+    if not password_hash:
+        try:
+            bcrypt.checkpw((plain or "").encode("utf-8"), _DUMMY_HASH.encode("utf-8"))
+        except Exception:
+            pass
+        return False
+    return verify_password(plain, password_hash)
+
+
 def create_token(user_id: int, username: str) -> str:
     exp = datetime.now(timezone.utc) + timedelta(minutes=EXPIRE_MIN)
     return jwt.encode({"sub": str(user_id), "username": username, "exp": exp}, SECRET_KEY, algorithm=ALGO)

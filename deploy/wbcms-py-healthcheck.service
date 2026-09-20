@@ -1,0 +1,7 @@
+[Unit]
+Description=wbcms-py liveness probe (restart if /health or /health/db fails)
+After=network.target wbcms-py.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'curl -sf --max-time 10 http://127.0.0.1:8000/health && curl -sf --max-time 15 http://127.0.0.1:8000/health/db || systemctl restart wbcms-py'

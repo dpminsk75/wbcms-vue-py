@@ -3,9 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+import asyncio
+import logging
+import time
+from collections import deque
 from backend.database import get_db
 from backend.deps import get_current_user, get_optional_user, require_admin, get_current_company
-from backend.routers import auth_router, companies_router, dashboard_router, admin_router, tags_router, wb_search_router, cost_router, wb_orders_router, wb_sales_router, feedback_router, reply_rules_router, wb_tokens_router, wb_tokens_expiring_router, competitor_router, ai_jobs_router, seo_router, seo_models_router, ext_router, ext_tokens_admin_router, ext_diag_admin_router, ext_download_router
+from backend.routers import auth_router, companies_router, dashboard_router, admin_router, tags_router, wb_search_router, cost_router, wb_orders_router, wb_sales_router, feedback_router, reply_rules_router, wb_tokens_router, wb_tokens_expiring_router, competitor_router, ai_jobs_router, seo_router, seo_models_router, ext_router, ext_tokens_admin_router, ext_diag_admin_router, ext_download_router, ext_filters_router
 from backend.services import auth_service as AuthService
 from backend.services.orders_service import OrdersService
 from backend.services.orders_aggregated_service import OrdersAggregatedService
@@ -54,6 +58,7 @@ app.include_router(ext_router)
 app.include_router(ext_tokens_admin_router)
 app.include_router(ext_diag_admin_router)
 app.include_router(ext_download_router)
+app.include_router(ext_filters_router)
 
 
 @app.on_event("startup")
@@ -74,16 +79,77 @@ class LoginIn(BaseModel):
     username: str
     password: str
 
+# --- антибрутфорс логина (md 2026-09-20_LOGIN_antibruteforce), in-memory: воркер один ---
+_auth_log = logging.getLogger("wbcms.auth")
+_LOGIN_IP_LIMIT = 10       # попыток с IP за окно → 429
+_LOGIN_IP_WINDOW = 60.0
+_LOGIN_PAIR_LIMIT = 5      # неудач пары (логин+IP) → блок пары
+_LOGIN_PAIR_BLOCK = 900.0  # блок пары, с
+_LOGIN_TRIP_COUNT = 20     # неудач по логину со всех IP → растяжка
+_LOGIN_TRIP_WINDOW = 900.0
+_LOGIN_MAX_DELAY = 8.0     # потолок прогрессивной задержки, с
+_LOGIN_IP: dict[str, deque] = {}
+_LOGIN_PAIR: dict[tuple[str, str], list] = {}  # (login, ip) -> [fails, blocked_until]
+_LOGIN_USER: dict[str, deque] = {}
+
+def _prune_old(d: deque, now: float, window: float) -> None:
+    while d and d[0] <= now - window:
+        d.popleft()
+
+def _client_ip(request: Request) -> str:
+    # бэк за Vite-proxy: client.host всегда 127.0.0.1 — берём последний XFF (дописал proxy)
+    xff = (request.headers.get("x-forwarded-for") or "").strip()
+    if xff:
+        return xff.split(",")[-1].strip() or "unknown"
+    return request.client.host if request.client else "unknown"
+
 @app.post("/api/auth/login")
 async def login(payload: LoginIn, request: Request, db: AsyncSession = Depends(get_db)):
     """Замена SiteController login + LoginForm — проверяет bcrypt-хэш из таблицы `user`.
-    Принимает username ИЛИ email (как yii2 LoginForm)."""
+    Принимает username ИЛИ email (как yii2 LoginForm).
+    Антибрутфорс (md 2026-09-20_LOGIN_antibruteforce): ведро IP → ведро пары → растяжка."""
+    now = time.monotonic()
+    ip = _client_ip(request)
+    key = payload.username.strip().lower()
+
+    # рубеж 1: ведро по IP
+    bucket = _LOGIN_IP.setdefault(ip, deque())
+    _prune_old(bucket, now, _LOGIN_IP_WINDOW)
+    if len(bucket) >= _LOGIN_IP_LIMIT:
+        raise HTTPException(status_code=429, detail="Слишком много попыток входа, попробуйте позже",
+                            headers={"Retry-After": "60"})
+
+    # рубеж 2: ведро по паре (логин+IP), блок 15 мин — жертву со своего IP не задевает
+    pair = _LOGIN_PAIR.get((key, ip))
+    if pair is not None:
+        if pair[1] > now:
+            raise HTTPException(status_code=429, detail="Слишком много неудачных попыток, попробуйте позже")
+        elif pair[1] > 0:
+            pair[0] = 0
+            pair[1] = 0.0  # блок истёк — счётчику второй шанс, иначе 6-я опечатка = новый блок
+
+    # рубеж 3: растяжка по аккаунту (распределённый перебор) — без лока, с задержкой
+    ufails = _LOGIN_USER.setdefault(key, deque())
+    _prune_old(ufails, now, _LOGIN_TRIP_WINDOW)
+    if len(ufails) >= _LOGIN_TRIP_COUNT:
+        await asyncio.sleep(min(0.5 * (len(ufails) - _LOGIN_TRIP_COUNT + 1), _LOGIN_MAX_DELAY))
+
     login = payload.username.strip()
     user = await AuthService.get_user_by_username(db, login)
     if not user and "@" in login:
         user = await AuthService.get_user_by_email(db, login)
-    if not user or not AuthService.verify_password(payload.password, user.get("password_hash") or ""):
+    ok = AuthService.verify_password_uniform(payload.password, (user or {}).get("password_hash"))
+    if not user or not ok:
+        bucket.append(now)
+        p = _LOGIN_PAIR.setdefault((key, ip), [0, 0.0])
+        p[0] += 1
+        if p[0] >= _LOGIN_PAIR_LIMIT:
+            p[1] = now + _LOGIN_PAIR_BLOCK
+        ufails.append(now)
+        _auth_log.warning("login failed: ip=%s login=%s", ip, key)
         raise HTTPException(status_code=401, detail="Неверный логин или пароль")
+    _LOGIN_PAIR.pop((key, ip), None)
+    ufails.clear()
     if user.get("blocked_at") is not None:
         raise HTTPException(status_code=403, detail="Пользователь заблокирован")
     pp = await AuthService.get_user_perms(db, int(user["id"]))
@@ -101,6 +167,17 @@ async def login(payload: LoginIn, request: Request, db: AsyncSession = Depends(g
 @app.get("/health")
 def health():
     return {"ok": True}
+
+@app.get("/health/db")
+async def health_db():
+    """Liveness с проверкой пула БД (SELECT 1). 503 = протухшие коннекты, таймер рестартит."""
+    try:
+        from backend.database import engine
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        return {"ok": True, "db": True}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"db unreachable: {type(e).__name__}")
 
 @app.get("/api/orders/feed")
 async def orders_feed(
