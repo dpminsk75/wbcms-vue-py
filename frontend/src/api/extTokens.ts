@@ -13,6 +13,10 @@ export interface ExtDiagSummary {
   catalog_links: number; popup_cards: number;
 }
 
+export interface ExtCategoryFilter {
+  id: number; company_id?: number; name: string; subjects: string; is_active?: boolean;
+}
+
 export const extTokensApi = {
   list: (companyId: number) =>
     api.get(`/api/companies/${companyId}/ext-tokens`).then((r) => r.data as ExtToken[]),
@@ -39,4 +43,15 @@ export const extTokensApi = {
     a.remove()
     setTimeout(() => URL.revokeObjectURL(url), 5000)
   },
+}
+
+export const extCategoryApi = {
+  list: (companyId: number) =>
+    api.get(`/api/companies/${companyId}/ext-filters`).then((r) => r.data as ExtCategoryFilter[]),
+  create: (companyId: number, payload: { name: string; subjects: string }) =>
+    api.post(`/api/companies/${companyId}/ext-filters`, payload).then((r) => r.data as ExtCategoryFilter),
+  update: (companyId: number, fid: number, payload: { name?: string; subjects?: string; is_active?: boolean }) =>
+    api.patch(`/api/companies/${companyId}/ext-filters/${fid}`, payload).then((r) => r.data as ExtCategoryFilter),
+  remove: (companyId: number, fid: number) =>
+    api.delete(`/api/companies/${companyId}/ext-filters/${fid}`).then((r) => r.data as { ok: boolean }),
 }

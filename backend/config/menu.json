@@ -42,8 +42,6 @@
       {"label": "SEO просмотренные", "url": "/seo/index?status=viewed", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Конкуренты (анализ)", "url": "/competitor/index", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
-      {"label": "Диагностика расширения", "url": "/ext/diag", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
-      {"label": "Установка расширения", "url": "/ext/install", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]}
     ]
   },
   {
@@ -154,6 +152,11 @@
       {"label": "SEO-модели", "url": "/admin/seo-models", "visibleIn": ["top", "side"], "roles": ["admin"]},
       {"label": "Инвайты (SPA)", "url": "/admin/invites", "visibleIn": ["top", "side"], "roles": ["admin"]},
       {"label": "Меню", "url": "/admin/menu", "visibleIn": ["top", "side"], "roles": ["admin"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "Диагностика расширения", "url": "/ext/diag", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
+      {"label": "Установка расширения", "url": "/ext/install", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
+      {"label": "Фильтры расширения", "url": "/ext/install?block=filters", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]}
+      {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Настройки профиля", "url": "/user/profile", "visibleIn": ["top", "side"]}
     ]
   }

@@ -23,6 +23,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import StreamingResponse
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,6 +35,7 @@ router = APIRouter(prefix="/api/ext", tags=["ext"])
 admin_router = APIRouter(prefix="/api/companies/{company_id}/ext-tokens", tags=["ext-tokens"])
 diag_admin_router = APIRouter(prefix="/api/companies/{company_id}/ext-diag", tags=["ext-diag"])
 dl_router = APIRouter(prefix="/api/companies/{company_id}/ext-download", tags=["ext-tokens"])
+cat_router = APIRouter(prefix="/api/companies/{company_id}/ext-filters", tags=["ext-tokens"])
 
 OWNED_CARDS = "SELECT nmID FROM wbcards WHERE company_id=:cid"
 
@@ -687,6 +689,157 @@ async def ext_diag_admin_view(
     return _diag_view_for(company_id, nm_id)
 
 
+# ---------- пресеты фильтра категорий (JWT + расширение) ----------
+
+# Фолбэк, пока компания не завела свои (тот же набор, что был захардкожен в popup).
+DEFAULT_CATEGORY_FILTERS = [
+    {"id": 0, "name": "Книги и журналы", "subjects": "381;397;1132;662;661"},
+]
+
+
+def _norm_subjects(raw: str) -> str:
+    """id subject цифрами через «;»: допускаем запятые/пробелы на входе."""
+    import re as _re
+    ids = [p for p in _re.split(r"[;,\s]+", str(raw or "")) if p.isdigit()]
+    if not ids:
+        raise ValueError("subjects: нужен хотя бы один числовой id (разделитель ; , пробел)")
+    return ";".join(ids)[:500]
+
+
+@cat_router.get("")
+async def ext_filters_list(
+    company_id: int = Path(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+    _member: int | None = Depends(get_current_company),
+    _seo: dict = Depends(require_seo),
+):
+    rows = (await db.execute(text("""
+        SELECT id, company_id, name, subjects, is_active FROM ext_category_filters
+        WHERE company_id=:c ORDER BY id
+    """), {"c": company_id})).mappings().all()
+    return [{**dict(r), "is_active": bool(r["is_active"])} for r in rows]
+
+
+@cat_router.post("")
+async def ext_filters_create(
+    company_id: int = Path(..., ge=1),
+    payload: dict | None = Body(default=None),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+    _member: int | None = Depends(get_current_company),
+    _seo: dict = Depends(require_seo),
+):
+    data = payload or {}
+    name = str(data.get("name") or "").strip()[:100]
+    if not name:
+        raise HTTPException(status_code=400, detail="name required")
+    try:
+        subjects = _norm_subjects(data.get("subjects"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    await db.rollback()
+    try:
+        async with db.begin():
+            await db.execute(text("""
+                INSERT INTO ext_category_filters (company_id, name, subjects, is_active, created_by)
+                VALUES (:c, :n, :s, :a, :u)
+            """), {"c": company_id, "n": name, "s": subjects,
+                   "a": 0 if data.get("is_active") is False else 1, "u": user["id"]})
+            row = (await db.execute(text("""
+                SELECT id, company_id, name, subjects, is_active FROM ext_category_filters
+                WHERE company_id=:c AND name=:n LIMIT 1
+            """), {"c": company_id, "n": name})).mappings().first()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="preset with this name exists")
+    d = dict(row)
+    d["is_active"] = bool(d["is_active"])
+    return d
+
+
+@cat_router.patch("/{fid}")
+async def ext_filters_update(
+    company_id: int = Path(..., ge=1),
+    fid: int = Path(..., ge=1),
+    payload: dict | None = Body(default=None),
+    db: AsyncSession = Depends(get_db),
+    _member: int | None = Depends(get_current_company),
+    _seo: dict = Depends(require_seo),
+):
+    data = payload or {}
+    sets: dict = {}
+    if "name" in data and data["name"] is not None:
+        name = str(data["name"]).strip()[:100]
+        if not name:
+            raise HTTPException(status_code=400, detail="bad name")
+        sets["name"] = name
+    if "subjects" in data and data["subjects"] is not None:
+        try:
+            sets["subjects"] = _norm_subjects(data["subjects"])
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+    if "is_active" in data and data["is_active"] is not None:
+        sets["is_active"] = 1 if data["is_active"] else 0
+    if not sets:
+        raise HTTPException(status_code=400, detail="nothing to update")
+    await db.rollback()
+    try:
+        async with db.begin():
+            r = await db.execute(text(f"""
+                UPDATE ext_category_filters SET {", ".join(f"{k}=:{k}" for k in sets)}
+                WHERE id=:i AND company_id=:c
+            """), {**sets, "i": fid, "c": company_id})
+            if not r.rowcount:
+                raise HTTPException(status_code=404, detail="preset not found")
+            row = (await db.execute(text("""
+                SELECT id, company_id, name, subjects, is_active FROM ext_category_filters
+                WHERE id=:i LIMIT 1
+            """), {"i": fid})).mappings().first()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="preset with this name exists")
+    d = dict(row)
+    d["is_active"] = bool(d["is_active"])
+    return d
+
+
+@cat_router.delete("/{fid}")
+async def ext_filters_delete(
+    company_id: int = Path(..., ge=1),
+    fid: int = Path(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+    _member: int | None = Depends(get_current_company),
+    _seo: dict = Depends(require_seo),
+):
+    await db.rollback()
+    async with db.begin():
+        r = await db.execute(text("""
+            DELETE FROM ext_category_filters WHERE id=:i AND company_id=:c
+        """), {"i": fid, "c": company_id})
+        if not r.rowcount:
+            raise HTTPException(status_code=404, detail="preset not found")
+    return {"ok": True}
+
+
+@router.get("/filters")
+async def ext_filters_for_extension(
+    db: AsyncSession = Depends(get_db),
+    ext: dict = Depends(require_ext_token),
+):
+    """Активные пресеты компании токена для дропдауна в popup. Пусто — фолбэк по умолчанию."""
+    cid = int(ext["company_id"])
+    try:
+        rows = (await db.execute(text("""
+            SELECT id, name, subjects FROM ext_category_filters
+            WHERE company_id=:c AND is_active=1 ORDER BY id
+        """), {"c": cid})).mappings().all()
+    except Exception:
+        await db.rollback()
+        return []  # миграции ещё нет — расширение оставит локальный дефолт
+    out = [dict(r) for r in rows]
+    return out or DEFAULT_CATEGORY_FILTERS
+
+
 # ---------- скачивание расширения (JWT, side-load, §10 п.4) ----------
 
 EXT_ZIP_FILES = ("manifest.json", "background.js", "content.js", "content_search.js",
@@ -710,7 +863,7 @@ async def ext_download(
     _ = db
     _ = company_id
     src = os.getenv("EXTENSION_DIR", "").rstrip("/\\")
-    base = os.getenv("EXT_PUBLIC_BASE", "http://31.130.204.146:8000").rstrip("/")
+    base = os.getenv("EXT_PUBLIC_BASE", "http://31.130.204.146:3000").rstrip("/")
     if not src:
         raise HTTPException(status_code=500, detail="EXTENSION_DIR is not set (см. backend/.env.example)")
     manifest_p = pathlib.Path(src) / "manifest.json"

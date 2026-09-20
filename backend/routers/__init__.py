@@ -14,4 +14,5 @@ from .competitor import router as competitor_router
 from .ai_jobs import router as ai_jobs_router
 from .seo import router as seo_router
 from .seo_models import router as seo_models_router
-from .ext import router as ext_router, admin_router as ext_tokens_admin_router, diag_admin_router as ext_diag_admin_router, dl_router as ext_download_router
+from .cms import router as cms_router
+from .ext import router as ext_router, admin_router as ext_tokens_admin_router, diag_admin_router as ext_diag_admin_router, dl_router as ext_download_router, cat_router as ext_filters_router

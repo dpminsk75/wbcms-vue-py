@@ -1,59 +1,29 @@
 <template>
-  <div>
-    <div v-if="error" class="wb-error">{{ error }}</div>
-    <ol class="mb-0">
-      <li>
-        <strong>Выдайте токен</strong> (кнопка ниже или блок «Токены расширения») и скопируйте его — показывается один раз.
-      </li>
-      <li>
-        <strong>Скачайте zip</strong> (адрес сервера уже вшит)
-        <span v-if="companyId !== 'all'">
-          <button @click="onDownload" :disabled="downloading" class="btn btn-sm btn-outline-primary ms-1">
-            <i class="bi bi-download"></i> {{ downloading ? 'Готовлю…' : 'Скачать' }}
-          </button>
-        </span>
-        <span v-else> (сначала выберите компанию в меню).</span>
-      </li>
-      <li><strong>Распакуйте</strong> zip в постоянную папку (не во временную — Chrome ссылается на неё).</li>
-      <li>
-        Откройте <code>chrome://extensions</code>, включите <strong>«Режим разработчика»</strong>
-        и нажмите <strong>«Загрузить распакованное расширение»</strong> — выберите папку из шага 3.
-      </li>
-      <li>
-        Откройте popup расширения (иконка в панели), проверьте <strong>адрес</strong>
-        (<code>{{ serverBase }}</code>), вставьте <strong>токен</strong> из шага 1 и нажмите <strong>ОК</strong>.
-        Без токена статусы скажут «Нет доступа».
-      </li>
-      <li>
-        Введите <strong>source nmID</strong> своего товара, нажмите <strong>«Очередь»</strong> —
-        должны появиться цифры, затем <strong>«Старт»/«Поиск»</strong>.
-      </li>
-      <li>Обновление — скачать zip заново и нажать «Обновить» на карточке расширения. Токен не слетает.</li>
-    </ol>
-  </div>
+  <CmsBlock blockKey="ext-install" :fallbackMd="FULL_FALLBACK" />
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { extTokensApi } from '../../api/extTokens'
+import CmsBlock from '../cms/CmsBlock.vue'
 
-const props = defineProps<{ companyId: number | 'all' }>()
+// companyId больше не нужен (статья целиком в БД), проп оставлен чтобы не трогать вызывающие места.
+defineProps<{ companyId: number | 'all' }>()
 
-const downloading = ref(false)
-const error = ref('')
-// Бэк расширения висит на том же хосте, порт 8000 (см. EXT_PUBLIC_BASE на сервере).
-const serverBase = computed(() => `${location.protocol}//${location.hostname}:8000`)
+// Вшитый фолбэк на случай пустой БД (тот же текст, что в сиде миграции 20260928).
+const FULL_FALLBACK = `**Установка расширения** (side-load, публикации в Store нет):
 
-async function onDownload() {
-  if (props.companyId === 'all') return
-  downloading.value = true
-  error.value = ''
-  try {
-    await extTokensApi.download(props.companyId)
-  } catch (e: any) {
-    error.value = e?.response?.data?.detail || String(e)
-  } finally {
-    downloading.value = false
-  }
-}
+1. **Выдайте токен** в блоке «Токены расширения» выше и скопируйте его — показывается один раз.
+2. **Скачайте zip** кнопкой «Скачать расширение» там же (адрес сервера уже вшит).
+3. **Распакуйте** zip в постоянную папку (не во временную — Chrome ссылается на неё).
+4. Откройте \`chrome://extensions\`, включите **«Режим разработчика»** и нажмите **«Загрузить распакованное расширение»** — выберите папку из шага 3.
+5. Откройте popup расширения (иконка в панели), проверьте **адрес** (\`http://31.130.204.146:3000\`), вставьте **токен** из шага 1 и нажмите **ОК**. Без токена статусы скажут «Нет доступа».
+6. Введите **source nmID** своего товара, нажмите **«Очередь»** — должны появиться цифры, затем **«Старт»/«Поиск»**.
+7. Обновление — скачать zip заново и нажать «Обновить» на карточке расширения. Токен не слетает.
+
+**Откуда берутся фразы** (выбор в popup):
+
+- **По фразам из карточки** — SEO-цели товара: ведутся в [SEO-рекомендациях](/seo/index) (открыть рекомендацию → блок целей, фразы с приоритетом).
+- **ТОП-20 поисковых фраз** — фразы с заказами из отчётов WB: посмотреть можно в [«Карточка → фразы»](/wb-search/card) (ввести nmID товара).
+- **Оба вместе** — сначала цели, потом добор из ТОП-20.
+
+**Фильтр категорий** — дропдаун в popup ограничивает выдачу WB выбранными subject-id (\`&xsubject=\`). Наборы заводятся [здесь, в блоке «Фильтры категорий»](/ext/install?block=filters) (например «Книги и журналы», «Канцтовары»); «Без фильтра» — вся выдача. Расширение подтягивает список само при открытии popup.`
 </script>
