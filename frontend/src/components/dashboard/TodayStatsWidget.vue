@@ -7,6 +7,9 @@
         </div>
         <div class="d-flex align-items-center" style="gap:14px">
           <div class="text-muted small" style="font-size:12px">Обновлено в {{ updatedAt }}</div>
+          <label class="small text-muted d-flex align-items-center" style="gap:4px; cursor:pointer; font-size:12px" :style="{visibility: (period==='month_to_date'||period==='last_month') ? 'visible' : 'hidden'}">
+            <input type="checkbox" v-model="trimPast" :disabled="!(period==='month_to_date'||period==='last_month')" /> по сегодня
+          </label>
           <select v-model="period" class="tsw-period-btn">
             <option v-for="p in periods" :key="p.value" :value="p.value">{{ p.label }}</option>
           </select>
@@ -75,6 +78,7 @@ use([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, Canv
 
 const tab = ref<'orders'|'sales'>('orders')
 const period = ref('today')
+const trimPast = ref(true)
 const tabs = [{label:'Заказы',value:'orders'},{label:'Продажи',value:'sales'}]
 const periods = [
   {label:'За сегодня',value:'today'}, {label:'За вчера',value:'yesterday'},
@@ -84,8 +88,8 @@ const periods = [
 
 const auth = useAuthStore()
 const { data, isLoading, isFetching, isError, error } = useQuery({
-  queryKey: computed(()=> ['today-stats', period.value, tab.value, auth.companyId] as const),
-  queryFn: () => dashboardApi.todayStats(period.value as any, tab.value),
+  queryKey: computed(()=> ['today-stats', period.value, tab.value, trimPast.value, auth.companyId] as const),
+  queryFn: () => dashboardApi.todayStats(period.value as any, tab.value, trimPast.value),
 })
 const hasData = computed(() => {
   // категории статичны (часы/дни всегда есть) — смотрим итоги: хоть где-то заказы/сумма

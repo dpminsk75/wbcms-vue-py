@@ -1,5 +1,5 @@
 """Полный перенос SiteController.php:238-413 + 469-784"""
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 import calendar
@@ -18,7 +18,7 @@ class DashboardService:
         return {} if self.company_id is None else {"company_id": self.company_id}
 
     # --- buildPeriodStats dispatcher ---
-    async def build_period_stats(self, period: str, table: str, sum_field: str):
+    async def build_period_stats(self, period: str, table: str, sum_field: str, trim_past: bool = True):
         if period == "yesterday":
             return await self.build_hourly_comparison(table, sum_field, [
                 {"key":"a","label":"Вчера","daysAgo":1},
@@ -30,9 +30,9 @@ class DashboardService:
         if period == "last_week":
             return await self.build_daily_week_comparison(table, sum_field, 1)
         if period == "month_to_date":
-            return await self.build_daily_month_comparison(table, sum_field, 0)
+            return await self.build_daily_month_comparison(table, sum_field, 0, trim_past)
         if period == "last_month":
-            return await self.build_daily_month_comparison(table, sum_field, 1)
+            return await self.build_daily_month_comparison(table, sum_field, 1, trim_past)
         return await self.build_hourly_comparison(table, sum_field, [
             {"key":"a","label":"Сегодня","daysAgo":0},
             {"key":"b","label":"Вчера","daysAgo":1},
@@ -73,38 +73,81 @@ class DashboardService:
         label_b = "Неделю назад" if is_current else "Позапрошлая неделя"
         return {"granularity":"day","categories":day_names,"seriesMeta":[{"key":"a","name":label_a},{"key":"b","name":label_b}],"series":{"a":series_a,"b":series_b},"totals":{"a":totals_a,"b":totals_b}}
 
-    async def build_daily_month_comparison(self, table, sum_field, monthsAgoStart: int):
+    async def build_daily_month_comparison(self, table, sum_field, monthsAgoStart: int, trim_past: bool = True):
         is_current = monthsAgoStart == 0
         today = date.today()
-        year_a = today.year + (today.month -1 - monthsAgoStart)//12
-        month_a = (today.month -1 - monthsAgoStart) %12 +1
-        first_a = date(year_a, month_a, 1)
-        year_b = first_a.year + (first_a.month -2)//12
-        month_b = (first_a.month -2) %12 +1
-        first_b = date(year_b, month_b, 1)
-        days_a = calendar.monthrange(first_a.year, first_a.month)[1]
-        days_b = calendar.monthrange(first_b.year, first_b.month)[1]
-        last_a = date(first_a.year, first_a.month, days_a)
-        last_b = date(first_b.year, first_b.month, days_b)
+        # Три серии: текущая/прошлая + год назад. last_month: [1,2,13], month_to_date: [0,1,12].
+        offs = [monthsAgoStart, monthsAgoStart + 1, monthsAgoStart + 12]
+        firsts, days, lasts = [], [], []
+        for o in offs:
+            y = today.year + (today.month - 1 - o) // 12
+            m = (today.month - 1 - o) % 12 + 1
+            f = date(y, m, 1)
+            n = calendar.monthrange(f.year, f.month)[1]
+            firsts.append(f); days.append(n); lasts.append(date(f.year, f.month, n))
+        first_a, first_b, first_c = firsts
+        days_a, days_b, days_c = days
+        last_a, last_b, last_c = lasts
         end_a = today if is_current else last_a
         data_a = await self.query_period_by_day(table, sum_field, first_a.isoformat(), end_a.isoformat())
-        data_b = await self.query_period_by_day(table, sum_field, first_b.isoformat(), last_b.isoformat())
-        max_days = max(days_a, days_b)
-        categories = [str(d) for d in range(1, max_days+1)]
-        series_a, series_b = [], []
-        for d in range(1, max_days+1):
-            date_a = first_a + timedelta(days=d-1) if d <= days_a else None
-            date_b = first_b + timedelta(days=d-1) if d <= days_b else None
-            r_a = data_a.get(date_a.isoformat()) if date_a else None
-            r_b = data_b.get(date_b.isoformat()) if date_b else None
-            in_range_a = date_a is not None and date_a <= end_a
-            series_a.append({"category":str(d),"sum":None if date_a is None else (round(r_a["sum"],2) if r_a else (0 if in_range_a else None)),"cnt":None if date_a is None else (r_a["cnt"] if r_a else (0 if in_range_a else None)),"spp":None if date_a is None else (round(r_a["spp"],1) if r_a else (0 if in_range_a else None)),"date":date_a.isoformat() if date_a else None})
-            series_b.append({"category":str(d),"sum":None if date_b is None else (round(r_b["sum"],2) if r_b else 0),"cnt":None if date_b is None else (r_b["cnt"] if r_b else 0),"spp":None if date_b is None else (round(r_b["spp"],1) if r_b else 0),"date":date_b.isoformat() if date_b else None})
         totals_a = await self.query_period_agg(table, sum_field, f"{first_a} 00:00:00", f"{end_a} 23:59:59")
-        totals_b = await self.query_period_agg(table, sum_field, f"{first_b} 00:00:00", f"{last_b} 23:59:59")
+
+        # Срез «по сегодня»: время сервера (там же, где БД) — часы текущего дня.
+        now = datetime.now()
+        cutoff = now.strftime("%H:%M:%S")
+        cut_day = today.day if (trim_past and is_current) else None
+
+        async def load_past(first, n_days, last):
+            # trim=off или last_month (не is_current): полный месяц как раньше.
+            if cut_day is None:
+                d = await self.query_period_by_day(table, sum_field, first.isoformat(), last.isoformat())
+                t = await self.query_period_agg(table, sum_field, f"{first} 00:00:00", f"{last} 23:59:59")
+                return d, t, None
+            # trim=on для month_to_date: дни 1..cut_day-1 целиком + день cut_day до текущего времени.
+            full_n = min(cut_day - 1, n_days)
+            d = {}
+            if full_n >= 1:
+                end_full = (first + timedelta(days=full_n - 1)).isoformat()
+                d = await self.query_period_by_day(table, sum_field, first.isoformat(), end_full)
+            if cut_day <= n_days:
+                pdate = (first + timedelta(days=cut_day - 1)).isoformat()
+                d[pdate] = await self.query_period_agg(table, sum_field, f"{pdate} 00:00:00", f"{pdate} {cutoff}")
+                t = await self.query_period_agg(table, sum_field, f"{first} 00:00:00", f"{pdate} {cutoff}")
+            else:
+                # Прошлый месяц короче (февраль vs 31-е): весь прошлый месяц уже «до сегодня».
+                t = await self.query_period_agg(table, sum_field, f"{first} 00:00:00", f"{last} 23:59:59")
+            return d, t, cut_day
+
+        data_b, totals_b, cut_b = await load_past(first_b, days_b, last_b)
+        data_c, totals_c, cut_c = await load_past(first_c, days_c, last_c)
+
+        def point(data, first, n_days, d, end_limit, cut):
+            dt = first + timedelta(days=d - 1) if d <= n_days else None
+            if dt is None:
+                return {"category": str(d), "sum": None, "cnt": None, "spp": None, "date": None}
+            r = data.get(dt.isoformat())
+            if cut is not None and d > cut:
+                return {"category": str(d), "sum": None, "cnt": None, "spp": None, "date": dt.isoformat()}
+            if r:
+                return {"category": str(d), "sum": round(r["sum"], 2), "cnt": r["cnt"], "spp": round(r["spp"], 1), "date": dt.isoformat()}
+            zero = dt <= end_limit
+            return {"category": str(d), "sum": 0 if zero else None, "cnt": 0 if zero else None, "spp": 0 if zero else None, "date": dt.isoformat()}
+
+        max_days = max(days_a, days_b, days_c)
+        categories = [str(d) for d in range(1, max_days + 1)]
+        series_a = [point(data_a, first_a, days_a, d, end_a, None) for d in range(1, max_days + 1)]
+        # trim=off: end_limit=last (нули по всему месяцу как раньше); trim=on: нули только до среза, дальше null.
+        end_b = last_b if cut_b is None else (first_b + timedelta(days=min(cut_b, days_b) - 1))
+        end_c = last_c if cut_c is None else (first_c + timedelta(days=min(cut_c, days_c) - 1))
+        series_b = [point(data_b, first_b, days_b, d, end_b, cut_b) for d in range(1, max_days + 1)]
+        series_c = [point(data_c, first_c, days_c, d, end_c, cut_c) for d in range(1, max_days + 1)]
         label_a = "Текущий месяц" if is_current else "Прошлый месяц"
         label_b = "Прошлый месяц" if is_current else "Позапрошлый месяц"
-        return {"granularity":"day","categories":categories,"axisCaption":f"{first_a.strftime('%B %Y')} / {first_b.strftime('%B %Y')}","seriesMeta":[{"key":"a","name":label_a},{"key":"b","name":label_b}],"series":{"a":series_a,"b":series_b},"totals":{"a":totals_a,"b":totals_b}}
+        return {"granularity": "day", "categories": categories,
+                "axisCaption": f"{first_a.strftime('%B %Y')} / {first_b.strftime('%B %Y')} / {first_c.strftime('%B %Y')}",
+                "seriesMeta": [{"key": "a", "name": label_a}, {"key": "b", "name": label_b}, {"key": "c", "name": "Год назад"}],
+                "series": {"a": series_a, "b": series_b, "c": series_c},
+                "totals": {"a": totals_a, "b": totals_b, "c": totals_c}}
 
     async def query_period_by_hour(self, table, sum_field, d: str, date_label=None):
         where = f"date BETWEEN :d1 AND :d2{self._company_where()}"

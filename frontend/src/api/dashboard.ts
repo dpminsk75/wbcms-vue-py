@@ -23,7 +23,7 @@ export const dashboardApi = {
   lastOrders: (p:{dateFrom:string,dateTo:string,page?:number}) => api.get('/api/dashboard/last-orders', {params:p}).then(r=>r.data),
   lastSales: (p:{dateFrom:string,dateTo:string}) => api.get('/api/dashboard/last-sales', {params:p}).then(r=>r.data),
   monthly: (refresh?:boolean) => api.get('/api/dashboard/monthly-finance', {params:{refresh: refresh?1:0}}).then(r=>r.data),
-  todayStats: (period:Period, tab:'orders'|'sales') => api.get<PeriodStats>('/api/dashboard/today-stats', {params:{period,tab}}).then(r=>r.data),
+  todayStats: (period:Period, tab:'orders'|'sales', trimPast:boolean=true) => api.get<PeriodStats>('/api/dashboard/today-stats', {params:{period,tab,trim_past: trimPast?1:0}}).then(r=>r.data),
   newCards: (p:{dateFrom?:string,dateTo?:string,title?:string,sort?:string}) => api.get('/api/dashboard/new-cards', {params:p}).then(r=>r.data),
   ordersFeed: (p:{nm_id?:number,date_from:string,date_to:string,status?:string,warehouse_name?:string,region_name?:string,page?:number}) => api.get('/api/orders/feed', {params:p}).then(r=>r.data),
   ordersFeedOptions: (p:any) => api.get('/api/orders/feed/options', {params:p}).then(r=>r.data),

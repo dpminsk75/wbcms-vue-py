@@ -39,13 +39,14 @@ async def top_metrics(
 async def today_stats(
     period: Literal["today", "yesterday", "week_to_date", "last_week", "month_to_date", "last_month"] = "today",
     tab: Literal["orders", "sales"] = "orders",
+    trim_past: int = Query(default=1),
     db: AsyncSession = Depends(get_db),
     company_id: int | None = Depends(get_current_company),
 ):
     table = "wb_order" if tab == "orders" else "wb_sales"
     sum_field = "price_with_disc" if tab == "orders" else "priceWithDisc"
     svc = DashboardService(db, company_id=company_id)
-    data = await svc.build_period_stats(period, table, sum_field)
+    data = await svc.build_period_stats(period, table, sum_field, trim_past=bool(trim_past))
     try:
         updated = await svc.get_last_order_time()
         data["updated_at"] = updated
