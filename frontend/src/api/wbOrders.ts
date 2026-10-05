@@ -32,6 +32,7 @@ export interface WbOrderListParams {
   category?: string
   card_title?: string
   g_number?: string
+  srid?: string
   is_cancel?: number | string
   sort?: string
   page?: number

@@ -1,0 +1,9 @@
+/* FBS Заказы — страничные стили (глобальные паттерны не дублируем). */
+.page-fbs-orders__beta { font-size: 11px; font-weight: 400; vertical-align: middle; }
+.page-fbs-orders__filter-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 15px; }
+.page-fbs-orders__filter-label { font-size: 12px; font-weight: 600; }
+.page-fbs-orders__filter-btns { margin-top: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.page-fbs-orders__presets { display: flex; gap: 6px; flex-wrap: wrap; }
+.page-fbs-orders__presets--top { margin-bottom: 12px; }
+.page-fbs-orders__updated { font-size: 11px; color: #9ca3af; margin-top: 8px; }
+.page-fbs-orders__section-line { font-size: 13px; font-weight: 600; color: #111827; margin: 4px 0 10px; }

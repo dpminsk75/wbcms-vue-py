@@ -41,7 +41,7 @@
       {"label": "SEO рекомендации", "url": "/seo/index", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
       {"label": "SEO просмотренные", "url": "/seo/index?status=viewed", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
       {"divider": true, "visibleIn": ["top", "side"]},
-      {"label": "Конкуренты (анализ)", "url": "/competitor/index", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
+      {"label": "Конкуренты (анализ)", "url": "/competitor/index", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]}
     ]
   },
   {
@@ -107,6 +107,9 @@
     "visibleIn": ["top", "side"],
     "roles": ["manageFbsStocks", "admin"],
     "items": [
+      {"label": "FBS дашборд", "url": "/fbs-report", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
+      {"label": "FBS Заказы", "url": "/fbs-orders", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
+      {"label": "FBS Отмены", "url": "/fbs-cancels", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
       {"label": "Управление остатками", "url": "/wb-fbs-virtual/index", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
       {"label": "Документы", "url": "/wb-doc/index", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
       {"divider": true, "visibleIn": ["top", "side"]},
@@ -155,7 +158,7 @@
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Диагностика расширения", "url": "/ext/diag", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
       {"label": "Установка расширения", "url": "/ext/install", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
-      {"label": "Фильтры расширения", "url": "/ext/install?block=filters", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]}
+      {"label": "Фильтры расширения", "url": "/ext/install?block=filters", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Настройки профиля", "url": "/user/profile", "visibleIn": ["top", "side"]}
     ]

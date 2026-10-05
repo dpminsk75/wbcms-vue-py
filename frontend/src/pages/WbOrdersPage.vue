@@ -8,8 +8,9 @@
         </button>
       </div>
       <div class="row g-2">
-        <div class="col-md-3 col-6"><label class="form-label">Номер заказа</label><input v-model="filters.g_number" class="form-control form-control-sm" placeholder="g_number" /></div>
-        <div class="col-md-3 col-6"><label class="form-label">Статус</label>
+        <div class="col-md-2 col-6"><label class="form-label">Номер заказа</label><input v-model="filters.g_number" class="form-control form-control-sm" placeholder="g_number" /></div>
+        <div class="col-md-2 col-6"><label class="form-label">SRID</label><input v-model="filters.srid" class="form-control form-control-sm" placeholder="srid" /></div>
+        <div class="col-md-2 col-6"><label class="form-label">Статус</label>
           <select v-model="filters.is_cancel" class="form-select form-select-sm">
             <option value="">Все</option>
             <option value="0">Ок</option>
@@ -155,6 +156,7 @@ const filters = reactive({
   category: '',
   card_title: '',
   g_number: '',
+  srid: '',
   is_cancel: '',
 })
 const sort = ref('-date')
@@ -207,6 +209,7 @@ function initFromQuery() {
   filters.category = pick('category', 'WbOrderSearch[category]')
   filters.card_title = pick('card_title', 'WbOrderSearch[cardTitle]')
   filters.g_number = pick('g_number', 'WbOrderSearch[g_number]')
+  filters.srid = pick('srid', 'WbOrderSearch[srid]')
   filters.is_cancel = pick('is_cancel', 'WbOrderSearch[is_cancel]')
   if (q.sort) sort.value = String(q.sort)
   if (q.page) page.value = parseInt(String(q.page)) || 1
@@ -236,6 +239,7 @@ function buildParams() {
   if (filters.category) p.category = filters.category
   if (filters.card_title) p.card_title = filters.card_title
   if (filters.g_number) p.g_number = filters.g_number
+  if (filters.srid) p.srid = filters.srid
   if (filters.is_cancel !== '') p.is_cancel = filters.is_cancel
   return p
 }
@@ -251,6 +255,7 @@ function syncRoute() {
   if (filters.category) q.category = filters.category
   if (filters.card_title) q.card_title = filters.card_title
   if (filters.g_number) q.g_number = filters.g_number
+  if (filters.srid) q.srid = filters.srid
   if (filters.is_cancel !== '') q.is_cancel = filters.is_cancel
   if (sort.value !== '-date') q.sort = sort.value
   if (page.value > 1) q.page = String(page.value)
@@ -260,6 +265,9 @@ function syncRoute() {
 
 async function fetchData() {
   isLoading.value = true
+  // Флаг читаем ДО syncRoute(): он пересобирает query без detail и стирал его
+  const qd: any = route.query
+  const wantDetail = qd.detail === '1' || qd.detail === ''
   syncRoute()
   try {
     const data = await wbOrdersApi.list(buildParams())
@@ -267,6 +275,10 @@ async function fetchData() {
     total.value = data.total || 0
     mergeOpts(brandOpts, rows.value.map((r) => r.brand))
     mergeOpts(categoryOpts, rows.value.map((r) => (r as any).category))
+    // Прямая ссылка из попапов FBS: ?srid=...&detail=1 — сразу открываем drawer деталей (как «глазик»)
+    if (wantDetail && rows.value.length && !drawerOpen.value) {
+      openDetail(rows.value[0].id)
+    }
   } catch {
     rows.value = []
     total.value = 0
@@ -290,6 +302,7 @@ function onReset() {
   filters.category = ''
   filters.card_title = ''
   filters.g_number = ''
+  filters.srid = ''
   filters.is_cancel = ''
   sort.value = '-date'
   page.value = 1

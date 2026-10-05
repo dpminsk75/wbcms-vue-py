@@ -19,6 +19,7 @@ async def wb_orders_list(
     category: str | None = Query(default=None),
     card_title: str | None = Query(default=None),
     g_number: str | None = Query(default=None),
+    srid: str | None = Query(default=None),
     is_cancel: int | None = Query(default=None, ge=0, le=1),
     sort: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
@@ -28,7 +29,7 @@ async def wb_orders_list(
 ):
     svc = WbOrdersService(db, company_id=company_id)
     return await svc.list(date_from, date_to, nm_id, supplier_article, brand,
-                          category, card_title, g_number, is_cancel,
+                          category, card_title, g_number, srid, is_cancel,
                           sort, page, page_size)
 
 

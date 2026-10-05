@@ -49,7 +49,8 @@ class WbOrdersService:
         return {} if self.company_id is None else {"company_id": self.company_id}
 
     def _filters(self, date_from, date_to, nm_id, supplier_article, brand,
-                 category, card_title, g_number, is_cancel) -> tuple[str, dict]:
+                 category, card_title, g_number, srid,
+                 is_cancel) -> tuple[str, dict]:
         where = ["1=1" + self._company_where()]
         params: dict = {**self._company_params()}
         if date_from and date_to:
@@ -71,6 +72,9 @@ class WbOrdersService:
         if g_number:
             where.append("o.g_number LIKE :g_number")
             params["g_number"] = f"%{g_number}%"
+        if srid:
+            where.append("o.srid LIKE :srid")
+            params["srid"] = f"%{srid}%"
         if supplier_article:
             where.append("o.supplier_article LIKE :supplier_article")
             params["supplier_article"] = f"%{supplier_article}%"
@@ -103,11 +107,11 @@ class WbOrdersService:
 
     async def list(self, date_from=None, date_to=None, nm_id=None,
                    supplier_article=None, brand=None, category=None,
-                   card_title=None, g_number=None, is_cancel=None,
+                   card_title=None, g_number=None, srid=None, is_cancel=None,
                    sort=None, page=1, page_size=100) -> dict:
         where_sql, params = self._filters(
             date_from, date_to, nm_id, supplier_article, brand,
-            category, card_title, g_number, is_cancel)
+            category, card_title, g_number, srid, is_cancel)
         order_sql = parse_sort(sort)
         total = (await self.db.execute(text(
             f"""SELECT COUNT(*) AS cnt FROM wb_order o
@@ -124,7 +128,7 @@ class WbOrdersService:
                 "total": int(total), "page": page, "page_size": page_size}
 
     async def get(self, order_id: int) -> dict | None:
-        where_sql, params = self._filters(None, None, None, None, None, None, None, None, None)
+        where_sql, params = self._filters(None, None, None, None, None, None, None, None, None, None)
         # detail: тот же company-scope, без фильтров (30 полей view.php:35-87 маппятся 1-в-1)
         row = (await self.db.execute(text(
             f"""SELECT o.*, c.title AS card_title
