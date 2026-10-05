@@ -26,7 +26,7 @@
       <div class="page-fbs-orders__kpi-card page-fbs-orders__kpi-card--ok" title="Сдано за &lt;42 ч: скидка −5/−3,5 п.п. с комиссии">
         <div class="page-fbs-orders__kpi-label">Сдано с экономией</div>
         <div class="page-fbs-orders__kpi-value">{{ fmt0(q.economy?.cnt) }} <span class="page-fbs-orders__kpi-unit">шт · {{ fmtPct1(q.economy?.pct) }}</span></div>
-        <div class="page-fbs-orders__kpi-sub">−{{ fmtMoney(q.economy?.discount_sum) }} комиссии · из {{ fmt0(q.economy?.measured) }} измеренных</div>
+        <div class="page-fbs-orders__kpi-sub">−{{ fmtMoney(q.economy?.discount_sum) }} комиссии · {{ fmt0(q.economy?.cnt) }} из {{ fmt0(q.economy?.tasks) }} заданий ({{ fmtPct1(q.economy?.share_pct) }})</div>
       </div>
     </div>
     <FbsLiveOrdersModal :title="modalTitle" :orders="modalOrders" @close="modalOrders = null" />
@@ -45,7 +45,7 @@
         </div>
         <div class="page-fbs-orders__wh-sub">До сдачи {{ fmtHours(w.median_to_handover_h) }} · измерено {{ fmt0(w.measured_cnt) }} заданий</div>
         <div class="page-fbs-orders__wh-risk">Сроки <b>{{ fmt0(w.growing_cnt) }}</b> {{ fmtMoney(w.growing_sum) }} с растущей комиссией · из них {{ fmt0(w.stuck_cnt) }} зависло</div>
-        <div class="page-fbs-orders__wh-eco">С экономией <b>{{ fmt0(w.economy_cnt) }}</b> ({{ fmtPct1(w.economy_pct) }}) · −{{ fmtMoney(w.economy_discount) }} комиссии</div>
+        <div class="page-fbs-orders__wh-eco">С экономией <b>{{ fmt0(w.economy_cnt) }}</b> · −{{ fmtMoney(w.economy_discount) }} ({{ fmtPct1(w.economy_share) }} заданий)</div>
       </div>
     </div>
   </div>

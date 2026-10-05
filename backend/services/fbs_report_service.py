@@ -122,18 +122,21 @@ class FbsReportService:
     async def _handling(self, date_from: str, date_to: str,
                         nm_id: int | None, brand: str | None,
                         category: str | None) -> dict:
-        # v2 (2026-10-05): время СБОРКИ = wb_created_at (появление задания)
-        # → первый confirm/complete (сдача на WB). last_change_date больше не
-        # используем: там финал заказа (выкуп через недели), всё падало в 60+ч.
+        # v4 (2026-10-05): время СБОРКИ = wb_created_at → первый
+        # confirm/complete ТОЛЬКО по статусам. scanDt не учитываем: WB не
+        # всегда отдаёт номер поставки при смене статуса, скана может не быть
+        # в принципе (таблица поставок — в резерве). last_change_date не
+        # используем: там финал заказа, всё падало в 60+ч.
         comp = "WHERE company_id = :company_id" if self.company_id is not None else ""
         # Нулевые даты '0000-00-00' режем через валидный порог: сам литерал
         # '0000-00-00' MySQL отвергает (1525, journalctl 2026-10-05).
+        eff = "fh.first_handover_at"
         h = ("TIMESTAMPDIFF(HOUR, "
              "CASE WHEN f.wb_created_at > '1000-01-01 00:00:00' THEN f.wb_created_at END, "
-             "fh.first_handover_at)")
-        ok = ("fh.first_handover_at > '1000-01-01 00:00:00' "
+             f"({eff}))")
+        ok = (f"({eff}) > '1000-01-01 00:00:00' "
               "AND f.wb_created_at > '1000-01-01 00:00:00' "
-              "AND fh.first_handover_at > f.wb_created_at")
+              f"AND ({eff}) > f.wb_created_at")
         conds = []
         lo = HANDLING_BOUNDS
         for i in range(len(lo)):

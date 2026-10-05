@@ -1,6 +1,7 @@
 <template>
   <div class="container-xxl page-fbs-orders">
     <h1 class="page-title">FBS Заказы <span class="badge bg-secondary page-fbs-orders__beta">Beta</span></h1>
+    <FbsTabs active="orders" />
 
     <!-- Фильтр как в дашборде: пресеты + даты слева, склад/бренд/категория правее -->
     <div class="page-fbs-orders__filter-card mb-3">
@@ -59,6 +60,7 @@
 <script setup lang="ts">
 import '../assets/css/pages/page-fbs-orders.css'
 import { ref, computed, onMounted } from 'vue'
+import FbsTabs from '../components/fbs/FbsTabs.vue'
 import FbsEconomyCards from '../components/fbs_orders/FbsEconomyCards.vue'
 import FbsDynamicsCharts from '../components/fbs_orders/FbsDynamicsCharts.vue'
 import FbsAssemblyQueue from '../components/fbs_orders/FbsAssemblyQueue.vue'

@@ -1,6 +1,7 @@
 <template>
   <div class="container-xxl page-fbs-cancels">
     <h1 class="page-title">FBS Отмены <span class="badge bg-secondary page-fbs-cancels__beta">Beta</span></h1>
+    <FbsTabs active="cancels" />
 
     <!-- Фильтр как в дашборде: пресеты + даты + товар + бренд/категория (без склада) -->
     <div class="page-fbs-cancels__filter-card mb-3">
@@ -54,6 +55,7 @@
 <script setup lang="ts">
 import '../assets/css/pages/page-fbs-cancels.css'
 import { ref, onMounted } from 'vue'
+import FbsTabs from '../components/fbs/FbsTabs.vue'
 import FbsCardSelect from '../components/fbs/FbsCardSelect.vue'
 import FbsCancelKpi from '../components/fbs_cancels/FbsCancelKpi.vue'
 import FbsCancelWarehouses from '../components/fbs_cancels/FbsCancelWarehouses.vue'

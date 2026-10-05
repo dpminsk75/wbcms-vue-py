@@ -1,0 +1,8 @@
+/* FBS Путь до ПВЗ — страничные стили (глобальные паттерны не дублируем). */
+.page-fbs-pvz__beta { font-size: 11px; font-weight: 400; vertical-align: middle; }
+.page-fbs-pvz__filter-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 15px; }
+.page-fbs-pvz__filter-label { font-size: 12px; font-weight: 600; }
+.page-fbs-pvz__filter-btns { margin-top: 12px; display: flex; gap: 8px; }
+.page-fbs-pvz__presets { display: flex; gap: 6px; flex-wrap: wrap; }
+.page-fbs-pvz__presets--top { margin-bottom: 12px; }
+.page-fbs-pvz__section-line { font-size: 13px; font-weight: 600; color: #111827; margin: 4px 0 10px; }

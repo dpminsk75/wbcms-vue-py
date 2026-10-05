@@ -41,7 +41,7 @@ const ax = { type: 'category', data: labels.value, axisLabel: { fontSize: 11 } }
 
 const barOption = computed(() => ({
   tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-  legend: { data: ['0–13 ч', '13–42 ч', '42–48 ч', '48–54 ч', '54–60 ч', 'от 60 ч'], top: 0, textStyle: { fontSize: 11 } },
+    legend: { data: ['0–13 ч', '13–42 ч', '42–48 ч', '48–54 ч', '54–60 ч', 'от 60 ч', 'Без сдачи'], top: 0, textStyle: { fontSize: 11 } },
   grid: { left: 40, right: 16, top: 36, bottom: 30, containLabel: true },
   xAxis: ax, yAxis: { type: 'value', minInterval: 1, axisLabel: { fontSize: 11 } },
   series: [
@@ -50,7 +50,8 @@ const barOption = computed(() => ({
     { name: '42–48 ч', type: 'bar', stack: 'total', data: days.value.map((r: any) => r.b2 || 0), itemStyle: { color: '#9AA0A8' } },
     { name: '48–54 ч', type: 'bar', stack: 'total', data: days.value.map((r: any) => r.b3 || 0), itemStyle: { color: '#fb7185' } },
     { name: '54–60 ч', type: 'bar', stack: 'total', data: days.value.map((r: any) => r.b4 || 0), itemStyle: { color: '#ef4444' } },
-    { name: 'от 60 ч', type: 'bar', stack: 'total', data: days.value.map((r: any) => r.b5 || 0), itemStyle: { color: '#991b1b' } },
+      { name: 'от 60 ч', type: 'bar', stack: 'total', data: days.value.map((r: any) => r.b5 || 0), itemStyle: { color: '#991b1b' } },
+      { name: 'Без сдачи', type: 'bar', stack: 'total', data: days.value.map((r: any) => r.un_cnt || 0), itemStyle: { color: '#cbd5e1' } },
   ],
 }))
 const areaOption = computed(() => ({

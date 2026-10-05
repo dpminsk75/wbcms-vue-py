@@ -147,12 +147,14 @@ class FbsOrdersService:
         base = (f"o.date BETWEEN :d1 AND :d2"
                 f"{self._extra(True, warehouse_id, brand, category)}")
         comp = "WHERE company_id = :company_id" if self.company_id is not None else ""
+        # v4: только статусы, scanDt не учитываем (может отсутствовать).
+        eff = "fh.first_handover_at"
         h = ("TIMESTAMPDIFF(HOUR, "
              "CASE WHEN f.wb_created_at > '1000-01-01 00:00:00' THEN f.wb_created_at END, "
-             "fh.first_handover_at)")
-        ok = ("fh.first_handover_at > '1000-01-01 00:00:00' "
+             f"({eff}))")
+        ok = (f"({eff}) > '1000-01-01 00:00:00' "
               "AND f.wb_created_at > '1000-01-01 00:00:00' "
-              "AND fh.first_handover_at > f.wb_created_at")
+              f"AND ({eff}) > f.wb_created_at")
         lo = [0, 13, 42, 48, 54, 60]
         conds = []
         for i in range(len(lo)):
@@ -166,6 +168,7 @@ class FbsOrdersService:
                     f"THEN 1 ELSE 0 END) AS b{i}")
         rows = (await self.db.execute(text(f"""SELECT DATE(o.date) AS d,
                 COUNT(*) AS cnt, COALESCE(SUM(o.price_with_disc), 0) AS revenue_gross,
+                SUM(CASE WHEN NOT ({ok}) THEN 1 ELSE 0 END) AS un_cnt,
                 {', '.join(conds)}
             {self._from()}
             LEFT JOIN (
@@ -179,6 +182,7 @@ class FbsOrdersService:
             GROUP BY d ORDER BY d ASC"""), params)).mappings().all()
         return {"days": [{"d": str(r["d"]), "orders_cnt": int(r["cnt"]),
                           "revenue_gross": float(r["revenue_gross"] or 0),
+                          "un_cnt": int(r["un_cnt"] or 0),
                           "b0": int(r["b0"] or 0), "b1": int(r["b1"] or 0),
                           "b2": int(r["b2"] or 0), "b3": int(r["b3"] or 0),
                           "b4": int(r["b4"] or 0), "b5": int(r["b5"] or 0)}
@@ -227,11 +231,13 @@ class FbsOrdersService:
         # сданные за период: часы сборки для медиан
         # Нулевые даты '0000-00-00' режем через валидный порог '1000-01-01:
         # сам литерал '0000-00-00' в NULLIF MySQL отвергает (1525, journalctl 2026-10-05).
+        # v4: только статусы (scanDt не учитываем — его может не быть).
+        eff = "fh.first_handover_at"
         handed = (await self.db.execute(text(f"""SELECT f.warehouse_id AS wid,
                 TIMESTAMPDIFF(MINUTE,
                     CASE WHEN f.wb_created_at > '1000-01-01 00:00:00'
                          THEN f.wb_created_at END,
-                    fh.first_handover_at) / 60.0 AS h,
+                    ({eff})) / 60.0 AS h,
                 o.price_with_disc AS price
             FROM wb_orders_fbs f
             JOIN wb_order o ON o.srid = f.rid AND o.company_id = f.company_id
@@ -247,8 +253,8 @@ class FbsOrdersService:
               AND o.date BETWEEN :d1 AND :d2
               {('AND f.warehouse_id = :wid') if warehouse_id else ''}
               AND f.wb_created_at > '1000-01-01 00:00:00'
-              AND fh.first_handover_at > '1000-01-01 00:00:00'
-              AND fh.first_handover_at > f.wb_created_at"""),
+              AND ({eff}) > '1000-01-01 00:00:00'
+              AND ({eff}) > f.wb_created_at"""),
             params)).mappings().all()
         tariffs = await self._tariff_map([r["subject_id"] for r in live
                                          if r["subject_id"]])
@@ -271,9 +277,17 @@ class FbsOrdersService:
                            "tech_size": r["tech_size"],
                            "barcode": r["barcode"]})
         quota = self._quota(live_h, tariffs)
-        all_hand = [(float(r["h"]), float(r["price"] or 0)) for r in handed
-                    if r["h"] is not None and r["h"] >= 0]
-        quota["economy"] = self._economy_stats(all_hand)
+        scan_hand = [(float(r["h"]), float(r["price"] or 0)) for r in handed
+                     if r["h"] is not None and r["h"] >= 0]
+        # Всего заданий FBS в скоупе — знаменатель для доли измеренных
+        # (диагностика 2026-10-05: JOIN по скану молча резал выборку 69 -> 17).
+        tasks_cnt = (await self.db.execute(text(f"""SELECT COUNT(*) AS cnt
+            FROM wb_order o
+            LEFT JOIN wb_orders_fbs f ON f.rid = o.srid AND f.company_id = o.company_id
+            WHERE o.date BETWEEN :d1 AND :d2
+              {self._extra(True, warehouse_id, brand, category)}"""),
+            params)).scalar() or 0
+        quota["economy"] = self._economy_stats(scan_hand, int(tasks_cnt))
         wh_cards = self._warehouse_cards(per_wh, live_h, handed)
         return {"now": now.strftime("%H:%M"), "quota": quota,
                 "risk": quota["risk"], "warehouses": wh_cards}
@@ -373,15 +387,16 @@ class FbsOrdersService:
         return 0.0
 
     @classmethod
-    def _economy_stats(cls, items: list) -> dict:
-        """items: [(h, price)]. Сдано с экономией (h<42): шт, % от измеренных,
-        сумма скидки с комиссии."""
+    def _economy_stats(cls, items: list, tasks: int = 0) -> dict:
+        """items: [(h, price)] со сканом. Сдано с экономией (h<42): шт,
+        % от измеренных, % от ВСЕХ заданий (tasks), сумма скидки."""
         measured = len(items)
         eco = [(h, p) for h, p in items if h < 42]
         disc = round(sum(cls._discount_pp(h) / 100 * p for h, p in eco), 2)
         return {"cnt": len(eco),
                 "pct": round(len(eco) / measured * 100, 1) if measured else 0,
-                "discount_sum": disc, "measured": measured}
+                "share_pct": round(len(eco) / tasks * 100, 1) if tasks else 0,
+                "discount_sum": disc, "measured": measured, "tasks": tasks}
 
     @classmethod
     def _warehouse_cards(cls, per_wh, live: list, handed) -> list:
@@ -390,9 +405,11 @@ class FbsOrdersService:
         for x in live:
             live_by_wh.setdefault(x["wid"], []).append(x)
         hand_by_wh: dict = {}
+        scan_by_wh: dict = {}
         for r in handed:
             if r["h"] is not None and r["h"] >= 0:
-                hand_by_wh.setdefault(r["wid"], []).append(
+                hand_by_wh.setdefault(r["wid"], []).append(float(r["h"]))
+                scan_by_wh.setdefault(r["wid"], []).append(
                     (float(r["h"]), float(r["price"] or 0)))
         cards = []
         for r in per_wh:
@@ -400,9 +417,10 @@ class FbsOrdersService:
             wid = r["wid"]
             wl = live_by_wh.get(wid, [])
             over_w = [x for x in wl if x["h"] > over_h]
-            hh = [h for h, _ in hand_by_wh.get(wid, [])]
+            hh = hand_by_wh.get(wid, [])
             med = round(median(hh), 1) if hh else None
-            eco = cls._economy_stats(hand_by_wh.get(wid, []))
+            tasks_wh = g("cnt")
+            eco = cls._economy_stats(scan_by_wh.get(wid, []), tasks_wh)
             cards.append({
                 "warehouse_id": wid, "warehouse_name": r["wname"],
                 "new": g("new"), "assembling": g("assembling"),
@@ -410,12 +428,14 @@ class FbsOrdersService:
                 "sorted": g("sorted_cnt"),
                 "median_to_handover_h": med,
                 "measured_cnt": len(hh),
+                "tasks_cnt": tasks_wh,
                 "live_cnt": len(wl),
                 "growing_cnt": len(over_w),
                 "growing_sum": round(sum(x["price"] for x in over_w), 2),
                 "stuck_cnt": len(over_w),
                 "economy_cnt": eco["cnt"],
                 "economy_pct": eco["pct"],
+                "economy_share": eco["share_pct"],
                 "economy_discount": eco["discount_sum"],
             })
         cards.sort(key=lambda c: (c["warehouse_id"] is None, -(c["new"] + c["live_cnt"])))
