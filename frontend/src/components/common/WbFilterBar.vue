@@ -25,9 +25,9 @@
     </div>
     <!-- период: только выбор дат -->
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:nowrap">
-      <input :value="dateFrom" @input="emit('update:dateFrom', ($event.target as HTMLInputElement).value)" type="date" class="form-control" style="height:38px; width:150px; flex:0 0 auto" />
+      <WbDateInput v-model="dateFrom" style="width:190px; flex:0 0 auto" />
       <span style="flex-shrink:0">|</span>
-      <input :value="dateTo" @input="emit('update:dateTo', ($event.target as HTMLInputElement).value)" type="date" class="form-control" style="height:38px; width:150px; flex:0 0 auto" />
+      <WbDateInput v-model="dateTo" style="width:190px; flex:0 0 auto" />
       <div style="display:flex; gap:4px; height:38px; flex-shrink:0; margin-left:auto">
         <button class="btn btn-outline-secondary btn-sm" @click="setRange('quarter')">-Q</button>
         <button class="btn btn-outline-secondary btn-sm" @click="setRange('year')">-Y</button>
@@ -44,6 +44,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { api } from '@/api/client'
+import WbDateInput from './WbDateInput.vue'
 
 const props = withDefaults(defineProps<{
   showCard?: boolean

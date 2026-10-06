@@ -7,9 +7,9 @@
         <div class="col-md-4">
           <label class="form-label fw-bold">Период анализа</label>
           <div class="d-flex gap-2 align-items-center">
-            <input type="date" v-model="filters.date_from" class="form-control">
+            <WbDateInput v-model="filters.date_from" />
             <span>|</span>
-            <input type="date" v-model="filters.date_to" class="form-control">
+            <WbDateInput v-model="filters.date_to" />
           </div>
         </div>
 
@@ -70,6 +70,7 @@ import { useRoute, useRouter } from 'vue-router'
 import MarginTable from '@/components/profit/MarginTable.vue'
 import { exportMarginExcel } from '@/api/profit'
 import { tagsApi, type TagItem } from '@/api/tags'
+import WbDateInput from '../components/common/WbDateInput.vue'
 
 const route = useRoute()
 const router = useRouter()

@@ -247,7 +247,8 @@ const enableResize = () => {
   fit()
 }
 
-const fmtDate = (value: string) => value ? new Date(`${value}T00:00:00`).toLocaleDateString('ru-RU') : '—'
+import { useDateFmt } from '../composables/useDateFmt'
+const { fmtDate } = useDateFmt()
 const fmt0 = (value: any) => new Intl.NumberFormat('ru-RU').format(Math.round(Number(value) || 0))
 const fmt1 = (value: any) => new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Number(value) || 0)
 const fmt2 = (value: any) => new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value) || 0)

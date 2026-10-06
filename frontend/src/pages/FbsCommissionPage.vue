@@ -13,11 +13,11 @@
       <div class="row g-2 align-items-start">
         <div class="col-md-2">
           <label class="form-label mb-1 page-fbs-commission__filter-label">Дата с</label>
-          <input v-model="filters.date_from" type="date" class="form-control" />
+          <WbDateInput v-model="filters.date_from" />
         </div>
         <div class="col-md-2">
           <label class="form-label mb-1 page-fbs-commission__filter-label">Дата по</label>
-          <input v-model="filters.date_to" type="date" class="form-control" />
+          <WbDateInput v-model="filters.date_to" />
         </div>
         <div class="col-md-4">
           <label class="form-label mb-1 page-fbs-commission__filter-label">Товар</label>
@@ -62,6 +62,7 @@ import FbsCommissionKpi from '../components/fbs_commission/FbsCommissionKpi.vue'
 import FbsCommissionWarehouses from '../components/fbs_commission/FbsCommissionWarehouses.vue'
 import { fbsCommissionApi } from '../api/fbsCommission'
 import { fbsApi } from '../api/fbs'
+import WbDateInput from '../components/common/WbDateInput.vue'
 
 const iso = (d: Date) => d.toISOString().slice(0, 10)
 const today = () => iso(new Date())

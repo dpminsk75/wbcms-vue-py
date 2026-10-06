@@ -107,8 +107,8 @@ const items = ref<any[]>([]), total = ref(0), page = ref(1), isLoading = ref(fal
 const warehouses = ref<string[]>([]), regions = ref<string[]>([])
 const tbl = ref<HTMLTableElement|null>(null), wrapRef = ref<HTMLDivElement|null>(null)
 const photo = (r:any)=>{ try{ let p=r.card_photos; if(typeof p==='string') p=JSON.parse(p); if(typeof p==='string') p=JSON.parse(p); if(Array.isArray(p)&&p[0]) return p[0]; }catch{} return '/images/no-photo.png' }
-const fmtDate = (d:any)=> d ? new Date(d).toLocaleDateString('ru-RU') : '—'
-const fmtTime = (d:any)=> d ? new Date(d).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}) : ''
+import { useDateFmt } from '../composables/useDateFmt'
+const { fmtDate, fmtTime } = useDateFmt()
 const fmt2 = (v:any)=> new Intl.NumberFormat('ru-RU',{minimumFractionDigits:2, maximumFractionDigits:2}).format(v||0)
 const statusLabel = (r:any)=>{
   const isFbs = r.warehouse_type==='Склад продавца'

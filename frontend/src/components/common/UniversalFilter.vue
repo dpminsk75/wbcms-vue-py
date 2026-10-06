@@ -42,9 +42,9 @@
       <div class="col-md-8">
         <label style="display:block; font-size:12px; font-weight:600">Период с / по</label>
         <div style="display:flex; gap:8px; align-items:center;">
-          <input :value="dateFrom" @input="emit('update:dateFrom', ($event.target as HTMLInputElement).value)" type="date" class="form-control" style="height:38px; flex:1" />
+          <WbDateInput v-model="dateFrom" style="flex:1" />
           <span class="text-muted">|</span>
-          <input :value="dateTo" @input="emit('update:dateTo', ($event.target as HTMLInputElement).value)" type="date" class="form-control" style="height:38px; flex:1" />
+          <WbDateInput v-model="dateTo" style="flex:1" />
         </div>
       </div>
       <div class="col-md-4">
@@ -65,6 +65,7 @@
 </template>
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import WbDateInput from './WbDateInput.vue'
 
 const props = withDefaults(defineProps<{
   label?: string

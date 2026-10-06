@@ -24,7 +24,8 @@ interface Row { company_id: number; company_name: string; exp_at: string; days_l
 const auth = useAuthStore()
 const items = ref<Row[]>([])
 
-const fmtDate = (v: any) => v ? new Date(String(v).replace(' ', 'T')).toLocaleDateString('ru-RU') : '—'
+import { useDateFmt } from '../../composables/useDateFmt'
+const { fmtDate } = useDateFmt()
 const isGlobal = computed(() => auth.roles.includes('global_admin') || auth.roles.includes('admin') || auth.perms.includes('global_admin') || auth.perms.includes('admin'))
 const anyExpired = computed(() => items.value.some((t) => t.days_left < 0))
 const alertClass = computed(() => anyExpired.value ? 'alert-danger' : 'alert-warning')

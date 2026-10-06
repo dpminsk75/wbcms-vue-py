@@ -11,9 +11,9 @@
             <div class="col-md-4">
               <label class="form-label">Период</label>
               <div class="d-flex gap-2">
-                <input type="date" v-model="dateFrom" class="form-control page-sales-analysis__date-input">
+                <WbDateInput v-model="dateFrom" input-class="page-sales-analysis__date-input" />
                 <span class="page-sales-analysis__date-sep"> | </span>
-                <input type="date" v-model="dateTo" class="form-control page-sales-analysis__date-input">
+                <WbDateInput v-model="dateTo" input-class="page-sales-analysis__date-input" />
               </div>
             </div>
             <div class="btn-group col-md-3 page-sales-analysis__range-group">
@@ -155,6 +155,7 @@ import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { api } from '../api/client'
 import SideMenu from '../components/dashboard/SideMenu.vue'
+import WbDateInput from '../components/common/WbDateInput.vue'
 
 const tableRef = ref<HTMLTableElement|null>(null)
 const wrapRef = ref<HTMLDivElement|null>(null)

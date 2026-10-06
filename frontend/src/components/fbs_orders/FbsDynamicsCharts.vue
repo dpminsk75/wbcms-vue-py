@@ -37,7 +37,7 @@ const bucketNames = computed(() => props.labels && props.labels.length >= 6
   ? [...props.labels, 'Без сдачи']
   : ['0–13 ч', '13–42 ч', '42–48 ч', '48–54 ч', '54–60 ч', 'от 60 ч', 'Без сдачи'])
 const labels = computed(() => days.value.map((r: any) => {
-  try { return new Date(r.d + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) }
+  try { const _d = new Date(r.d + 'T00:00:00'); return `${String(_d.getMonth() + 1).padStart(2, '0')}-${String(_d.getDate()).padStart(2, '0')}` }
   catch { return r.d }
 }))
 const grid = { left: 48, right: 16, top: 16, bottom: 30, containLabel: true }

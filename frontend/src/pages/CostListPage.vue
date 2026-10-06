@@ -91,7 +91,7 @@
           @edit-closed="onEditClosed"
         >
           <vxe-column field="load_date" title="Дата" :width="150" align="center" class-name="page-cost-list__editable" :edit-render="{}">
-            <template #edit="{ row }"><input v-model="row.load_date" type="date" class="form-control form-control-sm page-cost-list__date-input" /></template>
+            <template #edit="{ row }"><WbDateInput v-model="row.load_date" input-class="form-control-sm page-cost-list__date-input" /></template>
           </vxe-column>
           <vxe-column field="nmID" title="Артикул WB" :width="110" align="center" />
           <vxe-column field="vendorCode" title="Артикул" :width="170" align="center" />
@@ -122,7 +122,7 @@
     <div v-if="openAdd" class="wb-modal-backdrop">
       <form class="wb-modal-box" @submit.prevent="onAddSave">
         <h3 class="page-cost-list__modal-title">Добавить себестоимость</h3>
-        <label>Дата<input v-model="addForm.date" type="date" required class="form-control" /></label>
+        <label>Дата<WbDateInput v-model="addForm.date" required /></label>
         <label>Карточка
           <div class="page-cost-list__combo" ref="addComboRef">
             <input
@@ -173,6 +173,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { VxeTable, VxeColumn } from 'vxe-table'
 import { api } from '@/api/client'
 import { costApi, type CostRow } from '@/api/cost'
+import WbDateInput from '../components/common/WbDateInput.vue'
 
 const route = useRoute()
 const router = useRouter()

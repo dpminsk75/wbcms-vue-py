@@ -301,7 +301,8 @@ const companyId = Number(route.params.id)
 // Табы: одна тема на экран вместо стены блоков (состояние форм — в companyForm, не теряется)
 const tab = ref<'main' | 'wb' | 'seo' | 'ext' | 'members'>('main')
 const isFormTab = computed(() => tab.value === 'main' || tab.value === 'wb' || tab.value === 'seo')
-const fmtDT = (v: any) => v ? new Date(String(v).replace(' ', 'T')).toLocaleString('ru-RU') : '—'
+import { useDateFmt } from '../composables/useDateFmt'
+const { fmtDT, fmtDate, fmtDateTime } = useDateFmt()
 const data = ref<{ company: any; members: any[] } | null>(null)
 const error = ref('')
 const editRoles = reactive<Record<number, string>>({})
@@ -329,8 +330,7 @@ const wbLoading = ref(false)
 const wbChecking = ref(false)
 const wbCheckingPhase = ref('')
 const wbError = ref('')
-const fmtDate = (v: any) => v ? new Date(String(v)).toLocaleDateString('ru-RU') : '—'
-const fmtDateTime = (v: any) => v ? new Date(String(v).replace(' ', 'T')).toLocaleString('ru-RU') : '—'
+// даты — useDateFmt (см. выше: fmtDT/fmtDate/fmtDateTime)
 // Тип токена по acc/for/t: personal — наш случай (on-premise), service — чужой SaaS (нам нельзя)
 const TYPE_CLASS: Record<string, string> = { personal: 'bg-success', service: 'bg-info text-dark', basic: 'bg-secondary', test: 'bg-warning text-dark', unknown: 'bg-danger' }
 const TYPE_HINT: Record<string, string> = {

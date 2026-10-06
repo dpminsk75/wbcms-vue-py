@@ -80,7 +80,8 @@ const hasData = computed(()=> items.value.length > 0 || (totals.value?.cnt || 0)
 watchEffect(() => { if (!busy.value) report('last-sales', hasData.value || !!isError.value) })
 const fmt1 = (v:any)=> new Intl.NumberFormat('ru-RU', {minimumFractionDigits:1, maximumFractionDigits:1}).format(v||0)
 const fmt0 = (v:any)=> new Intl.NumberFormat('ru-RU').format(Math.round(v||0))
-const fmtDate = (d:string)=> d ? new Date(d).toLocaleDateString('ru-RU',{day:'numeric', month:'short', year:'numeric'}) : ''
+import { useDateFmt } from '../../composables/useDateFmt'
+const { fmtDate } = useDateFmt()
 </script>
 <style scoped>
 .expandable-container:not(.is-expanded)::after{content:""; position:absolute; bottom:0; left:0; width:100%; height:50px; background:linear-gradient(transparent, white); pointer-events:none}

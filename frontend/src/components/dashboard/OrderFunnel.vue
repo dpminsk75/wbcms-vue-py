@@ -76,7 +76,7 @@ const chartOption = computed(()=>{
   const dates = data.map((r:any)=>{
     try{
       const d = new Date(r.date)
-      return d.toLocaleDateString('ru-RU',{day:'2-digit', month:'short'}).replace('.','')
+      return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     }catch{ return r.date }
   })
   return {

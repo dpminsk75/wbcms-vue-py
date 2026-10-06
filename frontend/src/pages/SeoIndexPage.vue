@@ -184,7 +184,8 @@ const batchOpen = ref(false)
 const isAdmin = computed(() => auth.isAdmin)
 const from = computed(() => total.value ? (page.value - 1) * 20 + 1 : 0)
 const to = computed(() => Math.min(page.value * 20, total.value))
-const fmtDT = (v: any) => v ? new Date(String(v).replace(' ', 'T')).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
+import { useDateFmt } from '../composables/useDateFmt'
+const { fmtDT } = useDateFmt()
 const shortTitle = (t: any) => (t || '').slice(0, 60)
 const shortDesc = (t: any) => (t || '').slice(0, 500)
 const confPct = (c: any) => c != null ? Math.round(Number(c) * 100) + '%' : '—'

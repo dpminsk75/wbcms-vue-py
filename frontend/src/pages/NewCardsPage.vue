@@ -15,14 +15,14 @@
             <div class="row g-3 align-items-end">
               <div class="col-12 col-md-2">
                 <label class="form-label" style="font-size:12px; font-weight:600">Дата с</label>
-                <input type="date" v-model="dateFrom" class="form-control form-control-sm">
+                <WbDateInput v-model="dateFrom" input-class="form-control-sm" />
               </div>
               <div class="col-12 col-md-2">
                 <label class="form-label" style="font-size:12px; font-weight:600">Дата по</label>
-                <input type="date" v-model="dateTo" class="form-control form-control-sm">
+                <WbDateInput v-model="dateTo" input-class="form-control-sm" />
               </div>
               <div class="col-12 col-md-3">
-                <label class="form-label" style="font-size:12px; font-weight:600">Часть названия</label>
+                <label class="form-label" style="font-size:12px; font-weight:600">Название, артикул, nmID</label>
                 <input type="text" v-model="title" placeholder="например, журнал" class="form-control form-control-sm" @keyup.enter="applyFilters">
               </div>
               <div class="col-12 col-md-3">
@@ -81,6 +81,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
 import { dashboardApi } from '../api/dashboard'
 import SideMenu from '../components/dashboard/SideMenu.vue'
+import WbDateInput from '../components/common/WbDateInput.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -129,5 +130,6 @@ const imgSrc = (c:any)=>{
   try{ let l = typeof c.photos==='string' ? JSON.parse(c.photos) : c.photos; if(typeof l==='string') l=JSON.parse(l); if(Array.isArray(l)&&l.length) return l[0] }catch{}
   return null
 }
-const fmtDate = (d:string)=> d ? new Date(d).toLocaleDateString('ru-RU') : '—'
+import { useDateFmt } from '../composables/useDateFmt'
+const { fmtDate } = useDateFmt()
 </script>

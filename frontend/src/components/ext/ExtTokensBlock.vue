@@ -66,7 +66,8 @@ const name = ref('')
 const raw = ref('')
 const error = ref('')
 const showGuide = ref(false)
-const fmtDT = (v: any) => v ? new Date(String(v).replace(' ', 'T')).toLocaleString('ru-RU') : '—'
+import { useDateFmt } from '../../composables/useDateFmt'
+const { fmtDT } = useDateFmt()
 
 async function load() {
   loading.value = true

@@ -109,14 +109,8 @@ function goPage(p: number) {
   page.value = p
   fetchData()
 }
-function fmtDate(ts: any) {
-  if (!ts) return ''
-  const d = new Date(Number(ts) * 1000)
-  if (isNaN(d.getTime())) return ''
-  const mon = ['янв.', 'фев.', 'мар.', 'апр.', 'мая', 'июн.', 'июл.', 'авг.', 'сен.', 'окт.', 'ноя.', 'дек.'][d.getMonth()]
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${p(d.getDate())} ${mon} ${p(d.getHours())}:${p(d.getMinutes())}`
-}
+import { useDateFmt } from '../composables/useDateFmt'
+const { fmtDateTime: fmtDate } = useDateFmt()
 async function onToggle(r: ReplyRuleItem) {
   const prev = !!r.is_active
   r.is_active = prev ? 0 : 1

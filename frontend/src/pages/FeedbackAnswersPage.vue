@@ -5,11 +5,11 @@
       <div class="row g-3 mb-3">
         <div class="col-12 col-md-2">
           <label class="form-label fw-medium text-muted small mb-1">С даты</label>
-          <input v-model="filters.date_from" type="date" class="form-control" />
+          <WbDateInput v-model="filters.date_from" />
         </div>
         <div class="col-12 col-md-2">
           <label class="form-label fw-medium text-muted small mb-1">По дату</label>
-          <input v-model="filters.date_to" type="date" class="form-control" />
+          <WbDateInput v-model="filters.date_to" />
         </div>
         <div class="col-12 col-md-3">
           <label class="form-label fw-medium text-muted small mb-1">Оценка</label>
@@ -150,6 +150,7 @@ import '@/assets/css/pages/page-feedback-answers.css'
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { feedbackApi, type FeedbackAnswer } from '@/api/feedback'
+import WbDateInput from '../components/common/WbDateInput.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -280,13 +281,8 @@ function sortIcon(col: string) {
   return order.value === 'asc' ? 'bi-sort-up' : 'bi-sort-down'
 }
 
-function fmtDate(v: any) {
-  if (!v) return ''
-  const d = new Date(String(v).replace(' ', 'T'))
-  if (isNaN(d.getTime())) return String(v)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
-}
+import { useDateFmt } from '../composables/useDateFmt'
+const { fmtDateTime: fmtDate } = useDateFmt()
 function ratingColor(r: number) {
   if (r === 5) return '#198754'
   if (r === 4) return '#ffc107'

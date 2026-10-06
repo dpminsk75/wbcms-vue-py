@@ -8,9 +8,9 @@
         <div class="col-md-4">
           <label class="form-label fw-bold">Период анализа</label>
           <div class="d-flex gap-2 align-items-center">
-            <input type="date" v-model="filters.date_from" class="form-control">
+            <WbDateInput v-model="filters.date_from" />
             <span>|</span>
-            <input type="date" v-model="filters.date_to" class="form-control">
+            <WbDateInput v-model="filters.date_to" />
           </div>
         </div>
 
@@ -79,6 +79,7 @@ import { useQuery } from '@tanstack/vue-query'
 import { api } from '@/api/client'
 import MarginTable from '@/components/profit/MarginTable.vue'
 import { exportMarginExcel } from '@/api/profit'
+import WbDateInput from '../components/common/WbDateInput.vue'
 
 const today = new Date()
 const defTo = today.toISOString().slice(0, 10)

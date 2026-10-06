@@ -22,7 +22,8 @@
 // index.php:127-158 — правая карточка кампании 1в1
 defineProps<{ detail: any }>()
 const fmt0 = (v:any)=> new Intl.NumberFormat('ru-RU').format(Math.round(Number(v)||0))
-const fmtDateTime = (v:any)=> v ? new Date(v).toLocaleString('ru-RU') : '—'
+import { useDateFmt } from '../../composables/useDateFmt'
+const { fmtDateTime } = useDateFmt()
 const statusClass = (s:number)=>{
   const m:any = {9:'label-success',11:'label-warning',7:'label-primary',4:'label-info',8:'label-danger', '-1':'label-default'}
   return m[String(s)] || 'label-default'

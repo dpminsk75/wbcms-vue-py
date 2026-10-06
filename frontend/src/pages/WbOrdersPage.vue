@@ -215,12 +215,8 @@ function initFromQuery() {
   if (q.page) page.value = parseInt(String(q.page)) || 1
 }
 
-const fmtDateTime = (d: any) => {
-  if (!d) return '—'
-  const dt = new Date(String(d).replace(' ', 'T'))
-  if (isNaN(+dt)) return String(d)
-  return dt.toLocaleDateString('ru-RU') + ' ' + dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-}
+import { useDateFmt } from '../composables/useDateFmt'
+const { fmtDateTime } = useDateFmt()
 const fmtMoney = (v: any) => (v === null || v === undefined || v === '' ? '—' : new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v)))
 const fmtMoneyCol = ({ cellValue }: any) => fmtMoney(cellValue)
 const fmtDetail = (v: any) => {

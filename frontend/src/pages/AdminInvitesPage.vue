@@ -73,7 +73,8 @@ const copiedId = ref<number | null>(null)
 const copyingId = ref<number | null>(null)
 
 const registerLink = computed(() => last.value ? `${location.origin}/register?invite=${last.value.invite_token}` : '')
-const fmtDT = (v: any) => v ? new Date(String(v).replace(' ', 'T')).toLocaleString('ru-RU') : '—'
+import { useDateFmt } from '../composables/useDateFmt'
+const { fmtDT } = useDateFmt()
 const statusLabel = (s: string) => s === 'active' ? 'Активен' : s === 'used' ? 'Использован' : 'Просрочен'
 const statusStyle = (s: string) => {
   const base = 'display:inline-block; padding:2px 8px; border-radius:10px; font-size:12px; white-space:nowrap;'

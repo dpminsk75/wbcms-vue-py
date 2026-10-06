@@ -6,8 +6,8 @@
       </div>
       <div class="dash_div col-md-10">
         <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap">
-          <input v-model="dateFrom" type="date" class="form-control" style="width:auto" />
-          <input v-model="dateTo" type="date" class="form-control" style="width:auto" />
+          <WbDateInput v-model="dateFrom" style="width:190px" />
+          <WbDateInput v-model="dateTo" style="width:190px" />
           <span class="text-muted" style="align-self:center; font-size:12px; font-family:&quot;Segoe UI&quot;,Roboto,Helvetica,Arial,sans-serif">{{ dateFrom }} → {{ dateTo }}</span>
         </div>
 
@@ -46,6 +46,7 @@ import MonthlyFinance from '../components/dashboard/MonthlyFinance.vue'
 import NewCards from '../components/dashboard/NewCards.vue'
 import SideMenu from '../components/dashboard/SideMenu.vue'
 import WbTokenAlert from '../components/dashboard/WbTokenAlert.vue'
+import WbDateInput from '../components/common/WbDateInput.vue'
 import { useAuthStore } from '../stores/auth'
 
 const dateFrom = ref(new Date(Date.now()-3*864e5).toISOString().slice(0,10))

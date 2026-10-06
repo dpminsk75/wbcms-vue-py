@@ -44,7 +44,7 @@ const chartOption = computed(() => {
   if (!data.length) return {}
   const dates = data.map((r: any) => {
     try {
-      return new Date(r.d + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })
+      const _d = new Date(r.d + 'T00:00:00'); return `${String(_d.getMonth() + 1).padStart(2, '0')}-${String(_d.getDate()).padStart(2, '0')}`
     } catch { return r.d }
   })
   // Верх каждого бара: последний ненулевой сегмент дня — со скруглением.

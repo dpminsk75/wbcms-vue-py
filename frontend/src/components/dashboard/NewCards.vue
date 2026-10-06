@@ -58,7 +58,8 @@ const imgSrc = (c:any)=>{
   }catch{}
   return null
 }
-const fmtDate = (d:string)=> d ? new Date(d).toLocaleDateString('ru-RU') : '—'
+import { useDateFmt } from '../../composables/useDateFmt'
+const { fmtDate } = useDateFmt()
 const hasData = computed(() => rows.value.length > 0)
 watchEffect(() => { if (!busy.value) report('new-cards', hasData.value || !!isError.value) })
 </script>

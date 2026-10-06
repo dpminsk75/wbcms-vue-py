@@ -45,7 +45,8 @@ const props = defineProps<{ rows: any[], campaignId: string|number, dateFrom: st
 const tbl = ref<HTMLTableElement|null>(null)
 const fmt0 = (v:any)=> new Intl.NumberFormat('ru-RU').format(Math.round(Number(v)||0))
 const fmt2 = (v:any)=> new Intl.NumberFormat('ru-RU',{minimumFractionDigits:2, maximumFractionDigits:2}).format(Number(v)||0)
-const fmtDate = (v:any)=> v ? new Date(v).toLocaleDateString('ru-RU') : '—'
+import { useDateFmt } from '../../composables/useDateFmt'
+const { fmtDate } = useDateFmt()
 const sum = (k:string)=> props.rows.reduce((a,r)=> a + (Number(r[k])||0),0)
 const tCtr = computed(()=> sum('views')>0 ? fmt2(sum('clicks')/sum('views')*100) : '')
 const tCr = computed(()=> sum('clicks')>0 ? fmt2(sum('atbs')/sum('clicks')*100) : '')

@@ -9,9 +9,9 @@
         <div class="col-md-4">
           <label class="form-label fw-bold">Период анализа</label>
           <div class="d-flex gap-2 align-items-center">
-            <input type="date" v-model="filters.date_from" class="form-control">
+            <WbDateInput v-model="filters.date_from" />
             <span>|</span>
-            <input type="date" v-model="filters.date_to" class="form-control">
+            <WbDateInput v-model="filters.date_to" />
           </div>
         </div>
         <div class="col-md-3">
@@ -126,6 +126,7 @@ import 'vxe-table/lib/style.css'
 import { computed, ref } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { VxeTable, VxeColumn } from 'vxe-table'
+import WbDateInput from '../components/common/WbDateInput.vue'
 import { api } from '@/api/client'
 
 // Локальная регистрация для пилота (main.ts не трогаем — чанк грузится только с этой страницей).

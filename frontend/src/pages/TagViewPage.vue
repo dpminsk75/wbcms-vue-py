@@ -25,8 +25,8 @@
           <div class="page-tag-view__filter">
             <label class="page-tag-view__filter-label">Период</label>
             <div class="d-flex gap-2">
-              <input v-model="dateFrom" type="date" class="form-control" />
-              <input v-model="dateTo" type="date" class="form-control" />
+              <WbDateInput v-model="dateFrom" />
+              <WbDateInput v-model="dateTo" />
               <button class="btn btn-primary" @click="fetchData">Применить</button>
             </div>
           </div>
@@ -158,6 +158,7 @@ import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { tagsApi } from '@/api/tags'
+import WbDateInput from '../components/common/WbDateInput.vue'
 
 use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
@@ -233,11 +234,8 @@ const chartOption = computed(() => {
 
 const fmt0 = (v: any) => new Intl.NumberFormat('ru-RU').format(Math.round(Number(v) || 0))
 const fmt2 = (v: any) => new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v) || 0)
-const fmtDate = (v: any) => {
-  if (!v) return '—'
-  const d = new Date(String(v).includes('T') ? String(v) : `${v}T00:00:00`)
-  return isNaN(+d) ? String(v) : d.toLocaleDateString('ru-RU')
-}
+import { useDateFmt } from '../composables/useDateFmt'
+const { fmtDate } = useDateFmt()
 // фото в wbcards.photos лежит двойным JSON (см. view.php:241-250) — разбираем так же
 const photoOf = (r: any) => {
   let photos: any = r.card_photos

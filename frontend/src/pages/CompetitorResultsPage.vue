@@ -160,7 +160,8 @@ const job = useAiJob()
 const jobActive = computed(() => job.polling.value && !job.finished.value)
 
 const shortDesc = (t: any) => String(t || '').slice(0, 800)
-const fmtDT = (v: any) => v ? new Date(String(v).replace(' ', 'T')).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
+import { useDateFmt } from '../composables/useDateFmt'
+const { fmtDT } = useDateFmt()
 const priceFmt = (p: any) => p ? `${Number(p / 100).toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽` : '—'
 // Статус текущей задачи для карточки (лоадер/ошибка у самой записи)
 function jobItem(nm: number) {

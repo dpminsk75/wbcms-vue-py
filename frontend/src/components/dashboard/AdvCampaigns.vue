@@ -81,7 +81,8 @@ const cpc = (r:any)=> r.clicks ? (r.sum/r.clicks).toFixed(2) : '0.00'
 const cpo = (r:any)=> r.orders ? (r.sum/r.orders).toFixed(2) : '0.00'
 const statusMap: Record<string,string> = {'9':'Активна','7':'Завершена','11':'Пауза','8':'Отклонена','4':'Готова','-1':'Удалена'}
 const statusLabel = (s:number|string)=> statusMap[String(s)] || String(s)
-const fmtDate = (d:string)=> d ? new Date(d).toLocaleDateString('ru-RU',{day:'numeric', month:'short', year:'numeric'}) : ''
+import { useDateFmt } from '../../composables/useDateFmt'
+const { fmtDate } = useDateFmt()
 </script>
 <style scoped>
 .expandable-container:not(.is-expanded)::after{content:""; position:absolute; bottom:0; left:0; width:100%; height:50px; background:linear-gradient(transparent, white); pointer-events:none}

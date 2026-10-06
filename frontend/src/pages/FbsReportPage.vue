@@ -13,11 +13,11 @@
       <div class="row g-2 align-items-start">
         <div class="col-md-2">
           <label class="form-label mb-1 page-fbs-report__filter-label">Дата с</label>
-          <input v-model="filters.date_from" type="date" class="form-control" />
+          <WbDateInput v-model="filters.date_from" />
         </div>
         <div class="col-md-2">
           <label class="form-label mb-1 page-fbs-report__filter-label">Дата по</label>
-          <input v-model="filters.date_to" type="date" class="form-control" />
+          <WbDateInput v-model="filters.date_to" />
         </div>
         <div class="col-md-4">
           <label class="form-label mb-1 page-fbs-report__filter-label">Товар</label>
@@ -67,6 +67,7 @@ import FbsPipelineBar from '../components/fbs/FbsPipelineBar.vue'
 import FbsDailyChart from '../components/fbs/FbsDailyChart.vue'
 import FbsHandlingTime from '../components/fbs/FbsHandlingTime.vue'
 import FbsBreakdownTable from '../components/fbs/FbsBreakdownTable.vue'
+import WbDateInput from '../components/common/WbDateInput.vue'
 import { fbsApi } from '../api/fbs'
 
 const iso = (d: Date) => d.toISOString().slice(0, 10)

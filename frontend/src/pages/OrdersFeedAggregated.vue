@@ -145,7 +145,8 @@ import { api } from '../api/client'
 import OrderFunnel from '../components/dashboard/OrderFunnel.vue'
 import WbFilterBar from '../components/common/WbFilterBar.vue'
 
-const fmtDate = (d:any)=> d ? new Date(d).toLocaleDateString('ru-RU') : '—'
+import { useDateFmt } from '../composables/useDateFmt'
+const { fmtDate } = useDateFmt()
 const fmt0 = (v:any)=> new Intl.NumberFormat('ru-RU').format(Math.round(Number(v)||0))
 const fmt1 = (v:any)=> new Intl.NumberFormat('ru-RU',{minimumFractionDigits:1, maximumFractionDigits:1}).format(Number(v)||0)
 const fmt2 = (v:any)=> new Intl.NumberFormat('ru-RU',{minimumFractionDigits:2, maximumFractionDigits:2}).format(Number(v)||0)

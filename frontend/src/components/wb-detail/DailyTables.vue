@@ -123,7 +123,8 @@ const expS=ref(false)
 const fmt2=(v:any)=> new Intl.NumberFormat('ru-RU',{minimumFractionDigits:2, maximumFractionDigits:2}).format(Number(v)||0)
 const fmt0=(v:any)=> new Intl.NumberFormat('ru-RU').format(Math.round(Number(v)||0))
 const fmt1=(v:any)=> new Intl.NumberFormat('ru-RU',{minimumFractionDigits:1, maximumFractionDigits:1}).format(Number(v)||0)
-const fmtDate=(d:string)=>{ try{ return new Date(d).toLocaleDateString('ru-RU') }catch{ return d } }
+import { useDateFmt } from '../../composables/useDateFmt'
+const { fmtDate } = useDateFmt()
 const sumO=(k:string)=> orders.value.reduce((a:number,r:any)=> a+(Number(r[k])||0),0)
 const sumS=(k:string)=> sales.value.reduce((a:number,r:any)=> a+(Number(r[k])||0),0)
 const avgO=(k:string)=> orders.value.length? orders.value.reduce((a:number,r:any)=> a+(Number(r[k])||0),0)/orders.value.length : 0

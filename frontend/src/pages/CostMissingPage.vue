@@ -21,9 +21,9 @@
         <div class="col-md-4">
           <label class="form-label fw-bold">Период заказов</label>
           <div class="d-flex gap-2 align-items-center">
-            <input v-model="filters.date_from" type="date" class="form-control" />
+            <WbDateInput v-model="filters.date_from" />
             <span>|</span>
-            <input v-model="filters.date_to" type="date" class="form-control" />
+            <WbDateInput v-model="filters.date_to" />
           </div>
         </div>
         <div class="col-md-2">
@@ -59,7 +59,7 @@
           <vxe-column field="orders_cnt" title="Заказов" :width="60" align="center" sortable />
           <vxe-column field="first_order" title="Первый заказ" :width="95" align="center" />
           <vxe-column field="cost_date" title="Дата себ." :width="130" align="center" class-name="page-cost-missing__editable" :edit-render="{}">
-            <template #edit="{ row }"><input v-model="row.cost_date" type="date" class="form-control form-control-sm" /></template>
+            <template #edit="{ row }"><WbDateInput v-model="row.cost_date" input-class="form-control-sm" /></template>
           </vxe-column>
           <vxe-column field="cost_price" title="Себ-ть" :width="100" align="right" class-name="page-cost-missing__editable" :edit-render="{}">
             <template #default="{ row }">
@@ -91,6 +91,7 @@ import 'vxe-table/lib/style.css'
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { VxeTable, VxeColumn } from 'vxe-table'
 import { costApi } from '@/api/cost'
+import WbDateInput from '../components/common/WbDateInput.vue'
 
 const today = new Date()
 const defTo = today.toISOString().slice(0, 10)

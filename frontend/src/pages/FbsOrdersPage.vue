@@ -13,11 +13,11 @@
       <div class="row g-2 align-items-start">
         <div class="col-md-2">
           <label class="form-label mb-1 page-fbs-orders__filter-label">Дата с</label>
-          <input v-model="filters.date_from" type="date" class="form-control" />
+          <WbDateInput v-model="filters.date_from" />
         </div>
         <div class="col-md-2">
           <label class="form-label mb-1 page-fbs-orders__filter-label">Дата по</label>
-          <input v-model="filters.date_to" type="date" class="form-control" />
+          <WbDateInput v-model="filters.date_to" />
         </div>
         <div class="col-md-4">
           <label class="form-label mb-1 page-fbs-orders__filter-label">Склад</label>
@@ -66,6 +66,7 @@ import FbsTabs from '../components/fbs/FbsTabs.vue'
 import FbsEconomyCards from '../components/fbs_orders/FbsEconomyCards.vue'
 import FbsDynamicsCharts from '../components/fbs_orders/FbsDynamicsCharts.vue'
 import FbsAssemblyQueue from '../components/fbs_orders/FbsAssemblyQueue.vue'
+import WbDateInput from '../components/common/WbDateInput.vue'
 import { fbsOrdersApi } from '../api/fbsOrders'
 import { fbsApi } from '../api/fbs'
 

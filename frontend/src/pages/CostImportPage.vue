@@ -9,7 +9,7 @@
       <form class="card-body d-flex align-items-end flex-wrap page-cost-import__form" @submit.prevent="onPreview">
         <div>
           <label class="form-label mb-1 fw-bold" for="load-date">Дата загрузки</label>
-          <input id="load-date" v-model="loadDate" type="date" class="form-control" required />
+          <WbDateInput v-model="loadDate" input-id="load-date" required />
         </div>
         <div class="page-cost-import__file">
           <label class="form-label mb-1 fw-bold" for="cost-file">Файл (.xlsx)</label>
@@ -105,6 +105,7 @@
 import '@/assets/css/pages/page-cost-import.css'
 import { ref, computed } from 'vue'
 import { costApi } from '@/api/cost'
+import WbDateInput from '../components/common/WbDateInput.vue'
 
 const today = new Date().toISOString().slice(0, 10)
 const loadDate = ref(today)

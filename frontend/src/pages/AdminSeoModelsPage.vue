@@ -86,7 +86,8 @@ const applying = ref(false)
 const applyResult = ref<{ replaced: number } | null>(null)
 const preview = ref<Array<{ company_id: number; old: string; new: string }>>([])
 
-const fmtDT = (v: any) => v ? new Date(String(v).replace(' ', 'T')).toLocaleString('ru-RU') : '—'
+import { useDateFmt } from '../composables/useDateFmt'
+const { fmtDT } = useDateFmt()
 const shortErr = (e: string) => e.length > 80 ? e.slice(0, 80) + '…' : e
 
 async function load() {

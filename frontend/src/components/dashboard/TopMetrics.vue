@@ -192,7 +192,7 @@ const chartOption = computed(()=>{
     tooltip:{trigger:'axis', backgroundColor:'rgba(33,37,41,.92)', borderWidth:0, textStyle:{color:'#fff', fontSize:12}, valueFormatter:(v:any)=>`${new Intl.NumberFormat('ru-RU').format(Math.round(Number(v)||0))} ₽`},
     legend:{data:['Расходы','НДС','Себестоимость','Налог на прибыль','Маржа'], bottom:0, left:'center', icon:'roundRect', itemWidth:12, itemHeight:12, textStyle:{fontSize:11, fontFamily:'"Segoe UI",Roboto,Helvetica,Arial,sans-serif'}},
     grid:{left:8, right:16, top:10, bottom:40, containLabel:true},
-    xAxis:{type:'category', data: raw.map((r:any)=> { const d=new Date(r.date); return `${String(d.getDate()).padStart(2,'0')} ${d.toLocaleString('ru-RU',{month:'short'})}.`; }), axisLine:{lineStyle:{color:'#dee2e6'}}, axisTick:{show:false}, axisLabel:{fontSize:11, color:'#888', fontFamily:'"Segoe UI",Roboto,Helvetica,Arial,sans-serif', interval:2}},
+    xAxis:{type:'category', data: raw.map((r:any)=> { const d=new Date(r.date); return `${String(d.getMonth() + 1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }), axisLine:{lineStyle:{color:'#dee2e6'}}, axisTick:{show:false}, axisLabel:{fontSize:11, color:'#888', fontFamily:'"Segoe UI",Roboto,Helvetica,Arial,sans-serif', interval:2}},
     yAxis:{type:'value', splitLine:{lineStyle:{color:'#eef1f4'}}, axisLabel:{fontSize:11, color:'#888', formatter:(v:number)=>v>=1000?`${new Intl.NumberFormat('ru-RU').format(v/1000)} тыс.`:String(v)}},
     series:[
       {name:'Расходы', type:'bar', stack:'total', barWidth:'55%', data: raw.map((r:any)=> Math.round(r.total_expenses)), itemStyle:{color:'#b2c0d2'}},

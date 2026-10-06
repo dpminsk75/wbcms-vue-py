@@ -72,7 +72,8 @@ const sortBy=(k:'phrase'|'nmID'|'title'|'avg_freq'|'total_clicks'|'total_orders'
   if(sortKey.value===k) sortDir.value=sortDir.value==='asc'?'desc':'asc'
   else{ sortKey.value=k; sortDir.value= (k==='phrase'||k==='title')?'asc':'desc' }
 }
-const fmtDate = (d:string)=> { try{ const t=new Date(d); return `${String(t.getDate()).padStart(2,'0')}.${String(t.getMonth()+1).padStart(2,'0')}` }catch{ return d } }
+import { useDateFmt } from '../../composables/useDateFmt'
+const { fmtAxis: fmtDate } = useDateFmt()
 const cellData = (r:any,d:string)=> r[d] ?? null
 const cellPos = (r:any,d:string)=> cellData(r,d)?.pos ?? ''
 const cellTitle = (r:any,d:string)=> { const o=cellData(r,d)?.orders; return o>0?`Заказов: ${o}`:'' }
