@@ -311,9 +311,12 @@ class DashboardService:
         params: dict = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59", **self._company_params()}
         title_clause = ""
         if title:
-            title_clause = " AND title LIKE :title"
+            # Один ввод ищет по названию, артикулу продавца и nmID (задача 2026-10-05).
+            title_clause = (" AND (title LIKE :title OR vendorCode LIKE :title"
+                            " OR CAST(nmID AS CHAR) LIKE :title)")
             params["title"] = f"%{title}%"
         order_map = {
+            'created_desc': "created_at DESC",
             'created_asc': "created_at ASC",
             'nmid_asc': "nmID ASC, created_at DESC",
             'nmid_desc': "nmID DESC, created_at DESC",

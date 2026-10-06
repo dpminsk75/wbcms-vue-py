@@ -151,6 +151,7 @@
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Быстрые кнопки", "url": "/admin/quick-buttons", "visibleIn": ["top", "side"], "roles": ["admin"]},
       {"label": "SEO-модели", "url": "/admin/seo-models", "visibleIn": ["top", "side"], "roles": ["admin"]},
+      {"label": "Тарифы FBS (SPA)", "url": "/admin/fbs-tariffs", "visibleIn": ["top", "side"], "roles": ["admin"]},
       {"label": "Инвайты (SPA)", "url": "/admin/invites", "visibleIn": ["top", "side"], "roles": ["admin"]},
       {"label": "Меню", "url": "/admin/menu", "visibleIn": ["top", "side"], "roles": ["admin"]},
       {"divider": true, "visibleIn": ["top", "side"]},

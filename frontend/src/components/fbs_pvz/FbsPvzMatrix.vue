@@ -120,6 +120,7 @@ const fmtDur = (v: any) => {
 .page-fbs-pvz__dir-line { display: block; line-height: 1.3; }
 .page-fbs-pvz__sort { text-align: center; cursor: pointer; white-space: nowrap; }
 .page-fbs-pvz__num { text-align: right; white-space: nowrap; }
+.page-fbs-pvz__table-card table tbody td { font-size: 14px; }
 .page-fbs-pvz__dirs-label { margin-left: auto; font-size: 12px; font-weight: 400; color: #6b7280; display: flex; align-items: center; gap: 6px; }
 .page-fbs-pvz__dirs-select { width: auto; display: inline-block; }
 .page-fbs-pvz__table-head { display: flex; align-items: center; }

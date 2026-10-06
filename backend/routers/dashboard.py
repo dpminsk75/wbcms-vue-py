@@ -17,10 +17,12 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 async def shell(
     date_from: str = Query(default=None),
     date_to: str = Query(default=None),
+    dateFrom: str = Query(default=None),
+    dateTo: str = Query(default=None),
     company_id: int | None = Depends(get_current_company),
 ):
-    df = date_from or (date.today() - timedelta(days=3)).isoformat()
-    dt = date_to or date.today().isoformat()
+    df = date_from or dateFrom or (date.today() - timedelta(days=3)).isoformat()
+    dt = date_to or dateTo or date.today().isoformat()
     return {"dateFrom": df, "dateTo": dt, "source": "py proto", "company_id": company_id}
 
 
@@ -68,12 +70,14 @@ async def orders_summary(
 async def adv(
     date_from: str = Query(default=None),
     date_to: str = Query(default=None),
+    dateFrom: str = Query(default=None),
+    dateTo: str = Query(default=None),
     db: AsyncSession = Depends(get_db),
     company_id: int | None = Depends(get_current_company),
 ):
     svc = DashboardService(db, company_id=company_id)
-    df = date_from or (date.today() - timedelta(days=3)).isoformat()
-    dt = date_to or date.today().isoformat()
+    df = date_from or dateFrom or (date.today() - timedelta(days=3)).isoformat()
+    dt = date_to or dateTo or date.today().isoformat()
     return await svc.get_adv(df, dt)
 
 
@@ -81,12 +85,14 @@ async def adv(
 async def last_orders(
     date_from: str = Query(default=None),
     date_to: str = Query(default=None),
+    dateFrom: str = Query(default=None),
+    dateTo: str = Query(default=None),
     db: AsyncSession = Depends(get_db),
     company_id: int | None = Depends(get_current_company),
 ):
     svc = DashboardService(db, company_id=company_id)
-    df = date_from or (date.today() - timedelta(days=3)).isoformat()
-    dt = date_to or date.today().isoformat()
+    df = date_from or dateFrom or (date.today() - timedelta(days=3)).isoformat()
+    dt = date_to or dateTo or date.today().isoformat()
     return await svc.get_last_orders(df, dt)
 
 
@@ -94,12 +100,14 @@ async def last_orders(
 async def last_sales(
     date_from: str = Query(default=None),
     date_to: str = Query(default=None),
+    dateFrom: str = Query(default=None),
+    dateTo: str = Query(default=None),
     db: AsyncSession = Depends(get_db),
     company_id: int | None = Depends(get_current_company),
 ):
     svc = DashboardService(db, company_id=company_id)
-    df = date_from or (date.today() - timedelta(days=3)).isoformat()
-    dt = date_to or date.today().isoformat()
+    df = date_from or dateFrom or (date.today() - timedelta(days=3)).isoformat()
+    dt = date_to or dateTo or date.today().isoformat()
     return await svc.get_last_sales(df, dt)
 
 
@@ -119,10 +127,15 @@ async def monthly_finance(
 async def new_cards(
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
+    dateFrom: str | None = Query(default=None),
+    dateTo: str | None = Query(default=None),
     title: str = Query(default=""),
     sort: str = Query(default="created_desc"),
     db: AsyncSession = Depends(get_db),
     company_id: int | None = Depends(get_current_company),
 ):
+    # Фронт шлёт camelCase (dashboardApi.newCards, прямые вызовы из фильтров) —
+    # принимаем оба, иначе даты молча заменяются дефолтом (баг 2026-10-05).
     svc = DashboardService(db, company_id=company_id)
-    return await svc.get_new_cards(date_from, date_to, title, sort)
+    return await svc.get_new_cards(date_from or dateFrom, date_to or dateTo,
+                                   title, sort)

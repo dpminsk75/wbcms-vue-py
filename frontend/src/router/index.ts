@@ -54,6 +54,7 @@ const router = createRouter({
     { path: '/admin/quick-buttons', name: 'admin-quick-buttons', component: () => import('../pages/AdminQuickButtons.vue'), meta: { title: 'Быстрые кнопки — wbcms', needAdmin: true } },
     { path: '/admin/menu', name: 'admin-menu', component: () => import('../pages/AdminMenu.vue'), meta: { title: 'Меню — wbcms', needAdmin: true } },
     { path: '/admin/seo-models', name: 'admin-seo-models', component: () => import('../pages/AdminSeoModelsPage.vue'), meta: { title: 'SEO-модели — wbcms', needAdmin: true } },
+    { path: '/admin/fbs-tariffs', name: 'admin-fbs-tariffs', component: () => import('../pages/AdminFbsTariffsPage.vue'), meta: { title: 'Тарифы сборки FBS — wbcms', needAdmin: true } },
     { path: '/tags', name: 'tags', component: () => import('../pages/TagsPage.vue'), alias: ['/tags/', '/tag', '/tag/', '/tag/index', '/tag/index/'], meta: { title: 'Теги' } },
     { path: '/tags/create', name: 'tag-create', component: () => import('../pages/TagFormPage.vue'), alias: ['/tags/create/', '/tag/create', '/tag/create/'], meta: { title: 'Новый тег' } },
     { path: '/tags/:id/edit', name: 'tag-edit', component: () => import('../pages/TagFormPage.vue'), meta: { title: 'Редактирование тега' } },

@@ -96,4 +96,5 @@ const fmtPct1 = (v: any) => new Intl.NumberFormat('ru-RU', { minimumFractionDigi
 .page-fbs-report__breakdown-sort { text-align: center; cursor: pointer; white-space: nowrap; }
 
 .page-fbs-report__num { text-align: right; white-space: nowrap; }
+.page-fbs-report__breakdown table tbody td { font-size: 14px; }
 </style>

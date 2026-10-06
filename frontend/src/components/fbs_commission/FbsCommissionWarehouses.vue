@@ -67,6 +67,7 @@ const zoneName = (i: number) => [...(props.labels || []), 'без сдачи'][i
 .page-fbs-commission__first { text-align: center; min-width: 200px; }
 .page-fbs-commission__sort { text-align: center; cursor: pointer; white-space: nowrap; }
 .page-fbs-commission__num { text-align: right; white-space: nowrap; }
+.page-fbs-commission__table-card table tbody td { font-size: 14px; }
 .page-fbs-commission__num--red { color: #b91c1c; }
 .page-fbs-commission__zones { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: #f1f5f9; min-width: 90px; }
 .page-fbs-commission__zones > span { height: 100%; }

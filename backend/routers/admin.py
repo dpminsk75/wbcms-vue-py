@@ -243,3 +243,20 @@ async def set_company_active(company_id: int = Path(..., ge=1), payload: AdminCo
         raise HTTPException(status_code=404, detail="company not found")
     await db.commit()
     return {"id": company_id, "is_active": payload.is_active}
+
+
+@router.get("/fbs-tariffs")
+async def get_fbs_tariffs(_admin: dict = Depends(require_admin)):
+    """Сетка сборки FBS (backend/config/fbs_assembly_tariffs.json) — чтение."""
+    from backend.services import assembly_grid
+    return assembly_grid.TARIFFS
+
+
+@router.put("/fbs-tariffs")
+async def put_fbs_tariffs(payload: dict = Body(...), _admin: dict = Depends(require_admin)):
+    """Сетка сборки FBS — запись с валидацией + hot-reload без рестарта."""
+    from backend.services import assembly_grid
+    try:
+        return assembly_grid.save(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
