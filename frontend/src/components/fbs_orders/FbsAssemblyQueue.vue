@@ -72,7 +72,7 @@ const fmtHours = (v: any) => {
 <style scoped>
 .page-fbs-orders__section-line { font-size: 13px; font-weight: 600; color: #111827; margin: 4px 0 10px; }
 .page-fbs-orders__kpi { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
-.page-fbs-orders__kpi-card { flex: 1 1 160px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; min-width: 150px; }
+.page-fbs-orders__kpi-card { flex: 1 1 160px; background: #fff; border: 1px solid #d5dae1; box-shadow: 0 1px 3px rgba(16,24,40,.08); border-radius: 10px; padding: 14px 16px; min-width: 150px; }
 .page-fbs-orders__kpi-card--danger { background: #fef2f2; border-color: #fecaca; }
 .page-fbs-orders__kpi-card--danger .page-fbs-orders__kpi-value { color: #b91c1c; }
 .page-fbs-orders__kpi-card--ok .page-fbs-orders__kpi-value { color: #15803d; }
@@ -80,9 +80,9 @@ const fmtHours = (v: any) => {
 .page-fbs-orders__kpi-value { font-size: 22px; font-weight: 800; color: #111827; white-space: nowrap; }
 .page-fbs-orders__kpi-unit { font-size: 13px; font-weight: 400; color: #6b7280; }
 .page-fbs-orders__kpi-sub { font-size: 11px; color: #6b7280; margin-top: 4px; }
-.page-fbs-orders__risk { font-size: 12px; color: #374151; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; }
+.page-fbs-orders__risk { font-size: 12px; color: #374151; background: #fff; border: 1px solid #d5dae1; box-shadow: 0 1px 3px rgba(16,24,40,.08); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; }
 .page-fbs-orders__wh-grid { display: flex; flex-wrap: wrap; gap: 12px; }
-.page-fbs-orders__wh-card { flex: 1 1 260px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; min-width: 240px; }
+.page-fbs-orders__wh-card { flex: 1 1 260px; background: #fff; border: 1px solid #d5dae1; box-shadow: 0 1px 3px rgba(16,24,40,.08); border-radius: 10px; padding: 14px 16px; min-width: 240px; }
 .page-fbs-orders__wh-name { font-size: 13px; font-weight: 700; color: #111827; margin-bottom: 8px; }
 .page-fbs-orders__wh-nums { display: flex; gap: 12px; margin-bottom: 8px; }
 .page-fbs-orders__wh-nums span { display: flex; flex-direction: column; }

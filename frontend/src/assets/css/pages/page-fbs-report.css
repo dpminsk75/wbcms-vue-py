@@ -1,9 +1,8 @@
 /* FBS-дашборд «Продажа со своего склада» — страничные стили (глобальные паттерны не дублируем). */
-.page-fbs-report__beta { font-size: 11px; font-weight: 400; vertical-align: middle; }
 .page-fbs-report__tabs { flex-wrap: wrap; gap: 4px; }
 .page-fbs-report__tabs .nav-link { font-size: 12px; }
 .page-fbs-report__tabs .nav-link.disabled { color: #9ca3af; }
-.page-fbs-report__filter-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 15px; }
+.page-fbs-report__filter-card { background: #fff; border: 1px solid #d5dae1; border-radius: 12px; box-shadow: 0 1px 3px rgba(16,24,40,.08); padding: 15px; }
 .page-fbs-report__filter-label { font-size: 12px; font-weight: 600; }
 .page-fbs-report__filter-btns { margin-top: 12px; display: flex; gap: 8px; }
 .page-fbs-report__presets { display: flex; gap: 6px; flex-wrap: wrap; }

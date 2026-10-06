@@ -155,7 +155,9 @@ class FbsOrdersService:
         ok = (f"({eff}) > '1000-01-01 00:00:00' "
               "AND f.wb_created_at > '1000-01-01 00:00:00' "
               f"AND ({eff}) > f.wb_created_at")
-        lo = [0, 13, 42, 48, 54, 60]
+        from backend.services.assembly_grid import bounds as grid_bounds
+        from backend.services.assembly_grid import labels as grid_labels
+        lo = grid_bounds()
         conds = []
         for i in range(len(lo)):
             if i < len(lo) - 1:
@@ -180,7 +182,8 @@ class FbsOrdersService:
             ) fh ON fh.wb_order_id = f.wb_order_id
             WHERE {base}
             GROUP BY d ORDER BY d ASC"""), params)).mappings().all()
-        return {"days": [{"d": str(r["d"]), "orders_cnt": int(r["cnt"]),
+        return {"bucket_labels": grid_labels(),
+                "days": [{"d": str(r["d"]), "orders_cnt": int(r["cnt"]),
                           "revenue_gross": float(r["revenue_gross"] or 0),
                           "un_cnt": int(r["un_cnt"] or 0),
                           "b0": int(r["b0"] or 0), "b1": int(r["b1"] or 0),
@@ -377,22 +380,17 @@ class FbsOrdersService:
                        "ok": [row(x) for x in ok]},
         }
 
-    @staticmethod
-    def _discount_pp(h: float) -> float:
-        """Скидка с комиссии за быструю сдачу: <13 ч −5 п.п., <42 ч −3,5 п.п."""
-        if h < 13:
-            return 5.0
-        if h < 42:
-            return 3.5
-        return 0.0
-
     @classmethod
     def _economy_stats(cls, items: list, tasks: int = 0) -> dict:
-        """items: [(h, price)] со сканом. Сдано с экономией (h<42): шт,
-        % от измеренных, % от ВСЕХ заданий (tasks), сумма скидки."""
+        """items: [(h, price)]. Сдано с экономией (первые 2 бакета сетки):
+        шт, % от измеренных, % от ВСЕХ заданий (tasks), сумма скидки.
+        Границы/ставки — только из assembly_grid."""
+        from backend.services.assembly_grid import bounds as grid_bounds
+        from backend.services.assembly_grid import discount_pp
+        eco_bound = grid_bounds()[2]
         measured = len(items)
-        eco = [(h, p) for h, p in items if h < 42]
-        disc = round(sum(cls._discount_pp(h) / 100 * p for h, p in eco), 2)
+        eco = [(h, p) for h, p in items if h < eco_bound]
+        disc = round(sum(discount_pp(h) / 100 * p for h, p in eco), 2)
         return {"cnt": len(eco),
                 "pct": round(len(eco) / measured * 100, 1) if measured else 0,
                 "share_pct": round(len(eco) / tasks * 100, 1) if tasks else 0,

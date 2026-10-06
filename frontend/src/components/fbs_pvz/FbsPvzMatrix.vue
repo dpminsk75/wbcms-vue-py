@@ -45,13 +45,13 @@
           <tr v-if="!sorted.length"><td colspan="5" class="text-center text-muted">Нет данных</td></tr>
           <tr v-for="p in sorted" :key="String(p.nm_id)">
             <td>
-              <div class="page-fbs-pvz__product">
-                <img :src="photo(p)" class="page-fbs-pvz__photo" @error="(e:any)=>e.target.src='/images/no-photo.png'" />
+              <div class="fbs-product">
+                <img :src="photo(p)" class="fbs-product__photo" @error="(e:any)=>e.target.src='/images/no-photo.png'" />
                 <div>
-                  <div class="page-fbs-pvz__product-title" :title="p.title || ''">{{ p.title || '(нет карточки)' }}</div>
-                  <div class="page-fbs-pvz__product-sub">{{ p.subject_name || '' }}{{ p.card_brand ? ' • ' + p.card_brand : '' }}</div>
-                  <div class="page-fbs-pvz__product-sub">{{ p.vendor_code || '' }}</div>
-                  <div class="page-fbs-pvz__product-sub"><a :href="'/wb/detail?nm_id=' + p.nm_id" target="_blank" class="page-fbs-pvz__wb-link">WB: {{ p.nm_id }}</a></div>
+                  <div class="fbs-product__title">{{ p.title || '(нет карточки)' }}</div>
+                  <div class="fbs-product__sub">{{ p.subject_name || '' }}{{ p.card_brand ? ' • ' + p.card_brand : '' }}</div>
+                  <div class="fbs-product__sub">{{ p.vendor_code || '' }}</div>
+                  <div class="fbs-product__sub"><a :href="'/wb/detail?nm_id=' + p.nm_id" target="_blank" class="fbs-product__link">WB: {{ p.nm_id }}</a></div>
                 </div>
               </div>
             </td>
@@ -113,7 +113,7 @@ const fmtDur = (v: any) => {
 }
 </script>
 <style scoped>
-.page-fbs-pvz__table-card { margin-bottom: 16px; }
+.page-fbs-pvz__table-card { margin-bottom: 16px; border-color: #d5dae1; box-shadow: 0 1px 3px rgba(16,24,40,.08); }
 .page-fbs-pvz__table-head { font-size: 13px; font-weight: 700; color: #111827; padding: 12px 18px; background: #fff; border-bottom: 1px solid #e5e7eb; border-radius: 10px 10px 0 0; }
 .page-fbs-pvz__first { text-align: center; min-width: 220px; }
 .page-fbs-pvz__dir { text-align: center; font-size: 11px; min-width: 110px; }
@@ -123,10 +123,5 @@ const fmtDur = (v: any) => {
 .page-fbs-pvz__dirs-label { margin-left: auto; font-size: 12px; font-weight: 400; color: #6b7280; display: flex; align-items: center; gap: 6px; }
 .page-fbs-pvz__dirs-select { width: auto; display: inline-block; }
 .page-fbs-pvz__table-head { display: flex; align-items: center; }
-.page-fbs-pvz__product { display: flex; gap: 8px; align-items: center; }
-.page-fbs-pvz__photo { width: 40px; height: 52px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
-.page-fbs-pvz__product-title { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
-.page-fbs-pvz__product-sub { font-size: 11px; color: #6b7280; }
-.page-fbs-pvz__wb-link { color: #7c3aed; text-decoration: none; }
-.page-fbs-pvz__wb-link:hover { text-decoration: underline; }
+
 </style>

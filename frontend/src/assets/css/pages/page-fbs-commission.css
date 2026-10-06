@@ -1,6 +1,5 @@
 /* FBS Комиссия — страничные стили (глобальные паттерны не дублируем). */
-.page-fbs-commission__beta { font-size: 11px; font-weight: 400; vertical-align: middle; }
-.page-fbs-commission__filter-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 15px; }
+.page-fbs-commission__filter-card { background: #fff; border: 1px solid #d5dae1; box-shadow: 0 1px 3px rgba(16,24,40,.08); border-radius: 12px; padding: 15px; }
 .page-fbs-commission__filter-label { font-size: 12px; font-weight: 600; }
 .page-fbs-commission__filter-btns { margin-top: 12px; display: flex; gap: 8px; }
 .page-fbs-commission__presets { display: flex; gap: 6px; flex-wrap: wrap; }

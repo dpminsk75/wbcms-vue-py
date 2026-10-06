@@ -24,7 +24,7 @@ const fmtMoney = (v: any) => new Intl.NumberFormat('ru-RU', { minimumFractionDig
 <style scoped>
 .page-fbs-cancels__section-line { font-size: 13px; font-weight: 600; color: #111827; margin: 4px 0 10px; }
 .page-fbs-cancels__wh-grid { display: flex; flex-wrap: wrap; gap: 12px; }
-.page-fbs-cancels__wh-card { flex: 1 1 260px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; min-width: 240px; }
+.page-fbs-cancels__wh-card { flex: 1 1 260px; background: #fff; border: 1px solid #d5dae1; box-shadow: 0 1px 3px rgba(16,24,40,.08); border-radius: 10px; padding: 14px 16px; min-width: 240px; }
 .page-fbs-cancels__wh-card--click { cursor: pointer; }
 .page-fbs-cancels__wh-card--click:hover { box-shadow: 0 2px 8px rgba(0,0,0,.08); }
 .page-fbs-cancels__wh-name { font-size: 13px; font-weight: 700; color: #111827; margin-bottom: 8px; }

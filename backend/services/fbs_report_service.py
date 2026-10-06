@@ -28,8 +28,9 @@ END"""
 BUCKETS = ("new", "assembling", "handed", "transit", "pickup", "sold",
            "declined", "buyer_cancel", "seller_cancel", "unknown")
 
-# Границы «Времени обработки» 1в1 со скрина 10X: [0,13)/[13,42)/[42,48)/[48,54)/[54,60)/[60,+).
-HANDLING_BOUNDS = [0, 13, 42, 48, 54, 60]
+# Границы/подписи «Времени обработки» — только из assembly_grid (JSON-сетка)!
+from backend.services.assembly_grid import bounds as grid_bounds
+from backend.services.assembly_grid import labels as grid_labels
 
 
 class FbsReportService:
@@ -138,7 +139,7 @@ class FbsReportService:
               "AND f.wb_created_at > '1000-01-01 00:00:00' "
               f"AND ({eff}) > f.wb_created_at")
         conds = []
-        lo = HANDLING_BOUNDS
+        lo = grid_bounds()
         for i in range(len(lo)):
             if i < len(lo) - 1:
                 conds.append(
@@ -230,7 +231,7 @@ class FbsReportService:
         } for r in daily_rows]
 
         measured = int(handling_row.get("measured") or 0)
-        labels = ["0–13 ч", "13–42 ч", "42–48 ч", "48–54 ч", "54–60 ч", "от 60 ч"]
+        labels = grid_labels()
         buckets = []
         for i, label in enumerate(labels):
             cnt = int(handling_row.get(f"b{i}") or 0)

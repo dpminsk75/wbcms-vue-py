@@ -25,7 +25,7 @@ const fmtPct2 = (v: any) => new Intl.NumberFormat('ru-RU', { minimumFractionDigi
 const fmt0 = (v: any) => new Intl.NumberFormat('ru-RU').format(Math.round(Number(v) || 0))
 </script>
 <style scoped>
-.page-fbs-report__chart-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:16px 18px; margin-bottom:16px; height:100%; }
+.page-fbs-report__chart-card { background:#fff; border:1px solid #d5dae1; border-radius:10px; box-shadow:0 1px 3px rgba(16,24,40,.08); padding:16px 18px; margin-bottom:16px; height:100%; }
 .page-fbs-report__handling-card { display:flex; flex-direction:column; }
 .page-fbs-report__section-title { font-size:13px; font-weight:600; color:#111827; margin-bottom:10px; }
 .page-fbs-report__help { display:inline-block; width:16px; height:16px; line-height:14px; text-align:center; font-size:11px; color:#9ca3af; border:1px solid #d1d5db; border-radius:50%; cursor:help; margin-left:4px; }

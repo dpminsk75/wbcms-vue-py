@@ -1,7 +1,9 @@
 <template>
   <div class="container-xxl page-fbs-commission">
-    <h1 class="page-title">FBS Комиссия <span class="badge bg-secondary page-fbs-commission__beta">Beta</span></h1>
-    <FbsTabs active="commission" />
+    <div class="page-fbs__head">
+      <h1 class="page-title">FBS Комиссия</h1>
+      <FbsTabs active="commission" />
+    </div>
 
     <!-- Фильтр как в дашборде (без склада — склады строкой ниже) -->
     <div class="page-fbs-commission__filter-card mb-3">
@@ -47,7 +49,7 @@
     <template v-else-if="data">
       <div class="page-fbs-commission__section-line">Скорость сборки в деньгах</div>
       <FbsCommissionKpi :s="data" />
-      <FbsCommissionWarehouses :items="data.warehouses || []" />
+      <FbsCommissionWarehouses :items="data.warehouses || []" :labels="data.bucket_labels || []" />
     </template>
   </div>
 </template>

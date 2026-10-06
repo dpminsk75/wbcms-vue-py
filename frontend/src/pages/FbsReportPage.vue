@@ -1,9 +1,9 @@
 <template>
   <div class="container-xxl page-fbs-report">
-    <h1 class="page-title">FBS — продажа со своего склада <span class="badge bg-secondary page-fbs-report__beta">Beta</span></h1>
-
-    <!-- Общее мини-меню FBS-отчётов -->
-    <FbsTabs active="summary" />
+    <div class="page-fbs__head">
+      <h1 class="page-title">FBS — продажа со своего склада</h1>
+      <FbsTabs active="summary" />
+    </div>
 
     <!-- Фильтр: свой компактный — даты с/по + товар/бренд/категория в одном ряду (WbFilterBar убран: квик-кнопки и поиск карточки мешают) -->
     <div class="page-fbs-report__filter-card mb-3">

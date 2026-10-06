@@ -22,12 +22,13 @@
           <tr v-if="!sorted.length"><td :colspan="cols.length + 1" class="text-center text-muted">Нет данных</td></tr>
           <tr v-for="r in sorted" :key="mode === 'products' ? r.nm_id : String(r.warehouse_id)">
             <td v-if="mode === 'products'">
-              <div class="page-fbs-report__breakdown-product">
-                <img :src="photo(r)" @error="(e:any)=>e.target.src='/images/no-photo.png'" class="page-fbs-report__breakdown-photo" />
+              <div class="fbs-product">
+                <img :src="photo(r)" @error="(e:any)=>e.target.src='/images/no-photo.png'" class="fbs-product__photo" />
                 <div>
-                  <div class="cart-item-title" :title="r.title || ''">{{ r.title || '(нет карточки)' }}</div>
-                  <div class="cart-item-details">{{ r.vendor_code || '' }}{{ r.card_brand ? ' • ' + r.card_brand : '' }}</div>
-                  <div class="cart-item-details">WB: {{ r.nm_id }}</div>
+                  <div class="fbs-product__title">{{ r.title || '(нет карточки)' }}</div>
+                  <div class="fbs-product__sub">{{ r.card_brand || '' }}</div>
+                  <div class="fbs-product__sub">{{ r.vendor_code || '' }}</div>
+                  <div class="fbs-product__sub"><a :href="'/wb/detail?nm_id=' + r.nm_id" target="_blank" class="fbs-product__link">WB: {{ r.nm_id }}</a></div>
                 </div>
               </div>
             </td>
@@ -85,7 +86,7 @@ const fmtMoney = (v: any) => new Intl.NumberFormat('ru-RU', { minimumFractionDig
 const fmtPct1 = (v: any) => new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Number(v) || 0) + ' %'
 </script>
 <style scoped>
-.page-fbs-report__breakdown { margin-top: 8px; margin-bottom: 16px; }
+.page-fbs-report__breakdown { margin-top: 8px; margin-bottom: 16px; border-color: #d5dae1; box-shadow: 0 1px 3px rgba(16,24,40,.08); }
 .page-fbs-report__breakdown-head { display: flex; align-items: center; gap: 12px; padding: 12px 18px; background: #fff; border-bottom: 1px solid #e5e7eb; border-radius: 10px 10px 0 0; }
 .page-fbs-report__breakdown-title { font-size: 13px; font-weight: 700; color: #111827; }
 .page-fbs-report__breakdown-tabs { display: flex; gap: 4px; background: #f1f5f9; border-radius: 8px; padding: 3px; }
@@ -93,7 +94,6 @@ const fmtPct1 = (v: any) => new Intl.NumberFormat('ru-RU', { minimumFractionDigi
 .page-fbs-report__breakdown-tabs button.active { background: #fff; color: #7c3aed; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
 .page-fbs-report__breakdown-first { text-align: center; min-width: 240px; }
 .page-fbs-report__breakdown-sort { text-align: center; cursor: pointer; white-space: nowrap; }
-.page-fbs-report__breakdown-product { display: flex; gap: 8px; align-items: center; }
-.page-fbs-report__breakdown-photo { width: 40px; height: 52px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
+
 .page-fbs-report__num { text-align: right; white-space: nowrap; }
 </style>

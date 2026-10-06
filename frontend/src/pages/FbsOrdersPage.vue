@@ -1,7 +1,9 @@
 <template>
   <div class="container-xxl page-fbs-orders">
-    <h1 class="page-title">FBS Заказы <span class="badge bg-secondary page-fbs-orders__beta">Beta</span></h1>
-    <FbsTabs active="orders" />
+    <div class="page-fbs__head">
+      <h1 class="page-title">FBS Заказы</h1>
+      <FbsTabs active="orders" />
+    </div>
 
     <!-- Фильтр как в дашборде: пресеты + даты слева, склад/бренд/категория правее -->
     <div class="page-fbs-orders__filter-card mb-3">
@@ -52,7 +54,7 @@
       <div class="page-fbs-orders__section-line">Экономика периода{{ warehouseName ? ' · ' + warehouseName : '' }}</div>
       <FbsEconomyCards :e="economy" />
       <div class="page-fbs-orders__section-line">Динамика по дням{{ warehouseName ? ' · ' + warehouseName : '' }}</div>
-      <FbsDynamicsCharts :days="dynamics" />
+      <FbsDynamicsCharts :days="dynamics" :labels="dynamicsLabels" />
       <FbsAssemblyQueue :q="assemblyQuota" :risk="assemblyRisk" :warehouses="assemblyWh" />
     </template>
   </div>
@@ -77,6 +79,7 @@ const brands = ref<string[]>([])
 const categories = ref<string[]>([])
 const economy = ref<any>(null)
 const dynamics = ref<any[]>([])
+const dynamicsLabels = ref<string[]>([])
 const assemblyQuota = ref<any>({})
 const assemblyRisk = ref<any>({})
 const assemblyWh = ref<any[]>([])
@@ -129,6 +132,7 @@ async function fetchData() {
     ])
     economy.value = e
     dynamics.value = d.days || []
+    dynamicsLabels.value = d.bucket_labels || []
     assemblyQuota.value = a.quota || {}
     assemblyRisk.value = a.risk || {}
     assemblyWh.value = a.warehouses || []

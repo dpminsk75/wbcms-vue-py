@@ -39,7 +39,7 @@ const ppLine = (v: any) => (Number(v) >= 0 ? '+' : '') + new Intl.NumberFormat('
 </script>
 <style scoped>
 .page-fbs-report__kpi { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:16px; }
-.page-fbs-report__kpi-card { flex:1 1 200px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:14px 16px; min-width:180px; }
+.page-fbs-report__kpi-card { flex:1 1 200px; background:#fff; border:1px solid #d5dae1; border-radius:10px; box-shadow:0 1px 3px rgba(16,24,40,.08); padding:14px 16px; min-width:180px; }
 .page-fbs-report__kpi-card--danger { background:#fef2f2; border-color:#fecaca; }
 .page-fbs-report__kpi-card--danger .page-fbs-report__kpi-value { color:#b91c1c; }
 .page-fbs-report__kpi-label { font-size:12px; color:#6b7280; margin-bottom:4px; }

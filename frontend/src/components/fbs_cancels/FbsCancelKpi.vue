@@ -31,7 +31,7 @@ const fmtPct1 = (v: any) => new Intl.NumberFormat('ru-RU', { minimumFractionDigi
 </script>
 <style scoped>
 .page-fbs-cancels__kpi { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
-.page-fbs-cancels__kpi-card { flex: 1 1 200px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; min-width: 180px; }
+.page-fbs-cancels__kpi-card { flex: 1 1 200px; background: #fff; border: 1px solid #d5dae1; box-shadow: 0 1px 3px rgba(16,24,40,.08); border-radius: 10px; padding: 14px 16px; min-width: 180px; }
 .page-fbs-cancels__kpi-card--danger { background: #fef2f2; border-color: #fecaca; }
 .page-fbs-cancels__kpi-card--danger .page-fbs-cancels__kpi-value { color: #b91c1c; }
 .page-fbs-cancels__kpi-label { font-size: 11px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px; }

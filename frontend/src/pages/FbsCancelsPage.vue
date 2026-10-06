@@ -1,7 +1,9 @@
 <template>
   <div class="container-xxl page-fbs-cancels">
-    <h1 class="page-title">FBS Отмены <span class="badge bg-secondary page-fbs-cancels__beta">Beta</span></h1>
-    <FbsTabs active="cancels" />
+    <div class="page-fbs__head">
+      <h1 class="page-title">FBS Отмены</h1>
+      <FbsTabs active="cancels" />
+    </div>
 
     <!-- Фильтр как в дашборде: пресеты + даты + товар + бренд/категория (без склада) -->
     <div class="page-fbs-cancels__filter-card mb-3">

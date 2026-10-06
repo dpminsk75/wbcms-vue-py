@@ -1,7 +1,9 @@
 <template>
   <div class="container-xxl page-fbs-pvz">
-    <h1 class="page-title">FBS Путь до ПВЗ <span class="badge bg-secondary page-fbs-pvz__beta">Beta</span></h1>
-    <FbsTabs active="pvz" />
+    <div class="page-fbs__head">
+      <h1 class="page-title">FBS Путь до ПВЗ</h1>
+      <FbsTabs active="pvz" />
+    </div>
 
     <!-- Фильтр как в дашборде -->
     <div class="page-fbs-pvz__filter-card mb-3">

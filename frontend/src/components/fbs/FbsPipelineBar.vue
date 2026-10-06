@@ -40,7 +40,7 @@ const pct = (v: number) => total.value ? Math.max(v / total.value * 100, v > 0 ?
 const fmt0 = (v: any) => new Intl.NumberFormat('ru-RU').format(Math.round(Number(v) || 0))
 </script>
 <style scoped>
-.page-fbs-report__pipeline-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:16px 18px; margin-bottom:16px; }
+.page-fbs-report__pipeline-card { background:#fff; border:1px solid #d5dae1; border-radius:10px; box-shadow:0 1px 3px rgba(16,24,40,.08); padding:16px 18px; margin-bottom:16px; }
 .page-fbs-report__section-title { font-size:13px; font-weight:600; color:#111827; margin-bottom:10px; }
 .page-fbs-report__pipeline-bar { display:flex; height:20px; border-radius:10px; overflow:hidden; background:#f1f5f9; margin-bottom:12px; }
 .page-fbs-report__pipeline-bar > div { height:100%; }

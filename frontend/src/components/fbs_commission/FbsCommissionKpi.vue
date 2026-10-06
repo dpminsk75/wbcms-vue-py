@@ -32,7 +32,7 @@ const fmtMoney = (v: any) => new Intl.NumberFormat('ru-RU', { minimumFractionDig
 </script>
 <style scoped>
 .page-fbs-commission__kpi { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 8px; }
-.page-fbs-commission__kpi-card { flex: 1 1 160px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; min-width: 150px; }
+.page-fbs-commission__kpi-card { flex: 1 1 160px; background: #fff; border: 1px solid #d5dae1; box-shadow: 0 1px 3px rgba(16,24,40,.08); border-radius: 10px; padding: 14px 16px; min-width: 150px; }
 .page-fbs-commission__kpi-card--danger { background: #fef2f2; border-color: #fecaca; }
 .page-fbs-commission__kpi-card--danger .page-fbs-commission__kpi-value { color: #b91c1c; }
 .page-fbs-commission__kpi-label { font-size: 11px; color: #6b7280; margin-bottom: 4px; }
