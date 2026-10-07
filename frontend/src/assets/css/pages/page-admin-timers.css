@@ -1,0 +1,11 @@
+/* page-admin-timers.css — чанк AdminTimersPage. Таблица — во внутренней прокрутке. */
+.page-admin-timers { /* паддинги из wb-ui.css */ }
+.page-admin-timers__title { margin-bottom: 4px; }
+.page-admin-timers__grid { margin-top: 12px; }
+.page-admin-timers__id { font-size: 12px; }
+.page-admin-timers__row--off { opacity: 0.55; }
+.page-admin-timers__sched { display: flex; gap: 4px; align-items: center; margin-top: 4px; }
+.page-admin-timers__sched-input { max-width: 220px; }
+.page-admin-timers__actions { display: flex; gap: 4px; align-items: center; white-space: nowrap; }
+.page-admin-timers__log { margin-top: 12px; }
+.page-admin-timers__log-body { max-height: 320px; overflow: auto; font-size: 12px; white-space: pre-wrap; }

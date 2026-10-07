@@ -1,0 +1,8 @@
+# wbcms timers admin: www-data управляет ТОЛЬКО своими таймерами, без пароля.
+# Поставить: cp deploy/wbcms-timers.sudoers /etc/sudoers.d/wbcms-timers && chmod 440 /etc/sudoers.d/wbcms-timers && visudo -c
+www-data ALL=(root) NOPASSWD: /bin/systemctl enable --now wbcms-*.timer
+www-data ALL=(root) NOPASSWD: /bin/systemctl disable --now wbcms-*.timer
+www-data ALL=(root) NOPASSWD: /bin/systemctl restart wbcms-*.timer
+www-data ALL=(root) NOPASSWD: /bin/systemctl start wbcms-*.service
+www-data ALL=(root) NOPASSWD: /bin/systemctl daemon-reload
+www-data ALL=(root) NOPASSWD: /usr/bin/tee /etc/systemd/system/wbcms-*.timer.d/override.conf

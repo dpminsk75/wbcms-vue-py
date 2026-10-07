@@ -1,0 +1,9 @@
+[Unit]
+Description=Run wbcms finance balance sync every 3h at :05
+
+[Timer]
+OnCalendar=00,03,06,09,12,15,18,21:05
+Persistent=true
+
+[Install]
+WantedBy=timers.target

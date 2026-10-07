@@ -1,0 +1,11 @@
+[Unit]
+Description=wbcms finance balance sync (every 3h at :05)
+After=network.target mysql.service
+
+[Service]
+Type=oneshot
+User=www-data
+WorkingDirectory=/var/www/wb/wbcms-py
+EnvironmentFile=/var/www/wb/wbcms-py/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/var/www/wb/wbcms-py/.venv/bin/python backend/workers/finance_balance_sync.py
