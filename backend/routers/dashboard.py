@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database import get_db
 from backend.deps import get_current_company
 from backend.services.dashboard_service import DashboardService
+from backend.services.finance_balance_service import FinanceBalanceService
 from backend.services.kpi_service import KpiService
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -35,6 +36,15 @@ async def top_metrics(
     chart = await svc.get_30d_chart()
     kpi = await svc.get_30d_kpi()
     return {"chart45Data": chart, "kpi45Data": kpi}
+
+
+@router.get("/finance-balance")
+async def finance_balance(
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Последний срез баланса ЛК WB (пишет cron finance_balance_sync.py, раз в 3 часа)."""
+    return await FinanceBalanceService(db, company_id=company_id).latest()
 
 
 @router.get("/today-stats")

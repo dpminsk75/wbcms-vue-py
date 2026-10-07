@@ -34,6 +34,7 @@ class KpiService:
                     SUM(commission)+SUM(f_acquiring_fee)+SUM(f_acceptance)+SUM(f_delivery)+SUM(f_storage_fee)+SUM(f_penalty)+SUM(f_deduction)+SUM(f_otziv)+SUM(f_adv)+SUM(f_cashback) as total_expenses,
                     SUM(f_delivery) as total_delivery, SUM(f_adv) as total_adv, SUM(f_cashback) as total_cashback,
                     SUM(commission) as total_commission, SUM(f_storage_fee) as total_storage_fee,
+                    SUM(f_acquiring_fee) as total_acquiring_fee,
                     SUM(sales_qnt) as total_sales_qnt, SUM(return_qnt) as total_return_qnt,
                     SUM(f_retail_amount) as total_retail_amount,
                     SUM(f_nds) as total_nds, SUM(f_cost_price) as total_cost,

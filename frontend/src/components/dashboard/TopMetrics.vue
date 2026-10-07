@@ -1,5 +1,5 @@
 <template>
-  <div v-if="busy || hasData || isError" class="page-dashboard__top-metrics">
+  <div v-if="busy || hasData || balHas || isError" class="page-dashboard__top-metrics">
     <div class="row g-3 mb-4">
       <div class="col-md-3 col-sm-6">
         <div class="card shadow-sm border-0 bg-light text-dark h-100 p-3 page-dashboard__metric">
@@ -64,12 +64,31 @@
         </div>
       </div>
       <div class="col-md-3 col-sm-6">
-        <div class="card shadow-sm border-0 bg-light text-dark h-100 p-3 text-center">
-          <div class="page-dashboard__metric-head page-dashboard__metric-head--light">
-            <span>Маржа (30 дн)</span>
-            <span class="page-dashboard__metric-pct page-dashboard__metric-pct--light">{{ pctStr(margin) }}</span>
+        <div class="d-flex flex-column gap-3 h-100">
+          <div class="card shadow-sm border-0 bg-light text-dark p-3 text-center page-dashboard__margin-card">
+            <div class="page-dashboard__metric-head page-dashboard__metric-head--light">
+              <span>Маржа (30 дн)</span>
+              <span class="page-dashboard__metric-pct page-dashboard__metric-pct--light">{{ pctStr(margin) }}</span>
+            </div>
+            <div class="h3 font-weight-bold mt-2 text-success">{{ fmt(margin) }} ₽</div>
           </div>
-          <div class="h3 font-weight-bold mt-2 text-success">{{ fmt(margin) }} ₽</div>
+          <div class="card shadow-sm border-0 bg-white p-3 page-dashboard__balance">
+            <div class="page-dashboard__metric-head">
+              <span>Баланс</span>
+              <i v-if="balHas" :class="showBal ? 'bi bi-eye-slash' : 'bi bi-eye'" class="page-dashboard__balance-eye" title="Показать/скрыть суммы" @click="showBal = !showBal" />
+            </div>
+            <div class="page-dashboard__metric-total">{{ balMain }}</div>
+            <ul class="page-dashboard__metric-rows">
+              <li v-if="balSub" class="page-dashboard__metric-row">
+                <span class="page-dashboard__metric-label">Можно вывести</span>
+                <span class="page-dashboard__metric-val">{{ balSub }}</span>
+              </li>
+              <li v-if="!balHas" class="page-dashboard__metric-row">
+                <span class="page-dashboard__metric-label">Нет данных — дождитесь среза cron</span>
+              </li>
+            </ul>
+            <div v-if="balFetched" class="page-dashboard__balance-ts">Обновлено {{ balFetched }}</div>
+          </div>
         </div>
       </div>
     </div>
@@ -82,7 +101,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, watchEffect } from 'vue'
+import { computed, inject, ref, watchEffect } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { dashboardApi } from '../../api/dashboard'
 import { useAuthStore } from '../../stores/auth'
@@ -119,11 +138,12 @@ const tax = computed(() => num(kpi.value.tax_amount))
 const margin = computed(() => num(kpi.value.clean_margin))
 const expenses = computed(() => num(kpi.value.total_expenses))
 const commission = computed(() => num(kpi.value.total_commission))
+const acquiring = computed(() => num(kpi.value.total_acquiring_fee))
 const delivery = computed(() => num(kpi.value.total_delivery))
 const adv = computed(() => num(kpi.value.total_adv))
 const storage = computed(() => num(kpi.value.total_storage_fee))
 const cashback = computed(() => num(kpi.value.total_cashback))
-const restExp = computed(() => expenses.value - commission.value - delivery.value - adv.value - storage.value - cashback.value)
+const restExp = computed(() => expenses.value - commission.value - acquiring.value - delivery.value - adv.value - storage.value - cashback.value)
 const avgCheck = computed(() => (orders.value ? sales.value / orders.value : 0))
 const retail = computed(() => num(kpi.value.total_retail_amount))
 const sppAvg = computed(() => num(kpi.value.total_spp_avg))
@@ -155,6 +175,7 @@ const salesRows = computed(() => [
 ])
 const expSegs = computed(() => [
   { label: 'Комиссия', w: wExp(commission.value), color: '#f5a623' },
+  { label: 'Эквайринг', w: wExp(acquiring.value), color: '#3b82f6' },
   { label: 'Логистика', w: wExp(delivery.value), color: '#5bc0de' },
   { label: 'Реклама', w: wExp(adv.value), color: '#8a2be0' },
   { label: 'Хранение', w: wExp(storage.value), color: '#e3c766' },
@@ -163,6 +184,7 @@ const expSegs = computed(() => [
 ])
 const expRows = computed(() => [
   { label: 'Комиссия', val: `${fmt(commission.value)} ₽`, pct: pctStr(commission.value), color: '#f5a623' },
+  { label: 'Эквайринг', val: `${fmt(acquiring.value)} ₽`, pct: pctStr(acquiring.value), color: '#3b82f6' },
   { label: 'Логистика', val: `${fmt(delivery.value)} ₽`, pct: pctStr(delivery.value), color: '#5bc0de' },
   { label: 'Реклама', val: `${fmt(adv.value)} ₽`, pct: pctStr(adv.value), color: '#8a2be0' },
   { label: 'Хранение', val: `${fmt(storage.value)} ₽`, pct: pctStr(storage.value), color: '#e3c766' },
@@ -205,6 +227,27 @@ const chartOption = computed(()=>{
 })
 const fmt = (v:any) => new Intl.NumberFormat('ru-RU').format(Math.round(v||0))
 const sppFmt = (v:any) => `${new Intl.NumberFormat('ru-RU',{minimumFractionDigits:1,maximumFractionDigits:1}).format(Number(v)||0)}%`
+
+// Баланс ЛК WB: последний срез крона (wb_finance_balance), вид как виджет портала.
+// retry:1 — таблицы/крона может ещё не быть, не спамим 404.
+const { data: balData } = useQuery({ queryKey: computed(() => ['finance-balance', auth.companyId] as const), queryFn: dashboardApi.financeBalance, retry: 1 } as any)
+const balHas = computed(() => !!(balData.value as any)?.has_data)
+const showBal = ref(true)
+const fmt2 = (v:any) => new Intl.NumberFormat('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v)||0)
+const balMain = computed(() => {
+  if (!balHas.value) return '—'
+  return showBal.value ? `${fmt2((balData.value as any).current)} ₽` : '••• ₽'
+})
+const balSub = computed(() => {
+  if (!balHas.value || !showBal.value) return ''
+  return `${fmt2((balData.value as any).for_withdraw)} ₽`
+})
+const balFetched = computed(() => {
+  const f = (balData.value as any)?.fetched_at
+  if (!f) return ''
+  const d = new Date(f)
+  return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+})
 </script>
 
 <style scoped>
@@ -226,4 +269,7 @@ const sppFmt = (v:any) => `${new Intl.NumberFormat('ru-RU',{minimumFractionDigit
 .page-dashboard__metric-val { font-weight: 600; white-space: nowrap; }
 .page-dashboard__metric-rowpct { color: #888; min-width: 36px; text-align: right; }
 .page-dashboard__metric-chart { height: 340px; }
+.page-dashboard__margin-card { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; }
+.page-dashboard__balance-eye { cursor: pointer; color: #888; font-size: 12px; }
+.page-dashboard__balance-ts { font-size: 11px; color: #999; margin-top: 2px; }
 </style>

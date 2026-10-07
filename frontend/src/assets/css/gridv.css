@@ -256,9 +256,13 @@
 }
 
 /* ---------- HERO-КАРТОЧКА: "Маржа" — 4-я карточка в ряду ---------- */
-.dash_div .row.g-3 > .col-md-3:nth-child(4) .card {
+/* Только page-dashboard__margin-card: белый "Баланс" под ней (page-dashboard__balance) не красим */
+.dash_div .row.g-3 > .col-md-3:nth-child(4) .card.page-dashboard__margin-card {
   background: linear-gradient(135deg, #8A2BE0, #5A1C9C) !important;
   border: none !important;
+}
+.dash_div .row.g-3 > .col-md-3:nth-child(4) .card.page-dashboard__balance {
+  background: #fff !important;
 }
 .dash_div .row.g-3 > .col-md-3:nth-child(4) .text-muted,
 .dash_div .row.g-3 > .col-md-3:nth-child(4) .small {
