@@ -12,11 +12,10 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.services.assembly_grid import (
-    TARIFFS,
     bucket_index,
     discount_pp,
     labels as grid_labels,
-    penalty_rate,
+    penalty_pct,
 )
 
 
@@ -60,7 +59,7 @@ class FbsCommissionService:
         # не быть). Деньги ≈ по измеренным со статусом.
         rows = (await self.db.execute(text(f"""SELECT
                 f.warehouse_id AS wid, COALESCE(wh.name, '—') AS wname,
-                o.price_with_disc AS price,
+                o.price_with_disc AS price, o.date AS odate,
                 TIMESTAMPDIFF(MINUTE,
                     CASE WHEN f.wb_created_at > '1000-01-01 00:00:00'
                          THEN f.wb_created_at END,
@@ -98,18 +97,17 @@ class FbsCommissionService:
             h_est = float(r["h_est"]) if r["h_est"] is not None else None
             price = float(r["price"] or 0)
             item = {"wid": r["wid"], "wname": r["wname"], "price": price,
+                    "odate": str(r["odate"])[:10],
                     "h": h_est if self._valid(h_est) else None}
             est_all.append(item)
             if item["h"] is not None:
                 scan.append(item)
-        earned = sum(discount_pp(x["h"]) / 100 * x["price"] for x in scan)
-        lost = 0.0
-        for x in scan:
-            rate = penalty_rate(x["h"])
-            if rate:
-                lost += rate / 100 * max(0.0, x["h"] - TARIFFS["overdue_from_h"]) * x["price"]
-        potential = (sum(discount_pp(0.0) / 100 * x["price"] for x in scan)
-                     - earned)
+        earned = sum(discount_pp(x["h"], x["odate"]) / 100 * x["price"]
+                       for x in scan)
+        lost = sum(penalty_pct(x["h"], x["odate"]) / 100 * x["price"]
+                   for x in scan)
+        potential = (sum(discount_pp(0.0, x["odate"]) / 100 * x["price"]
+                         for x in scan) - earned)
         fast = sum(1 for x in scan if x["h"] <= 13)
         # Карточки — по ВСЕМ заданиям склада; время/деньги — по статусам (v4).
         wh_all: dict = {}
@@ -126,13 +124,10 @@ class FbsCommissionService:
             for h in hs:
                 zones[bucket_index(h)] += 1
             zones[6] = total_w - n
-            e = sum(discount_pp(x["h"]) / 100 * x["price"] for x in items)
-            l = 0.0
-            for x in items:
-                rate = penalty_rate(x["h"])
-                if rate:
-                    l += (rate / 100 * max(0.0, x["h"] - TARIFFS["overdue_from_h"])
-                          * x["price"])
+            e = sum(discount_pp(x["h"], x["odate"]) / 100 * x["price"]
+                      for x in items)
+            l = sum(penalty_pct(x["h"], x["odate"]) / 100 * x["price"]
+                    for x in items)
             cards.append({
                 "warehouse_id": wid, "warehouse_name": wname,
                 "tasks_cnt": total_w,
@@ -145,7 +140,7 @@ class FbsCommissionService:
                 "earned": round(e, 2),
                 "lost": round(l, 2),
                 "potential": round(
-                    sum(discount_pp(0.0) / 100 * x["price"] for x in items) - e, 2),
+                    sum(discount_pp(0.0, x["odate"]) / 100 * x["price"] for x in items) - e, 2),
             })
         cards.sort(key=lambda c: -c["earned"])
         return {

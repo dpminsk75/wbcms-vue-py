@@ -5,8 +5,6 @@
 Пороги очереди и сетка комиссий — backend/config/fbs_assembly_tariffs.json
 (значения TODO-confirm, см. ТЗ §8).
 """
-import json
-import os
 from bisect import bisect_right
 from datetime import datetime
 from statistics import median
@@ -14,13 +12,13 @@ from statistics import median
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.services.assembly_grid import (
+    TARIFFS,
+    discount_pp,
+    penalty_pct,
+    thresholds,
+)
 from backend.services.fbs_report_service import BUCKET_CASE, BUCKETS
-
-_TARIFFS_PATH = os.path.join(os.path.dirname(__file__), "..", "config",
-                             "fbs_assembly_tariffs.json")
-
-with open(_TARIFFS_PATH, encoding="utf-8") as _fh:
-    TARIFFS = json.load(_fh)
 
 
 class FbsOrdersService:
@@ -196,7 +194,7 @@ class FbsOrdersService:
                        brand: str | None, category: str | None,
                        now: datetime | None = None) -> dict:
         now = now or datetime.now()
-        cfg = TARIFFS
+        cfg = thresholds()
         params = self._params(date_from, date_to, warehouse_id, brand, category)
         base = (f"o.date BETWEEN :d1 AND :d2"
                 f"{self._extra(True, warehouse_id, brand, category)}")
@@ -241,7 +239,7 @@ class FbsOrdersService:
                     CASE WHEN f.wb_created_at > '1000-01-01 00:00:00'
                          THEN f.wb_created_at END,
                     ({eff})) / 60.0 AS h,
-                o.price_with_disc AS price
+                o.price_with_disc AS price, o.date AS odate
             FROM wb_orders_fbs f
             JOIN wb_order o ON o.srid = f.rid AND o.company_id = f.company_id
             JOIN (SELECT wb_order_id,
@@ -280,7 +278,8 @@ class FbsOrdersService:
                            "tech_size": r["tech_size"],
                            "barcode": r["barcode"]})
         quota = self._quota(live_h, tariffs)
-        scan_hand = [(float(r["h"]), float(r["price"] or 0)) for r in handed
+        scan_hand = [(float(r["h"]), float(r["price"] or 0), str(r["odate"])[:10])
+                     for r in handed
                      if r["h"] is not None and r["h"] >= 0]
         # Всего заданий FBS в скоупе — знаменатель для доли измеренных
         # (диагностика 2026-10-05: JOIN по скану молча резал выборку 69 -> 17).
@@ -324,22 +323,13 @@ class FbsOrdersService:
             i = 0
         return tariff_list[i][1]
 
-    def _commission_pct(self, base: float, h: float) -> float:
-        for b in TARIFFS["buckets"]:
-            upto = b["upto_h"]
-            if upto is not None and h < upto:
-                kind, v = b["kind"], b["value"]
-                break
-        else:
-            kind, v = "penalty_pct_per_h", TARIFFS["buckets"][-1]["value"]
-        if kind == "discount_pp":
-            return base + v
-        if kind == "penalty_pct_per_h":
-            return base + v * max(0.0, h - TARIFFS["overdue_from_h"])
-        return base
+    @staticmethod
+    def _commission_pct(base: float, h: float, date_str: str | None = None) -> float:
+        """Полная комиссия %: база − скидка + штраф (версия сетки на дату)."""
+        return base - discount_pp(h, date_str) + penalty_pct(h, date_str)
 
     def _quota(self, live: list, tariffs: dict) -> dict:
-        cfg = TARIFFS
+        cfg = thresholds()
         n = len(live)
         # «Комиссия уже растёт» = дольше базового срока 18 ч (оферта WB, тултип 10X).
         overdue_h = cfg.get("quota_overdue_h", cfg.get("base_sla_h", 18))
@@ -359,7 +349,8 @@ class FbsOrdersService:
         comm_sum = 0.0
         for x in growing:
             base = self._base_for(tariffs.get(x["subject_id"]), x["odate"])
-            comm_sum += self._commission_pct(base, x["h"]) / 100 * x["price"]
+            comm_sum += (self._commission_pct(base, x["h"], x["odate"][:10])
+                         / 100 * x["price"])
         risk_sum = round(sum(x["price"] for x in over), 2)
         return {
             "overdue_cnt": len(over),
@@ -382,15 +373,15 @@ class FbsOrdersService:
 
     @classmethod
     def _economy_stats(cls, items: list, tasks: int = 0) -> dict:
-        """items: [(h, price)]. Сдано с экономией (первые 2 бакета сетки):
+        """items: [(h, price, date)]. Сдано с экономией (первые 2 бакета сетки):
         шт, % от измеренных, % от ВСЕХ заданий (tasks), сумма скидки.
-        Границы/ставки — только из assembly_grid."""
+        Границы/ставки — только из assembly_grid, версия на дату заказа."""
         from backend.services.assembly_grid import bounds as grid_bounds
         from backend.services.assembly_grid import discount_pp
         eco_bound = grid_bounds()[2]
         measured = len(items)
-        eco = [(h, p) for h, p in items if h < eco_bound]
-        disc = round(sum(discount_pp(h) / 100 * p for h, p in eco), 2)
+        eco = [(h, p, d) for h, p, d in items if h < eco_bound]
+        disc = round(sum(discount_pp(h, d) / 100 * p for h, p, d in eco), 2)
         return {"cnt": len(eco),
                 "pct": round(len(eco) / measured * 100, 1) if measured else 0,
                 "share_pct": round(len(eco) / tasks * 100, 1) if tasks else 0,
@@ -398,7 +389,8 @@ class FbsOrdersService:
 
     @classmethod
     def _warehouse_cards(cls, per_wh, live: list, handed) -> list:
-        over_h = TARIFFS.get("quota_overdue_h", TARIFFS.get("base_sla_h", 18))
+        th = thresholds()
+        over_h = th.get("quota_overdue_h", th.get("base_sla_h", 18))
         live_by_wh: dict = {}
         for x in live:
             live_by_wh.setdefault(x["wid"], []).append(x)
@@ -408,7 +400,8 @@ class FbsOrdersService:
             if r["h"] is not None and r["h"] >= 0:
                 hand_by_wh.setdefault(r["wid"], []).append(float(r["h"]))
                 scan_by_wh.setdefault(r["wid"], []).append(
-                    (float(r["h"]), float(r["price"] or 0)))
+                    (float(r["h"]), float(r["price"] or 0),
+                     str(r["odate"])[:10]))
         cards = []
         for r in per_wh:
             g = lambda k: int(r[k] or 0)

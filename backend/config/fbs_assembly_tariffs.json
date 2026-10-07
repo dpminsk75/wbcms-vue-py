@@ -1,18 +1,37 @@
 {
-  "_comment": "Тарифная сетка сборки FBS + пороги очереди (ТЗ 2026-10-05_fbs-orders-tz.md §4). Пороги base_sla_h/warn_h/pre_cancel_h/auto_cancel_h — предположения, TODO-confirm.",
-  "base_sla_h": 18,
-  "warn_h": 2,
-  "pre_cancel_h": 114,
-  "auto_cancel_h": 120,
-  "overdue_from_h": 48,
-  "quota_overdue_h": 18,
+  "_comment": "Версионная сетка сборки FBS. v1 — до 07.10.2026; v2 — новость WB 06.10.2026 (с 07.10: 48–52 ч +0,2%/ч от 48 ч, от 52 ч фикс 1%). Деньги — по версии на дату заказа, отображение — по последней.",
   "base_field": "kgvp_marketplace",
-  "buckets": [
-    {"upto_h": 13, "kind": "discount_pp", "value": -5},
-    {"upto_h": 42, "kind": "discount_pp", "value": -3.5},
-    {"upto_h": 48, "kind": "base", "value": 0},
-    {"upto_h": 54, "kind": "penalty_pct_per_h", "value": 0.3},
-    {"upto_h": 60, "kind": "penalty_pct_per_h", "value": 0.35},
-    {"upto_h": null, "kind": "penalty_pct_per_h", "value": 0.45}
+  "thresholds": {
+    "base_sla_h": 18,
+    "warn_h": 2,
+    "pre_cancel_h": 114,
+    "auto_cancel_h": 120,
+    "quota_overdue_h": 18,
+    "overdue_from_h": 48
+  },
+  "versions": [
+    {
+      "valid_from": "2026-01-01",
+      "comment": "сетка до 07.10.2026",
+      "buckets": [
+        {"upto_h": 13, "kind": "discount_pp", "value": -5},
+        {"upto_h": 42, "kind": "discount_pp", "value": -3.5},
+        {"upto_h": 48, "kind": "base", "value": 0},
+        {"upto_h": 54, "kind": "penalty_pct_per_h", "value": 0.3},
+        {"upto_h": 60, "kind": "penalty_pct_per_h", "value": 0.35},
+        {"upto_h": null, "kind": "penalty_pct_per_h", "value": 0.45}
+      ]
+    },
+    {
+      "valid_from": "2026-10-07",
+      "comment": "новость WB 06.10.2026",
+      "buckets": [
+        {"upto_h": 13, "kind": "discount_pp", "value": -5},
+        {"upto_h": 42, "kind": "discount_pp", "value": -3.5},
+        {"upto_h": 48, "kind": "base", "value": 0},
+        {"upto_h": 52, "kind": "penalty_pct_per_h", "value": 0.2},
+        {"upto_h": null, "kind": "penalty_flat_pct", "value": 1.0}
+      ]
+    }
   ]
 }
