@@ -16,6 +16,7 @@
             <th class="text-center">Вкл</th>
             <th>Состояние</th>
             <th>След. запуск</th>
+            <th>Прошлый запуск</th>
             <th>Действия</th>
           </tr>
         </thead>
@@ -26,9 +27,6 @@
               <code class="page-admin-timers__id">{{ r.id }}</code>
               <div v-if="r.load_state && r.load_state !== 'loaded'" class="mt-1">
                 <span class="badge text-bg-warning" title="Юнит не стоит в /etc/systemd/system — скопируй deploy/*.service+timer и сделай daemon-reload">нет юнита</span>
-              </div>
-              <div v-if="r.svc_last_start" class="text-muted small" :title="r.svc_result || ''">
-                пуск: {{ r.svc_last_start }}{{ r.svc_exec_status && r.svc_exec_status !== '0' ? ` (exit ${r.svc_exec_status})` : '' }}
               </div>
             </td>
             <td>
@@ -44,11 +42,19 @@
               <input type="checkbox" :checked="r.enabled" @change="onToggle(r, ($event.target as HTMLInputElement).checked)"
                 class="form-check-input" :title="r.enabled ? 'Выключить' : 'Включить'" />
             </td>
-            <td>
+            <td class="text-center text-nowrap">
               <span :class="r.active_state === 'active' ? 'badge text-bg-success' : 'badge text-bg-secondary'">{{ r.active_state || '—' }}</span>
-              <span class="text-muted small"> {{ r.sub_state || '' }}</span>
+              <div class="text-muted small">{{ r.sub_state || '' }}</div>
             </td>
-            <td class="small">{{ r.next || '—' }}</td>
+            <td class="small text-nowrap" :title="r.next || ''">{{ fmtNext(r.next) }}</td>
+            <td class="small text-nowrap" :title="lastTitle(r)">
+              <span v-if="!r.svc_last_start" class="text-muted">—</span>
+              <template v-else>
+                {{ fmtNext(r.svc_last_start) }}
+                <span v-if="r.svc_exec_status == null || String(r.svc_exec_status) === '0'" class="badge text-bg-success" title="exit 0">✓</span>
+                <span v-else class="badge text-bg-danger" :title="`exit ${r.svc_exec_status}`">✗ {{ r.svc_exec_status }}</span>
+              </template>
+            </td>
             <td>
               <div class="page-admin-timers__actions">
                 <button @click="onRun(r)" :disabled="busy[r.id]" class="btn btn-sm btn-outline-primary" title="Запустить .service разово сейчас">
@@ -87,6 +93,17 @@ const busy = reactive<Record<string, boolean>>({})
 const schedEdits = reactive<Record<string, string>>({})
 const logFor = ref('')
 const logLines = ref<string[]>([])
+
+function fmtNext(v: string | null | undefined): string {
+  if (!v || v === 'n/a') return '—'
+  if (/^\d+\s*y/.test(v)) return 'по интервалу'  // монотонный таймер (healthcheck)
+  const m = /(\d{4})-(\d{2})-(\d{2})[ T](\d{2}:\d{2})/.exec(v)
+  if (m) return `${m[3]}.${m[2]} ${m[4]}`
+  return v
+}
+function lastTitle(r: any): string {
+  return [r.svc_last_start, r.svc_result ? `result=${r.svc_result}` : ''].filter(Boolean).join(' ')
+}
 
 async function load() {
   loading.value = true

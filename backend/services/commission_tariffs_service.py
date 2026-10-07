@@ -12,11 +12,12 @@
 Токен — companies.api_key компании id=1 (тарифы глобальные). Только stdlib.
 """
 import json
-import urllib.request
 from datetime import date
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.services.wb_sync_base import get_json
 
 TARIFFS_URL = "https://common-api.wildberries.ru/api/v1/tariffs/commission"
 SUBJECTS_URL = "https://content-api.wildberries.ru/content/v2/object/parent/all"
@@ -56,9 +57,8 @@ class CommissionTariffsService:
 
     @staticmethod
     def _get(url: str, token: str) -> dict:
-        req = urllib.request.Request(url, headers={"Authorization": token})
-        with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+        data = get_json(url, None, token, timeout=TIMEOUT_S)
+        return data if isinstance(data, dict) else {}
 
     async def sync_subjects(self, dry_run: bool = False) -> dict:
         """Справочник предметов parent/all -> wb_subject_catalog (upsert по PK)."""

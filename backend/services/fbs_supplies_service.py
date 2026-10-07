@@ -6,13 +6,13 @@ done, cargoType, destinationOfficeId, ...}]}. Пагинация по next (0 �
 Свежесть внутри дня — запуск каждые 30 мин (cron */30). Только stdlib.
 """
 import json
-import urllib.error
 import urllib.parse
-import urllib.request
 from datetime import datetime, timezone
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.services.wb_sync_base import get_json
 
 SUPPLIES_URL = "https://marketplace-api.wildberries.ru/api/v3/supplies"
 TIMEOUT_S = 15
@@ -50,16 +50,8 @@ class FbsSuppliesService:
 
     @staticmethod
     def _get(url: str, token: str) -> dict:
-        req = urllib.request.Request(url, headers={"Authorization": token})
-        try:
-            with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            try:
-                body = e.read().decode("utf-8", "replace")[:500]
-            except Exception:
-                body = ""
-            raise RuntimeError(f"WB {e.code} {url} :: {body}") from None
+        data = get_json(url, None, token, timeout=TIMEOUT_S)
+        return data if isinstance(data, dict) else {}
 
     @staticmethod
     def _row(s: dict) -> dict | None:

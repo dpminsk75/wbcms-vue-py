@@ -6,12 +6,12 @@
 Только stdlib (как commission_tariffs_service).
 """
 import json
-import urllib.error
-import urllib.request
 from datetime import datetime
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.services.wb_sync_base import get_json
 
 BALANCE_URL = "https://finance-api.wildberries.ru/api/v1/account/balance"
 TIMEOUT_S = 15
@@ -40,12 +40,13 @@ class FinanceBalanceService:
 
     @staticmethod
     def _get(url: str, token: str) -> dict:
-        req = urllib.request.Request(url, headers={"Authorization": token})
         try:
-            with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            raise RuntimeError(f"WB balance http={e.code}") from e
+            data = get_json(url, None, token, timeout=TIMEOUT_S)
+        except RuntimeError as e:
+            raise RuntimeError(str(e)) from e
+        if not isinstance(data, dict):
+            raise RuntimeError("WB balance: пустой ответ")
+        return data
 
     async def fetch(self) -> dict:
         """Живой опрос WB без записи (для dry-run/диагностики)."""
