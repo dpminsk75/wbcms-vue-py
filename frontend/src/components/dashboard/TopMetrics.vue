@@ -1,5 +1,8 @@
 <template>
   <div v-if="busy || hasData || balHas || isError" class="page-dashboard__top-metrics">
+    <div style="margin-bottom:8px">
+      <span style="font-size:20px; font-weight:700; color:#111827">Показатели</span>
+    </div>
     <div class="row g-3 mb-4">
       <div class="col-md-3 col-sm-6">
         <div class="card shadow-sm border-0 bg-light text-dark h-100 p-3 page-dashboard__metric">

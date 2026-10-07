@@ -1,16 +1,14 @@
 <template>
   <div v-if="busy || hasData || isError">
-    <div class="card expandable-container" :class="{'is-expanded': expanded}" :style="{maxHeight: expanded ? '20000px' : '340px', overflow:'hidden', position:'relative', transition:'max-height .5s', border:'1px solid var(--bs-border-color-translucent)', borderRadius:'8px', background:'#fff'}">
-      <div class="card-header text-white d-flex justify-content-between align-items-center" style="font-size:13px; font-weight:700; background-color:#4b4b4b; padding:10px 15px">
-        <router-link to="/site/new-cards" class="text-white" style="text-decoration:none">Новые карточки за последние 14 дней ({{ rows.length }})</router-link>
-        <router-link to="/site/new-cards" class="btn btn-sm btn-light py-0 px-2" style="font-size:11px; font-weight:600; text-decoration:none">Все карточки →</router-link>
-      </div>
-      <div class="card-body p-3 bg-light" style="background:#f8fafc">
-        <div v-if="isLoading" style="text-align:center; font-size:12px; padding:20px">Загрузка...</div>
-        <div v-else-if="rows.length===0" style="text-align:center; font-size:12px; color:#6b7280; padding:20px">Новинок нет</div>
-        <div v-else class="row g-3">
-          <div v-for="c in rows" :key="c.nmID" class="col-lg-4 col-md-6 col-12">
-            <div class="d-flex p-2 h-100" style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; align-items:center; box-shadow:0 1px 3px rgba(0,0,0,0.04)">
+    <div class="page-new-cards__head">
+      <router-link to="/site/new-cards" class="page-new-cards__title">Новые карточки ({{ rows.length }})</router-link>
+    </div>
+    <div style="text-align:center; font-size:12px; padding:20px" v-if="isLoading">Загрузка...</div>
+    <div v-else-if="rows.length===0" style="text-align:center; font-size:12px; color:#6b7280; padding:20px">Новинок нет</div>
+    <div v-else ref="trackRef" class="page-new-cards__track"
+      @pointerdown="dragStart" @pointermove="dragMove" @pointerup="dragEnd" @pointerleave="dragEnd">
+      <div v-for="c in rows" :key="c.nmID" class="page-new-cards__item">
+        <div class="d-flex p-2 h-100" style="background:#fff; border:1px solid #d3d9e0; border-radius:12px; align-items:center; box-shadow:0 1px 4px rgba(16,24,40,0.08)">
               <div class="flex-shrink-0 me-3" style="width:80px; height:110px; border-radius:6px; overflow:hidden; background:#f1f1f1; display:flex; align-items:center; justify-content:center; border:1px solid #e2e8f0">
                 <img v-if="imgSrc(c)" :src="imgSrc(c)!" alt="Фото" style="width:100%; height:100%; object-fit:cover">
                 <div v-else style="color:#4e4e53">
@@ -27,11 +25,6 @@
             </div>
           </div>
         </div>
-      </div>
-    </div>
-    <div class="expand-btn-wrapper" style="text-align:center; margin:10px 0 20px">
-      <button class="btn btn-outline-primary btn-sm" style="font-size:12px; padding:4px 16px; border-radius:6px" @click="expanded=!expanded">{{ expanded ? 'Свернуть' : 'Увидеть больше' }}</button>
-    </div>
   </div>
 </template>
 <script setup lang="ts">
@@ -41,7 +34,6 @@ import { dashboardApi } from '../../api/dashboard'
 import { useAuthStore } from '../../stores/auth'
 const auth = useAuthStore()
 const report = inject<(n:string,h:boolean)=>void>('dashReport', ()=>{})
-const expanded = ref(false)
 const { data: rowsRaw, isLoading, isFetching, isError } = useQuery({ queryKey: computed(() => ['new-cards', auth.companyId] as const), queryFn: ()=> (dashboardApi as any).newCards({}), initialData: [] as any })
 const busy = computed(() => isLoading.value || isFetching.value)
 const rows = computed(()=> {
@@ -49,8 +41,7 @@ const rows = computed(()=> {
   if(Array.isArray(v)) return v
   return v?.items ?? []
 })
-const imgSrc = (c:any)=>{
-  if(!c.photos) return null
+const imgSrc = (c:any)=>{  if(!c.photos) return null
   try{
     let list = typeof c.photos==='string' ? JSON.parse(c.photos) : c.photos
     if(typeof list==='string') list = JSON.parse(list)
@@ -60,9 +51,37 @@ const imgSrc = (c:any)=>{
 }
 import { useDateFmt } from '../../composables/useDateFmt'
 const { fmtDate } = useDateFmt()
+const trackRef = ref<HTMLElement | null>(null)
+let dragOn = false
+let dragX = 0
+let dragScroll = 0
+function dragStart(e: PointerEvent) {
+  const el = trackRef.value
+  if (!el) return
+  dragOn = true
+  dragX = e.clientX
+  dragScroll = el.scrollLeft
+  el.setPointerCapture?.(e.pointerId)
+}
+function dragMove(e: PointerEvent) {
+  const el = trackRef.value
+  if (!dragOn || !el) return
+  el.scrollLeft = dragScroll - (e.clientX - dragX)
+}
+function dragEnd() {
+  dragOn = false
+}
 const hasData = computed(() => rows.value.length > 0)
 watchEffect(() => { if (!busy.value) report('new-cards', hasData.value || !!isError.value) })
 </script>
 <style scoped>
-.expandable-container:not(.is-expanded)::after{content:""; position:absolute; bottom:0; left:0; width:100%; height:50px; background:linear-gradient(transparent, #f8fafc); pointer-events:none}
+.page-new-cards__head { margin-bottom: 8px; }
+.page-new-cards__title { font-size: 20px; font-weight: 700; color: #111827; text-decoration: none; }
+.page-new-cards__title:hover { color: #8A2BE0; }
+.page-new-cards__head { margin-bottom: 8px; }
+.page-new-cards__title { font-size: 20px; font-weight: 700; color: #111827; text-decoration: none; }
+.page-new-cards__title:hover { color: #8A2BE0; }
+.page-new-cards__track { display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, auto); gap: 12px; overflow-x: auto; scrollbar-width: none; cursor: grab; padding-bottom: 4px; }
+.page-new-cards__track::-webkit-scrollbar { display: none; }
+.page-new-cards__item { width: 340px; }
 </style>
