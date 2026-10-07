@@ -20,6 +20,9 @@
         <li class="nav-item">
           <button type="button" :class="['nav-link', { active: tab === 'members' }]" @click="tab = 'members'"><i class="bi bi-people"></i> Участники <span class="badge bg-secondary">{{ data.members.length }}</span></button>
         </li>
+        <li class="nav-item">
+          <button type="button" :class="['nav-link', { active: tab === 'news' }]" @click="tab = 'news'; loadNewsTypes()"><i class="bi bi-newspaper"></i> Новости</button>
+        </li>
       </ul>
       <form @submit.prevent="onSaveCompany">
         <div v-show="tab === 'main'" class="page-company-detail__pane">
@@ -215,6 +218,21 @@
         <ExtTokensBlock v-if="auth.can('viewSeo')" :companyId="companyId" />
       </div>
 
+      <div v-show="tab === 'news'">
+        <div class="card">
+          <div class="card-header bg-light fw-semibold">Новости WB <small class="text-muted">пусто = все категории</small></div>
+          <div class="card-body">
+            <div v-if="newsTypesLoading" class="text-muted">Загрузка…</div>
+            <div v-else-if="!newsTypesAvailable.length" class="text-muted">Пока нет новостей — типы появятся после первого синка.</div>
+            <label v-else v-for="t in newsTypesAvailable" :key="t.id" class="d-block">
+              <input type="checkbox" :value="t.id" v-model="newsTypesSel" class="form-check-input me-1" /> {{ t.name }}
+            </label>
+            <button @click="saveNewsTypes" :disabled="newsTypesSaving" class="btn btn-sm btn-outline-primary mt-2">Сохранить</button>
+            <span v-if="newsTypesSaved" class="text-success small ms-2">Сохранено</span>
+          </div>
+        </div>
+      </div>
+
       <div v-show="tab === 'members'">
       <div class="page-company-detail__table-wrap">
       <table class="wb-admin-table">
@@ -299,12 +317,41 @@ const auth = useAuthStore()
 const route = useRoute()
 const companyId = Number(route.params.id)
 // Табы: одна тема на экран вместо стены блоков (состояние форм — в companyForm, не теряется)
-const tab = ref<'main' | 'wb' | 'seo' | 'ext' | 'members'>('main')
+const tab = ref<'main' | 'wb' | 'seo' | 'ext' | 'members' | 'news'>('main')
 const isFormTab = computed(() => tab.value === 'main' || tab.value === 'wb' || tab.value === 'seo')
 import { useDateFmt } from '../composables/useDateFmt'
 const { fmtDT, fmtDate, fmtDateTime } = useDateFmt()
 const data = ref<{ company: any; members: any[] } | null>(null)
 const error = ref('')
+// Новости: типы для сотрудников (пусто = все)
+import { newsApi } from '../api/news'
+const newsTypesAvailable = ref<Array<{ id: number; name: string }>>([])
+const newsTypesSel = ref<number[]>([])
+const newsTypesLoading = ref(false)
+const newsTypesSaving = ref(false)
+const newsTypesSaved = ref(false)
+async function loadNewsTypes() {
+  if (newsTypesAvailable.value.length) return
+  newsTypesLoading.value = true
+  try {
+    const out = await newsApi.companyTypes(companyId)
+    newsTypesAvailable.value = out.available || []
+    newsTypesSel.value = out.type_ids || []
+  } catch { newsTypesAvailable.value = [] }
+  finally { newsTypesLoading.value = false }
+}
+async function saveNewsTypes() {
+  newsTypesSaving.value = true
+  newsTypesSaved.value = false
+  try {
+    await newsApi.saveCompanyTypes(companyId, newsTypesSel.value)
+    newsTypesSaved.value = true
+  } catch (e: any) {
+    error.value = e?.response?.data?.detail || String(e)
+  } finally {
+    newsTypesSaving.value = false
+  }
+}
 const editRoles = reactive<Record<number, string>>({})
 const invite = reactive({ email: '', role: 'member' as 'admin' | 'member' | 'viewer', perms: [] as string[] })
 const inviting = ref(false)

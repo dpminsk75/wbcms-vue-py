@@ -162,6 +162,43 @@ async def update_company(
         raise HTTPException(status_code=400 if str(exc) != "company not found" else 404, detail=str(exc))
 
 
+@router.get("/{company_id}/news-types")
+async def get_news_types(company_id: int = Path(..., ge=1), db: AsyncSession = Depends(get_db), user: dict = Depends(require_company_admin)):
+    """Выбранные id типов новостей компании (пусто = все)."""
+    from sqlalchemy import text as _text
+    from backend.services.news_service import NewsService
+    row = (await db.execute(_text("SELECT news_types FROM companies WHERE id = :c"),
+                            {"c": company_id})).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="company not found")
+    import json as _json
+    try:
+        ids = _json.loads(row[0]) if isinstance(row[0], str) else (row[0] or [])
+    except ValueError:
+        ids = []
+    return {"type_ids": [int(x) for x in ids if str(x).isdigit()],
+            "available": await NewsService(db).type_list()}
+
+
+@router.put("/{company_id}/news-types")
+async def put_news_types(company_id: int = Path(..., ge=1), payload: dict = Body(...), db: AsyncSession = Depends(get_db), user: dict = Depends(require_company_admin)):
+    """Сохранить id типов новостей (пусто = все). id проверяются по type_list."""
+    from sqlalchemy import text as _text
+    from backend.services.news_service import NewsService
+    import json as _json
+    want = {int(t["id"]) for t in await NewsService(db).type_list()}
+    ids = sorted({int(x) for x in ((payload or {}).get("type_ids") or [])
+                  if str(x).isdigit()} & want)
+    await db.rollback()
+    async with db.begin():
+        r = await db.execute(_text("""
+            UPDATE companies SET news_types = :nt WHERE id = :c"""),
+            {"nt": _json.dumps(ids, ensure_ascii=False) if ids else None, "c": company_id})
+        if not r.rowcount:
+            raise HTTPException(status_code=404, detail="company not found")
+    return {"type_ids": ids}
+
+
 @router.get("/{company_id}/members")
 async def get_members(company_id: int = Path(..., ge=1), db: AsyncSession = Depends(get_db), user: dict = Depends(require_company_admin)):
     company = await auth_service.get_company_by_id(db, company_id)

@@ -38,6 +38,10 @@ ALLOWED: dict[str, dict] = {
         "title": "Реклама WB (index: count/details/stats)",
         "default": "00,04,08,12,16,20:10",
     },
+    "wbcms-news": {
+        "title": "Новости WB (hourly :05)",
+        "default": "*:05",
+    },
     "wbcms-wb-tokens": {
         "title": "WB-токены health-check (daily)",
         "default": "daily",

@@ -17,6 +17,7 @@
         </div>
         <WbTokenAlert />
         <div class="dash-stack">
+          <NewsBlock />
           <NewCards />
           <TopMetrics :date-from="dateFrom" :date-to="dateTo" />
           <AdvCampaigns :date-from="dateFrom" :date-to="dateTo" />
@@ -44,6 +45,7 @@ import LastOrders from '../components/dashboard/LastOrders.vue'
 import LastSales from '../components/dashboard/LastSales.vue'
 import MonthlyFinance from '../components/dashboard/MonthlyFinance.vue'
 import NewCards from '../components/dashboard/NewCards.vue'
+import NewsBlock from '../components/dashboard/NewsBlock.vue'
 import SideMenu from '../components/dashboard/SideMenu.vue'
 import WbTokenAlert from '../components/dashboard/WbTokenAlert.vue'
 import WbDateInput from '../components/common/WbDateInput.vue'
@@ -55,7 +57,7 @@ const dateTo = ref(new Date().toISOString().slice(0,10))
 // Пустые блоки: каждый виджет докладывает report(name, hasData) когда загрузка завершена.
 // v-if внутри виджетов убирает их из DOM, отступы dash-stack схлопываются сами.
 // Если данных нет нигде — показываем заглушку со ссылкой на свою компанию.
-const blockNames = ['new-cards','top-metrics','adv','orders-summary','today','last-orders','last-sales','monthly']
+const blockNames = ['news','new-cards','top-metrics','adv','orders-summary','today','last-orders','last-sales','monthly']
 const blocks = reactive<Record<string, boolean>>({})
 const report = (name: string, has: boolean) => { blocks[name] = has }
 provide('dashReport', report)

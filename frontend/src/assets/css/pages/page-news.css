@@ -1,0 +1,18 @@
+/* page-news.css — чанк NewsListPage: сайдбар-фильтры + лента (эталон — скрин WB). */
+.page-news { /* паддинги из wb-ui.css */ }
+.page-news__title { margin-bottom: 12px; }
+.page-news__side { border-radius: 12px; }
+.page-news__search { margin-bottom: 12px; }
+.page-news__filters-title { font-weight: 700; margin-bottom: 8px; }
+.page-news__pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.page-news__pill { border: 1px solid #e2e8f0; background: #f1f2f4; border-radius: 16px;
+  padding: 4px 12px; font-size: 13px; color: #1f2937; }
+.page-news__pill:hover { border-color: #8A2BE0; }
+.page-news__pill--on { background: #8A2BE0; border-color: #8A2BE0; color: #fff; }
+.page-news__dates { display: flex; gap: 6px; }
+.page-news__feed { display: flex; flex-direction: column; gap: 12px; }
+.page-news__card { border-radius: 12px; cursor: pointer; }
+.page-news__card:hover { border-color: #8A2BE0; }
+.page-news__card--read { opacity: .62; }
+.page-news__date { font-size: 13px; color: #6c757d; margin-bottom: 4px; }
+.page-news__head { font-size: 17px; font-weight: 700; color: #111827; }

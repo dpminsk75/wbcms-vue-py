@@ -23,7 +23,8 @@
       {"label": "Товары по складам", "url": "/wb-stock/top-warehouse-report", "visibleIn": ["top", "side"]},
       {"label": "Критичные остатки", "url": "/wb-stock/warehouse-analytics", "visibleIn": ["top", "side"]},
       {"label": "Оборачиваемость", "url": "/wb-stock/analytics", "visibleIn": ["top", "side"]},
-      {"label": "Детализация", "url": "/wb-detail-by-period/weekly-report-nmid", "visibleIn": ["top", "side"]}
+      {"label": "Детализация", "url": "/wb-detail-by-period/weekly-report-nmid", "visibleIn": ["top", "side"]},
+      {"label": "Новости WB", "url": "/news", "visibleIn": ["top", "side"]}
     ]
   },
   {
