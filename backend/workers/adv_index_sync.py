@@ -31,6 +31,8 @@ async def run(args) -> int:
     from sqlalchemy import text
     from backend.database import get_session
     from backend.services.adv_index_service import AdvIndexService
+    print("WB API: GET advert.../promotion/count + .../advert/v2/adverts"
+          " + .../fullstats → wb_campaign(+item,+stats)", flush=True)
     async with get_session() as db:
         companies = (await db.execute(text(
             "SELECT id, name FROM companies WHERE is_active = 1"

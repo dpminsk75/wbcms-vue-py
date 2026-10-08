@@ -21,6 +21,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 async def run(args) -> int:
     from backend.database import get_session
     from backend.services.commission_tariffs_service import CommissionTariffsService
+    print("WB API: GET common-api.../tariffs/commission + content.../parent/all"
+          " → wb_commission_tariffs, wb_subject_catalog", flush=True)
     async with get_session() as db:
         svc = CommissionTariffsService(db, company_id=args.company_id)
         try:

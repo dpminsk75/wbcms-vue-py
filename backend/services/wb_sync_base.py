@@ -68,7 +68,7 @@ async def company_sync_plan(
     return out
 
 
-def post_json(url: str, payload: dict, auth: str, timeout: int = 30,
+def post_json(url: str, payload: dict, auth: str, timeout: int = 15,
                retries: int = 3, log=None) -> dict | list:
     """POST JSON с ретраями: 429 — по Retry-After/X-RateLimit-Retry, 5xx/сеть — экспонента.
     log(msg) — колбэк для видимости (send/retry), чтобы не выглядело «висением»."""
@@ -85,7 +85,11 @@ def post_json(url: str, payload: dict, auth: str, timeout: int = 30,
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             if e.code == 429 and attempt < retries:
-                wait = _retry_after(e) or 60
+                try:
+                    _b = e.read(300).decode("utf-8", "replace")
+                except Exception:
+                    _b = ""
+                wait = _retry_after_raw(e, _b) or 60
                 if log:
                     log(f"429 → жду {wait}с (попытка {attempt + 2}/{retries + 1})")
                 time.sleep(wait)
@@ -105,7 +109,7 @@ def post_json(url: str, payload: dict, auth: str, timeout: int = 30,
     raise RuntimeError(f"WB failed: {last}")
 
 
-def get_json(url: str, params=None, token: str = "", timeout: int = 30,
+def get_json(url: str, params=None, token: str = "", timeout: int = 15,
                retries: int = 3, log=None) -> dict | list:
     """GET с ретраями (те же правила, что в post_json).
     params: dict или список кортежей (повтор ключей: [("id",1),("id",2)])."""
@@ -121,7 +125,12 @@ def get_json(url: str, params=None, token: str = "", timeout: int = 30,
             "Authorization": token, "Accept": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return json.loads(resp.read().decode("utf-8"))
+                raw = resp.read().decode("utf-8")
+                if not raw.strip():
+                    if int(resp.status) == 204:
+                        return []  # дока WB: 204 на download = «нет данных», не ошибка
+                    raise RuntimeError("WB: пустой ответ")
+                return json.loads(raw)
         except urllib.error.HTTPError as e:
             body = ""
             try:
@@ -135,6 +144,8 @@ def get_json(url: str, params=None, token: str = "", timeout: int = 30,
                 time.sleep(wait)
                 continue
             raise RuntimeError(f"WB http={e.code} {body[:120]}") from e
+        except RuntimeError:
+            raise  # наши собственные (пустой ответ) — не ретраить как сеть
         except Exception as e:
             last = e
             reason = str(getattr(e, "reason", e))[:80]
@@ -161,3 +172,90 @@ def _retry_after_raw(e: urllib.error.HTTPError, body: str) -> int | None:
     import re
     m = re.search(r"retry.*?(\d+)\s*s", detail, re.I)
     return max(1, int(m.group(1))) if m else None
+
+
+TERMINAL_TASK = {"purged", "canceled", "cancelled", "error", "failed"}
+
+
+def run_async_report(base: str, kind: str, token: str, df: str, dt: str,
+                     log=None, timeout: int = 15) -> list:
+    """Async-отчёт WB: create task (429×5) → poll status 10с×60 → download.
+    kind: 'paid_storage' | 'acceptance_report'. Возвращает список строк."""
+    task = None
+    for attempt in range(1, 6):
+        try:
+            data = get_json(f"{base}/api/v1/{kind}",
+                            [("dateFrom", df), ("dateTo", dt)],
+                            token, timeout=timeout, log=log)
+        except RuntimeError as e:
+            if "http=429" in str(e) and attempt < 5:
+                time.sleep(60)
+                continue
+            raise
+        d = data if isinstance(data, dict) else {}
+        task = ((d.get("data") or {}).get("id") if isinstance(d.get("data"), dict)
+                else None) or (d.get("data") or {}).get("taskId") \
+            or d.get("id") or d.get("taskId")
+        if isinstance(task, dict):
+            task = task.get("id")
+        if task:
+            break
+        raise RuntimeError(f"WB {kind}: нет taskId в ответе {str(data)[:200]}")
+    if log:
+        log(f"task {task}")
+    # Опрос по докам WB: backoff 5→30с (лимит статуса 1/5с), дедлайн 10 мин
+    # (магазины маленькие; будет большой клиент — поднять до 1800).
+    # purged = отчёт удалён (окно 2ч) — пересоздавать тут не пытаемся, упадёт в ERROR
+    # и доберётся следующим прогоном; canceled — параметры кривые.
+    delay, deadline, t0 = 5, time.monotonic() + 600, time.monotonic()
+    while time.monotonic() < deadline:
+        try:
+            data = get_json(f"{base}/api/v1/{kind}/tasks/{task}/status",
+                            None, token, timeout=timeout, log=log)
+        except RuntimeError as e:
+            msg = str(e)
+            if "http=4" in msg and "http=429" not in msg:
+                raise  # задача протухла/нет прав — дальше ждать бессмысленно
+            if log:
+                log(f"пустой ответ/сеть ({msg[:60]}), жду")
+            time.sleep(delay)
+            delay = min(delay * 2, 30)
+            continue
+        d = data if isinstance(data, dict) else {}
+        st = ((d.get("data") or {}).get("status") if isinstance(d.get("data"), dict)
+              else d.get("status"))
+        st = str(st or "").lower()
+        if st == "done":
+            break
+        if st in TERMINAL_TASK:
+            raise RuntimeError(f"WB {kind}: задача {st}")
+        if log:
+            el = int(time.monotonic() - t0)
+            log(f"статус {st or '?'} [{el // 60}м{el % 60:02d}]")
+        time.sleep(delay)
+        delay = min(delay * 2, 30)
+    else:
+        raise RuntimeError(f"WB {kind}: задача не done за 10 мин")
+    try:
+        if log:
+            log("скачиваю отчёт...")
+        data = get_json(f"{base}/api/v1/{kind}/tasks/{task}/download",
+                        None, token, timeout=120, log=log)
+    except RuntimeError as e:
+        if "JSONDecode" in str(e) or "Expecting value" in str(e):
+            # HTTP 204/пустое тело на download = «нет данных», не ошибка
+            if log:
+                log("download пуст — нет данных")
+            return []
+        raise
+    if isinstance(data, dict) and isinstance(data.get("data"), list):
+        rows = data["data"]
+    elif isinstance(data, list):
+        rows = data
+    elif isinstance(data, dict):
+        rows = [data]
+    else:
+        rows = []
+    if log:
+        log(f"скачано строк {len(rows)}")
+    return rows

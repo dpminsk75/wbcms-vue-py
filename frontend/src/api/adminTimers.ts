@@ -3,6 +3,7 @@ import { api } from '../api/client'
 export interface AdminTimerRow {
   id: string; timer: string; service: string; title: string; default: string;
   enabled: boolean; unit_file_state?: string | null; load_state?: string | null;
+  group?: string | null;
   active_state?: string | null; sub_state?: string | null;
   next?: string | null; last_trigger?: string | null;
   on_calendar: string[];

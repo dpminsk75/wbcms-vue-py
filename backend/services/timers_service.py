@@ -13,42 +13,81 @@ ALLOWED: dict[str, dict] = {
     "wbcms-commission-tariffs": {
         "title": "Комиссии WB (тарифы + предметы)",
         "default": "04:00",
-    },
-    "wbcms-fbs-supplies": {
-        "title": "Поставки FBS (инкремент)",
-        "default": "*:00,30",
+        "group": "night",
     },
     "wbcms-finance-balance": {
         "title": "Баланс ЛК WB",
         "default": "00,03,06,09,12,15,18,21:05",
+        "group": "day",
     },
     "wbcms-funnel-sync": {
         "title": "Воронка продаж WB (sync)",
         "default": "03:00",
+        "group": "night",
     },
     "wbcms-funnel-missing": {
         "title": "Воронка продаж WB (догрузка)",
         "default": "03:20",
+        "group": "night",
     },
     "wbcms-adv-queries": {
         "title": "Поисковые запросы рекламы",
         "default": "03:45",
+        "group": "night",
     },
     "wbcms-adv-index": {
         "title": "Реклама WB (index: count/details/stats)",
         "default": "00,04,08,12,16,20:10",
+        "group": "day",
     },
     "wbcms-news": {
         "title": "Новости WB (hourly :05)",
         "default": "*:05",
     },
+    "wbcms-fbs-all": {
+        "title": "FBS-связка (заказы+статусы+вычет+поставки)",
+        "default": "*:02/5",
+        "group": "day",
+    },
+    "wbcms-orders-sync": {
+        "title": "Заказы WB (fetch+feed)",
+        "default": "*:00/5",
+        "group": "day",
+    },
+    "wbcms-sales-fetch": {
+        "title": "Продажи WB (supplier/sales)",
+        "default": "*:15",
+        "group": "day",
+    },
+    "wbcms-cards-sync": {
+        "title": "Карточки WB (связка list+nds+sizes+subjects)",
+        "default": "04:10",
+        "group": "night",
+    },
+    "wbcms-paid-storage": {
+        "title": "Платное хранение (async)",
+        "default": "05:00",
+        "group": "night",
+    },
+    "wbcms-acceptance": {
+        "title": "Приёмка WB (async)",
+        "default": "05:15",
+        "group": "night",
+    },
+    "wbcms-stocks-all": {
+        "title": "Остатки WB (блок: stocks+offices+products)",
+        "default": "04:30",
+        "group": "night",
+    },
     "wbcms-wb-tokens": {
         "title": "WB-токены health-check (daily)",
         "default": "daily",
+        "group": "night",
     },
     "wbcms-py-healthcheck": {
         "title": "Liveness бэка (каждые 5 мин)",
         "default": "OnBootSec=1min OnUnitActiveSec=5min",
+        "group": "day",
     },
 }
 
@@ -140,6 +179,7 @@ async def status_one(name: str) -> dict:
         "service": service,
         "title": ALLOWED[name]["title"],
         "default": ALLOWED[name]["default"],
+        "group": ALLOWED[name].get("group", "day"),
         "enabled": enabled,
         "load_state": tp.get("LoadState"),
         "unit_file_state": tp.get("UnitFileState"),

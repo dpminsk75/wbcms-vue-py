@@ -20,8 +20,11 @@
             <th>Действия</th>
           </tr>
         </thead>
-        <tbody>
-          <tr v-for="r in rows" :key="r.id" :class="{ 'page-admin-timers__row--off': !r.enabled }">
+        <tbody v-for="g in groups" :key="g.key">
+          <tr class="table-light">
+            <td colspan="7"><strong>{{ g.title }}</strong> <span class="text-muted">({{ g.rows.length }})</span></td>
+          </tr>
+          <tr v-for="r in g.rows" :key="r.id" :class="{ 'page-admin-timers__row--off': !r.enabled }">
             <td>
               <div>{{ r.title }}</div>
               <code class="page-admin-timers__id">{{ r.id }}</code>
@@ -83,10 +86,14 @@
 
 <script setup lang="ts">
 import '@/assets/css/pages/page-admin-timers.css'
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { adminTimersApi, type AdminTimerRow } from '../api/adminTimers'
 
 const rows = ref<AdminTimerRow[]>([])
+const groups = computed(() => [
+  { key: 'night', title: 'Ночные (раз в сутки)', rows: rows.value.filter((r) => r.group !== 'day') },
+  { key: 'day', title: 'Дневные (регулярные)', rows: rows.value.filter((r) => r.group === 'day') },
+])
 const loading = ref(false)
 const error = ref('')
 const busy = reactive<Record<string, boolean>>({})

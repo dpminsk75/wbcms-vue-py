@@ -72,11 +72,11 @@ class FunnelSyncService:
                            and str(r[0]).isdigit())
             ids = [nm for nm, _ in cards if nm in hit]
         if missing_only:
-            have = {(await self.db.execute(text("""
+            have = {int(r[0]) for r in (await self.db.execute(text("""
                 SELECT DISTINCT nmID FROM wb_sales_funnel_history
                 WHERE company_id = :cid AND date >= :df"""),
-                {"cid": self.company_id, "df": date_from})).all()}
-            have = {int(r[0]) for r in have if r[0] is not None}
+                {"cid": self.company_id, "df": date_from})).all()
+                if r[0] is not None}
             ids = [nm for nm in ids if nm not in have]
         return ids, len(cards)
 

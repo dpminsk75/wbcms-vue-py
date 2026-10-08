@@ -41,6 +41,8 @@ async def run(args) -> int:
     if args.date_from is None and args.date_to is None:
         args.date_to = (date.today() - timedelta(days=1)).isoformat()
         args.date_from = (date.fromisoformat(args.date_to) - timedelta(days=2)).isoformat()
+    print("WB API: POST advert.../normquery/stats → wb_campaign_query",
+          flush=True)
     async with get_session() as db:
         companies = (await db.execute(text(
             "SELECT id, name FROM companies WHERE is_active = 1"

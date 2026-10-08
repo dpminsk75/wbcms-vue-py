@@ -21,13 +21,19 @@ sudo cp "$DEPLOY"/wbcms-py.service "$DEPLOY"/wbcms-web.service \
   "$DEPLOY"/wbcms-py-healthcheck.service "$DEPLOY"/wbcms-py-healthcheck.timer \
   "$DEPLOY"/wbcms-wb-tokens.service "$DEPLOY"/wbcms-wb-tokens.timer \
   "$DEPLOY"/wbcms-commission-tariffs.service "$DEPLOY"/wbcms-commission-tariffs.timer \
-  "$DEPLOY"/wbcms-fbs-supplies.service "$DEPLOY"/wbcms-fbs-supplies.timer \
   "$DEPLOY"/wbcms-finance-balance.service "$DEPLOY"/wbcms-finance-balance.timer \
   "$DEPLOY"/wbcms-funnel-sync.service "$DEPLOY"/wbcms-funnel-sync.timer \
   "$DEPLOY"/wbcms-funnel-missing.service "$DEPLOY"/wbcms-funnel-missing.timer \
   "$DEPLOY"/wbcms-adv-queries.service "$DEPLOY"/wbcms-adv-queries.timer \
   "$DEPLOY"/wbcms-adv-index.service "$DEPLOY"/wbcms-adv-index.timer \
   "$DEPLOY"/wbcms-news.service "$DEPLOY"/wbcms-news.timer \
+  "$DEPLOY"/wbcms-cards-sync.service "$DEPLOY"/wbcms-cards-sync.timer \
+  "$DEPLOY"/wbcms-stocks-all.service "$DEPLOY"/wbcms-stocks-all.timer \
+  "$DEPLOY"/wbcms-paid-storage.service "$DEPLOY"/wbcms-paid-storage.timer \
+  "$DEPLOY"/wbcms-acceptance.service "$DEPLOY"/wbcms-acceptance.timer \
+  "$DEPLOY"/wbcms-fbs-all.service "$DEPLOY"/wbcms-fbs-all.timer \
+  "$DEPLOY"/wbcms-orders-sync.service "$DEPLOY"/wbcms-orders-sync.timer \
+  "$DEPLOY"/wbcms-sales-fetch.service "$DEPLOY"/wbcms-sales-fetch.timer \
   /etc/systemd/system/
 
 if [ -f "$DEPLOY/wbcms-timers.sudoers" ]; then
@@ -41,9 +47,11 @@ echo "== 4. reload + таймеры"
 sudo systemctl daemon-reload
 sudo systemctl enable --now \
   wbcms-py-healthcheck.timer wbcms-wb-tokens.timer \
-  wbcms-commission-tariffs.timer wbcms-fbs-supplies.timer wbcms-finance-balance.timer \
+  wbcms-commission-tariffs.timer wbcms-finance-balance.timer \
   wbcms-funnel-sync.timer wbcms-funnel-missing.timer wbcms-adv-queries.timer \
-  wbcms-adv-index.timer wbcms-news.timer
+  wbcms-adv-index.timer wbcms-news.timer wbcms-cards-sync.timer \
+  wbcms-stocks-all.timer wbcms-paid-storage.timer wbcms-acceptance.timer \
+  wbcms-fbs-all.timer wbcms-orders-sync.timer wbcms-sales-fetch.timer
 systemctl list-timers 'wbcms-*' --no-pager
 
 echo "== 5. рестарт сервисов + health"

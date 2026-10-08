@@ -26,6 +26,8 @@ def _make_progress():
 async def run(args) -> int:
     from backend.database import get_session
     from backend.services.news_service import NewsService
+    print("WB API: GET common-api.../communications/v2/news → wb_news",
+          flush=True)
     async with get_session() as db:
         try:
             st = await NewsService(db).sync(

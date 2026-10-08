@@ -24,6 +24,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 async def run(args) -> int:
     from backend.database import get_session
     from backend.services.fbs_supplies_service import FbsSuppliesService
+    print("WB API: GET marketplace.../supplies → wb_orders_fbs_supplies",
+          flush=True)
     async with get_session() as db:
         svc = FbsSuppliesService(db, company_id=args.company_id)
         try:

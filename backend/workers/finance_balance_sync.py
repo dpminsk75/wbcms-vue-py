@@ -24,6 +24,8 @@ async def run(args) -> int:
     from sqlalchemy import text
     from backend.database import get_session
     from backend.services.finance_balance_service import FinanceBalanceService
+    print("WB API: GET finance-api.../account/balance → wb_finance_balance",
+          flush=True)
     async with get_session() as db:
         companies = (await db.execute(text(
             "SELECT id, name FROM companies WHERE is_active = 1"
