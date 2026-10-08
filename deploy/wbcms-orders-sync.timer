@@ -1,0 +1,9 @@
+[Unit]
+Description=Run wbcms orders chain sync every 5 min
+
+[Timer]
+OnCalendar=*:00/5
+Persistent=true
+
+[Install]
+WantedBy=timers.target

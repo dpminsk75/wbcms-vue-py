@@ -1,0 +1,11 @@
+[Unit]
+Description=wbcms paid storage sync (daily 05:00)
+After=network.target mysql.service
+
+[Service]
+Type=oneshot
+User=www-data
+WorkingDirectory=/var/www/wb/wbcms-py
+EnvironmentFile=/var/www/wb/wbcms-py/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/var/www/wb/wbcms-py/.venv/bin/python backend/workers/paid_storage_sync.py

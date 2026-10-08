@@ -1,0 +1,9 @@
+[Unit]
+Description=Run wbcms sales sync hourly at :15
+
+[Timer]
+OnCalendar=*:15
+Persistent=true
+
+[Install]
+WantedBy=timers.target
