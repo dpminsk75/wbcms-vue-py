@@ -43,6 +43,7 @@ const router = createRouter({
     { path: '/wb-order/feed/', redirect: feedRedirect },
     { path: '/wb-order/feed-aggregated', name: 'feed-aggregated', component: () => import('../pages/OrdersFeedAggregated.vue'), meta: { title: 'Сводка по товарам (заказы) — wbcms' } },
     { path: '/wb-order/heatmap', name: 'heatmap', component: () => import('../pages/OrdersHeatmap.vue'), meta: { title: 'Тепловая карта заказов 7×24 — wbcms' } },
+    { path: '/geo/sales-map', name: 'geo-sales-map', component: () => import('../pages/GeoSalesMapPage.vue'), meta: { title: 'Продажи на карте — wbcms' } },
     { path: '/fbs-report', name: 'fbs-report', component: () => import('../pages/FbsReportPage.vue'), meta: { title: 'FBS — продажа со своего склада — wbcms' } },
     { path: '/fbs-orders', name: 'fbs-orders', component: () => import('../pages/FbsOrdersPage.vue'), meta: { title: 'FBS Заказы — wbcms' } },
     { path: '/fbs-cancels', name: 'fbs-cancels', component: () => import('../pages/FbsCancelsPage.vue'), meta: { title: 'FBS Отмены — wbcms' } },

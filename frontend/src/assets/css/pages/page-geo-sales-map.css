@@ -1,0 +1,49 @@
+/* page-geo-sales-map.css — чанк GeoSalesMapPage (продажи на карте Leaflet+OSM).
+ * Title: 'Продажи на карте — wbcms' (route.meta; h1.page-title).
+ * Карта 550px как php geo-map-report; пузыри кластеров — divIcon (динамика в JS);
+ * таблица зеркалит вьюпорт карты (bbox). Итоги POS_TOP: .kv-totals > td.
+ */
+.page-geo-sales-map { font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+.page-geo-sales-map__lede { font-size: 13px; }
+.page-geo-sales-map__toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; }
+.page-geo-sales-map__metric { display: inline-flex; border: 1px solid #dee2e6; border-radius: 20px; overflow: hidden; }
+.page-geo-sales-map__metric-btn { border: 0; background: #fff; font-size: 12px; padding: 6px 14px; cursor: pointer; }
+.page-geo-sales-map__metric-btn.is-active { background: #7c1af8; color: #fff; font-weight: 600; }
+.page-geo-sales-map__world { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #495057; }
+.page-geo-sales-map__crumbs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 12px 0 8px; font-size: 12px; }
+.page-geo-sales-map__crumb { border: 1px solid #dee2e6; background: #f8f9fa; border-radius: 14px; padding: 3px 12px; cursor: pointer; }
+.page-geo-sales-map__crumb.is-current { background: #7c1af8; border-color: #7c1af8; color: #fff; font-weight: 600; cursor: default; }
+.page-geo-sales-map__crumb-sep { color: #adb5bd; }
+.page-geo-sales-map__map-card { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; position: relative; height: auto; }
+.page-geo-sales-map__map-loader { position: absolute; inset: 0; z-index: 1200; display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(255, 255, 255, 0.65); font-size: 14px; font-weight: 600; color: #5a1c9c; }
+.page-geo-sales-map__map { width: 100%; height: clamp(420px, 72vh, 1000px); background: #fff; z-index: 0; }
+.page-geo-sales-map__map-tools { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.page-geo-sales-map__table-tools { display: inline-flex; align-items: center; gap: 10px; }
+.page-geo-sales-map__world--light { color: #fff; }
+.page-geo-sales-map__map-card:fullscreen { border-radius: 0; }
+.page-geo-sales-map__map-card:fullscreen .page-geo-sales-map__map { height: calc(100vh - 49px); }
+.page-geo-sales-map__map-hint { font-size: 12px; font-weight: 400; }
+.page-geo-sales-map__summary { font-size: 13px; color: #6b7280; margin: 12px 0; }
+.page-geo-sales-map__hint { margin: 0 0 12px; font-size: 13px; }
+.page-geo-sales-map__table-wrap { overflow-x: auto; }
+.page-geo-sales-map__table { width: 100%; table-layout: auto; font-size: 12px; }
+.page-geo-sales-map__table th { text-align: center; white-space: normal; word-break: break-word; font-weight: 500; font-size: 11px; }
+.page-geo-sales-map__table td:not(:first-child) { text-align: right; white-space: nowrap; }
+.page-geo-sales-map__table td.page-geo-sales-map__addr { text-align: left; white-space: normal; word-break: break-word; }
+.page-geo-sales-map__row { cursor: pointer; }
+.page-geo-sales-map__row:hover td { background: #f0f7ff; }
+.page-geo-sales-map__pay { font-weight: 700; }
+
+/* Пузыри кластеров Leaflet divIcon */
+.geo-bubble-wrap { background: transparent; border: 0; color: #fff; }
+.geo-bubble { display: flex; align-items: center; justify-content: center; border-radius: 50%; background: rgba(124, 26, 248, 0.88); color: #fff; font-weight: 700; border: 2px solid #fff; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35); cursor: pointer; white-space: nowrap; }
+.geo-bubble:hover { background: rgba(255, 193, 7, 0.95); color: #212529; }
+.geo-bubble--s1 { width: 34px; height: 34px; font-size: 10px; }
+.geo-bubble--s2 { width: 44px; height: 44px; font-size: 11px; }
+.geo-bubble--s3 { width: 54px; height: 54px; font-size: 12px; }
+.geo-bubble--s4 { width: 64px; height: 64px; font-size: 13px; }
+.geo-bubble--pvz { width: 28px; height: 28px; font-size: 10px; color: #fff !important; }
+
+/* Итоги POS_TOP как kv-page-summary (фикс striped: фон на td) */
+.page-geo-sales-map__table tr.kv-totals { font-weight: 700; background: #f2e7c3; font-size: 11px; }
+.page-geo-sales-map__table tr.kv-totals > td { background-color: #f2e7c3 !important; box-shadow: none !important; color: #5a1c9c; padding: 4px 6px; border-bottom: 2px solid #8a2be0; }
