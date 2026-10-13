@@ -1,17 +1,26 @@
 """FastAPI dashboard routes."""
+import re
 from datetime import date, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
 from backend.deps import get_current_company
 from backend.services.dashboard_service import DashboardService
 from backend.services.finance_balance_service import FinanceBalanceService
+from backend.services.finance_popup_service import FinancePopupService
 from backend.services.kpi_service import KpiService
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _check_range(date_from: str, date_to: str) -> None:
+    if not (date_from and date_to and DATE_RE.match(date_from) and DATE_RE.match(date_to)):
+        raise HTTPException(status_code=400, detail="date_from/date_to must be YYYY-MM-DD")
 
 
 @router.get("/shell")
@@ -36,6 +45,59 @@ async def top_metrics(
     chart = await svc.get_30d_chart()
     kpi = await svc.get_30d_kpi()
     return {"chart45Data": chart, "kpi45Data": kpi}
+
+
+@router.get("/top-metrics-day")
+async def top_metrics_day(
+    date: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Попап дня из графика TopMetrics: тот же KPI-набор, что top-metrics, но за одну дату."""
+    if not DATE_RE.match(date):
+        raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
+    svc = KpiService(db, company_id=company_id)
+    return {"date": date, "kpi": await svc.get_day_kpi(date)}
+
+
+@router.get("/finance-detail")
+async def finance_detail(
+    type: Literal["shf", "udr", "adv"] = Query(...),
+    date_from: str = Query(...),
+    date_to: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Попап Штрафы/Удержания/Реклама из «Финансовой аналитики» — порт DetailController."""
+    _check_range(date_from, date_to)
+    svc = FinancePopupService(db, company_id=company_id)
+    return await svc.get_detail(type, date_from, date_to)
+
+
+@router.get("/finance-storage")
+async def finance_storage(
+    date_from: str = Query(...),
+    date_to: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Попап Хранение из «Финансовой аналитики»: сумма по дате × складу."""
+    _check_range(date_from, date_to)
+    svc = FinancePopupService(db, company_id=company_id)
+    return await svc.get_storage(date_from, date_to)
+
+
+@router.get("/finance-acceptance")
+async def finance_acceptance(
+    date_from: str = Query(...),
+    date_to: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Попап Приёмка из «Финансовой аналитики»: строки detail_by_period с acceptance."""
+    _check_range(date_from, date_to)
+    svc = FinancePopupService(db, company_id=company_id)
+    return await svc.get_acceptance(date_from, date_to)
 
 
 @router.get("/finance-balance")

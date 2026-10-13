@@ -155,6 +155,34 @@ class FeedbackService:
         await self.db.commit()
         return (res.rowcount or 0) > 0
 
+    async def popup_report(self, date_from: str, date_to: str, paid_only: bool = False) -> dict:
+        """Порт FeedbackController::actionGetPopupReport: stats + последние отзывы (LIMIT 150)."""
+        from sqlalchemy import text
+        paid = " AND (f.is_pay > 0 OR f.f_cost > 0)" if paid_only else ""
+        base = (f"FROM wb_feedbacks f LEFT JOIN wbcards c ON c.nmID = f.nmID"
+                f" WHERE f.createdDate BETWEEN :d1 AND :d2{paid}"
+                f"{self._company_where()}")
+        # Stats — без JOIN (nmID может встречаться у нескольких компаний).
+        agg_base = (f"FROM wb_feedbacks f WHERE f.createdDate BETWEEN :d1 AND :d2{paid}"
+                    f"{self._company_where()}")
+        params = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59",
+                  **self._company_params()}
+        stats = (await self.db.execute(text(
+            f"""SELECT COUNT(*) as total_feedbacks, AVG(productValuation) as avg_valuation,
+                       SUM(CASE WHEN isNew = 1 THEN 1 ELSE 0 END) as new_count {agg_base}"""),
+            params)).mappings().first()
+        rows = (await self.db.execute(text(
+            f"""SELECT f.createdDate, f.nmID, c.title as card_title, f.productValuation,
+                       f.text, f.is_pay, f.f_cost, f.pros, f.cons, f.userName
+                {base}
+                ORDER BY f.is_pay DESC, f.createdDate DESC LIMIT :lim"""),
+            {**params, "lim": 150})).mappings().all()
+        s = dict(stats) if stats else {}
+        return {"stats": {"total_feedbacks": int(s.get("total_feedbacks") or 0),
+                          "avg_valuation": float(s.get("avg_valuation") or 0),
+                          "new_count": int(s.get("new_count") or 0)},
+                "items": [dict(r) for r in rows], "limit": 150}
+
     async def sync_tags(self) -> dict:
         """Порт commands/WbFeedbackTagsController::actionSync: скан bables → upsert."""
         from sqlalchemy import text

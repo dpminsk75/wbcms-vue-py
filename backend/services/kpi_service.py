@@ -53,6 +53,34 @@ class KpiService:
         d["total_spp_avg"] = float(spp or 0)
         return d
 
+    async def get_day_kpi(self, day: str):
+        """Детализация TopMetrics за один день (sdate = :d). Тот же SELECT, что get_30d_kpi."""
+        sql = text(f"""
+            SELECT SUM(amount) as total_sales_rub, SUM(`return`) as total_return_rub, SUM(net_profit) as total_profit_rub,
+                    SUM(commission)+SUM(f_acquiring_fee)+SUM(f_acceptance)+SUM(f_delivery)+SUM(f_storage_fee)+SUM(f_penalty)+SUM(f_deduction)+SUM(f_otziv)+SUM(f_adv)+SUM(f_cashback) as total_expenses,
+                    SUM(f_delivery) as total_delivery, SUM(f_adv) as total_adv, SUM(f_cashback) as total_cashback,
+                    SUM(commission) as total_commission, SUM(f_storage_fee) as total_storage_fee,
+                    SUM(f_acquiring_fee) as total_acquiring_fee,
+                    SUM(sales_qnt) as total_sales_qnt, SUM(return_qnt) as total_return_qnt,
+                    SUM(f_retail_amount) as total_retail_amount,
+                    SUM(f_nds) as total_nds, SUM(f_cost_price) as total_cost,
+                    SUM(f_acceptance) as total_acceptance, SUM(f_penalty) as total_penalty,
+                    SUM(f_deduction) as total_deduction, SUM(f_otziv) as total_otziv,
+                    SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price) as profit_before_tax,
+                    GREATEST(0, SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price))*0.07 as tax_amount,
+                    (SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price)) - GREATEST(0, SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price))*0.07 as clean_margin
+            FROM agg_daily_summary
+            WHERE sdate = :d{self._where()}
+        """)
+        row = (await self.db.execute(sql, {"d": day, **self._params()})).mappings().first()
+        # count orders / spp — как get_30d_kpi, но за один день
+        cnt = (await self.db.execute(text(f"SELECT COUNT(*) as cnt FROM wb_order WHERE DATE(date) = :d{self._where()}"), {"d": day, **self._params()})).scalar()
+        d = dict(row) if row else {}
+        d["total_orders_cnt"] = int(cnt or 0)
+        spp = (await self.db.execute(text(f"SELECT AVG(spp) as s FROM wb_order WHERE DATE(date) = :d{self._where()}"), {"d": day, **self._params()})).scalar()
+        d["total_spp_avg"] = float(spp or 0)
+        return d
+
     async def invalidate_monthly_cache(self) -> None:
         # Раньше был Redis-кэш; в прототипе оставляем no-op.
         return None

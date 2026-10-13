@@ -60,13 +60,13 @@
               <td style="padding:5px 6px; text-align:right; font-weight:700">{{ fmt0(r.amount) }}</td>
               <td style="padding:5px 6px; text-align:right; color:#c0392b">{{ fmt0(r.commission) }}</td>
               <td style="padding:5px 6px; text-align:right; color:#c0392b">{{ fmt0(r.f_acquiring_fee) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#c0392b">{{ fmt0(r.f_acceptance) }}</td>
+              <td style="padding:5px 6px; text-align:right; color:#c0392b"><button v-if="num(r.f_acceptance)" class="page-dashboard__exp-link" title="Детализация приёмки" @click="openPop('acceptance', r.month)">{{ fmt0(r.f_acceptance) }}</button><template v-else>{{ fmt0(r.f_acceptance) }}</template></td>
               <td style="padding:5px 6px; text-align:right; color:#c0392b; font-weight:500">{{ fmt0(r.f_delivery) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#c0392b">{{ fmt0(r.f_storage_fee) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#c0392b">{{ fmt0(r.f_penalty) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#c0392b">{{ fmt0(r.f_deduction) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#16a085; font-weight:600">{{ fmt0(r.f_otziv) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#2980b9">{{ fmt0(r.f_adv) }}</td>
+              <td style="padding:5px 6px; text-align:right; color:#c0392b"><button v-if="num(r.f_storage_fee)" class="page-dashboard__exp-link" title="Детализация хранения" @click="openPop('storage', r.month)">{{ fmt0(r.f_storage_fee) }}</button><template v-else>{{ fmt0(r.f_storage_fee) }}</template></td>
+              <td style="padding:5px 6px; text-align:right; color:#c0392b"><button v-if="num(r.f_penalty)" class="page-dashboard__exp-link" title="Детализация штрафов" @click="openPop('shf', r.month)">{{ fmt0(r.f_penalty) }}</button><template v-else>{{ fmt0(r.f_penalty) }}</template></td>
+              <td style="padding:5px 6px; text-align:right; color:#c0392b"><button v-if="num(r.f_deduction)" class="page-dashboard__exp-link" title="Детализация удержаний" @click="openPop('udr', r.month)">{{ fmt0(r.f_deduction) }}</button><template v-else>{{ fmt0(r.f_deduction) }}</template></td>
+              <td style="padding:5px 6px; text-align:right; color:#16a085; font-weight:600"><button v-if="num(r.f_otziv)" class="page-dashboard__exp-link" title="Детализация отзывов" @click="openPop('feedback', r.month)">{{ fmt0(r.f_otziv) }}</button><template v-else>{{ fmt0(r.f_otziv) }}</template></td>
+              <td style="padding:5px 6px; text-align:right; color:#2980b9"><button v-if="num(r.f_adv)" class="page-dashboard__exp-link" title="Детализация рекламы" @click="openPop('adv', r.month)">{{ fmt0(r.f_adv) }}</button><template v-else>{{ fmt0(r.f_adv) }}</template></td>
               <td style="padding:5px 6px; text-align:right; color:#c0392b">{{ fmt0(r.f_cashback) }}</td>
               <td style="padding:5px 6px; text-align:right; font-weight:700; color:#27ae60; background:#f4fbf7">{{ fmt0(r.net_profit) }}</td>
               <td style="padding:5px 6px; text-align:right">{{ fmt0(r.total_nds) }}</td>
@@ -79,13 +79,15 @@
         </table>
       </div>
     </div>
+    <FinancePopup v-if="finPop" :kind="finPop.kind" :date-from="finPop.dateFrom" :date-to="finPop.dateTo" @close="finPop = null" />
   </div>
 </template>
 <script setup lang="ts">
-import { computed, inject, watchEffect } from 'vue'
+import { computed, inject, ref, watchEffect } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { dashboardApi } from '../../api/dashboard'
 import { useAuthStore } from '../../stores/auth'
+import FinancePopup, { type FinancePopupKind } from './FinancePopup.vue'
 const auth = useAuthStore()
 const { data: rowsRaw, isLoading, isFetching, isError } = useQuery({ queryKey: computed(() => ['monthly-finance', auth.companyId] as const), queryFn: ()=> (dashboardApi as any).monthly(), initialData: [] as any })
 const report = inject<(n:string,h:boolean)=>void>('dashReport', ()=>{})
@@ -104,6 +106,18 @@ const totals = computed(()=>{
   }
 })
 const fmt0 = (v:any)=> new Intl.NumberFormat('ru-RU').format(Math.round(Number(v)||0))
+const num = (v:any)=> Number(v) || 0
+// Попапы детализации (порт trigger-detail-popup/trigger-feedback-popup из Yii2).
+// Период попапа — месяц строки, как в PHP ($model['month'] . '-01' … конец месяца).
+const finPop = ref<{ kind: FinancePopupKind, dateFrom: string, dateTo: string } | null>(null)
+const monthEnd = (month: string) => {
+  const m = /^(\d{4})-(\d{2})$/.exec(month || '')
+  if (!m) return month
+  return `${month}-${String(new Date(Number(m[1]), Number(m[2]), 0).getDate()).padStart(2, '0')}`
+}
+const openPop = (kind: FinancePopupKind, month: string) => {
+  finPop.value = { kind, dateFrom: `${month}-01`, dateTo: monthEnd(month) }
+}
 const hasData = computed(() => rows.value.length > 0)
 watchEffect(() => { if (!busy.value) report('monthly', hasData.value || !!isError.value) })
 </script>

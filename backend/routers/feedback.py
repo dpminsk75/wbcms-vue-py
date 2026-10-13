@@ -59,6 +59,23 @@ async def feedback_tag_sentiment(
     return {"ok": True}
 
 
+@router.get("/popup-report")
+async def feedback_popup_report(
+    date_from: str = Query(...),
+    date_to: str = Query(...),
+    paid_only: bool = Query(default=False),
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Попап Отзывы из «Финансовой аналитики» — порт FeedbackController::actionGetPopupReport."""
+    import re
+    if not (re.match(r"^\d{4}-\d{2}-\d{2}$", date_from or "") and re.match(r"^\d{4}-\d{2}-\d{2}$", date_to or "")):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="date_from/date_to must be YYYY-MM-DD")
+    svc = FeedbackService(db, company_id=company_id)
+    return await svc.popup_report(date_from, date_to, paid_only)
+
+
 @router.post("/tags/sync")
 async def feedback_tags_sync(
     db: AsyncSession = Depends(get_db),
