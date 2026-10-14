@@ -69,15 +69,15 @@
               </select>
             </div>
             <div class="col-md-4">
-              <label class="form-label fw-bold">Округ (для РФ)</label>
-              <select v-model="oblast" class="form-select">
+              <label class="form-label fw-bold">Округ (для РФ) <span v-if="oblastsLoading" class="spinner-border spinner-border-sm"></span></label>
+              <select v-model="oblast" class="form-select" :disabled="oblastsLoading">
                 <option value="">Необязательно...</option>
                 <option v-for="o in oblasts" :key="o" :value="o">{{ o }}</option>
               </select>
             </div>
             <div class="col-md-4">
-              <label class="form-label fw-bold">Регион</label>
-              <select v-model="region" class="form-select">
+              <label class="form-label fw-bold">Регион <span v-if="regionsLoading" class="spinner-border spinner-border-sm"></span></label>
+              <select v-model="region" class="form-select" :disabled="regionsLoading">
                 <option value="">Выберите регион...</option>
                 <option v-for="r in regions" :key="r" :value="r">{{ r }}</option>
               </select>
@@ -102,9 +102,7 @@
               <thead>
                 <tr>
                   <th style="width:40px; min-width:40px; text-align:center">#</th>
-                  <th style="width:95px; min-width:95px; text-align:center">Арт WB</th>
-                  <th style="width:150px; min-width:120px; max-width:160px; text-align:center">Артикул</th>
-                  <th style="min-width:280px; text-align:center">Товар</th>
+                  <th style="width:280px; text-align:center">Товар</th>
                   <th style="width:70px; min-width:70px; text-align:center">Кол-во</th>
                   <th style="width:90px; min-width:90px; text-align:center">Выручка</th>
                   <th style="width:90px; min-width:90px; text-align:center">К оплате</th>
@@ -115,14 +113,19 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-if="rows.length===0"><td colspan="11" class="text-center text-muted">Нет данных</td></tr>
+                <tr v-if="rows.length===0"><td colspan="9" class="text-center text-muted">Нет данных</td></tr>
                 <tr v-for="(r,i) in rows" :key="r.nm_id">
                   <td class="page-sales-analysis__cell">{{ i+1 }}</td>
-                  <td class="page-sales-analysis__cell page-sales-analysis__cell--center"><a :href="`/wb/detail?nm_id=${r.nm_id}&date_from=${dateFrom}&date_to=${dateTo}`" target="_blank" class="page-sales-analysis__nm-link">{{ r.nm_id }}</a></td>
-                  <td class="page-sales-analysis__vendor" :title="r.vendorCode">{{ r.vendorCode }}</td>
-                  <td class="page-sales-analysis__product-cell">
-                    <div class="page-sales-analysis__product-name">{{ r.card_name }}</div>
-                    <div class="page-sales-analysis__product-sub"><b>{{ r.brand }}</b> | {{ r.subject }} | {{ r.category }}</div>
+                  <td>
+                    <div class="fbs-product">
+                      <img :src="photo(r)" class="fbs-product__photo" @error="(e:any)=>e.target.src='/images/no-photo.png'" />
+                      <div>
+                        <div class="fbs-product__title">{{ r.card_name || '(нет карточки)' }}</div>
+                        <div class="fbs-product__sub">{{ r.subject || '' }}{{ r.brand ? ' • ' + r.brand : '' }}</div>
+                        <div class="fbs-product__sub">{{ r.vendorCode || '' }}</div>
+                        <div class="fbs-product__sub"><a :href="`/wb/detail?nm_id=${r.nm_id}&date_from=${dateFrom}&date_to=${dateTo}`" target="_blank" class="fbs-product__link">WB: {{ r.nm_id }}</a></div>
+                      </div>
+                    </div>
                   </td>
                   <td class="page-sales-analysis__num--bold">{{ fmt0(r.sales_qty) }}</td>
                   <td class="page-sales-analysis__num">{{ fmt2(r.finished_sum) }}</td>
@@ -135,7 +138,7 @@
               </tbody>
               <tfoot v-if="rows.length">
                 <tr class="page-sales-analysis__totals">
-                  <td colspan="4">Итого</td>
+                  <td colspan="2">Итого</td>
                   <td>{{ fmt0(totals.sales_qty) }}</td>
                   <td>{{ fmt2(totals.finished_sum) }}</td>
                   <td>{{ fmt2(totals.for_pay_sum) }}</td>
@@ -238,13 +241,14 @@ const { data: rowsRaw, isLoading, refetch: doFetch } = useQuery({
   queryKey: computed(()=> ['sales-top', dateFrom.value, dateTo.value, reportType.value, topLimit.value, brand.value, category.value, typeVal.value, country.value, oblast.value, region.value] as const),
   queryFn: ()=> api.get('/api/sales-analysis/top', {params: q.value}).then(r=>r.data),
   initialData: [] as any,
+  enabled: false, // тяжелый топ — только по «Сформировать», а не на каждое движение фильтров
 })
 const rows = computed(()=> Array.isArray(rowsRaw.value) ? rowsRaw.value : [])
 const totals = computed(()=>{
   const s = (k:string)=> rows.value.reduce((a:number,r:any)=> a + (Number(r[k])||0),0)
   return { sales_qty: s('sales_qty'), finished_sum: s('finished_sum'), for_pay_sum: s('for_pay_sum') }
 })
-onMounted(()=> nextTick(enableResize))
+onMounted(()=> { nextTick(enableResize); doFetch() })
 watch(rows, ()=> nextTick(enableResize))
 const refetch = ()=> doFetch()
 
@@ -254,14 +258,14 @@ const { data: filterData } = useQuery({
   initialData: {brands:[], categories:[], types:[], countries:[]} as any,
 })
 
-const { data: oblastsRaw } = useQuery({
+const { data: oblastsRaw, isFetching: oblastsLoading } = useQuery({
   queryKey: computed(()=> ['sales-districts', country.value] as const),
   queryFn: ()=> country.value==='Россия' ? api.get('/api/sales-analysis/districts', {params:{country: country.value}}).then(r=>r.data) : Promise.resolve([]),
   initialData: [] as any,
 })
 const oblasts = computed(()=> Array.isArray(oblastsRaw.value) ? oblastsRaw.value : [])
 
-const { data: regionsRaw } = useQuery({
+const { data: regionsRaw, isFetching: regionsLoading } = useQuery({
   queryKey: computed(()=> ['sales-regions', country.value, oblast.value] as const),
   queryFn: ()=> country.value ? api.get('/api/sales-analysis/regions', {params:{country: country.value, oblast: oblast.value}}).then(r=>r.data) : Promise.resolve([]),
   initialData: [] as any,
@@ -282,6 +286,15 @@ watch(category, ()=> { if(!category.value) typeVal.value='' })
 watch(country, ()=> { if(country.value!=='Россия') oblast.value=''; region.value='' })
 
 const fmt0 = (v:any)=> new Intl.NumberFormat('ru-RU').format(Math.round(Number(v)||0))
+const photo = (r: any) => {
+  try {
+    let p = r.photos
+    if (typeof p === 'string') p = JSON.parse(p)
+    if (typeof p === 'string') p = JSON.parse(p)
+    if (Array.isArray(p) && p[0]) return p[0]
+  } catch { /* noop */ }
+  return '/images/no-photo.png'
+}
 const fmt1 = (v:any)=> new Intl.NumberFormat('ru-RU',{minimumFractionDigits:2, maximumFractionDigits:2}).format(Number(v)||0)
 const fmt2 = (v:any)=> new Intl.NumberFormat('ru-RU',{minimumFractionDigits:2, maximumFractionDigits:2}).format(Number(v)||0)
 

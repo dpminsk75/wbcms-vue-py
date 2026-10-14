@@ -173,6 +173,11 @@ async function ensureGeo() {
       ['/geo/ru_regions_simple.geojson', 'ru'],
       ['/geo/by_regions_simple.geojson', 'by'],
       ['/geo/kz_regions_simple.geojson', 'kz'],
+      ['/geo/uz_regions_simple.geojson', 'uz'],
+      ['/geo/am_regions_simple.geojson', 'am'],
+      ['/geo/kg_regions_simple.geojson', 'kg'],
+      ['/geo/ge_regions_simple.geojson', 'ge'],
+      ['/geo/tj_regions_simple.geojson', 'tj'],
     ]
     for (const [url, src] of files) {
       try {

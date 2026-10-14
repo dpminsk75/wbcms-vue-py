@@ -16,22 +16,14 @@ REGION_OKRUG (не зависит от dadata_status: pending-строки бе�
 ONLY_FULL_GROUP_BY: в GROUP BY дословно те же выражения, что в SELECT
 (см. AGENTS.md) — свёртка okrug поэтому в Python, а не вторым SQL.
 """
-import re
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from backend.services.geo_names import (
+    COUNTRY_NAMES, STEM2OKRUG, _stem, okrug_of,
+)
 
 LEVELS = ("country", "okrug", "region", "city", "pvz")
 
-COUNTRY_NAMES = {
-    "RU": "Россия",
-    "BY": "Беларусь",
-    "KZ": "Казахстан",
-    "UZ": "Узбекистан",
-    "AM": "Армения",
-    "KG": "Кыргызстан",
-    "GE": "Грузия",
-    "TJ": "Таджикистан",
-}
 
 # Статичные якоря: центроид из AVG координат WB ненадёжен (кривые точки +
 # малые n утаскивают пузырь в чужую страну), поэтому страны и округа
@@ -59,120 +51,7 @@ OKRUG_ANCHOR = {
     "Дальневосточный ФО": (48.48, 135.07),   # Хабаровск
 }
 
-# 1в1 federalDistricts из wbcms/commands/AddressController.php::getInternalMapping
-# (полные официальные названия — как большинство DaData).
-REGION_OKRUG: list[tuple[str, str]] = [
-    ("Белгородская область", "Центральный ФО"), ("Брянская область", "Центральный ФО"),
-    ("Владимирская область", "Центральный ФО"), ("Воронежская область", "Центральный ФО"),
-    ("Ивановская область", "Центральный ФО"), ("Калужская область", "Центральный ФО"),
-    ("Костромская область", "Центральный ФО"), ("Курская область", "Центральный ФО"),
-    ("Липецкая область", "Центральный ФО"), ("Москва", "Центральный ФО"),
-    ("Московская область", "Центральный ФО"), ("Орловская область", "Центральный ФО"),
-    ("Рязанская область", "Центральный ФО"), ("Смоленская область", "Центральный ФО"),
-    ("Тамбовская область", "Центральный ФО"), ("Тверская область", "Центральный ФО"),
-    ("Тульская область", "Центральный ФО"), ("Ярославская область", "Центральный ФО"),
-    ("Санкт-Петербург", "Северо-Западный ФО"),
-    ("Ленинградская область", "Северо-Западный ФО"),
-    ("Архангельская область", "Северо-Западный ФО"),
-    ("Вологодская область", "Северо-Западный ФО"),
-    ("Калининградская область", "Северо-Западный ФО"),
-    ("Республика Карелия", "Северо-Западный ФО"),
-    ("Республика Коми", "Северо-Западный ФО"),
-    ("Мурманская область", "Северо-Западный ФО"),
-    ("Новгородская область", "Северо-Западный ФО"),
-    ("Псковская область", "Северо-Западный ФО"),
-    ("Ненецкий автономный округ", "Северо-Западный ФО"),
-    ("Краснодарский край", "Южный ФО"), ("Ростовская область", "Южный ФО"),
-    ("Волгоградская область", "Южный ФО"), ("Астраханская область", "Южный ФО"),
-    ("Республика Крым", "Южный ФО"), ("Севастополь", "Южный ФО"),
-    ("Республика Адыгея", "Южный ФО"), ("Республика Калмыкия", "Южный ФО"),
-    ("Ставропольский край", "Северо-Кавказский ФО"),
-    ("Республика Дагестан", "Северо-Кавказский ФО"),
-    ("Республика Ингушетия", "Северо-Кавказский ФО"),
-    ("Кабардино-Балкарская Республика", "Северо-Кавказский ФО"),
-    ("Карачаево-Черкесская Республика", "Северо-Кавказский ФО"),
-    ("Республика Северная Осетия — Алания", "Северо-Кавказский ФО"),
-    ("Чеченская Республика", "Северо-Кавказский ФО"),
-    ("Республика Башкортостан", "Приволжский ФО"),
-    ("Республика Татарстан", "Приволжский ФО"),
-    ("Нижегородская область", "Приволжский ФО"), ("Самарская область", "Приволжский ФО"),
-    ("Саратовская область", "Приволжский ФО"), ("Пермский край", "Приволжский ФО"),
-    ("Кировская область", "Приволжский ФО"), ("Оренбургская область", "Приволжский ФО"),
-    ("Пензенская область", "Приволжский ФО"), ("Ульяновская область", "Приволжский ФО"),
-    ("Удмуртская Республика", "Приволжский ФО"),
-    ("Чувашская Республика", "Приволжский ФО"),
-    ("Республика Марий Эл", "Приволжский ФО"),
-    ("Республика Мордовия", "Приволжский ФО"),
-    ("Свердловская область", "Уральский ФО"), ("Челябинская область", "Уральский ФО"),
-    ("Тюменская область", "Уральский ФО"),
-    ("Ханты-Мансийский автономный округ", "Уральский ФО"),
-    ("Ямало-Ненецкий автономный округ", "Уральский ФО"),
-    ("Курганская область", "Уральский ФО"),
-    ("Новосибирская область", "Сибирский ФО"), ("Омская область", "Сибирский ФО"),
-    ("Красноярский край", "Сибирский ФО"), ("Иркутская область", "Сибирский ФО"),
-    ("Кемеровская область", "Сибирский ФО"), ("Алтайский край", "Сибирский ФО"),
-    ("Республика Алтай", "Сибирский ФО"), ("Томская область", "Сибирский ФО"),
-    ("Республика Хакасия", "Сибирский ФО"), ("Республика Тыва", "Сибирский ФО"),
-    ("Приморский край", "Дальневосточный ФО"), ("Хабаровский край", "Дальневосточный ФО"),
-    ("Республика Бурятия", "Дальневосточный ФО"),
-    ("Забайкальский край", "Дальневосточный ФО"),
-    ("Республика Саха (Якутия)", "Дальневосточный ФО"),
-    ("Амурская область", "Дальневосточный ФО"),
-    ("Сахалинская область", "Дальневосточный ФО"),
-    ("Камчатский край", "Дальневосточный ФО"),
-    ("Еврейская автономная область", "Дальневосточный ФО"),
-    ("Магаданская область", "Дальневосточный ФО"),
-    ("Чукотский автономный округ", "Дальневосточный ФО"),
-]
 
-_NONWORD = re.compile(r"[^\w]+", re.UNICODE)
-_DROP_TOKENS = frozenset({
-    "область", "обл", "край", "республика", "респ",
-    "автономный", "автономная", "ао", "округ",
-})
-
-
-def _stem(s: str | None) -> str:
-    s = (s or "").lower().replace("ё", "е")
-    toks = [t for t in _NONWORD.sub(" ", s).split() if t and t not in _DROP_TOKENS]
-    return " ".join(toks)
-
-
-STEM2OKRUG = {_stem(canon): ok for canon, ok in REGION_OKRUG}
-
-
-# Короткие/устаревшие формы -> стемы полных ключей выше
-# (голые «Чечня», «Татарстан» из старых разборов; югра-суффикс из GeoJSON-стиля).
-OKRUG_STEM_FIX = {
-    "удмуртия": "удмуртская",
-    "чувашия": "чувашская",
-    "чечня": "чеченская",
-    "кабардино балкария": "кабардино балкарская",
-    "карачаево черкесия": "карачаево черкесская",
-    "северная осетия": "северная осетия алания",
-    "татарстан": "татарстан",
-    "башкортостан": "башкортостан",
-    "мордовия": "мордовия",
-    "марий эл": "марий эл",
-    "якутия": "саха якутия",
-    "бурятия": "бурятия",
-    "тыва": "тыва",
-    "хакасия": "хакасия",
-    "карелия": "карелия",
-    "коми": "коми",
-    "адыгея": "адыгея",
-    "калмыкия": "калмыкия",
-    "дагестан": "дагестан",
-    "ингушетия": "ингушетия",
-    "ханты мансийский югра": "ханты мансийский",
-    "еврейская": "еврейская автономная",
-}
-
-
-def okrug_of(region: str | None) -> str:
-    s = _stem(region)
-    s = OKRUG_STEM_FIX.get(s, s)
-    return STEM2OKRUG.get(s, "Без округа")
 
 
 # Нормализация — в колонках pvz_all.region_norm / city_norm
@@ -209,9 +88,47 @@ class GeoSalesService:
         """Нормы region_norm из pvz_all, ложащиеся в округ (для фильтра parent_okrug)."""
         rows = (await self.db.execute(text(
             "SELECT DISTINCT region_norm FROM pvz_all "
-            "WHERE UPPER(country) = 'RU' AND region_norm IS NOT NULL"
+            "WHERE country = 'ru' AND region_norm IS NOT NULL"
         ))).scalars().all()
         return [str(r) for r in rows if STEM2OKRUG.get(_stem(str(r))) == okrug]
+
+    # Порог office-first пути: больше офисов — дешевле идти обычным сканом периода.
+    OFFICE_IN_LIMIT = 2000
+
+    async def _offices_for_parent(self, parent_country: str | None,
+                                  parent_okrug: str | None,
+                                  parent_region: str | None,
+                                  parent_city: str | None) -> list[int] | None:
+        """wb_id офисов под parent-фильтром. None = фильтра нет (обычный путь)."""
+        if not (parent_country or parent_okrug or parent_region or parent_city):
+            return None
+        conds: list[str] = []
+        params: dict = {}
+        if parent_country:
+            conds.append("country = :pc")
+            params["pc"] = str(parent_country).lower()[:2]
+        if parent_okrug and not parent_region and not parent_city:
+            regs = await self._regions_of_okrug(parent_okrug)
+            if not regs:
+                return []
+            conds.append("region_norm IN ("
+                         + ",".join("'" + r.replace("'", "''") + "'" for r in regs) + ")")
+        if parent_region:
+            if parent_region == "__none__":
+                conds.append("region_norm IS NULL")
+            else:
+                conds.append("region_norm = :pr")
+                params["pr"] = parent_region
+        if parent_city:
+            if parent_city == "__none__":
+                conds.append("city_norm IS NULL")
+            else:
+                conds.append("city_norm = :pct")
+                params["pct"] = parent_city
+        rows = (await self.db.execute(text(
+            "SELECT wb_id FROM pvz_all WHERE " + " AND ".join(conds)
+            + f" LIMIT {self.OFFICE_IN_LIMIT + 1}"), params)).scalars().all()
+        return [int(x) for x in rows if x]
 
     async def _grain(self, select: str, group: str, where_sql: str,
                      params: dict, order: str, limit: int) -> list[dict]:
@@ -427,8 +344,9 @@ class GeoSalesService:
             where.append("p.lat BETWEEN :s AND :n AND p.lon BETWEEN :w AND :e")
             params.update({"s": s, "n": n, "w": w, "e": ee})
         if parent_country:
-            where.append("UPPER(p.country) = :pc")
-            params["pc"] = str(parent_country).upper()[:2]
+            # коды в нижнем регистре (чистит pvz_norm.py) — прямое равенство по индексу
+            where.append("p.country = :pc")
+            params["pc"] = str(parent_country).lower()[:2]
         if parent_okrug and not parent_region and not parent_city:
             regs = await self._regions_of_okrug(parent_okrug)
             if regs:
@@ -449,6 +367,19 @@ class GeoSalesService:
             else:
                 where.append("p.city_norm = :pct")
                 params["pct"] = parent_city
+        # office-first: при узком parent-фильтре идем точечными пробами
+        # (company, supplier, ppvz, sale_dt) вместо скана всего периода
+        offices = await self._offices_for_parent(
+            parent_country, parent_okrug, parent_region, parent_city)
+        if offices is not None:
+            if not offices:
+                return {"level": level, "metric": metric, "items": [],
+                        "total": {"qty": 0, "sum_for_pay": 0.0, "sum_amount": 0.0},
+                        "hint": "в parent-области нет офисов",
+                        "params": {**empty_params, "offices": 0}}
+            if len(offices) <= self.OFFICE_IN_LIMIT:
+                where.append(f"d.ppvz_office_id IN ({','.join(str(x) for x in offices)})")
+                empty_params["offices"] = len(offices)
         where_sql = " AND ".join(where)
         order = "qty DESC" if metric == "qty" else "sum_amount DESC"
 
