@@ -7,6 +7,7 @@
 .page-geo-sales-map__lede { font-size: 13px; }
 .page-geo-sales-map__toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; }
 .page-geo-sales-map__metric { display: inline-flex; border: 1px solid #dee2e6; border-radius: 20px; overflow: hidden; }
+.page-geo-sales-map__level { width: 118px; }
 .page-geo-sales-map__metric-btn { border: 0; background: #fff; font-size: 12px; padding: 6px 14px; cursor: pointer; }
 .page-geo-sales-map__metric-btn.is-active { background: #7c1af8; color: #fff; font-weight: 600; }
 .page-geo-sales-map__world { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #495057; }
@@ -15,7 +16,7 @@
 .page-geo-sales-map__crumb.is-current { background: #7c1af8; border-color: #7c1af8; color: #fff; font-weight: 600; cursor: default; }
 .page-geo-sales-map__crumb-sep { color: #adb5bd; }
 .page-geo-sales-map__map-card { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; position: relative; height: auto; }
-.page-geo-sales-map__map-loader { position: absolute; inset: 0; z-index: 1200; display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(255, 255, 255, 0.65); font-size: 14px; font-weight: 600; color: #5a1c9c; }
+.page-geo-sales-map__map-loader { position: absolute; inset: 0; z-index: 1200; display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(255, 255, 255, 0.65); font-size: 14px; font-weight: 600; color: #5a1c9c; pointer-events: none; }
 .page-geo-sales-map__map { width: 100%; height: clamp(420px, 72vh, 1000px); background: #fff; z-index: 0; }
 .page-geo-sales-map__map-tools { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .page-geo-sales-map__table-tools { display: inline-flex; align-items: center; gap: 10px; }

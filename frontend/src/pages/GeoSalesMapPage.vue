@@ -15,6 +15,14 @@
             <button class="page-geo-sales-map__metric-btn" :class="{'is-active': metric==='qty'}" @click="metric='qty'; fetchData()">Штуки</button>
             <button class="page-geo-sales-map__metric-btn" :class="{'is-active': metric==='sum'}" @click="metric='sum'; fetchData()">Сумма</button>
           </span>
+          <select v-model="levelMode" class="form-select form-select-sm page-geo-sales-map__level" title="Фикс уровня: Авто меняет разрез с зумом" @change="fetchData()">
+            <option value="auto">Авто</option>
+            <option value="country">Страны</option>
+            <option value="okrug">Округа</option>
+            <option value="region">Регионы</option>
+            <option value="city">Города</option>
+            <option value="pvz">ПВЗ</option>
+          </select>
           <span class="page-geo-sales-map__map-hint">Клик по кругу — провалиться глубже</span>
           <button class="btn btn-sm btn-light" @click="toggleFull" :title="isFull ? 'Свернуть карту' : 'Карта на весь экран'">
             <i class="bi" :class="isFull ? 'bi-fullscreen-exit' : 'bi-arrows-fullscreen'"></i>
@@ -84,7 +92,7 @@
                 <td></td><td></td>
                 <td>{{ fmt0(sumQty) }}</td><td>{{ fmt2(sumRetail) }}</td><td>{{ fmt2(sumAmount) }}</td><td>{{ fmt2(avgSpp) }}</td><td>{{ fmt2(sumPay) }}</td>
               </tr>
-              <tr v-for="r in tableRows" :key="r.key" class="page-geo-sales-map__row" @click="focusRow(r)" :title="'Показать на карте: ' + r.name">
+              <tr v-for="r in tableRows" :key="r.key" class="page-geo-sales-map__row" @click="focusRow(r)" @mouseenter="hlName(level === 'city' ? r.sub : r.name)" @mouseleave="unhl()" :title="'Показать на карте: ' + r.name">
                 <td>{{ r.name }}</td>
                 <td class="page-geo-sales-map__addr">{{ r.sub }}</td>
                 <td>{{ fmt0(r.qty) }}</td>
@@ -106,7 +114,7 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { fetchGeoSales } from '../api/geoSales'
+import { fetchGeoSales, geoStem, okrugStems, gadmCanon, visualCenter } from '../api/geoSales'
 import { api } from '../api/client'
 import WbUniversalFilter from '../components/common/WbUniversalFilter.vue'
 
@@ -134,6 +142,7 @@ const loadOptions = async () => {
 }
 
 const metric = ref<'qty' | 'sum'>('qty')
+const levelMode = ref<'auto' | 'country' | 'okrug' | 'region' | 'city' | 'pvz'>('auto')
 const world = ref(false)
 const crumbs = ref({ country: '', okrug: '', region: '', city: '' })
 const level = ref<'country' | 'okrug' | 'region' | 'city' | 'pvz'>('region')
@@ -149,6 +158,87 @@ let map: L.Map | null = null
 let layer: L.LayerGroup | null = null
 let moveTimer: any = null
 let reqSeq = 0
+let geoFeats: any[] | null = null
+let geoLoading: Promise<void> | null = null
+let hlPoly: L.GeoJSON | null = null
+
+// Подсветка региона: границы из public/geo/*.geojson (lazy, один раз).
+// ru — сшивка по стему названия; by/kz — через таблицу GADM_RU (точное имя -> русское).
+// Крым/Севастополь и новые области KZ в файлах отсутствуют — тихо нет.
+async function ensureGeo() {
+  if (geoFeats) return
+  if (!geoLoading) geoLoading = (async () => {
+    const all: any[] = []
+    const files: Array<[string, string]> = [
+      ['/geo/ru_regions_simple.geojson', 'ru'],
+      ['/geo/by_regions_simple.geojson', 'by'],
+      ['/geo/kz_regions_simple.geojson', 'kz'],
+    ]
+    for (const [url, src] of files) {
+      try {
+        const res = await fetch(url)
+        const j = await res.json()
+        for (const f of j.features || []) {
+          f._canon = src === 'ru'
+            ? geoStem(String(f?.properties?.name || ''))
+            : geoStem(gadmCanon(f?.properties || {}))
+          if (f._canon) all.push(f)
+        }
+      } catch { /* нет файла — пропускаем страну */ }
+    }
+    geoFeats = all
+  })()
+  await geoLoading
+}
+function unhl() {
+  if (hlPoly) { if (map) hlPoly.removeFrom(map); hlPoly = null }
+}
+// Визуальные центры регионов (полюс недоступности): пузырь всегда внутри контура.
+// Считается один раз на регион, дальше из кеша. Нет полигона — точка из API.
+const centerCache = new Map<string, [number, number]>()
+const posOf = (r: any): [number, number] => centerCache.get(r.key) || [r.lat, r.lon]
+async function applyVisualCenters() {
+  if (level.value !== 'region') return
+  await ensureGeo()
+  if (!map) return
+  let changed = false
+  for (const r of items.value) {
+    if (r.lat == null || centerCache.has(r.key)) continue
+    const f = (geoFeats || []).find((x: any) => x._canon === geoStem(r.name))
+    if (!f) continue
+    const c = visualCenter(f)
+    if (c) { centerCache.set(r.key, c); changed = true }
+  }
+  if (changed) renderMarkers()
+}
+function hlName(name: string) {
+  if (!map || !name || String(name).startsWith('Без ')) return
+  if (level.value !== 'region' && level.value !== 'city' && level.value !== 'okrug') return
+  void (async () => {
+    await ensureGeo()
+    if (!map) return
+    unhl()
+    if (level.value === 'okrug') {
+      // чужие страны (C:) — полигонов пока нет, тихо нет
+      if (!String(name).endsWith('ФО')) return
+      const set = okrugStems(name)
+      const list = (geoFeats || []).filter((x: any) => set.has(x._canon))
+      if (!list.length) return
+      hlPoly = L.geoJSON(list as any, {
+        style: { color: '#7c1af8', weight: 2, fillColor: '#7c1af8', fillOpacity: 0.08 },
+        interactive: false,
+      } as any).addTo(map)
+      return
+    }
+    const key = geoStem(name)
+    const f = (geoFeats || []).find((x: any) => x._canon === key)
+    if (!f) return
+    hlPoly = L.geoJSON(f as any, {
+      style: { color: '#7c1af8', weight: 3, fillColor: '#7c1af8', fillOpacity: 0.12 },
+      interactive: false,
+    } as any).addTo(map)
+  })()
+}
 let inited = false
 const isFull = ref(false)
 
@@ -180,6 +270,7 @@ function initFromQuery() {
   filters.value.brand = String(q.brand || '')
   filters.value.category = String(q.category || '')
   if (q.metric === 'qty' || q.metric === 'sum') metric.value = q.metric
+  if (['auto', 'country', 'okrug', 'region', 'city', 'pvz'].includes(String(q.lvl || ''))) levelMode.value = (q.lvl || 'auto') as any
   const z = Number(q.z), la = Number(q.lat), lo = Number(q.lon)
   pendingView = (Number.isFinite(z) && Number.isFinite(la) && Number.isFinite(lo)
     && z >= 3 && z <= 18 && Math.abs(la) <= 90 && Math.abs(lo) <= 180)
@@ -194,6 +285,7 @@ function syncRoute() {
   if (filters.value.brand) q.brand = filters.value.brand
   if (filters.value.category) q.category = filters.value.category
   if (metric.value !== 'qty') q.metric = metric.value
+  if (levelMode.value !== 'auto') q.lvl = levelMode.value
   if (map) {
     const c = map.getCenter()
     q.z = String(map.getZoom())
@@ -227,7 +319,7 @@ const fetchData = async () => {
   const my = ++reqSeq
   isLoading.value = true
   try {
-    level.value = levelByZoom(map.getZoom())
+    level.value = levelMode.value === 'auto' ? levelByZoom(map.getZoom()) : levelMode.value
     let bbox = ''
     if (!world.value) {
       const b = map.getBounds()
@@ -249,8 +341,11 @@ const fetchData = async () => {
     total.value = d.total || { qty: 0, sum_for_pay: 0 }
     hint.value = (d as any).hint || ''
     resolvedIds.value = (d as any).params?.resolved_ids ?? null
+    if (items.value.length >= 2000) hint.value = (hint.value ? hint.value + ' · ' : '') + 'показаны первые 2000 — приблизьте карту'
     if (my !== reqSeq) return // протухший ответ: новее запрос уже летит
+    unhl()
     renderMarkers()
+    void applyVisualCenters()
   } catch { /* noop: ошибка видна в консоли api */ }
   if (my === reqSeq) isLoading.value = false
 }
@@ -266,10 +361,10 @@ const renderMarkers = () => {
   const dots = items.value.filter((r: any) => r.lat != null && r.lon != null
     && (level.value === 'country' || level.value === 'pvz' || !String(r.name || '').startsWith('Без '))).slice(0, 2000)
   for (const r of dots) {
-    const ll: L.LatLngExpression = [r.lat, r.lon]
-    const popup = `<b>${r.name}</b>${r.sub ? '<br>' + r.sub : ''}<br>Продаж: <b>${fmt0(r.qty)}</b><br>Цена со ск: <b>${fmt2(r.sum_amount)}</b> ₽<br>К оплате: ${fmt2(r.sum_for_pay)} ₽`
+    const ll: L.LatLngExpression = posOf(r)
+    const popup = `<b>${r.name}</b>${r.sub ? '<br>' + r.sub : ''}<br>Продаж: <b>${fmt0(r.qty)}</b> · ПВЗ: <b>${fmt0(r.pvz_count)}</b><br>Цена со ск: <b>${fmt2(r.sum_amount)}</b> ₽<br>К оплате: ${fmt2(r.sum_for_pay)} ₽${world.value ? '' : '<br><small>в видимой области</small>'}`
     // тултип при наведении (кратко) + попап по клику (подробно)
-    const tip = `<b>${r.name}</b>${r.sub ? ' · ' + r.sub : ''}<br>Продаж: <b>${fmt0(r.qty)}</b> · Со ск: <b>${fmt2(r.sum_amount)}</b> ₽`
+    const tip = `<b>${r.name}</b>${r.sub ? ' · ' + r.sub : ''}<br>Продаж: <b>${fmt0(r.qty)}</b> · ПВЗ: <b>${fmt0(r.pvz_count)}</b> · Со ск: <b>${fmt2(r.sum_amount)}</b> ₽`
     // мелкие поверх крупных: zIndexOffset обратно значению
     const zOff = 1000 - Math.min(1000, Math.round(valOf(r)))
     if (level.value === 'pvz') {
@@ -286,20 +381,25 @@ const renderMarkers = () => {
       L.circleMarker(jl, { radius: rad, color: '#7c1af8', weight: 2, fillColor: '#7c1af8', fillOpacity: 0.55 }).bindTooltip(tip, { sticky: true, direction: 'top' }).bindPopup(popup).addTo(layer)
     } else {
       const icon = L.divIcon({ className: 'geo-bubble-wrap', html: `<div class="geo-bubble ${bubbleCls(valOf(r), max)}">${metric.value === 'qty' ? fmt0(valOf(r)) : fmt0(valOf(r) / 1000) + 'к'}</div>`, iconSize: [70, 70], iconAnchor: [35, 35] })
-      L.marker(ll, { icon, zIndexOffset: zOff }).bindTooltip(tip, { sticky: true, direction: 'top' }).bindPopup(popup).on('click', () => drillDown(r)).addTo(layer)
+      L.marker(ll, { icon, zIndexOffset: zOff }).bindTooltip(tip, { sticky: true, direction: 'top' }).bindPopup(popup)
+        .on('click', () => drillDown(r))
+        .on('mouseover', () => hlName(level.value === 'city' ? r.sub : r.name))
+        .on('mouseout', unhl)
+        .addTo(layer)
     }
   }
 }
 
 const drillDown = (r: any) => {
   if (!map) return
-  if (level.value === 'country') { crumbs.value = { country: r.key, okrug: '', region: '', city: '' }; map.flyTo([r.lat, r.lon], 5, { duration: 0.6 }) }
+  const to = posOf(r)
+  if (level.value === 'country') { crumbs.value = { country: r.key, okrug: '', region: '', city: '' }; map.flyTo(to, 5, { duration: 0.6 }) }
   else if (level.value === 'okrug') {
-    if (String(r.key).startsWith('C:')) { crumbs.value = { country: String(r.key).slice(2), okrug: '', region: '', city: '' }; map.flyTo([r.lat, r.lon], 6, { duration: 0.6 }) }
-    else { crumbs.value.okrug = r.name; crumbs.value.region = ''; crumbs.value.city = ''; map.flyTo([r.lat, r.lon], 7, { duration: 0.6 }) }
+    if (String(r.key).startsWith('C:')) { crumbs.value = { country: String(r.key).slice(2), okrug: '', region: '', city: '' }; map.flyTo(to, 6, { duration: 0.6 }) }
+    else { crumbs.value.okrug = r.name; crumbs.value.region = ''; crumbs.value.city = ''; map.flyTo(to, 7, { duration: 0.6 }) }
   }
-  else if (level.value === 'region') { crumbs.value.region = r.name === 'Без региона' ? '__none__' : r.name; crumbs.value.city = ''; map.flyTo([r.lat, r.lon], 9, { duration: 0.6 }) }
-  else if (level.value === 'city') { crumbs.value.city = r.name === 'Без города' ? '__none__' : r.name; map.flyTo([r.lat, r.lon], 11, { duration: 0.6 }) }
+  else if (level.value === 'region') { crumbs.value.region = r.name === 'Без региона' ? '__none__' : r.name; crumbs.value.city = ''; map.flyTo(to, 9, { duration: 0.6 }) }
+  else if (level.value === 'city') { crumbs.value.city = r.name === 'Без города' ? '__none__' : r.name; map.flyTo(to, 11, { duration: 0.6 }) }
 }
 
 const goWorld = () => { crumbs.value = { country: '', okrug: '', region: '', city: '' }; if (map) { map.flyTo([56, 38], 3, { duration: 0.6 }); } fetchData() }
@@ -309,8 +409,9 @@ const goRegion = () => { crumbs.value.city = ''; if (map) map.setZoom(9); fetchD
 
 const focusRow = (r: any) => {
   if (!map || r.lat == null) return
+  const to = posOf(r)
   const z = level.value === 'pvz' ? Math.max(map.getZoom(), 12) : map.getZoom()
-  map.flyTo([r.lat, r.lon], z, { duration: 0.6 })
+  map.flyTo(to, z, { duration: 0.6 })
 }
 
 const exportExcel = async () => {
@@ -341,8 +442,9 @@ watch(() => route.query, () => {
     date_from: filters.value.date_from || '', date_to: filters.value.date_to || '',
     product: filters.value.product || '', brand: filters.value.brand || '',
     category: filters.value.category || '', metric: metric.value,
+    lvl: levelMode.value === 'auto' ? '' : levelMode.value,
   }
-  const changed = ['date_from', 'date_to', 'product', 'brand', 'category', 'metric']
+  const changed = ['date_from', 'date_to', 'product', 'brand', 'category', 'metric', 'lvl']
     .some(k => String(q[k] || '') !== String(cur[k] || ''))
   let viewSame = true
   if (map && q.z !== undefined) {
@@ -380,5 +482,5 @@ onMounted(() => {
   loadOptions()
   fetchData()
 })
-onBeforeUnmount(() => { clearTimeout(moveTimer); document.removeEventListener('fullscreenchange', onFullChange); if (map) { map.off('moveend', onMoveEnd); map.off('zoomend', onMoveEnd); map.remove(); map = null } })
+onBeforeUnmount(() => { clearTimeout(moveTimer); document.removeEventListener('fullscreenchange', onFullChange); unhl(); if (map) { map.off('moveend', onMoveEnd); map.off('zoomend', onMoveEnd); map.remove(); map = null } })
 </script>
