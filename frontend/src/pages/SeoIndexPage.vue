@@ -148,7 +148,7 @@
       </div>
     </div>
 
-    <SeoBatchModal :job-id="batchJobId" :open="batchOpen" @close="batchOpen = false" @done="onBatchDone" />
+    <SeoBatchModal :job-id="batchJobId" :open="batchOpen" @close="batchOpen = false" @done="onBatchDone" @fallback="onBatchFallback" />
   </div>
 </template>
 
@@ -180,6 +180,7 @@ const cardsTotal = ref(0)
 const allIds = ref<number[]>([])
 const batchJobId = ref<number | null>(null)
 const batchOpen = ref(false)
+const lastLaunch = ref<{ nmIds: number[]; opts?: { date_from?: string; date_to?: string; fallback?: boolean } } | null>(null)
 
 const isAdmin = computed(() => auth.isAdmin)
 const from = computed(() => total.value ? (page.value - 1) * 20 + 1 : 0)
@@ -252,15 +253,20 @@ async function requeue(id: number) {
   await seoApi.requeue(id)
   load()
 }
-async function startBatch(nmIds: number[]) {
+async function startBatch(nmIds: number[], opts?: { date_from?: string; date_to?: string; fallback?: boolean }) {
   if (!nmIds.length) return
+  lastLaunch.value = { nmIds, opts }
   try {
-    const r = await seoApi.process(nmIds)
+    const r = await seoApi.process(nmIds, opts)
     batchJobId.value = r.job_id
     batchOpen.value = true
   } catch (e: any) {
     error.value = e?.response?.data?.detail || String(e)
   }
+}
+function onBatchFallback() {
+  const l = lastLaunch.value
+  if (l) startBatch(l.nmIds, { ...l.opts, fallback: true })
 }
 function onBatchDone() {
   load()

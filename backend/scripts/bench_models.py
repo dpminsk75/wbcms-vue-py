@@ -131,16 +131,27 @@ async def main() -> int:
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--timeout", type=int, default=30)
     ap.add_argument("--model", default=None)
+    ap.add_argument("--company-id", type=int, default=None,
+                    help="ключ из companies.seo_openrouter_key (фолбэк — env OPENROUTER_API_KEY)")
     args = ap.parse_args()
 
     _load_dotenv(ROOT / ".env")
-    api_key = os.getenv("OPENROUTER_API_KEY", "")
-    if not api_key:
-        print("OPENROUTER_API_KEY is empty (.env)")
-        return 1
 
     from sqlalchemy import text  # noqa: E402
     from backend.database import SessionLocal  # noqa: E402
+
+    api_key = os.getenv("OPENROUTER_API_KEY", "")
+    if args.company_id:
+        async with SessionLocal() as db:
+            row = (await db.execute(text("""
+                SELECT seo_openrouter_key FROM companies WHERE id=:c LIMIT 1
+            """), {"c": args.company_id})).mappings().first()
+        if row and row["seo_openrouter_key"]:
+            api_key = row["seo_openrouter_key"]
+            print(f"Ключ из компании id={args.company_id}")
+    if not api_key:
+        print("OPENROUTER_API_KEY is empty (.env) и у компании нет seo_openrouter_key")
+        return 1
 
     res = await asyncio.to_thread(get_models, api_key, args.timeout)
     if not res:

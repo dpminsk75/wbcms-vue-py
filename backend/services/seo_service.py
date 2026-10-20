@@ -62,7 +62,8 @@ class SeoService:
         if company_id is None:
             return {}
         row = (await self.db.execute(text("""
-            SELECT seo_model, seo_desc_min, seo_desc_max, seo_prompt, seo_anti_spam_days
+            SELECT seo_model, seo_desc_min, seo_desc_max, seo_prompt, seo_anti_spam_days,
+                   seo_summary_model
             FROM companies WHERE id=:c LIMIT 1
         """), {"c": company_id})).mappings().first()
         return dict(row) if row else {}
@@ -211,6 +212,64 @@ class SeoService:
         out["targets"] = [dict(t) for t in tg]
         return out
 
+    async def list_targets(self, nm_id: int) -> dict | None:
+        """Целевые фразы карточки (§10 плана): для модалки «Целевые» на /wb/detail.
+
+        nmID глобальный, поэтому скоуп проверяем по владельцу карточки (wbcards.company_id).
+        """
+        if self.company_id is not None:
+            own = (await self.db.execute(text("""
+                SELECT 1 FROM wbcards WHERE nmID=:n AND company_id=:c LIMIT 1
+            """), {"n": nm_id, "c": self.company_id})).first()
+            if not own:
+                return None
+        rows = (await self.db.execute(text("""
+            SELECT id, nmID, phrase, priority, is_active, added_by, created_at
+            FROM wb_seo_target WHERE nmID=:n ORDER BY priority, id
+        """), {"n": nm_id})).mappings().all()
+        return {"nm_id": nm_id, "items": [dict(r) for r in rows], "limit": 10}
+
+    async def get_phrases_period(self, rec_id: int, date_from: str, date_to: str) -> dict | None:
+        """Живой пересчёт блока 'Поисковые фразы из расчета' за произвольные даты.
+
+        Тот же источник и нарезка, что снапшот в build_prompt (wb_sr_report_item_phrases,
+        GROUP BY phrase ORDER BY clicks): топ-10 по кликам / с заказами-5 /
+        opportunity поз 11-50 част>500. Без company-фильтра (1в1 со снапшотом:
+        nmID глобален, старые строки могут иметь company_id=NULL). Доступ к rec
+        gated по компании как в get_view.
+        """
+        r = (await self.db.execute(text("""
+            SELECT nmID, company_id FROM wb_seo_recommendation WHERE id=:i LIMIT 1
+        """), {"i": rec_id})).mappings().first()
+        if not r:
+            return None
+        d = dict(r)
+        if self.company_id is not None and d.get("company_id") != self.company_id:
+            return None
+        nm_id = int(d["nmID"])
+        prows = (await self.db.execute(text("""
+            SELECT phrase, AVG(week_frequency) AS avg_freq, AVG(avg_position) AS avg_pos,
+                   SUM(clicks) AS total_clicks, SUM(orders) AS total_orders, AVG(ctr) AS avg_ctr
+            FROM wb_sr_report_item_phrases
+            WHERE nmID=:n AND `date` BETWEEN :f AND :t
+            GROUP BY phrase ORDER BY total_clicks DESC LIMIT 30
+        """), {"n": nm_id, "f": date_from, "t": date_to})).mappings().all()
+        prows = [dict(x) for x in prows]
+        top_clicks = prows[:10]
+        with_orders = sorted([x for x in prows if (x["total_orders"] or 0) > 0],
+                             key=lambda x: -(x["total_orders"] or 0))[:5]
+        opportunity = sorted([x for x in prows
+                              if 11 <= (x["avg_pos"] or 0) <= 50 and (x["avg_freq"] or 0) > 500],
+                             key=lambda x: -(x["avg_freq"] or 0))[:5]
+        fmt = lambda x: {"phrase": x["phrase"], "freq": int(x["avg_freq"] or 0),
+                         "avg_pos": round(float(x["avg_pos"] or 0), 1),
+                         "clicks": int(x["total_clicks"] or 0), "orders": int(x["total_orders"] or 0)}
+        return {"nmID": nm_id, "period": f"{date_from} — {date_to}",
+                "top_phrases_by_clicks": [fmt(x) for x in top_clicks],
+                "phrases_with_orders": [fmt(x) for x in with_orders],
+                "opportunity_phrases_pos_11_50": [
+                    {k: v for k, v in fmt(x).items() if k != "orders"} for x in opportunity]}
+
     async def _touch(self, rec_id: int, sets: dict) -> bool:
         if self.company_id is not None:
             own = (await self.db.execute(text("""
@@ -261,7 +320,8 @@ class SeoService:
 
     # ---------- AI: build_prompt + process-воркер (порт SeoAnalyzerService) ----------
 
-    async def build_prompt(self, nm_id: int, company_id: int) -> dict | None:
+    async def build_prompt(self, nm_id: int, company_id: int,
+                           date_from: str | None = None, date_to: str | None = None) -> dict | None:
         card = (await self.db.execute(text("""
             SELECT nmID, company_id, subjectName, brand, title, description, characteristics
             FROM wbcards WHERE nmID=:n LIMIT 1
@@ -272,8 +332,8 @@ class SeoService:
         chars_raw = _j(card.get("characteristics")) or []
         chars = [{"name": c.get("name", ""), "value": (", ".join(c["value"]) if isinstance(c.get("value"), list) else c.get("value", ""))}
                  for c in chars_raw[:7]] if isinstance(chars_raw, list) else []
-        date_to = (date.today() - timedelta(days=1)).isoformat()
-        date_from = (date.today() - timedelta(days=30)).isoformat()
+        date_to = date_to or (date.today() - timedelta(days=1)).isoformat()
+        date_from = date_from or (date.fromisoformat(date_to) - timedelta(days=29)).isoformat()
         prows = (await self.db.execute(text("""
             SELECT phrase, AVG(week_frequency) AS avg_freq, AVG(avg_position) AS avg_pos,
                    SUM(clicks) AS total_clicks, SUM(orders) AS total_orders, AVG(ctr) AS avg_ctr
@@ -309,9 +369,9 @@ class SeoService:
         )
         custom = (company.get("seo_prompt") or "").strip()
         system = custom.replace("{DESC_MIN}", str(desc_min)).replace("{DESC_MAX}", str(desc_max)) if custom else default_system
-        if targets and "целев" not in system:
+        if targets:
             tlist = ", ".join(f'"{t["phrase"]}"' for t in targets)
-            system += f" Обязательно включи целевые фразы: [{tlist}] — приоритет выше статистики, вставь естественно."
+            system += f" Целевые фразы P0 — каждая обязана попасть в заголовок или описание: [{tlist}]."
         fmt = lambda r: {"phrase": r["phrase"], "freq": int(r["avg_freq"] or 0),
                          "avg_pos": round(float(r["avg_pos"] or 0), 1),
                          "clicks": int(r["total_clicks"] or 0), "orders": int(r["total_orders"] or 0)}
@@ -330,8 +390,12 @@ class SeoService:
                 "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": json.dumps(user_data, ensure_ascii=False)}]}
 
-    async def _model_candidates(self, company_id: int | None, override: str | None) -> list[str]:
+    async def _model_candidates(self, company_id: int | None, override: str | None,
+                                  allow_global: bool = True) -> list[str]:
+        """Эшелон 1: override или ВСЕ из companies.seo_model; эшелон 2: seo_summary_model
+        (обычно платная!). Эшелон 3 (таблица + хардкод) — только при allow_global."""
         cands: list[str] = []
+        summary_raw = ""
         if override:
             cands = [m.strip() for m in override.split(",") if m.strip()]
         else:
@@ -339,6 +403,21 @@ class SeoService:
             raw = (company.get("seo_model") or "").strip()
             if raw:
                 cands = [m.strip() for m in raw.split(",") if m.strip()]
+            summary_raw = (company.get("seo_summary_model") or "").strip()
+        for m in [x.strip() for x in summary_raw.split(",") if x.strip()]:
+            if m not in cands:
+                cands.append(m)
+        if cands:
+            # свои в активном кулдауне — выкидываем поштучно, остальные пробуем
+            ph = ", ".join(f":m{i}" for i in range(len(cands)))
+            cooling = (await self.db.execute(text(f"""
+                SELECT model_id FROM wb_seo_model
+                WHERE model_id IN ({ph}) AND cooldown_until IS NOT NULL AND cooldown_until > NOW()
+            """), {f"m{i}": m for i, m in enumerate(cands)})).scalars().all()
+            cool = set(cooling)
+            cands = [m for m in cands if m not in cool]
+        if not allow_global:
+            return cands
         rows = (await self.db.execute(text("""
             SELECT model_id FROM wb_seo_model
             WHERE is_active=1 AND (cooldown_until IS NULL OR cooldown_until <= NOW())
@@ -352,7 +431,8 @@ class SeoService:
                 cands.append(fb)
         return cands
 
-    async def _mark_model(self, model_id: str, ok: bool, error: str = "") -> None:
+    async def _mark_model(self, model_id: str, ok: bool, error: str | None = "") -> None:
+        error = error or ""
         try:
             if ok:
                 await self.db.execute(text("""
@@ -362,6 +442,8 @@ class SeoService:
                 """), {"m": model_id})
             else:
                 is429 = ("429" in error) or ("rate-limited" in error)
+                # дохлый slug (модель убрали с free) — гасим сразу, не ждём 10 ошибок
+                dead = ("404" in error) or ("unavailable" in error.lower())
                 row = (await self.db.execute(text("""
                     SELECT consecutive_errors FROM wb_seo_model WHERE model_id=:m LIMIT 1
                 """), {"m": model_id})).mappings().first()
@@ -369,26 +451,42 @@ class SeoService:
                 minutes = [5, 15, 60, 180][ce - 1] if ce <= 4 else 180
                 await self.db.execute(text("""
                     UPDATE wb_seo_model SET error_count=error_count+1, consecutive_errors=:ce,
-                      last_error=:e, updated_at=NOW(),
+                      last_error=CASE WHEN :dead THEN CONCAT(LEFT(:e, 450), ' | dead slug') ELSE :e END,
+                      updated_at=NOW(),
                       last_429_at=CASE WHEN :r THEN NOW() ELSE last_429_at END,
                       cooldown_until=CASE WHEN :r THEN DATE_ADD(NOW(), INTERVAL :mm MINUTE) ELSE cooldown_until END,
-                      is_active=CASE WHEN :ce >= 10 THEN 0 ELSE is_active END
+                      is_active=CASE WHEN :dead THEN 0 WHEN :ce >= 10 THEN 0 ELSE is_active END
                     WHERE model_id=:m
-                """), {"ce": ce, "e": error[:480], "r": 1 if is429 else 0, "mm": minutes, "m": model_id})
+                """), {"ce": ce, "e": error[:480], "r": 1 if is429 else 0, "mm": minutes,
+                       "m": model_id, "dead": 1 if dead else 0})
             await self.db.commit()
         except Exception:
             await self.db.rollback()
 
-    async def start_process(self, nm_ids: list[int], created_by: int | None, background) -> int:
+    async def start_process(self, nm_ids: list[int], created_by: int | None, background,
+                            date_from: str | None = None, date_to: str | None = None,
+                            allow_global: bool = False) -> int:
         from backend.services import ai_job_service as jobs
+        from datetime import date as _date
         nm_ids = [int(n) for n in nm_ids if int(n) > 0][:100]
         if not nm_ids:
             raise ValueError("empty nm_ids")
+        try:
+            to = _date.fromisoformat(date_to) if date_to else _date.today() - timedelta(days=1)
+            frm = _date.fromisoformat(date_from) if date_from else to - timedelta(days=29)
+        except ValueError:
+            raise ValueError("bad date, use YYYY-MM-DD")
+        if frm > to:
+            raise ValueError("date_from > date_to")
+        if (to - frm).days > 180:
+            raise ValueError("range max 180 days")
         job_id = await jobs.create_job(
             self.db, company_id=self.company_id, kind="seo_process",
             nm_id=nm_ids[0] if len(nm_ids) == 1 else None,
             items=[{"ref_id": n, "label": f"nm {n}"} for n in nm_ids],
-            created_by=created_by)
+            created_by=created_by,
+            params={"date_from": frm.isoformat(), "date_to": to.isoformat(),
+                    "allow_global": bool(allow_global)})
         background.add_task(jobs.run_job, job_id)
         return job_id
 
@@ -401,13 +499,25 @@ async def db_rollback_begin(db: AsyncSession) -> None:
 
 
 async def execute_process_job(job_id: int, db: AsyncSession) -> None:
-    """Воркер kind=seo_process: item(ref=nmID) → build_prompt → кандидаты моделей → запись status=new."""
+    """Воркер kind=seo_process: item(ref=nmID) → build_prompt(даты из job.params) →
+    эшелон компании (без confirm-флага — только свои) → запись status=new."""
     svc = SeoService(db, None)
     job = (await db.execute(
         text("SELECT * FROM ai_job WHERE id=:j LIMIT 1"), {"j": job_id})).mappings().first()
     if not job:
         return
     job = dict(job)
+    import json as _json
+    raw_p = job.get("params")
+    try:
+        params = _json.loads(raw_p) if isinstance(raw_p, str) else (raw_p or {})
+    except ValueError:
+        params = {}
+    if not isinstance(params, dict):
+        params = {}
+    p_from = params.get("date_from")
+    p_to = params.get("date_to")
+    allow_global = bool(params.get("allow_global"))
     items = (await db.execute(
         text("SELECT * FROM ai_job_item WHERE job_id=:j AND status='pending' ORDER BY id"),
         {"j": job_id})).mappings().all()
@@ -440,13 +550,17 @@ async def execute_process_job(job_id: int, db: AsyncSession) -> None:
                 await mark(item["id"], "error", error=f"Карточка nmID {nm_id} не найдена")
                 continue
             company_id = dict(card)["company_id"] or job["company_id"] or 1
-            built = await svc.build_prompt(nm_id, company_id)
+            built = await svc.build_prompt(nm_id, company_id, p_from, p_to)
             if not built:
                 await mark(item["id"], "error", error="buildPrompt failed")
                 continue
             last_err = "All models failed"
             rec_id = None
-            cands = await svc._model_candidates(company_id, None)
+            cands = await svc._model_candidates(company_id, None, allow_global)
+            if not cands:
+                await mark(item["id"], "error",
+                           error="модели компании недоступны (seo_model пуст или всё в кулдауне)")
+                continue
             for i, try_model in enumerate(cands):
                 await progress(item["id"], f"кандидат {i + 1}/{len(cands)}: {try_model}")
                 res = await llm.chat(db, built["messages"], company_id,

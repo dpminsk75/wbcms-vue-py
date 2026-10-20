@@ -42,4 +42,10 @@ export const wbSearchApi = {
     })
     return data
   },
+  async analytics(q: string, dateFrom: string, dateTo: string, sort = 'freq', page = 1, pageSize = 50): Promise<any> {
+    const { data } = await api.get('/api/wb-search/analytics', {
+      params: { q: q || undefined, date_from: dateFrom, date_to: dateTo, sort, page, page_size: pageSize },
+    })
+    return data
+  },
 }

@@ -110,6 +110,100 @@ class WbSearchService:
         models.sort(key=lambda m: m["total_clicks"], reverse=True)
         return models, unique_dates
 
+    async def analytics(self, date_from: str, date_to: str,
+                      q: str | None = None, sort: str = "freq",
+                      page: int = 1, page_size: int = 50) -> dict:
+        """Частотность фраз за период vs предыдущий равный период.
+
+        Метрика недельная (frequency_current == week_frequency всегда,
+        проверено 2026-10-15: 241k строк, diff=0) — это СРЕДНЕСУТОЧНАЯ
+        частота (совпадает с колонкой WB «в среднем за день» 1в1).
+        «Количество запросов» WB = AVG дневных MAX × N дней периода.
+        Дедуп nmID обязателен: одна фраза приходит по нескольким артикулам.
+        Порог MAX > 1. Позиции: AVG/MIN по ненулевым avg_position."""
+        from datetime import date as _date, timedelta
+        d1 = _date.fromisoformat(date_from)
+        d2 = _date.fromisoformat(date_to)
+        n = (d2 - d1).days + 1
+        p2 = d1 - timedelta(days=1)
+        p1 = p2 - timedelta(days=n - 1)
+        params: dict = {"p1": p1.isoformat(), "c2": d2.isoformat(),
+                        **self._company_params()}
+        like = ""
+        if q and q.strip():
+            like = " AND p.phrase LIKE :q"
+            params["q"] = f"%{q.strip()}%"
+        rows = (await self.db.execute(text(f"""
+            SELECT p.phrase, p.date,
+                MAX(p.week_frequency) AS freq,
+                AVG(NULLIF(p.avg_position, 0)) AS avg_pos,
+                MIN(NULLIF(p.avg_position, 0)) AS best_pos,
+                SUM(p.clicks) AS clicks, SUM(p.orders) AS orders
+            FROM wb_sr_report_item_phrases p
+            WHERE p.date BETWEEN :p1 AND :c2{self._company_where()}{like}
+            GROUP BY p.phrase, p.date
+        """), params)).mappings().all()
+        cur: dict[str, dict] = {}
+        prev: dict[str, dict] = {}
+        for r in rows:
+            cell = {"freq": int(r["freq"] or 0),
+                    "pos": float(r["avg_pos"]) if r["avg_pos"] is not None else None,
+                    "best": int(r["best_pos"]) if r["best_pos"] is not None else None,
+                    "clicks": int(r["clicks"] or 0),
+                    "orders": int(r["orders"] or 0)}
+            tgt = cur if str(r["date"]) >= date_from else prev
+            tgt.setdefault(r["phrase"], []).append(cell)
+        goods_rows = (await self.db.execute(text(f"""
+            SELECT p.phrase, COUNT(DISTINCT p.nmID) AS goods
+            FROM wb_sr_report_item_phrases p
+            WHERE p.date BETWEEN :d1 AND :d2{self._company_where()}{like}
+            GROUP BY p.phrase
+        """), {"d1": date_from, "d2": date_to,
+               **self._company_params(),
+               **({"q": params["q"]} if "q" in params else {})})).mappings().all()
+        goods = {r["phrase"]: int(r["goods"] or 0) for r in goods_rows}
+        models = []
+        for ph, days in cur.items():
+            max_f = max(d["freq"] for d in days)
+            if max_f <= 1:
+                continue
+            avg_c = round(sum(d["freq"] for d in days) / len(days))
+            pd = prev.get(ph, [])
+            avg_p = round(sum(d["freq"] for d in pd) / len(pd)) if pd else 0
+            poses = [d["pos"] for d in days if d["pos"] is not None]
+            bests = [d["best"] for d in days if d["best"] is not None]
+            models.append({
+                "phrase": ph,
+                "freq": avg_c, "freq_max": max_f,
+                "freq_prev": avg_p, "delta": avg_c - avg_p,
+                "total": avg_c * n, "total_prev": avg_p * n,
+                "delta_total": (avg_c - avg_p) * n,
+                "is_new": not pd,
+                "goods": goods.get(ph, 0),
+                "avg_pos": round(sum(poses) / len(poses), 1) if poses else None,
+                "best_pos": min(bests) if bests else None,
+                "clicks": sum(d["clicks"] for d in days),
+                "orders": sum(d["orders"] for d in days),
+            })
+        if sort == "delta":
+            models.sort(key=lambda m: m["delta"], reverse=True)
+        elif sort == "goods":
+            models.sort(key=lambda m: (m["goods"], m["freq"]), reverse=True)
+        elif sort == "orders":
+            models.sort(key=lambda m: (m["orders"], m["freq"]), reverse=True)
+        elif sort == "best":
+            models.sort(key=lambda m: (m["best_pos"] is None, m["best_pos"] or 0))
+        elif sort == "pos":
+            models.sort(key=lambda m: (m["avg_pos"] is None, m["avg_pos"] or 0))
+        else:  # freq/day: порядок одинаковый (total = freq x N дней)
+            models.sort(key=lambda m: (m["freq"], m["freq_max"]), reverse=True)
+        total = len(models)
+        start = (page - 1) * page_size
+        return {"models": models[start:start + page_size], "total": total,
+                "page": page, "page_size": page_size,
+                "date_from": date_from, "date_to": date_to,
+                "prev_from": p1.isoformat(), "prev_to": p2.isoformat()}
+
     async def phrases_directory(self, q: str | None = None, limit: int = 1000) -> list[dict]:
         """Порт phrasesMap: живые фразы для селекта."""
         sql = """

@@ -9,19 +9,37 @@
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import json as _json
+
 KINDS = ("competitor_analyze_all", "seo_process")
 
 
+def _parse_params(raw) -> dict | None:
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            out = _json.loads(raw)
+            return out if isinstance(out, dict) else None
+        except ValueError:
+            return None
+    return None
+
+
 async def create_job(db: AsyncSession, *, company_id: int | None, kind: str,
-                     nm_id: int | None, items: list[dict], created_by: int | None) -> int:
+                     nm_id: int | None, items: list[dict], created_by: int | None,
+                     params: dict | None = None) -> int:
     if kind not in KINDS:
         raise ValueError(f"unknown job kind: {kind}")
     await db.rollback()  # сбрасываем autobegin от deps перед begin (как в companies.py)
     async with db.begin():
         await db.execute(text("""
-            INSERT INTO ai_job (company_id, kind, nm_id, status, total, done, created_by)
-            VALUES (:c, :k, :n, 'queued', :t, 0, :u)
-        """), {"c": company_id, "k": kind, "n": nm_id, "t": len(items), "u": created_by})
+            INSERT INTO ai_job (company_id, kind, nm_id, status, total, done, created_by, params)
+            VALUES (:c, :k, :n, 'queued', :t, 0, :u, :p)
+        """), {"c": company_id, "k": kind, "n": nm_id, "t": len(items), "u": created_by,
+               "p": _json.dumps(params, ensure_ascii=False) if params else None})
         job_id = (await db.execute(text("SELECT LAST_INSERT_ID()"))).scalar()
         for it in items:
             await db.execute(text("""
@@ -49,6 +67,7 @@ async def get_job(db: AsyncSession, job_id: int) -> dict | None:
             {"j": job_id},
         )).mappings().all()
     out = dict(job)
+    out["params"] = _parse_params(out.get("params"))
     for k in ("created_at", "updated_at"):
         if hasattr(out.get(k), "isoformat"):
             out[k] = out[k].isoformat()

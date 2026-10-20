@@ -5,16 +5,16 @@
     </div>
 
     <div class="row mb-3">
-      <div class="col-md-6">
-        <UniversalFilter
+      <div class="col-md-12">
+        <WbSearchFilter
           label="Корень фразы"
           :data="phraseOptions"
-          :allow-custom="true"
           placeholder="Введите корень фразы..."
-          v-model="filters.phrase_text"
+          v-model:phrase="filters.phrase_text"
           v-model:date-from="filters.date_from"
           v-model:date-to="filters.date_to"
-          :default-days="90"
+          default-preset="90"
+          preset-end="yesterday"
           @apply="onApply"
           @reset="onReset"
         />
@@ -84,7 +84,7 @@ import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import UniversalFilter from '@/components/common/UniversalFilter.vue'
+import WbSearchFilter from '@/components/common/WbSearchFilter.vue'
 import { wbSearchApi } from '@/api/search'
 
 use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])

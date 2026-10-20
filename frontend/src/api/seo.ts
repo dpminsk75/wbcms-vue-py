@@ -18,6 +18,13 @@ export interface SeoRec {
 
 export interface SeoTarget { id: number; nmID: number; phrase: string; priority: number; is_active: number }
 
+export interface SeoPhrases {
+  nmID: number; period: string;
+  top_phrases_by_clicks: Array<{ phrase: string; freq: number; avg_pos: number; clicks: number; orders: number }>;
+  phrases_with_orders: Array<{ phrase: string; freq: number; avg_pos: number; clicks: number; orders: number }>;
+  opportunity_phrases_pos_11_50: Array<{ phrase: string; freq: number; avg_pos: number; clicks: number }>;
+}
+
 export const seoApi = {
   list: (status = 'new', q = '', page = 1) =>
     api.get('/api/seo/recommendations', { params: { status, q, page } }).then((r) => r.data as {
@@ -34,14 +41,20 @@ export const seoApi = {
     }),
   view: (id: number) =>
     api.get(`/api/seo/recommendations/${id}`).then((r) => r.data as SeoRec & { targets: SeoTarget[]; raw_json?: any }),
+  phrases: (id: number, date_from?: string, date_to?: string) =>
+    api.get(`/api/seo/recommendations/${id}/phrases`, { params: { date_from, date_to } }).then((r) => r.data as SeoPhrases),
   markViewed: (id: number) =>
     api.post(`/api/seo/recommendations/${id}/viewed`).then((r) => r.data),
   requeue: (id: number) =>
     api.post(`/api/seo/recommendations/${id}/requeue`).then((r) => r.data),
   addTarget: (nmID: number, phrase: string) =>
     api.post('/api/seo/targets', { nmID, phrase }).then((r) => r.data as { id: number }),
+  targets: (nmID: number) =>
+    api.get('/api/seo/targets', { params: { nm_id: nmID } }).then((r) => r.data as {
+      nm_id: number; items: SeoTarget[]; limit: number;
+    }),
   removeTarget: (id: number) =>
     api.delete(`/api/seo/targets/${id}`).then((r) => r.data),
-  process: (nm_ids: number[]) =>
-    api.post('/api/seo/process', { nm_ids }).then((r) => r.data as { job_id: number }),
+  process: (nm_ids: number[], opts?: { date_from?: string; date_to?: string; fallback?: boolean }) =>
+    api.post('/api/seo/process', { nm_ids, ...opts }).then((r) => r.data as { job_id: number }),
 }

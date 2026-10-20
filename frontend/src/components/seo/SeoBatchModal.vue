@@ -18,12 +18,14 @@
           <span v-else-if="it.status === 'error'" class="text-danger"><i class="bi bi-x-circle"></i></span>
           <span v-else class="spinner-border spinner-border-sm text-primary"></span>
           {{ it.label }}
+          <span v-if="it.note && (it.status === 'pending' || it.status === 'processing')" class="text-muted small"> — {{ it.note }}</span>
           <span v-if="it.error" class="text-danger small"> — {{ it.error }}</span>
           <router-link v-if="it.status === 'done' && it.result?.rec_id" :to="`/seo/view/${it.result.rec_id}`" class="small">открыть</router-link>
         </li>
       </ul>
       <div class="page-seo__modal-foot">
         <button type="button" class="btn btn-outline-danger btn-sm" @click="onAbort"><i class="bi bi-stop-circle"></i> Прервать</button>
+        <button v-if="showFallback" type="button" class="btn btn-warning btn-sm" @click="$emit('fallback')"><i class="bi bi-globe"></i> Попробовать общие модели</button>
         <button type="button" class="btn btn-secondary btn-sm" @click="$emit('close')">Свернуть (фоном)</button>
       </div>
       <div class="small text-muted">Прервать — остановит опрос (сервер дожмёт текущую карточку). Свернуть — продолжит в фоне.</div>
@@ -36,14 +38,27 @@ import { computed, onMounted, watch } from 'vue'
 import { useAiJob } from '../../composables/useAiJob'
 
 const props = defineProps<{ jobId: number | null; open: boolean }>()
-const emit = defineEmits<{ (e: 'close'): void; (e: 'done'): void }>()
+const emit = defineEmits<{ (e: 'close'): void; (e: 'done'): void; (e: 'fallback'): void }>()
 
 const job = useAiJob()
+// свои модели не ответили, общие ещё не пробовали — предложить confirm (как в PHP view)
+const showFallback = computed(() => {
+  const j = job.job.value
+  if (!j || !job.finished.value) return false
+  if (j.params?.allow_global) return false
+  const items = j.items || []
+  return items.length > 0 && items.every((i) => i.status === 'error')
+})
+const activeNote = computed(() => {
+  const it = (job.job.value?.items || []).find((i) => i.status === 'processing' || (i.status === 'pending' && i.note))
+  return it?.note || ''
+})
 const statusText = computed(() => {
   const j = job.job.value
   if (!j) return 'Старт...'
   if (job.finished.value) return j.status === 'done' ? `Готово: ${j.total} шт` : `Завершено с ошибкой: ${j.error || j.status}`
-  return `Обрабатываю ${Math.min(j.done + 1, j.total)}/${j.total}...`
+  const base = `Обрабатываю ${Math.min(j.done + 1, j.total)}/${j.total}...`
+  return activeNote.value ? `${base} ${activeNote.value}` : base
 })
 
 onMounted(() => { if (props.jobId) job.start(props.jobId) })

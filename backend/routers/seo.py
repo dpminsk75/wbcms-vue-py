@@ -59,6 +59,32 @@ async def seo_view(
     return data
 
 
+@router.get("/recommendations/{rec_id}/phrases")
+async def seo_phrases(
+    rec_id: int = Path(..., ge=1),
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Живой пересчёт блока 'Поисковые фразы из расчета' за даты (дефолт 30д до вчера)."""
+    from datetime import date as _date, timedelta
+    try:
+        to = _date.fromisoformat(date_to) if date_to else _date.today() - timedelta(days=1)
+        frm = _date.fromisoformat(date_from) if date_from else to - timedelta(days=29)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="bad date, use YYYY-MM-DD")
+    if frm > to:
+        raise HTTPException(status_code=400, detail="date_from > date_to")
+    if (to - frm).days > 180:
+        raise HTTPException(status_code=400, detail="range max 180 days")
+    data = await SeoService(db, company_id).get_phrases_period(rec_id, frm.isoformat(), to.isoformat())
+    if not data:
+        raise HTTPException(status_code=404, detail="recommendation not found")
+    return data
+
+
 @router.post("/recommendations/{rec_id}/viewed")
 async def seo_viewed(
     rec_id: int = Path(..., ge=1),
@@ -81,6 +107,20 @@ async def seo_requeue(
     if not await SeoService(db, company_id).set_requeue(rec_id):
         raise HTTPException(status_code=404, detail="recommendation not found")
     return {"ok": True}
+
+
+@router.get("/targets")
+async def seo_list_targets(
+    nm_id: int = Query(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Целевые фразы карточки (модалка «Целевые» на /wb/detail)."""
+    data = await SeoService(db, company_id).list_targets(nm_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="card not found")
+    return data
 
 
 @router.post("/targets")
@@ -118,11 +158,15 @@ async def seo_process(
     user: dict = Depends(require_seo),
     company_id: int | None = Depends(get_current_company),
 ):
-    """Вариант B: job на 1..100 nmID (item = карточка), фронт поллит /api/ai-jobs/{id}."""
+    """Вариант B: job на 1..100 nmID (item = карточка), фронт поллит /api/ai-jobs/{id}.
+    Даты окна фраз (дефолт 30д до вчера) и fallback=1 (общие модели после confirm) — в params job."""
     raw = payload.get("nm_ids") or payload.get("nmID") or payload.get("nm_id")
     nm_ids = raw if isinstance(raw, list) else [raw]
     try:
-        job_id = await SeoService(db, company_id).start_process(nm_ids, user["id"], background)
+        job_id = await SeoService(db, company_id).start_process(
+            nm_ids, user["id"], background,
+            date_from=payload.get("date_from"), date_to=payload.get("date_to"),
+            allow_global=bool(payload.get("fallback") or payload.get("allow_global")))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"job_id": job_id}

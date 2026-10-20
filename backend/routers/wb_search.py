@@ -79,3 +79,22 @@ async def search_phrase(
         "date_from": date_from,
         "date_to": date_to,
     }
+
+
+@router.get("/analytics")
+async def search_analytics(
+    date_from: str = Query(...),
+    date_to: str = Query(...),
+    q: str | None = Query(default=None),
+    sort: str = Query(default="freq"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=5000),
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    svc = WbSearchService(db, company_id=company_id)
+    return await svc.analytics(
+        date_from, date_to, q,
+        sort if sort in ("freq", "day", "delta", "goods", "pos", "best",
+                         "orders") else "freq",
+        page, page_size)

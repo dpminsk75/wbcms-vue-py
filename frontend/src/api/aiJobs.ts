@@ -12,6 +12,7 @@ export interface AiJob {
   id: number; company_id: number | null; kind: string; nm_id: number | null;
   status: AiJobStatus; total: number; done: number; error?: string | null;
   items: AiJobItem[]; created_at?: string; updated_at?: string;
+  params?: { date_from?: string; date_to?: string; allow_global?: boolean } | null;
 }
 
 export const aiJobsApi = {
