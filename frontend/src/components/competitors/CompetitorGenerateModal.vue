@@ -81,6 +81,7 @@
           <span class="page-gen__done-ok"><i class="bi bi-check-circle-fill"></i> Готово</span>
           <span class="page-gen__muted">{{ result.model || '—' }} · {{ elapsed }} с</span>
         </div>
+        <div v-if="copyError" class="wb-error">{{ copyError }}</div>
 
         <div class="page-gen__block">
           <div class="page-gen__block-head">
@@ -146,6 +147,7 @@ import {
   type NewCardGenerateResult,
   type NewCardRunStatus,
 } from '../../api/competitorsNewcard'
+import { copyText } from '../../utils/clipboard'
 
 const props = defineProps<{
   open: boolean
@@ -166,6 +168,7 @@ const result = ref<NewCardGenerateResult | null>(null)
 const elapsed = ref(0)
 const resultAt = ref('')
 const copying = ref(false)
+const copyError = ref('')
 const runInfo = ref<NewCardRunStatus | null>(null)
 
 const MAX_PROMPT_PHRASES = 12
@@ -254,6 +257,7 @@ async function run() {
   if (!nm) return
   state.value = 'running'
   error.value = ''
+  copyError.value = ''
   result.value = null
   runInfo.value = null
   elapsed.value = 0
@@ -287,11 +291,9 @@ async function run() {
 }
 
 async function copy(text: string) {
-  try {
-    await navigator.clipboard.writeText(text || '')
-  } catch {
-    error.value = 'Браузер не дал доступ к буферу обмена'
-    state.value = 'error'
+  copyError.value = ''
+  if (!await copyText(text || '')) {
+    copyError.value = 'Не удалось скопировать текст'
   }
 }
 

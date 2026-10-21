@@ -3,10 +3,12 @@
 Пишем ТОЛЬКО:
 - `wb_competitor_details`         — контент, один на nm (UNIQUE nm_id), общий для всех компаний;
 - `wb_competitor_capture`         — видимость nm × company (m:n), кто первым/последним видел;
-- `wb_competitor_details_history` — снимок при новом content_hash (дедуп по md5, без ретеншна).
+- `wb_competitor_details_history` — снимок при новом content_hash (дедуп по md5, без ретеншна);
+- `wb_enrich_queue`                — только `need_update` → `done` (контент уже обновлён).
 
-НЕ трогаем: `wb_competitor_cards`, `wb_enrich_queue`, `wb_competitor_analysis` — привязка только
-вручную на /competitor/captured (§8.5).
+НЕ трогаем: `wb_competitor_cards`, `wb_competitor_analysis` — привязка только вручную
+на /competitor/captured (§8.5). В `wb_enrich_queue` закрываем только `need_update`:
+успешный capture уже обновил контент, повторный обход не нужен.
 
 Правила:
 - своя карточка (`wbcards.company_id` = наша или NULL-легаси) → skip `own_card`, если нет `allow_own`;
@@ -25,11 +27,35 @@ from sqlalchemy.ext.asyncio import AsyncSession
 FRESH_HOURS = 24
 
 
+def _norm_chars(raw) -> str:
+    """Характеристики в канонической строке JSON.
+
+    MySQL отдаёт JSON-колонку нормализованной (ключи объектов отсортированы), Python — нет.
+    Приводим к одному виду (sort_keys), чтобы хэш контента совпадал на всех путях записи
+    (capture / enrich) и история не плодила дубли снимков.
+    """
+    val = raw
+    if isinstance(val, (bytes, bytearray)):
+        val = val.decode("utf-8", "replace")
+    if isinstance(val, str):
+        s = val.strip()
+        if not s:
+            return "[]"
+        try:
+            val = json.loads(s)
+        except (TypeError, ValueError):
+            return s
+    try:
+        return json.dumps(val or [], ensure_ascii=False, sort_keys=True)
+    except (TypeError, ValueError):
+        return "[]"
+
+
 def content_hash(title: str, description: str, characteristics: str,
                  price: str, old_price: str) -> str:
     """md5 от значимых полей контента (порядок фиксирован, json — стабильный)."""
     payload = json.dumps(
-        [title or "", description or "", characteristics or "[]", price or "", old_price or ""],
+        [title or "", description or "", _norm_chars(characteristics), price or "", old_price or ""],
         ensure_ascii=False,
     )
     return hashlib.md5(payload.encode("utf-8")).hexdigest()
@@ -93,7 +119,12 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
                 ON DUPLICATE KEY UPDATE
                   last_seen_at=NOW(), last_seen_by=:uid, is_own=:own, is_hidden=0
             """), {"n": nm_id, "cid": company_id, "uid": user_id, "own": 1 if is_own else 0})
-            await db.commit()
+        # Контент уже свежий — назначенное обновление считаем выполненным.
+        await db.execute(text("""
+            UPDATE wb_enrich_queue SET status='done', processed_at=NOW()
+            WHERE nm_id=:n AND status='need_update'
+        """), {"n": nm_id})
+        await db.commit()
         return {"skipped": True, "reason": "fresh", "nm_id": nm_id, "age_h": age_h,
                 "collected_at": _iso(existing["collected_at"]), "is_own": is_own}
 
@@ -181,6 +212,12 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
                 VALUES (:n, :t, :d, :chars, :b, :s, :p, :o, :img, :h, :cid, :uid, 'capture')
             """), {**params, "h": h})
             history = "inserted"
+
+        # Успешный capture обновил контент — закрываем назначенное обновление.
+        await db.execute(text("""
+            UPDATE wb_enrich_queue SET status='done', processed_at=NOW()
+            WHERE nm_id=:n AND status='need_update'
+        """), {"n": nm_id})
 
     return {
         "ok": True, "skipped": False, "nm_id": nm_id, "is_own": is_own,

@@ -47,6 +47,7 @@
       {"label": "Конкуренты (новый товар)", "url": "/competitor/new-cards", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
       {"label": "Собранные карточки", "url": "/competitor/captured", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
       {"label": "Подбор конкурентов", "url": "/competitor/pick", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
+      {"label": "Обновление конкурентов", "url": "/competitor/refresh", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Затраты ИИ", "url": "/seo/ai-usage", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]}
     ]

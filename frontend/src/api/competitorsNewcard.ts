@@ -21,11 +21,19 @@ export interface NewCardRow {
   summary_cnt: number
 }
 
+export interface PhraseCompetitor {
+  nm_id: number
+  title?: string | null
+}
+
 export interface NewCardPhrase {
   id: number
   phrase: string
   source: 'ai' | 'db' | 'manual' | string
   hit_cnt: number
+  variants_cnt: number
+  variants: string[]
+  competitors: PhraseCompetitor[]
   orders: number
   freq: number
   cards_cnt: number
@@ -62,6 +70,8 @@ export interface NewCardRunStatus {
   model?: string | null
   error?: string | null
   is_free: boolean
+  phase?: 'extract' | 'merge' | string | null
+  done_ids?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -88,11 +98,15 @@ export interface CompetitorQuery {
   id: number; phrase: string; priority: number; is_active: number
   source: string; status: 'pending' | 'processing' | 'done' | 'error'
   added_by?: number | null; created_at?: string
+  found_cnt?: number
+  best_position?: number | null
 }
 
 export interface CompetitorQuerySuggest {
   phrase: string; orders: number; freq: number; cards: number; added: boolean
 }
+
+export type QueueStatus = 'pending' | 'processing' | 'done' | 'error' | 'need_update'
 
 export interface CompetitorRow {
   nm_id: number
@@ -106,6 +120,9 @@ export interface CompetitorRow {
   chars_cnt: number
   collected_at?: string | null
   analysis_status?: string | null
+  queue_status?: QueueStatus | null
+  queue_error?: string | null
+  queue_processed_at?: string | null
   sources: string[]
   phrases?: string | null
   manual: boolean
@@ -136,6 +153,178 @@ export interface CapturedRow {
   attached: CapturedAttachedCard[]
   attached_cnt: number
   history_cnt: number
+}
+
+export interface WbCardOption {
+  nmID: number
+  vendorCode?: string | null
+  title?: string | null
+  brand?: string | null
+  photos?: unknown
+}
+
+// ---------- §16: подбор конкурентов и массовая привязка ----------
+
+export interface PickCard {
+  nmID: number
+  company_id?: number | null
+  title?: string | null
+  brand?: string | null
+  vendor_code?: string | null
+  subject_name?: string | null
+  photo?: string | null
+  competitors_cnt: number
+  content_cnt: number
+}
+
+export interface PickAttachedCard {
+  nm_id: number
+  title?: string | null
+  source?: string | null
+}
+
+export type PickMode = 'recommend' | 'competitors' | 'captured'
+export type PickSort = 'relevance' | 'title_asc' | 'title_desc'
+
+export interface PickRecommendedBy {
+  nm_id: number
+  title?: string | null
+  source_nm_ids: number[]
+}
+
+export interface PickCandidate {
+  nm_id: number
+  title?: string | null
+  brand?: string | null
+  seller?: string | null
+  price?: string | number | null
+  old_price?: string | null
+  photo?: string | null
+  desc_len: number
+  chars_cnt: number
+  collected_at?: string | null
+  in_a: boolean
+  rec_cnt: number
+  recommended_by: number[]
+  recommended_by_cards: PickRecommendedBy[]
+  source_nm_ids: number[]
+  captured: boolean
+  is_own: boolean
+  is_hidden: boolean
+  attached_to: PickAttachedCard[]
+  queue_status?: QueueStatus | null
+  queue_error?: string | null
+  queue_processed_at?: string | null
+  sources: string[]
+  has_content: boolean
+  visible: boolean
+  can_attach: boolean
+}
+
+export interface PickPool {
+  items: PickCandidate[]
+  total: number
+  mode: PickMode
+  source_nm_ids: number[]
+  offset: number
+  limit: number
+  sort: PickSort
+  desc_min_len: number
+  counts: { a_cnt: number; rec_cnt: number; captured_cnt: number }
+}
+
+export interface PickAttachResult {
+  added: number
+  exists: number
+  skipped: number
+  requested: number
+  mode: string
+  target_nm_ids: number[]
+  skipped_candidates: Array<{ nm_id: number; reason: string }>
+  errors: Array<{ nm_id?: number; target_nm_id?: number; error?: string }>
+}
+
+// ---------- §17.2: повторный обход устаревших конкурентов ----------
+
+export type RefreshStatus = 'stale' | 'assigned' | 'queued' | 'processing' | 'error'
+
+export interface RefreshRow {
+  nm_id: number
+  title?: string | null
+  brand?: string | null
+  seller?: string | null
+  photo?: string | null
+  collected_at?: string | null
+  days_old: number
+  attached_to: PickAttachedCard[]
+  attached_cnt: number
+  captured: boolean
+  is_hidden: boolean
+  queue_status?: QueueStatus | null
+  queue_error?: string | null
+  queue_processed_at?: string | null
+  requested_at?: string | null
+  ui_status: RefreshStatus
+}
+
+export interface RefreshList {
+  items: RefreshRow[]
+  total: number
+  days: number
+  counts: Record<RefreshStatus, number>
+  offset: number
+  limit: number
+}
+
+export interface RefreshAssignResult {
+  assigned: number
+  already: number
+  in_progress: number
+  skipped: number
+  requested: number
+  days: number
+  skipped_candidates: Array<{ nm_id: number; reason: string }>
+  errors: Array<{ nm_id?: number; error?: string }>
+}
+
+export interface CompetitorPhrase {
+  phrase_id?: number | null
+  phrase: string
+  canon?: string | null
+  source_nm_id: number
+  source_title?: string | null
+  source_vendor_code?: string | null
+  is_selected?: boolean
+  hit_cnt?: number
+  variants_cnt?: number
+  /** Фраза есть в нашей базе поисковых запросов — WB её отдаёт. */
+  in_db?: boolean
+  orders?: number
+  freq?: number
+  cards_cnt?: number
+  model?: string | null
+  created_at?: string | null
+}
+
+export interface CompetitorDetail {
+  nm_id: number
+  title?: string | null
+  description?: string | null
+  brand?: string | null
+  seller?: string | null
+  subject_name?: string | null
+  url?: string | null
+  price?: string | number | null
+  old_price?: string | number | null
+  images: string[]
+  photo?: string | null
+  characteristics: Array<{ name?: string; value?: string[] | string }>
+  collected_at?: string | null
+  first_collected_at?: string | null
+  attached_to: PickAttachedCard[]
+  attached_cnt: number
+  price_history: Array<{ price?: string | null; old_price?: string | null; at?: string | null }>
+  phrases?: CompetitorPhrase[]
 }
 
 export interface CapturedHistoryItem {
@@ -194,17 +383,40 @@ export const competitorsNewcardApi = {
   detachCompetitor: (nm: number, competitorNm: number) =>
     api.delete(`/api/competitors/new-cards/${nm}/competitors/${competitorNm}`).then((r) => r.data),
 
+  competitorDetails: (nm: number, competitorNm: number) =>
+    api.get(`/api/competitors/new-cards/${nm}/competitors/${competitorNm}/details`)
+      .then((r) => r.data as CompetitorDetail),
+
+  // поиск наших карточек для привязки (nmID / vendorCode / title)
+  searchCards: (q = '', limit = 30) =>
+    api.get('/api/wb/cards', { params: { q, limit } }).then((r) => {
+      const d = r.data
+      return (Array.isArray(d) ? d : (d?.items ?? [])) as WbCardOption[]
+    }),
+
   // ---------- Ш11: фразы + генерация ----------
 
   phrases: (nm: number) =>
     api.get(`/api/competitors/new-cards/${nm}/phrases`)
-      .then((r) => r.data as { nm_id: number; items: NewCardPhrase[]; selected_cnt: number }),
+      .then((r) => r.data as { nm_id: number; items: NewCardPhrase[]; selected_cnt: number; raw_cnt?: number }),
 
   analyzePhrases: (nm: number, runId?: string) =>
     api.post(`/api/competitors/new-cards/${nm}/phrases/analyze`, { run_id: runId || '' }, { timeout: 600000 })
       .then((r) => r.data as {
         items: NewCardPhrase[]; selected_cnt: number; model?: string
         competitors_cnt?: number; prompt_version?: string
+        merge_prompt_version?: string; prompt_source?: string
+        analyzed_cnt?: number; cached_cnt?: number
+        groups_cnt?: number; raw_cnt?: number; merged_cnt?: number
+        errors?: string[]
+      }),
+
+  mergePhrases: (nm: number, runId?: string) =>
+    api.post(`/api/competitors/new-cards/${nm}/phrases/merge`, { run_id: runId || '' }, { timeout: 300000 })
+      .then((r) => r.data as {
+        items: NewCardPhrase[]; selected_cnt: number
+        groups_cnt?: number; raw_cnt?: number; merged_cnt?: number; errors?: string[]
+        merge_prompt_version?: string
       }),
 
   selectPhrases: (nm: number, phrases: string[], selected = true) =>
@@ -227,6 +439,33 @@ export const competitorsNewcardApi = {
     api.get(`/api/competitors/new-cards/${nm}/runs/${runId}`)
       .then((r) => r.data as NewCardRunStatus),
 
+  // ---------- §16: подбор конкурентов и массовая привязка ----------
+
+  pickCards: (q = '', limit = 50) =>
+    api.get('/api/competitors/pick/cards', { params: { q, limit } })
+      .then((r) => r.data as { items: PickCard[]; total: number; desc_min_len: number }),
+
+  pickCandidates: (params: {
+    source_nm_ids?: string
+    mode?: PickMode
+    q?: string
+    only_content?: boolean
+    only_recommended?: boolean
+    limit?: number
+    offset?: number
+    sort?: PickSort
+  }) =>
+    api.get('/api/competitors/pick/candidates', { params })
+      .then((r) => r.data as PickPool),
+
+  pickDetails: (nm: number) =>
+    api.get(`/api/competitors/pick/candidates/${nm}/details`)
+      .then((r) => r.data as CompetitorDetail),
+
+  pickAttach: (payload: { nm_ids: number[]; target_nm_ids: number[]; mode?: PickMode }) =>
+    api.post('/api/competitors/pick/attach', payload)
+      .then((r) => r.data as PickAttachResult),
+
   // ---------- «Собранные карточки» (capture, §8.5) ----------
 
   captured: (q = '', includeHidden = false, limit = 300) =>
@@ -236,6 +475,10 @@ export const competitorsNewcardApi = {
   capturedHistory: (nm: number, limit = 50) =>
     api.get(`/api/competitors/captured/${nm}/history`, { params: { limit } })
       .then((r) => r.data as { nm_id: number; items: CapturedHistoryItem[] }),
+
+  capturedDetails: (nm: number) =>
+    api.get(`/api/competitors/captured/${nm}/details`)
+      .then((r) => r.data as CompetitorDetail),
 
   attachCaptured: (nm: number, source_nm_id: number) =>
     api.post(`/api/competitors/captured/${nm}/attach`, { source_nm_id })
@@ -248,4 +491,23 @@ export const competitorsNewcardApi = {
   hideCaptured: (nm: number, hidden = true) =>
     api.post(`/api/competitors/captured/${nm}/hide`, null, { params: { hidden } })
       .then((r) => r.data as { nm_id: number; is_hidden: boolean }),
+
+  // ---------- §17.2: повторный обход устаревших конкурентов ----------
+
+  refreshList: (params: {
+    days?: number
+    q?: string
+    only_captured?: boolean
+    include_hidden?: boolean
+    source_nm_id?: number | null
+    status?: string
+    limit?: number
+    offset?: number
+  }) =>
+    api.get('/api/competitors/refresh', { params })
+      .then((r) => r.data as RefreshList),
+
+  refreshAssign: (nm_ids: number[], days = 30) =>
+    api.post('/api/competitors/refresh/assign', { nm_ids, days })
+      .then((r) => r.data as RefreshAssignResult),
 }

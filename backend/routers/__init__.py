@@ -19,7 +19,12 @@ from .feedback import router as feedback_router
 from .reply_rules import router as reply_rules_router
 from .wb_tokens import router as wb_tokens_router, expiring_router as wb_tokens_expiring_router
 from .competitor import router as competitor_router
-from .competitors_newcard import router as competitors_newcard_router, captured_router as competitors_captured_router
+from .competitors_newcard import (
+    router as competitors_newcard_router,
+    captured_router as competitors_captured_router,
+    pick_router as competitors_pick_router,
+    refresh_router as competitors_refresh_router,
+)
 from .ai_jobs import router as ai_jobs_router
 from .seo import router as seo_router
 from .seo_models import router as seo_models_router

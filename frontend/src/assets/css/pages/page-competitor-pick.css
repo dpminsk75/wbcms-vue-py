@@ -1,0 +1,138 @@
+/* page-competitor-pick.css — страница /competitor/pick (§16).
+ * Базовые стили таблицы/товара — page-competitor.css, таблица — .wb-admin-table.
+ */
+.page-pick .page-competitor__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+}
+.page-pick .page-competitor__head-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.page-pick__notice { color: #2e7d32; font-size: 13px; margin-bottom: 8px; }
+
+.page-pick__step {
+  margin-bottom: 16px; padding: 12px 14px;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+}
+.page-pick__step-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  flex-wrap: wrap; margin-bottom: 10px;
+}
+.page-pick__step-head h4 { font-size: 15px; margin: 0; display: flex; align-items: center; gap: 8px; }
+.page-pick__step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #0d6efd; color: #fff; font-size: 12px; font-weight: 700;
+}
+
+.page-pick__toolbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 0 0 10px; padding: 10px 12px; background: #f8f9fa;
+  border: 1px solid #e5e7eb; border-radius: 8px;
+}
+.page-pick__toolbar--wrap { align-items: center; }
+.page-pick__search {
+  display: flex; align-items: center; gap: 6px; position: relative; min-width: 280px;
+}
+.page-pick__search > i {
+  position: absolute; left: 10px; color: #999; pointer-events: none;
+}
+.page-pick__search .form-control { padding-left: 30px; }
+.page-pick__pool-search { max-width: 300px; }
+.page-pick__sort { max-width: 190px; }
+.page-pick__muted { font-size: 12px; color: #6b7280; }
+.page-pick__hint { font-size: 12px; color: #6b7280; margin: 0 0 8px; }
+.page-pick__check {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: #444; cursor: pointer;
+}
+.page-pick__check input { margin: 0; }
+
+.page-pick__chips {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 10px;
+}
+.page-pick__chips-label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #888; }
+.page-pick__chip {
+  border: 1px solid #cfd6e4; background: #eef5ff; color: #1f2937;
+  border-radius: 999px; padding: 2px 9px; font-size: 12px; line-height: 1.5;
+}
+.page-pick__chip:hover { border-color: #0d6efd; }
+.page-pick__chip--target { background: #eaf7ee; }
+
+.page-pick__grid td { vertical-align: middle; }
+.page-pick__col-check { width: 32px; }
+.page-pick__col-product { min-width: 320px; }
+.page-pick__col-rec { min-width: 210px; }
+.page-pick__col-status { min-width: 170px; }
+.page-pick__col-attach { min-width: 130px; }
+.page-pick__col-open { width: 64px; }
+.page-pick__row--picked { background: #eef5ff; }
+.page-pick__targets-table tbody tr { cursor: pointer; }
+.page-pick__row--disabled { background: #fbfbfb; }
+.page-pick__row--disabled .page-competitor__product-title { color: #6b7280; }
+.page-pick__row--disabled td { vertical-align: middle; }
+.page-pick__pool td { vertical-align: middle; }
+
+.page-pick__rec { font-size: 12px; color: #4b5563; }
+.page-pick__rec-list {
+  margin-top: 4px; font-family: monospace; font-size: 11px; color: #6b7280;
+  overflow-wrap: anywhere;
+}
+.page-pick__rec-group { display: flex; flex-wrap: wrap; gap: 2px 5px; margin-bottom: 3px; }
+.page-pick__rec-id { white-space: nowrap; }
+.page-pick__rec-link { color: #0d6efd; text-decoration: underline dotted; }
+.page-pick__rec-src { color: #6b7280; }
+.page-pick__rec-more { color: #6b7280; font-style: italic; }
+.page-pick__badges { display: flex; gap: 4px; flex-wrap: wrap; }
+.page-pick__badges .badge { font-weight: 500; }
+.page-pick__attach { white-space: normal; }
+.page-pick__attach-tag { text-decoration: none; font-weight: 500; margin: 0 3px 3px 0; display: inline-block; }
+
+.page-pick__target-list {
+  max-height: 320px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 8px;
+}
+.page-pick__target {
+  display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+  border-bottom: 1px solid #f0f2f5; font-size: 13px; cursor: pointer; margin: 0;
+}
+.page-pick__target:last-child { border-bottom: 0; }
+.page-pick__target:hover { background: #f8f9fa; }
+.page-pick__target.is-picked { background: #eef5ff; }
+.page-pick__target input { margin: 0; }
+.page-pick__target-nm { font-weight: 600; min-width: 82px; }
+.page-pick__target-vendor { font-family: monospace; font-size: 12px; color: #666; min-width: 86px; }
+.page-pick__target-title {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.page-pick__bar {
+  position: sticky; bottom: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap; margin-top: 16px; padding: 10px 14px;
+  background: #fff; border: 1px solid #cfd6e4; border-radius: 10px;
+  box-shadow: 0 -4px 16px rgba(15, 23, 42, .08);
+}
+.page-pick__bar-info { font-size: 13px; color: #1f2937; }
+.page-pick__preview { font-size: 12px; color: #4b5563; margin-top: 2px; }
+.page-pick__bar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* массовая привязка: модалка на /competitor/captured и /competitor/pick */
+.page-pick__bulk-modal { max-width: 760px; width: 100%; }
+.page-pick__bulk-body { padding: 0 16px 8px; }
+.page-pick__bulk-section { margin: 12px 0; }
+.page-pick__bulk-label {
+  margin-bottom: 6px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .04em; color: #888;
+}
+.page-pick__bulk-warn { margin-top: 6px; font-size: 12px; color: #a15c00; }
+.page-pick__bulk-preview {
+  margin: 10px 0 4px; padding: 8px 10px; background: #f8f9fa;
+  border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px;
+}
+.page-pick__bulk-footer {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 10px 16px 14px; border-top: 1px solid #e5e7eb;
+}
+
+@media (max-width: 767px) {
+  .page-pick__search { min-width: 0; width: 100%; }
+  .page-pick__pool-search { max-width: none; width: 100%; }
+  .page-pick__col-product { min-width: 240px; }
+}

@@ -9,6 +9,8 @@
 - wb_competitor_cards без колонки — скоуп через source-карточку (как в CompetitorService);
 - position_bulk: чужой source отбрасываем со счётчиком skipped (403 не шлём — поллер);
 - search_next с чужим nm_id отдаёт {nm_id: None} (поллер, не человек);
+- source=compquery — очередь wb_competitor_query; результаты пишутся в wb_competitor_cards
+  с source='search' (default), query_phrase и position;
 - result UPDATE писан явными параметрами: Flask-форма `SET x=VALUES(x)` вне INSERT
   в MySQL не работает — семантика та же;
 - position collected_at NULL → CURDATE() (колонка DATE NOT NULL, Flask падал бы 500);
@@ -104,16 +106,17 @@ async def ext_status(
         if not await _owns_card(db, cid, nm_id):
             raise HTTPException(status_code=403, detail="foreign source_nm_id")
         rows = (await db.execute(text(f"""
-            SELECT q.status, COUNT(*) as cnt FROM wb_enrich_queue q
+            SELECT q.status, COUNT(DISTINCT q.id) as cnt FROM wb_enrich_queue q
             JOIN wb_competitor_cards c ON c.nm_id=q.nm_id AND c.source_nm_id=:nm
-            WHERE (q.company_id=:cid OR q.company_id IS NULL)
+            WHERE (q.company_id=:cid OR q.company_id IS NULL OR q.status='need_update')
               AND c.source_nm_id IN ({OWNED_CARDS.replace(':cid', ':cid2')})
             GROUP BY q.status
         """), {"nm": nm_id, "cid": cid, "cid2": cid})).mappings().all()
     else:
         rows = (await db.execute(text("""
             SELECT status, COUNT(*) as cnt FROM wb_enrich_queue
-            WHERE company_id=:cid GROUP BY status
+            WHERE company_id=:cid OR company_id IS NULL OR status='need_update'
+            GROUP BY status
         """), {"cid": cid})).mappings().all()
     counts = {r["status"]: r["cnt"] for r in rows}
     return {"total": sum(counts.values()), **counts}
@@ -136,17 +139,23 @@ async def ext_seed(
         if not await _owns_card(db, cid, source):
             raise HTTPException(status_code=403, detail="foreign source_nm_id")
         r = await db.execute(text(f"""
-            INSERT IGNORE INTO wb_enrich_queue (nm_id, company_id)
+            INSERT INTO wb_enrich_queue (nm_id, company_id)
             SELECT DISTINCT nm_id, :cid FROM wb_competitor_cards
             WHERE source_nm_id=:s
               AND nm_id NOT IN (SELECT nm_id FROM wb_competitor_details WHERE collected_at > NOW() - INTERVAL 24 HOUR)
+            ON DUPLICATE KEY UPDATE
+              company_id=IF(company_id IS NULL, :cid, company_id),
+              status=IF((company_id IS NULL OR company_id=:cid) AND status IN ('done', 'error'), 'pending', status)
         """), {"s": source, "cid": cid})
     else:
         r = await db.execute(text(f"""
-            INSERT IGNORE INTO wb_enrich_queue (nm_id, company_id)
+            INSERT INTO wb_enrich_queue (nm_id, company_id)
             SELECT DISTINCT nm_id, :cid FROM wb_competitor_cards
             WHERE source_nm_id IN ({OWNED_CARDS.replace(':cid', ':cid2')})
               AND nm_id NOT IN (SELECT nm_id FROM wb_competitor_details WHERE collected_at > NOW() - INTERVAL 24 HOUR)
+            ON DUPLICATE KEY UPDATE
+              company_id=IF(company_id IS NULL, :cid, company_id),
+              status=IF((company_id IS NULL OR company_id=:cid) AND status IN ('done', 'error'), 'pending', status)
         """), {"cid": cid, "cid2": cid})
     await db.commit()
     return {"added": r.rowcount}
@@ -155,31 +164,54 @@ async def ext_seed(
 @router.get("/next")
 async def ext_next(
     nm_id: int | None = Query(default=None, ge=1, alias="nm_id"),
+    mode: str = Query(default="new"),
     db: AsyncSession = Depends(get_db),
     ext: dict = Depends(require_ext_token),
 ):
-    """Расширение забирает следующий nmID; claim проставляет компанию (старые NULL-строки)."""
+    """Расширение забирает следующий nmID; claim проставляет компанию (старые NULL-строки).
+
+    `mode`:
+    - `new` (по умолчанию) — только pending, как раньше;
+    - `refresh` — только need_update;
+    - `all` — pending, затем need_update.
+    """
     cid = int(ext["company_id"])
+    mode = (mode or "new").strip().lower()
+    if mode not in ("new", "refresh", "all"):
+        mode = "new"
+    if mode == "new":
+        cond = "q.status='pending' AND (q.company_id=:cid OR q.company_id IS NULL)"
+        order = "q.id"
+    elif mode == "refresh":
+        cond = "q.status='need_update'"
+        order = "q.id"
+    else:
+        cond = ("((q.status='pending' AND (q.company_id=:cid OR q.company_id IS NULL))"
+                " OR q.status='need_update')")
+        order = "CASE WHEN q.status='pending' THEN 0 ELSE 1 END, q.id"
     if nm_id:
         if not await _owns_card(db, cid, nm_id):
             return {"nm_id": None}
         row = (await db.execute(text(f"""
             SELECT q.id, q.nm_id FROM wb_enrich_queue q
             JOIN wb_competitor_cards c ON c.nm_id=q.nm_id AND c.source_nm_id=:nm
-            WHERE q.status='pending' AND (q.company_id=:cid OR q.company_id IS NULL)
+            WHERE {cond}
               AND c.source_nm_id IN ({OWNED_CARDS.replace(':cid', ':cid2')})
-            GROUP BY q.id, q.nm_id ORDER BY q.id LIMIT 1
+            GROUP BY q.id, q.nm_id, q.status ORDER BY {order} LIMIT 1
         """), {"nm": nm_id, "cid": cid, "cid2": cid})).mappings().first()
     else:
-        row = (await db.execute(text("""
-            SELECT id, nm_id FROM wb_enrich_queue
-            WHERE status='pending' AND (company_id=:cid OR company_id IS NULL)
-            ORDER BY id LIMIT 1
+        row = (await db.execute(text(f"""
+            SELECT q.id, q.nm_id FROM wb_enrich_queue q
+            WHERE {cond}
+            ORDER BY {order} LIMIT 1
         """), {"cid": cid})).mappings().first()
     if not row:
         return {"nm_id": None}
     await db.execute(text("""
-        UPDATE wb_enrich_queue SET status='processing', company_id=:cid WHERE id=:i
+        UPDATE wb_enrich_queue SET status='processing', company_id=:cid
+        WHERE id=:i
+          AND (status='need_update'
+               OR (status='pending' AND (company_id=:cid OR company_id IS NULL)))
     """), {"cid": cid, "i": row["id"]})
     await db.commit()
     return {"queue_id": row["id"], "nm_id": row["nm_id"]}
@@ -193,6 +225,7 @@ async def ext_result(
 ):
     """Результат обогащения: правило 24ч + «не затирать recs пустыми» (порт 1в1)."""
     cid = int(ext["company_id"])
+    uid = ext.get("created_by")
     nm_id = (payload or {}).get("nm_id")
     try:
         nm_id = int(nm_id) if nm_id else 0
@@ -221,6 +254,7 @@ async def ext_result(
         "p": payload.get("price", ""), "o": payload.get("old_price", ""),
         "img": json.dumps(payload.get("images") or [], ensure_ascii=False),
         "chars": new_chars, "subj": str(payload.get("subject_name") or "")[:255],
+        "cid": cid, "uid": uid,
     }
     if existing:
         age_h = 25.0
@@ -236,7 +270,9 @@ async def ext_result(
                   brand=:b, seller=:s, price=:p, old_price=:o,
                   images=:img, collected_at=NOW(),
                   characteristics=IF(:chars='[]', characteristics, :chars),
-                  subject_name=IF(:subj='', subject_name, :subj)
+                  subject_name=IF(:subj='', subject_name, :subj),
+                  captured_company_id=COALESCE(captured_company_id, :cid),
+                  captured_by=COALESCE(captured_by, :uid)
                 WHERE nm_id=:n
             """), {**params, "r": final_recs})
         else:
@@ -247,18 +283,50 @@ async def ext_result(
                   brand=:b, seller=:s, price=:p, old_price=:o,
                   images=:img, collected_at=NOW(),
                   characteristics=IF(:chars='[]', characteristics, :chars),
-                  subject_name=IF(:subj='', subject_name, :subj)
+                  subject_name=IF(:subj='', subject_name, :subj),
+                  captured_company_id=COALESCE(captured_company_id, :cid),
+                  captured_by=COALESCE(captured_by, :uid)
                 WHERE nm_id=:n
             """), {**params, "r": new_recs})
     else:
         await db.execute(text("""
             INSERT INTO wb_competitor_details
               (nm_id, title, description, recommendations, url, brand, seller, price, old_price, images,
-               characteristics, subject_name, first_collected_at)
-            VALUES (:n, :t, :d, :nr, :u, :b, :s, :p, :o, :img, :chars, :subj, NOW())
+               characteristics, subject_name, first_collected_at, captured_company_id, captured_by)
+            VALUES (:n, :t, :d, :nr, :u, :b, :s, :p, :o, :img, :chars, :subj, NOW(), :cid, :uid)
         """), {**params, "nr": new_recs})
+    # История: снимок при смене content_hash (source='enrich', как в capture_service).
+    cur = (await db.execute(text("""
+        SELECT title, description, characteristics, brand, seller, price, old_price, images
+        FROM wb_competitor_details WHERE nm_id=:n LIMIT 1
+    """), {"n": nm_id})).mappings().first()
+    if cur:
+        chars_raw = cur["characteristics"]
+        if not isinstance(chars_raw, str):
+            chars_raw = json.dumps(chars_raw or [], ensure_ascii=False)
+        h = capture_service.content_hash(
+            cur["title"] or "", cur["description"] or "", chars_raw,
+            cur["price"] or "", cur["old_price"] or "")
+        last = (await db.execute(text("""
+            SELECT content_hash FROM wb_competitor_details_history
+            WHERE nm_id=:n ORDER BY id DESC LIMIT 1
+        """), {"n": nm_id})).first()
+        if not last or last[0] != h:
+            await db.execute(text("""
+                INSERT INTO wb_competitor_details_history
+                  (nm_id, title, description, characteristics, brand, seller, price, old_price,
+                   images, content_hash, captured_company_id, captured_by, source)
+                VALUES (:n, :t, :d, :ch, :b, :s, :p, :o, :img, :h, :cid, :uid, 'enrich')
+            """), {"n": nm_id, "t": cur["title"], "d": cur["description"], "ch": chars_raw,
+                   "b": cur["brand"] or "", "s": cur["seller"] or "", "p": cur["price"] or "",
+                   "o": cur["old_price"] or "", "img": cur["images"] or "", "h": h,
+                   "cid": cid, "uid": uid})
+    # Очередь: контент общий кэш — статус закрываем, но владельца (company_id) НЕ перебиваем:
+    # строка одна на nm_id (uq_nm_id), иначе компания-владелец теряла бы свою очередь.
     await db.execute(text("""
-        UPDATE wb_enrich_queue SET status='done', processed_at=NOW(), company_id=:c WHERE nm_id=:n
+        UPDATE wb_enrich_queue SET status='done', processed_at=NOW(),
+          company_id=COALESCE(company_id, :c)
+        WHERE nm_id=:n
     """), {"n": nm_id, "c": cid})
     await db.commit()
     return {"ok": True}
@@ -291,10 +359,15 @@ async def ext_error(
     ext: dict = Depends(require_ext_token),
 ):
     cid = int(ext["company_id"])
+    try:
+        nm_id = int((payload or {}).get("nm_id") or 0)
+    except (TypeError, ValueError):
+        nm_id = 0
     await db.execute(text("""
-        UPDATE wb_enrich_queue SET status='error', error_msg=:m
+        UPDATE wb_enrich_queue SET status='error', error_msg=:m,
+          company_id=COALESCE(company_id, :c)
         WHERE nm_id=:n AND (company_id=:c OR company_id IS NULL)
-    """), {"m": str((payload or {}).get("error", "unknown"))[:500], "n": (payload or {}).get("nm_id"), "c": cid})
+    """), {"m": str((payload or {}).get("error", "unknown"))[:500], "n": nm_id, "c": cid})
     await db.commit()
     return {"ok": True}
 
@@ -342,11 +415,25 @@ async def ext_search_status(
                 pending += 1
         return {"pending": pending, "done": done}
 
+    async def _compquery_counts() -> dict:
+        where = "company_id=:c AND is_active=1"
+        params = {"c": cid}
+        if nm_id:
+            where += " AND source_nm_id=:n"
+            params["n"] = nm_id
+        rows = (await db.execute(text(f"""
+            SELECT status, COUNT(*) AS cnt FROM wb_competitor_query
+            WHERE {where} GROUP BY status
+        """), params)).mappings().all()
+        return {r["status"]: r["cnt"] for r in rows}
+
     if source == "seo":
         rows = await _seo_counts()
     elif source == "report":
         rep = await _report_counts()
         return rep if "total" in rep else {"total": sum(rep.values()), **rep}
+    elif source == "compquery":
+        rows = await _compquery_counts()
     else:  # both
         rows = await _seo_counts()
         if nm_id:
@@ -384,6 +471,33 @@ async def ext_search_next(
     cid = int(ext["company_id"])
     if nm_id and not await _owns_card(db, cid, nm_id):
         return {"nm_id": None}
+    if source == "compquery":
+        where = "company_id=:c AND is_active=1"
+        params = {"c": cid}
+        if nm_id:
+            where += " AND source_nm_id=:n"
+            params["n"] = nm_id
+        # расширение могли закрыть в середине поиска — снимаем зависший processing
+        await db.execute(text(f"""
+            UPDATE wb_competitor_query SET status='pending'
+            WHERE {where} AND status='processing'
+              AND updated_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE)
+        """), params)
+        await db.commit()
+        row = (await db.execute(text(f"""
+            SELECT id, source_nm_id, phrase FROM wb_competitor_query
+            WHERE {where} AND status='pending'
+            ORDER BY priority, id LIMIT 1
+        """), params)).mappings().first()
+        if row:
+            upd = await db.execute(text("""
+                UPDATE wb_competitor_query SET status='processing', updated_at=NOW()
+                WHERE id=:i AND status='pending'
+            """), {"i": row["id"]})
+            await db.commit()
+            if upd.rowcount:
+                return {"queue_id": row["id"], "nm_id": row["source_nm_id"], "phrase": row["phrase"]}
+        return {"nm_id": None}
     if source in ("seo", "both"):
         if nm_id:
             row = (await db.execute(text(f"""
@@ -420,6 +534,7 @@ async def ext_search_result(
     nm_id = data.get("nm_id")
     phrase = data.get("phrase", "")
     products = data.get("products") or []
+    source = str(data.get("source") or "seo")
     try:
         nm_id = int(nm_id) if nm_id else 0
         queue_id = int(queue_id) if queue_id else None
@@ -438,8 +553,8 @@ async def ext_search_result(
             img = "https:" + img
         await db.execute(text("""
             INSERT INTO wb_competitor_cards
-              (source_nm_id, query_phrase, position, nm_id, title, brand, price, rating, feedbacks, image_url)
-            VALUES (:s, :ph, :pos, :pid, :t, :b, :price, :rating, :fb, :img)
+              (source_nm_id, query_phrase, position, nm_id, title, brand, price, rating, feedbacks, image_url, source)
+            VALUES (:s, :ph, :pos, :pid, :t, :b, :price, :rating, :fb, :img, 'search')
             ON DUPLICATE KEY UPDATE
               position=VALUES(position), title=VALUES(title), brand=VALUES(brand),
               price=VALUES(price), rating=VALUES(rating), feedbacks=VALUES(feedbacks),
@@ -449,19 +564,46 @@ async def ext_search_result(
                "price": p.get("salePriceU", p.get("priceU", 0)),
                "rating": p.get("reviewRating", 0), "fb": p.get("feedbacks", 0), "img": img})
     if queue_id:
-        tgt = (await db.execute(text("SELECT nmID FROM wb_seo_target WHERE id=:i LIMIT 1"),
-                                {"i": queue_id})).mappings().first()
-        if tgt and not await _owns_card(db, cid, int(tgt["nmID"])):
-            await db.rollback()
-            raise HTTPException(status_code=403, detail="foreign queue_id")
-        await db.execute(text("UPDATE wb_seo_target SET status='done' WHERE id=:i"), {"i": queue_id})
-    elif not products:
+        if source == "compquery":
+            q = (await db.execute(text("""
+                SELECT source_nm_id FROM wb_competitor_query
+                WHERE id=:i AND company_id=:c LIMIT 1
+            """), {"i": queue_id, "c": cid})).mappings().first()
+            if not q or int(q["source_nm_id"]) != nm_id:
+                await db.rollback()
+                raise HTTPException(status_code=403, detail="foreign queue_id")
+            await db.execute(text("""
+                UPDATE wb_competitor_query SET status='done', updated_at=NOW() WHERE id=:i
+            """), {"i": queue_id})
+        else:
+            tgt = (await db.execute(text("SELECT nmID FROM wb_seo_target WHERE id=:i LIMIT 1"),
+                                    {"i": queue_id})).mappings().first()
+            if tgt and not await _owns_card(db, cid, int(tgt["nmID"])):
+                await db.rollback()
+                raise HTTPException(status_code=403, detail="foreign queue_id")
+            await db.execute(text("UPDATE wb_seo_target SET status='done' WHERE id=:i"), {"i": queue_id})
+    elif not products and source != "compquery":
         # report-источник с пустым результатом («Не нашлось») — маркируем чтобы не зацикливаться
         await db.execute(text("""
             INSERT IGNORE INTO wb_competitor_cards
               (source_nm_id, query_phrase, position, nm_id, title)
             VALUES (:s, :ph, 0, 0, '(empty)')
         """), {"s": nm_id, "ph": phrase})
+    if source == "compquery":
+        # найденные поиском карточки сразу ставим в очередь на сбор описаний
+        await db.execute(text("""
+            INSERT INTO wb_enrich_queue (nm_id, company_id)
+            SELECT DISTINCT c.nm_id, :c
+            FROM wb_competitor_cards c
+            WHERE c.source_nm_id=:s AND c.query_phrase=:ph AND c.nm_id>0
+              AND c.nm_id NOT IN (
+                  SELECT d.nm_id FROM wb_competitor_details d
+                  WHERE d.collected_at > NOW() - INTERVAL 24 HOUR
+              )
+            ON DUPLICATE KEY UPDATE
+              company_id=IF(company_id IS NULL, :c, company_id),
+              status=IF((company_id IS NULL OR company_id=:c) AND status IN ('done', 'error'), 'pending', status)
+        """), {"c": cid, "s": nm_id, "ph": phrase})
     await db.commit()
     return {"ok": True, "saved": len(products)}
 
@@ -473,11 +615,23 @@ async def ext_search_error(
     ext: dict = Depends(require_ext_token),
 ):
     cid = int(ext["company_id"])
+    data = payload or {}
+    source = str(data.get("source") or "seo")
     try:
-        queue_id = int((payload or {}).get("queue_id") or 0)
+        queue_id = int(data.get("queue_id") or 0)
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="bad queue_id")
     if queue_id:
+        if source == "compquery":
+            q = (await db.execute(text("""
+                SELECT id FROM wb_competitor_query WHERE id=:i AND company_id=:c LIMIT 1
+            """), {"i": queue_id, "c": cid})).mappings().first()
+            if q:
+                await db.execute(text("""
+                    UPDATE wb_competitor_query SET status='error', updated_at=NOW() WHERE id=:i
+                """), {"i": queue_id})
+                await db.commit()
+            return {"ok": True}
         tgt = (await db.execute(text("SELECT nmID FROM wb_seo_target WHERE id=:i LIMIT 1"),
                                 {"i": queue_id})).mappings().first()
         if tgt and not await _owns_card(db, cid, int(tgt["nmID"])):
@@ -506,19 +660,19 @@ async def ext_reset_enrich(
             UPDATE wb_enrich_queue q
             JOIN wb_competitor_cards c ON c.nm_id=q.nm_id
             SET q.status='pending'
-            WHERE q.status='error' AND c.source_nm_id=:n AND (q.company_id=:c OR q.company_id IS NULL)
+            WHERE q.status IN ('error', 'processing') AND c.source_nm_id=:n AND (q.company_id=:c OR q.company_id IS NULL)
         """), {"n": nm_id, "c": cid})
         if r.rowcount == 0:
             # fallback если join не нашёл (прямой фильтр по queue без join — как во Flask)
             r = await db.execute(text("""
                 UPDATE wb_enrich_queue SET status='pending'
-                WHERE status='error' AND (company_id=:c OR company_id IS NULL)
+                WHERE status IN ('error', 'processing') AND (company_id=:c OR company_id IS NULL)
                   AND nm_id IN (SELECT nm_id FROM wb_competitor_cards WHERE source_nm_id=:n)
             """), {"n": nm_id, "c": cid})
     else:
         r = await db.execute(text("""
             UPDATE wb_enrich_queue SET status='pending'
-            WHERE status='error' AND (company_id=:c OR company_id IS NULL)
+            WHERE status IN ('error', 'processing') AND (company_id=:c OR company_id IS NULL)
         """), {"c": cid})
     await db.commit()
     return {"reset": r.rowcount}
@@ -552,6 +706,19 @@ async def ext_reset_search(
                 UPDATE wb_seo_target SET status='pending'
                 WHERE status='error' AND nmID IN ({OWNED_CARDS.replace(':cid', ':c2')})
             """), {"c2": cid})
+        changed = r.rowcount
+    elif source == "compquery":
+        where = "company_id=:c AND is_active=1"
+        params = {"c": cid}
+        if nm_id:
+            if not await _owns_card(db, cid, nm_id):
+                raise HTTPException(status_code=403, detail="foreign nm_id")
+            where += " AND source_nm_id=:n"
+            params["n"] = nm_id
+        r = await db.execute(text(f"""
+            UPDATE wb_competitor_query SET status='pending', updated_at=NOW()
+            WHERE {where} AND status IN ('error', 'processing')
+        """), params)
         changed = r.rowcount
     await db.commit()
     return {"reset": changed}

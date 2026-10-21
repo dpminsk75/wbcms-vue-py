@@ -11,18 +11,23 @@
 - конкуренты (wb_competitor_cards) — nm_id, привязанные к нашему source_nm_id.
 """
 
+import asyncio
+import hashlib
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.database import SessionLocal
 from backend.services import openrouter_service as llm
 from backend.services import llm_provider
 
 # Порог «описания нет»: короче 50 символов считаем пустым (как в §11.2 плана).
 DESC_MIN_LEN = 50
+# §17.2: через сколько дней контент конкурента считаем устаревшим.
+REFRESH_AFTER_DAYS = 30
 MAX_COMPETITORS_PER_REQUEST = 50
 MAX_COMPETITORS_FOR_AI = 20
 MAX_PHRASES = 80
@@ -33,24 +38,82 @@ MAX_AI_ATTEMPTS = 4
 # иначе дефолт провайдера может закончиться на рассуждениях. Плюс reasoning_effort=low.
 PHRASES_MAX_TOKENS = 8000
 # Версии промптов — пишем в результат и ai_log, чтобы понимать, чем сделан текст.
-PHRASES_PROMPT_VERSION = "newcard-phrases-v3"
+PHRASES_PROMPT_VERSION = "newcard-phrases-v4"
+MERGE_PROMPT_VERSION = "newcard-merge-v1"
 DESC_PROMPT_VERSION = "newcard-desc-v3"
 
+# Фраз на ОДНОГО конкурента (промпт) и жёсткий кап на ответ модели.
+PHRASES_PER_COMPETITOR_MIN = 10
+PHRASES_PER_COMPETITOR_MAX = 15
+# Сколько уникальных формулировок отдаём модели за один вызов группировки.
+# 40 — ответ модели короткий (только группы из 2+ фраз), при 60+ резался по токенам.
+MERGE_BATCH = 40
+MERGE_MAX_TOKENS = 6000
+# Сколько LLM-вызовов идёт одновременно. Пул БД: pool_size=5 + max_overflow=5,
+# сервер 1 ГБ, один воркер uvicorn — больше 4 одновременно рискованно.
+LLM_PARALLEL = 4
+# Сколько моделей пробуем на ОДНОГО конкурента (иначе 20 конкурентов × 4 = 80 вызовов).
+PER_CALL_ATTEMPTS = 2
 
-# Промпт извлечения фраз из описаний конкурентов (Ш11).
-DEFAULT_PHRASES_PROMPT = """Ты — SEO-специалист Wildberries. Тебе дают описания карточек конкурентов по одному товару.
-Задача: собрать поисковые фразы, по которым покупатели находят этот товар.
+
+# Промпт извлечения фраз из описания ОДНОГО конкурента (Ш11, v4).
+# С 21.10 анализ идёт по одному конкуренту: так модель не «сплавляет» описания
+# 20 разных товаров и выдаёт конкретные формулировки каждого, а не общие слова
+# категории. Слияние формулировок — отдельным вызовом (DEFAULT_MERGE_PROMPT).
+DEFAULT_PHRASES_PROMPT = """Ты — SEO-специалист Wildberries. Тебе дано описание карточки ОДНОГО конкурента.
+Задача: собрать 10–15 поисковых фраз, по которым покупатели находят ЭТОТ товар.
 Верни ТОЛЬКО JSON без markdown: {"phrases": ["фраза 1", "фраза 2"]}
 Поле должно называться именно `phrases` (не `keywords`).
 Не пиши рассуждений, пояснений и markdown. Первый символ ответа — `{`, последний — `}`.
 
 ПРАВИЛА:
-- 15–40 фраз, 2–4 слова, в нижнем регистре, без знаков препинания и эмодзи.
-- Каждая фраза — законченный поисковый запрос на ЭТОТ товар: содержит название товара/предмета или его общеупотребительный синоним (например «органайзер для белья», «коробка для хранения»).
-- Можно: материал, размер, назначение, для кого, комплектация, сезон, стиль.
+- 10–15 фраз, 2–5 слов, в нижнем регистре, без знаков препинания и эмодзи.
+- Каждая фраза — законченный поисковый запрос на ЭТОТ товар: содержит название товара/предмета или его общеупотребительный синоним (например «органайзер для белья», «коробка для хранения», «книга по вязанию крючком»).
+- Фраза должна читаться как запрос в поиске WB: обычно сначала тип товара или его материал/назначение («книга по вязанию», «пряжа шерсть»).
+- Можно: материал, назначение, для кого, комплектация, сезон, стиль, способ использования.
 - Нельзя: общие маркетинговые обороты («идеальный подарок», «быстрая доставка», «высокое качество», «лучший выбор», «не оставит равнодушным»), призывы, бренды, названия конкурентов, слова «товар», «купить», «wildberries», «оптом».
-- Не дублируй фразы в разных формах и не добавляй ту же фразу с другим порядком слов.
-- Сначала фразы, которые встречаются у большинства конкурентов, потом редкие.
+- Нельзя: конкретные параметры чужой упаковки (масса, объём, количество предметов, цвет, модель) — у нас своя упаковка.
+- Не дублируй фразы в разных формулировках: одна мысль — одна фраза.
+- Сначала самые типичные формулировки для этого товара, потом более редкие.
+- Отвечай на русском."""
+
+# Хвост к своему промпту компании: он написан под общий анализ («15–40 фраз» по
+# ВСЕМ описаниям сразу). Суффикс идёт ПОСЛЕ него — позднее правило побеждает.
+PHRASES_TASK_SUFFIX = """
+
+ВАЖНО (текущий режим): в запросе ОДНО описание карточки — одного конкурента.
+Нужно 10–15 фраз на этот товар (не 15–40: описывать нечего, описаний одно)."""
+
+
+# Промпт слияния формулировок: «книга по вязанию крючком» и «вязание игрушек крючком книга» —
+# одна фраза. Канон берём из ответа модели, но выбор канона потом уточняем по данным
+# (сколько разных конкурентов использует формулировку).
+#
+# ВАЖНО: выводим ТОЛЬКО группы из 2+ фраз. Одиночные фразы сервер добавляет сам —
+# требование «каждая фраза входит в группу» раздувало ответ и модель резала его
+# по лимиту токенов (слияние молча не срабатывало).
+DEFAULT_MERGE_PROMPT = """Ты — SEO-специалист Wildberries. Ниже — поисковые фразы конкурентов; в скобках — сколько разных конкурентов её используют.
+Задача: найти группы ОДИНАКОВЫХ ПО СМЫСЛУ формулировок.
+Верни ТОЛЬКО JSON без markdown: {"groups":[{"canonical":"...","members":["..."]}]}
+Поле должно называться именно `groups` (не `clusters`).
+Не пиши рассуждений, пояснений и markdown. Первый символ ответа — `{`, последний — `}`.
+
+ЧТО ОБЪЕДИНЯТЬ (это один и тот же поисковый запрос, записанный по-разному):
+- перестановка слов: «книга по вязанию крючком» = «вязание крючком книга»;
+- словоформа: «вязанию» = «вязание» = «вязать»;
+- синоним вместо слова: «чай для похудения» = «чай для снижения веса»;
+- лишнее слово-уточнение, не меняющее сути: «книга по вязанию крючком» = «книга по вязанию крючком игрушек» = «вязание игрушек крючком книга».
+
+ЧТО НЕ ОБЪЕДИНЯТЬ (разные запросы):
+- разный смысл: «чай для похудения» и «чай для детей»;
+- разный товар: «органайзер для белья» и «органайзер для кухни».
+
+ПРАВИЛА:
+- Выводи ТОЛЬКО группы, где минимум 2 фразы. Фразы, которые ни с чем не объединил, НЕ упоминай.
+- canonical — самая употребительная формулировка из members (при равенстве — первая). Только формулировка из members, ничего не переписывай.
+- members — исходные фразы без изменений, без сокращений и добавлений.
+- Каждая исходная фраза — максимум в одной группе.
+- Не выдумывай фраз, которых нет во входном списке.
 - Отвечай на русском."""
 
 
@@ -174,6 +237,142 @@ def _phrases_from_parsed(parsed, depth: int = 0):
             if found is not None:
                 return found
     return None
+
+
+def _groups_from_parsed(parsed, depth: int = 0):
+    """Группы формулировок из разных форм ответа модели слияния."""
+    if depth > 4:
+        return None
+    if isinstance(parsed, dict):
+        for key in ("groups", "clusters", "items", "data", "result", "response", "output"):
+            if key in parsed:
+                found = _groups_from_parsed(parsed[key], depth + 1)
+                if found is not None:
+                    return found
+        return None
+    if isinstance(parsed, list):
+        out: list[dict] = []
+        for g in parsed:
+            if isinstance(g, dict):
+                members = g.get("members") or g.get("phrases") or g.get("items") or g.get("variants")
+                canon = g.get("canonical") or g.get("phrase") or g.get("title") or ""
+                if isinstance(members, str):
+                    members = [members]
+                if isinstance(members, list) and members:
+                    out.append({"canonical": str(canon or ""),
+                                "members": [str(x) for x in members]})
+            elif isinstance(g, str) and g.strip():
+                out.append({"canonical": g, "members": [g]})
+        return out or None
+    return None
+
+
+def _validate_groups(groups: list[dict], batch: list[str],
+                     counts: dict[str, int]) -> list[list[str]]:
+    """Строгая валидация ответа модели слияния.
+
+    - члены группы — только реальные фразы из входа;
+    - каждая фраза — максимум в одной группе;
+    - канон берём из members, а окончательный выбор — по данным (counts): у какой
+      формулировки больше разных конкурентов, та и канон;
+    - фразы, не попавшие ни в одну группу, — одиночные группы (ничего не теряем).
+    """
+    known = {_norm_phrase(p) for p in batch}
+    used: set[str] = set()
+    out: list[list[str]] = []
+    for g in groups:
+        members: list[str] = []
+        for m in g.get("members") or []:
+            n = _norm_phrase(m)
+            if n in known and n not in used:
+                used.add(n)
+                members.append(n)
+        if not members:
+            continue
+        canon = _norm_phrase(g.get("canonical") or "")
+        if canon not in members:
+            canon = members[0]
+        # порядок: по числу конкурентов (данные), при равенстве — канон модели
+        members.sort(key=lambda p: (-counts.get(p, 0), 0 if p == canon else 1))
+        out.append(members)
+    for p in batch:
+        n = _norm_phrase(p)
+        if n and n not in used:
+            used.add(n)
+            out.append([n])
+    return out
+
+
+def _comp_content_hash(comp: dict) -> str:
+    """md5 описания конкурента — чтобы не звать модель, если описание не менялось."""
+    payload = "\n".join([
+        str(comp.get("nm_id") or ""),
+        str(comp.get("title") or ""),
+        str(comp.get("description") or ""),
+    ])
+    return hashlib.md5(payload.encode("utf-8")).hexdigest()
+
+
+# Предлоги/союзы — не несут смысла, для ключа перестановок их отбрасываем.
+_MERGE_STOPWORDS = {
+    "по", "для", "от", "с", "в", "на", "и", "к", "о", "об", "из", "у", "за", "до",
+    "при", "без", "под", "над", "то", "же", "ли", "бы", "а", "но", "или", "не",
+}
+
+
+def _perm_key(phrase: str) -> tuple:
+    """Ключ для чистых перестановок слов: значимые слова фразы, отсортированные.
+
+    «книга по вязанию крючком» и «крючком по вязанию книга» дают один ключ —
+    такие группы собираем без модели.
+    """
+    norm = _norm_phrase(phrase)
+    words = [w for w in norm.split() if w not in _MERGE_STOPWORDS]
+    if not words:
+        words = norm.split()
+    return tuple(sorted(words))
+
+
+# Есть ли новая схема фраз (миграция 20261026). True — кэшируем, False — переспрашиваем
+# (после применения миграции подхватится без перезапуска).
+_PHRASE_SCHEMA_OK: bool | None = None
+# Есть ли прогресс-разбора (миграция 20261027): phase/done_ids в wb_competitor_run.
+_RUN_PROGRESS_OK: bool | None = None
+
+
+async def _phrase_schema_ready(db: AsyncSession) -> bool:
+    """Проверка наличия wb_competitor_phrase_comp и колонки variants_cnt."""
+    global _PHRASE_SCHEMA_OK
+    if _PHRASE_SCHEMA_OK:
+        return True
+    try:
+        await db.execute(text("SELECT variants_cnt FROM wb_competitor_phrase LIMIT 1"))
+        await db.execute(text("SELECT id FROM wb_competitor_phrase_comp LIMIT 1"))
+        _PHRASE_SCHEMA_OK = True
+    except Exception:
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        _PHRASE_SCHEMA_OK = False
+    return _PHRASE_SCHEMA_OK
+
+
+async def _run_progress_ready(db: AsyncSession) -> bool:
+    """Есть ли phase/done_ids в wb_competitor_run (миграция 20261027)."""
+    global _RUN_PROGRESS_OK
+    if _RUN_PROGRESS_OK:
+        return True
+    try:
+        await db.execute(text("SELECT phase, done_ids FROM wb_competitor_run LIMIT 1"))
+        _RUN_PROGRESS_OK = True
+    except Exception:
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        _RUN_PROGRESS_OK = False
+    return _RUN_PROGRESS_OK
 
 
 def _unwrap_dict(raw, depth: int = 5) -> dict:
@@ -912,8 +1111,9 @@ class CompetitorsNewcardService:
     async def pick_candidates(self, raw_source_nm_ids, mode: str = "recommend",
                               q: str = "", only_content: bool = False,
                               only_recommended: bool = False,
-                              limit: int = 200, offset: int = 0) -> dict:
-        """Пул кандидатов §16: A ∪ B / только A / вся captured-база компании."""
+                              limit: int = 200, offset: int = 0,
+                              sort: str = "relevance") -> dict:
+        """Пул кандидатов §16: A ∪ B (B — рекомендации конкурентов A) / только A / вся captured-база компании."""
         mode = (mode or "recommend").strip().lower()
         if mode not in ("recommend", "competitors", "captured"):
             raise ValueError("mode: recommend | competitors | captured")
@@ -921,6 +1121,9 @@ class CompetitorsNewcardService:
             raw_source_nm_ids = [x for x in re.split(r"[,;\s]+", raw_source_nm_ids) if x]
         limit = max(1, min(int(limit or 200), 500))
         offset = max(0, int(offset or 0))
+        sort = (sort or "relevance").strip().lower()
+        if sort not in ("relevance", "title_asc", "title_desc"):
+            sort = "relevance"
 
         source_ids: list[int] = []
         base: dict[int, dict] = {}
@@ -929,7 +1132,7 @@ class CompetitorsNewcardService:
             return {
                 "nm_id": nm, "in_a": False, "rec_cnt": 0, "recommended_by": [],
                 "title": "", "brand": "", "price": "", "image_url": "",
-                "collected_at": None, "sources": [],
+                "collected_at": None, "sources": [], "source_nm_ids": [],
             }
 
         if mode in ("recommend", "competitors"):
@@ -942,7 +1145,8 @@ class CompetitorsNewcardService:
                     SELECT nm_id, MAX(title) AS title, MAX(brand) AS brand,
                            MAX(price) AS price, MAX(image_url) AS image_url,
                            MAX(collected_at) AS collected_at,
-                           GROUP_CONCAT(DISTINCT source) AS sources
+                           GROUP_CONCAT(DISTINCT source) AS sources,
+                           GROUP_CONCAT(DISTINCT source_nm_id) AS source_nm_ids
                     FROM wb_competitor_cards
                     WHERE source_nm_id IN ({ph}) AND nm_id > 0
                     GROUP BY nm_id
@@ -958,10 +1162,14 @@ class CompetitorsNewcardService:
                         "image_url": r["image_url"] or "",
                         "collected_at": r["collected_at"],
                         "sources": (r["sources"] or "").split(",") if r["sources"] else [],
+                        "source_nm_ids": _ints(str(r["source_nm_ids"] or "").split(","), 200),
                     })
                     base[n] = item
 
             if mode == "recommend" and base:
+                # B: рекомендации из карточек конкурентов A.
+                # A — это wb_competitor_cards выбранных источников; новые nm_id
+                # добавляем в пул, у существующих A только отмечаем рекомендовавших.
                 a_ids = list(base.keys())
                 for chunk in _chunks(a_ids):
                     ph = ",".join(f":r{i}" for i in range(len(chunk)))
@@ -978,6 +1186,9 @@ class CompetitorsNewcardService:
                             continue
                         seen.add(src)
                         recs = _j(r["recommendations"])
+                        # На всякий случай поддерживаем двойной JSON-анкодинг.
+                        if isinstance(recs, str):
+                            recs = _j(recs)
                         if isinstance(recs, dict):
                             recs = recs.get("items") or recs.get("recommendations") or []
                         if not isinstance(recs, list):
@@ -1021,7 +1232,7 @@ class CompetitorsNewcardService:
         base = {n: v for n, v in base.items() if n not in own}
         if not base:
             return {"items": [], "total": 0, "mode": mode, "source_nm_ids": source_ids,
-                    "offset": offset, "limit": limit, "desc_min_len": DESC_MIN_LEN,
+                    "offset": offset, "limit": limit, "sort": sort, "desc_min_len": DESC_MIN_LEN,
                     "counts": {"a_cnt": 0, "rec_cnt": 0, "captured_cnt": 0}}
 
         ids = list(base.keys())
@@ -1038,7 +1249,10 @@ class CompetitorsNewcardService:
             det = details.get(n) or {}
             m = meta.get(n) or {}
             cap = capture.get(n)
-            sources = b.get("sources") or ((m.get("sources") or "").split(",") if m.get("sources") else [])
+            sources = b.get("sources") or []
+            if not sources and mode == "captured":
+                sources = (m.get("sources") or "").split(",") if m.get("sources") else []
+            rec_by = list(b.get("recommended_by") or [])[:50]
             item = {
                 "nm_id": n,
                 "title": det.get("title") or b.get("title") or m.get("title") or "",
@@ -1052,7 +1266,16 @@ class CompetitorsNewcardService:
                 "collected_at": det.get("collected_at") or b.get("collected_at") or m.get("collected_at"),
                 "in_a": bool(b.get("in_a")),
                 "rec_cnt": int(b.get("rec_cnt") or 0),
-                "recommended_by": list(b.get("recommended_by") or [])[:5],
+                "recommended_by": rec_by,
+                "recommended_by_cards": [
+                    {
+                        "nm_id": src,
+                        "title": (details.get(src) or {}).get("title") or (base.get(src) or {}).get("title") or "",
+                        "source_nm_ids": list((base.get(src) or {}).get("source_nm_ids") or []),
+                    }
+                    for src in rec_by
+                ],
+                "source_nm_ids": list(b.get("source_nm_ids") or []),
                 "captured": bool(cap),
                 "is_own": bool(cap.get("is_own")) if cap else False,
                 "is_hidden": bool(cap.get("is_hidden")) if cap else False,
@@ -1063,8 +1286,9 @@ class CompetitorsNewcardService:
                 "sources": sources,
             }
             item["has_content"] = item["desc_len"] >= DESC_MIN_LEN
-            item["visible"] = bool(item["captured"] or item["in_a"] or item["attached_to"])
-            item["can_attach"] = bool(item["visible"] and not item["is_hidden"] and not item["is_own"])
+            item["visible"] = bool(item["captured"] or item["in_a"] or item["rec_cnt"] or item["attached_to"])
+            # Рекомендации (B) можно привязывать без capture — это основной сценарий §16.
+            item["can_attach"] = bool(not item["is_hidden"] and not item["is_own"])
             if ql:
                 hay = " ".join(str(item.get(k) or "") for k in
                                ("title", "brand", "seller", "nm_id")).lower()
@@ -1084,6 +1308,10 @@ class CompetitorsNewcardService:
             -int(x["chars_cnt"] or 0),
             -_ts(x.get("collected_at")),
         ))
+        if sort == "title_asc":
+            items.sort(key=lambda x: ((x.get("title") or "").strip().lower(), int(x["nm_id"])))
+        elif sort == "title_desc":
+            items.sort(key=lambda x: ((x.get("title") or "").strip().lower(), int(x["nm_id"])), reverse=True)
         total = len(items)
         counts = {
             "a_cnt": sum(1 for x in items if x["in_a"]),
@@ -1097,14 +1325,16 @@ class CompetitorsNewcardService:
             "source_nm_ids": source_ids,
             "offset": offset,
             "limit": limit,
+            "sort": sort,
             "desc_min_len": DESC_MIN_LEN,
             "counts": counts,
         }
 
     async def bulk_attach(self, raw_nm_ids, raw_target_nm_ids,
                           user_id: int | None = None, mode: str = "recommend") -> dict:
-        """Массовая привязка captured-кандидатов к нашим карточкам (§16.5).
+        """Массовая привязка кандидатов к нашим карточкам (§16.5).
 
+        Привязывает конкурентов выбранных карточек, рекомендации (B) и captured-строки.
         Не трогает `search/manual/sibling`, не ставит в очередь, идемпотентна по паре.
         """
         nm_ids = _ints(raw_nm_ids, limit=200)
@@ -1121,7 +1351,6 @@ class CompetitorsNewcardService:
             raise ValueError("Нечего привязывать: кандидаты совпадают с нашими карточками")
 
         capture = await self._capture_map(nm_ids)
-        attached = await self._attached_map(nm_ids)
         eligible: list[int] = []
         skipped_candidates: list[dict] = []
         for n in nm_ids:
@@ -1130,10 +1359,8 @@ class CompetitorsNewcardService:
                 skipped_candidates.append({"nm_id": n, "reason": "own"})
             elif cap and bool(cap.get("is_hidden")):
                 skipped_candidates.append({"nm_id": n, "reason": "hidden"})
-            elif not cap and not attached.get(n):
-                # Нет capture и нет привязки к нашей карточке — кандидат не виден компании.
-                skipped_candidates.append({"nm_id": n, "reason": "not_captured"})
             else:
+                # Кандидат может быть рекомендацией (B) без capture — привязка разрешена.
                 eligible.append(n)
 
         requested = len(nm_ids) * len(target_ids)
@@ -1202,6 +1429,254 @@ class CompetitorsNewcardService:
             "errors": [],
         }
 
+    async def pick_details(self, nm_id: int) -> dict | None:
+        """Карточка кандидата для попапа: capture, привязка или рекомендация (B)."""
+        return await self.details(nm_id)
+
+    async def list_refresh(self, days: int = REFRESH_AFTER_DAYS, q: str = "",
+                           only_captured: bool = False, include_hidden: bool = False,
+                           source_nm_id: int | None = None, status: str = "",
+                           limit: int = 300, offset: int = 0) -> dict:
+        """§17.2: конкуренты, контент которых собирали давно.
+
+        База — объединение привязанных к нашим карточкам и явно собранных
+        компанией. Берём только последнюю запись details; own-карточки и
+        (по умолчанию) скрытые исключаем.
+        """
+        days = max(1, min(int(days or REFRESH_AFTER_DAYS), 3650))
+        limit = max(1, min(int(limit or 300), 500))
+        offset = max(0, int(offset or 0))
+        status = (status or "").strip().lower()
+        if status not in ("", "all", "stale", "assigned", "queued", "processing", "error"):
+            status = ""
+
+        src = None
+        if source_nm_id:
+            src = int(source_nm_id)
+            await self._pick_sources([src])
+
+        params: dict = {
+            "cid": self.company_id,
+            "only_captured": 1 if only_captured else 0,
+            "include_hidden": 1 if include_hidden else 0,
+        }
+        where = [
+            "r.rn=1",
+            "r.last_at IS NOT NULL",
+            f"r.last_at < DATE_SUB(NOW(), INTERVAL {days} DAY)",
+            "(:include_hidden=1 OR COALESCE(cap.is_hidden,0)=0)",
+            "(:only_captured=0 OR COALESCE(cap.capture_cnt,0)>0)",
+            "r.nm_id NOT IN (SELECT nmID FROM wbcards WHERE (:cid IS NULL OR company_id=:cid))",
+        ]
+        if src is not None:
+            where.append("""EXISTS (
+                SELECT 1 FROM wb_competitor_cards csrc
+                WHERE csrc.nm_id=r.nm_id AND csrc.source_nm_id=:src
+            )""")
+            params["src"] = src
+        if q.strip():
+            where.append("""(r.title LIKE :like OR r.brand LIKE :like OR r.seller LIKE :like
+                             OR CAST(r.nm_id AS CHAR) LIKE :like)""")
+            params["like"] = _like(q)
+
+        rows = (await self.db.execute(text(f"""
+            WITH visible AS (
+                SELECT cc.nm_id
+                FROM wb_competitor_cards cc
+                JOIN wbcards w ON w.nmID=cc.source_nm_id
+                WHERE (:cid IS NULL OR w.company_id=:cid)
+                UNION
+                SELECT cap.nm_id
+                FROM wb_competitor_capture cap
+                WHERE (:cid IS NULL OR cap.company_id=:cid)
+            ),
+            ranked AS (
+                SELECT d.nm_id, d.title, d.brand, d.seller, d.images,
+                       COALESCE(d.collected_at, d.first_collected_at) AS last_at,
+                       ROW_NUMBER() OVER (
+                         PARTITION BY d.nm_id
+                         ORDER BY COALESCE(d.collected_at, d.first_collected_at) DESC, d.id DESC
+                       ) AS rn
+                FROM wb_competitor_details d
+                JOIN visible v ON v.nm_id=d.nm_id
+            )
+            SELECT r.nm_id, r.title, r.brand, r.seller, r.images, r.last_at,
+                   DATEDIFF(NOW(), r.last_at) AS days_old,
+                   q.status AS queue_status, q.error_msg AS queue_error,
+                   q.processed_at AS queue_processed_at, q.requested_at,
+                   COALESCE(cap.is_hidden,0) AS is_hidden,
+                   COALESCE(cap.capture_cnt,0) AS capture_cnt
+            FROM ranked r
+            LEFT JOIN (
+                SELECT nm_id, MAX(is_hidden) AS is_hidden, COUNT(*) AS capture_cnt
+                FROM wb_competitor_capture
+                WHERE (:cid IS NULL OR company_id=:cid)
+                GROUP BY nm_id
+            ) cap ON cap.nm_id=r.nm_id
+            LEFT JOIN wb_enrich_queue q ON q.nm_id=r.nm_id
+            WHERE {' AND '.join(where)}
+            ORDER BY r.last_at ASC, r.nm_id
+        """), params)).mappings().all()
+
+        counts = {"stale": 0, "assigned": 0, "queued": 0, "processing": 0, "error": 0}
+        matched: list[tuple[dict, str]] = []
+        for r in rows:
+            qs = str(r["queue_status"] or "")
+            if qs == "need_update":
+                key = "assigned"
+            elif qs == "pending":
+                key = "queued"
+            elif qs == "processing":
+                key = "processing"
+            elif qs == "error":
+                key = "error"
+            else:
+                key = "stale"
+            counts[key] += 1
+            if status not in ("", "all") and key != status:
+                continue
+            matched.append((dict(r), key))
+
+        total = len(matched)
+        page = matched[offset:offset + limit]
+        ids = [int(r["nm_id"]) for r, _ in page]
+        attached = await self._attached_map(ids) if ids else {}
+        items = []
+        for r, key in page:
+            n = int(r["nm_id"])
+            att = attached.get(n, [])
+            items.append({
+                "nm_id": n,
+                "title": r.get("title") or "",
+                "brand": r.get("brand") or "",
+                "seller": r.get("seller") or "",
+                "photo": _photo(r.get("images")),
+                "collected_at": r.get("last_at"),
+                "days_old": int(r.get("days_old") or 0),
+                "attached_to": att,
+                "attached_cnt": len(att),
+                "captured": bool(int(r.get("capture_cnt") or 0)),
+                "is_hidden": bool(r.get("is_hidden")),
+                "queue_status": r.get("queue_status"),
+                "queue_error": r.get("queue_error"),
+                "queue_processed_at": r.get("queue_processed_at"),
+                "requested_at": r.get("requested_at"),
+                "ui_status": key,
+            })
+        return {
+            "items": items,
+            "total": total,
+            "days": days,
+            "counts": counts,
+            "offset": offset,
+            "limit": limit,
+        }
+
+    async def assign_refresh(self, raw_nm_ids, days: int = REFRESH_AFTER_DAYS,
+                             user_id: int | None = None) -> dict:
+        """§17.2: вручную поставить выбранным конкурентам `need_update`.
+
+        Проверяем видимость компании, свежесть и текущий статус очереди.
+        `pending`/`processing` не перебиваем; `done`/`error` переводим в
+        `need_update` (error_msg и processed_at очищаем).
+        """
+        nm_ids = _ints(raw_nm_ids, limit=200)
+        if not nm_ids:
+            raise ValueError("Выберите хотя бы одного конкурента")
+        days = max(1, min(int(days or REFRESH_AFTER_DAYS), 3650))
+        cutoff = datetime.now() - timedelta(days=days)
+
+        own = await self._own_card_ids()
+        attached = await self._attached_map(nm_ids)
+        capture = await self._capture_map(nm_ids)
+        visible = set(attached) | set(capture)
+
+        last_map: dict[int, object] = {}
+        for chunk in _chunks(nm_ids):
+            ph = ",".join(f":d{i}" for i in range(len(chunk)))
+            rows = (await self.db.execute(text(f"""
+                SELECT nm_id, MAX(COALESCE(collected_at, first_collected_at)) AS last_at
+                FROM wb_competitor_details
+                WHERE nm_id IN ({ph})
+                GROUP BY nm_id
+            """), {f"d{i}": v for i, v in enumerate(chunk)})).mappings().all()
+            for r in rows:
+                last_map[int(r["nm_id"])] = r["last_at"]
+
+        queue: dict[int, str] = {}
+        for chunk in _chunks(nm_ids):
+            ph = ",".join(f":q{i}" for i in range(len(chunk)))
+            rows = (await self.db.execute(text(f"""
+                SELECT nm_id, status FROM wb_enrich_queue WHERE nm_id IN ({ph})
+            """), {f"q{i}": v for i, v in enumerate(chunk)})).mappings().all()
+            for r in rows:
+                queue[int(r["nm_id"])] = str(r["status"] or "")
+
+        skipped_candidates: list[dict] = []
+        assignable: list[int] = []
+        already = in_progress = 0
+        cutoff_ts = _ts(cutoff)
+        for n in nm_ids:
+            if n in own:
+                skipped_candidates.append({"nm_id": n, "reason": "own"})
+                continue
+            if n not in visible:
+                skipped_candidates.append({"nm_id": n, "reason": "not_visible"})
+                continue
+            cap = capture.get(n) or {}
+            if bool(cap.get("is_hidden")):
+                skipped_candidates.append({"nm_id": n, "reason": "hidden"})
+                continue
+            last = last_map.get(n)
+            if not last:
+                skipped_candidates.append({"nm_id": n, "reason": "no_content"})
+                continue
+            if _ts(last) >= cutoff_ts:
+                skipped_candidates.append({"nm_id": n, "reason": "fresh"})
+                continue
+            qs = queue.get(n, "")
+            if qs == "processing":
+                in_progress += 1
+                continue
+            if qs in ("pending", "need_update"):
+                already += 1
+                continue
+            assignable.append(n)
+
+        assigned = 0
+        if assignable:
+            await self.db.rollback()
+            async with self.db.begin():
+                for n in assignable:
+                    if n in queue:
+                        r = await self.db.execute(text("""
+                            UPDATE wb_enrich_queue
+                            SET status='need_update', requested_at=NOW(), error_msg=NULL,
+                                processed_at=NULL, company_id=COALESCE(company_id, :cid)
+                            WHERE nm_id=:n AND status IN ('done', 'error')
+                        """), {"n": n, "cid": self.company_id})
+                    else:
+                        r = await self.db.execute(text("""
+                            INSERT IGNORE INTO wb_enrich_queue
+                              (nm_id, company_id, status, requested_at)
+                            VALUES (:n, :cid, 'need_update', NOW())
+                        """), {"n": n, "cid": self.company_id})
+                    if int(r.rowcount or 0) > 0:
+                        assigned += 1
+                    else:
+                        already += 1
+
+        return {
+            "assigned": assigned,
+            "already": already,
+            "in_progress": in_progress,
+            "skipped": len(skipped_candidates),
+            "requested": len(nm_ids),
+            "days": days,
+            "skipped_candidates": skipped_candidates[:50],
+            "errors": [],
+        }
+
     async def history(self, nm_id: int, limit: int = 50) -> dict:
         """Снимки контента (append-only, дедуп по content_hash при capture)."""
         rows = (await self.db.execute(text("""
@@ -1222,6 +1697,84 @@ class CompetitorsNewcardService:
             items.append(d)
         return {"nm_id": nm_id, "items": items}
 
+    async def _competitor_phrases(self, nm_id: int) -> list[dict]:
+        """§17.3: фразы, которые разбор новой карточки привязал к конкуренту.
+
+        `wb_competitor_phrase_comp` — сырьё (конкурент + его формулировка),
+        `wb_competitor_phrase` — канон-группа. Показываем только завершённый
+        разбор (`phrase_id IS NOT NULL`), иначе в модалке будет мусор
+        прерванного прогона.
+        """
+        if not await _phrase_schema_ready(self.db):
+            return []
+        try:
+            rows = (await self.db.execute(text("""
+                SELECT pc.phrase_id, pc.phrase, pc.source_nm_id, pc.model,
+                       pc.created_at,
+                       p.phrase AS canon, p.is_selected, p.hit_cnt, p.variants_cnt,
+                       w.title AS source_title, w.vendorCode AS source_vendor_code
+                FROM wb_competitor_phrase_comp pc
+                LEFT JOIN wb_competitor_phrase p ON p.id=pc.phrase_id
+                LEFT JOIN wbcards w ON w.nmID=pc.source_nm_id
+                WHERE pc.competitor_nm_id=:n
+                  AND pc.phrase_id IS NOT NULL
+                  AND (:cid IS NULL OR pc.company_id=:cid)
+                ORDER BY pc.source_nm_id, p.is_selected DESC, p.hit_cnt DESC, pc.phrase
+                LIMIT 200
+            """), {"n": nm_id, "cid": self.company_id})).mappings().all()
+        except Exception:
+            await self.db.rollback()
+            return []
+        # «отдаёт ли WB эту фразу» — смотрим по ИСХОДНОЙ формулировке конкурента,
+        # а не по канону группы (они могут отличаться)
+        stats = await self._raw_phrase_stats([r.get("phrase") or "" for r in rows])
+        out: list[dict] = []
+        for r in rows:
+            raw = (r.get("phrase") or "").strip()
+            st = stats.get(raw.lower()) or {}
+            out.append({
+                "phrase_id": int(r["phrase_id"]) if r.get("phrase_id") else None,
+                "phrase": raw,
+                "canon": r.get("canon") or None,
+                "source_nm_id": int(r["source_nm_id"]),
+                "source_title": r.get("source_title") or "",
+                "source_vendor_code": r.get("source_vendor_code") or "",
+                "is_selected": bool(r.get("is_selected")),
+                "hit_cnt": int(r.get("hit_cnt") or 0),
+                "variants_cnt": int(r.get("variants_cnt") or 0),
+                "in_db": bool(st),
+                "orders": int(st.get("orders") or 0),
+                "freq": int(st.get("freq") or 0),
+                "cards_cnt": int(st.get("cards") or 0),
+                "model": r.get("model"),
+                "created_at": r.get("created_at"),
+            })
+        return out
+
+    async def _raw_phrase_stats(self, phrases: list[str]) -> dict[str, dict]:
+        """Есть ли фраза в нашей базе поисковых запросов (WB её отдаёт) + заказы/частота."""
+        cleaned = [p.strip().lower() for p in phrases if p and p.strip()]
+        cleaned = list(dict.fromkeys(cleaned))[:200]
+        if not cleaned:
+            return {}
+        ph = ",".join(f":p{i}" for i in range(len(cleaned)))
+        try:
+            rows = (await self.db.execute(text(f"""
+                SELECT LOWER(p.phrase) AS phrase,
+                       SUM(p.orders) AS orders,
+                       MAX(COALESCE(p.frequency_current, p.week_frequency, 0)) AS freq,
+                       COUNT(DISTINCT p.nmID) AS cards
+                FROM wb_sr_report_item_phrases p
+                WHERE LOWER(p.phrase) IN ({ph})
+                GROUP BY LOWER(p.phrase)
+            """), {f"p{i}": v for i, v in enumerate(cleaned)})).mappings().all()
+        except Exception:
+            await self.db.rollback()
+            return {}
+        return {str(r["phrase"]): {"orders": int(r.get("orders") or 0),
+                                   "freq": int(r.get("freq") or 0),
+                                   "cards": int(r.get("cards") or 0)} for r in rows}
+
     async def details(self, nm_id: int) -> dict | None:
         """Полная карточка конкурента для попапа: контент, фото, характеристики, цены."""
         row = (await self.db.execute(text("""
@@ -1241,9 +1794,12 @@ class CompetitorsNewcardService:
         chars = _j(d.get("characteristics")) or []
         d["characteristics"] = chars if isinstance(chars, list) else []
         d["url"] = d.get("url") or f"https://www.wildberries.ru/catalog/{nm_id}/detail.aspx"
+        d["attached_to"] = (await self._attached_map([nm_id])).get(nm_id, [])
+        d["attached_cnt"] = len(d["attached_to"])
         d["price_history"] = await self._price_history(
             nm_id, d.get("price"), d.get("old_price"), d.get("collected_at")
         )
+        d["phrases"] = await self._competitor_phrases(nm_id)
         return d
 
     async def _price_history(self, nm_id: int, price, old_price, collected_at) -> list[dict]:
@@ -1380,28 +1936,58 @@ class CompetitorsNewcardService:
     # ---------- прогресс AI-вызовов (для модалок) ----------
 
     async def _run_start(self, run_id: str | None, nm_id: int, kind: str,
-                         total: int, company_id: int | None) -> None:
+                         total: int, company_id: int | None,
+                         phase: str = "extract") -> None:
         if not run_id:
             return
         await self.db.execute(text("""
             DELETE FROM wb_competitor_run WHERE created_at < DATE_SUB(NOW(), INTERVAL 2 DAY)
         """))
-        await self.db.execute(text("""
-            INSERT INTO wb_competitor_run
-              (run_id, company_id, source_nm_id, kind, status, attempt, total)
-            VALUES (:r, :c, :n, :k, 'running', 0, :t)
-            ON DUPLICATE KEY UPDATE status='running', attempt=0, total=VALUES(total),
-              model=NULL, error=NULL
-        """), {"r": run_id[:64], "c": company_id, "n": nm_id, "k": kind, "t": total})
+        try:
+            await self.db.execute(text("""
+                INSERT INTO wb_competitor_run
+                  (run_id, company_id, source_nm_id, kind, status, attempt, total, phase)
+                VALUES (:r, :c, :n, :k, 'running', 0, :t, :ph)
+                ON DUPLICATE KEY UPDATE status='running', attempt=0, total=VALUES(total),
+                  model=NULL, error=NULL, phase=VALUES(phase), done_ids=NULL
+            """), {"r": run_id[:64], "c": company_id, "n": nm_id, "k": kind, "t": total,
+                   "ph": phase})
+        except Exception:
+            # миграция 20261027 не применена — пишем без фазы
+            await self.db.rollback()
+            await self.db.execute(text("""
+                INSERT INTO wb_competitor_run
+                  (run_id, company_id, source_nm_id, kind, status, attempt, total)
+                VALUES (:r, :c, :n, :k, 'running', 0, :t)
+                ON DUPLICATE KEY UPDATE status='running', attempt=0, total=VALUES(total),
+                  model=NULL, error=NULL
+            """), {"r": run_id[:64], "c": company_id, "n": nm_id, "k": kind, "t": total})
         await self.db.commit()
 
-    async def _run_step(self, run_id: str | None, attempt: int, model: str) -> None:
+    async def _run_step(self, run_id: str | None, attempt: int, model: str,
+                        phase: str | None = None, done_ids: str | None = None) -> None:
+        """Прогресс прогона: шаг, модель, фаза (extract|merge), готовые конкуренты."""
         if not run_id:
             return
-        await self.db.execute(text("""
-            UPDATE wb_competitor_run SET attempt=:a, model=:m, status='running'
-            WHERE run_id=:r
-        """), {"a": attempt, "m": model[:190], "r": run_id[:64]})
+        extra = ""
+        params: dict = {"a": attempt, "m": model[:190], "r": run_id[:64]}
+        if phase:
+            extra += ", phase=:ph"
+            params["ph"] = phase
+        if done_ids is not None:
+            extra += ", done_ids=:di"
+            params["di"] = done_ids[:4000]
+        try:
+            await self.db.execute(text(f"""
+                UPDATE wb_competitor_run SET attempt=:a, model=:m, status='running' {extra}
+                WHERE run_id=:r
+            """), params)
+        except Exception:
+            await self.db.rollback()
+            await self.db.execute(text("""
+                UPDATE wb_competitor_run SET attempt=:a, model=:m, status='running'
+                WHERE run_id=:r
+            """), {"a": attempt, "m": model[:190], "r": run_id[:64]})
         await self.db.commit()
 
     async def _run_finish(self, run_id: str | None, status: str, error: str | None = None) -> None:
@@ -1415,7 +2001,7 @@ class CompetitorsNewcardService:
     async def get_run(self, nm_id: int, run_id: str) -> dict | None:
         row = (await self.db.execute(text("""
             SELECT run_id, source_nm_id, kind, status, attempt, total, model, error,
-                   created_at, updated_at
+                   phase, done_ids, created_at, updated_at
             FROM wb_competitor_run
             WHERE run_id=:r AND source_nm_id=:n LIMIT 1
         """), {"r": run_id[:64], "n": nm_id})).mappings().first()
@@ -1424,6 +2010,26 @@ class CompetitorsNewcardService:
         d = dict(row)
         d["is_free"] = ":free" in (d.get("model") or "").lower()
         return d
+
+    async def get_run_safe(self, nm_id: int, run_id: str) -> dict | None:
+        """Как get_run, но без падения, если миграция 20261027 ещё не применена."""
+        try:
+            return await self.get_run(nm_id, run_id)
+        except Exception:
+            await self.db.rollback()
+            row = (await self.db.execute(text("""
+                SELECT run_id, source_nm_id, kind, status, attempt, total, model, error,
+                       created_at, updated_at
+                FROM wb_competitor_run
+                WHERE run_id=:r AND source_nm_id=:n LIMIT 1
+            """), {"r": run_id[:64], "n": nm_id})).mappings().first()
+            if not row:
+                return None
+            d = dict(row)
+            d["is_free"] = ":free" in (d.get("model") or "").lower()
+            d["phase"] = None
+            d["done_ids"] = None
+            return d
 
     async def _company_settings(self, nm_id: int) -> dict:
         company_id = self.company_id or await self._company_for(nm_id)
@@ -1471,31 +2077,409 @@ class CompetitorsNewcardService:
                                    "freq": int(r["freq"] or 0),
                                    "cards": int(r["cards"] or 0)} for r in rows}
 
+    async def _phrases_for_competitor(self, comp: dict, model: str, company_id: int,
+                                       user_id: int | None, nm_id: int,
+                                       prompt: str) -> tuple[list[str], str | None]:
+        """Фразы ОДНОГО конкурента.
+
+        Отдельная сессия: вызовы идут параллельно, а AsyncSession не потокобезопасен.
+        """
+        cid = comp.get("nm_id")
+        up = (f"=== КОНКУРЕНТ nmID {cid} ===\n"
+              f"Название: {(comp.get('title') or '')[:200]}\n"
+              f"Описание: {(comp.get('description') or '')[:1500]}\n\n"
+              'Извлеки поисковые фразы и верни JSON {"phrases": [...]}.')
+        messages = [{"role": "system", "content": prompt},
+                    {"role": "user", "content": up}]
+        try:
+            async with SessionLocal() as sdb:
+                res = await llm.chat(sdb, messages, company_id, temperature=0.1,
+                                     max_tokens=PHRASES_MAX_TOKENS, model=model,
+                                     reasoning_effort="low", send_max_tokens=True,
+                                     note=f"phrases nm {nm_id}, конкурент {cid}",
+                                     scenario="newcard_phrases", user_id=user_id, nm_id=nm_id)
+        except Exception as exc:
+            return [], f"{type(exc).__name__}: {exc}"
+        if res.get("error"):
+            detail = str(res.get("error"))
+            if res.get("finish_reason") and "finish_reason" not in detail:
+                detail += f", finish_reason={res['finish_reason']}"
+            return [], detail
+        raw = res.get("content") or ""
+        phrases = _phrases_from_parsed(_parse_json(raw))
+        if not isinstance(phrases, list) or not phrases:
+            return [], f"не удалось разобрать список фраз ({' '.join(raw.split())[:120]!r})"
+        out: list[str] = []
+        for item in phrases:
+            if isinstance(item, dict):
+                item = item.get("phrase") or item.get("text") or ""
+            p = _norm_phrase(item)
+            if 3 <= len(p) <= 200 and p not in out:
+                out.append(p)
+        if not out:
+            return [], "нет пригодных фраз"
+        return out[:PHRASES_PER_COMPETITOR_MAX], None
+
+    async def _merge_batch(self, batch: list[str], counts: dict[str, int], model: str,
+                           company_id: int, user_id: int | None, nm_id: int,
+                           errors: list[str]) -> list[list[str]]:
+        """Один вызов группировки: батч формулировок → группы.
+
+        Пустой результат = слияние не удалось (модель не ответила / ответ обрезан /
+        JSON не разобрали). Ошибку пишем в errors, чтобы это было видно в UI, и
+        полный обмен — в ai.log.
+        """
+        listed = "\n".join(f"- {p} ({counts.get(p, 0)})" for p in batch)
+        up = (f"=== СПИСОК ФРАЗ (в скобках — сколько разных конкурентов) ===\n{listed}\n\n"
+              "Объедини одинаковые по смыслу формулировки в группы (только группы из 2+ фраз). "
+              'Верни JSON {"groups":[{"canonical":"...","members":["..."]}]}.')
+        messages = [{"role": "system", "content": DEFAULT_MERGE_PROMPT},
+                    {"role": "user", "content": up}]
+        try:
+            async with SessionLocal() as sdb:
+                res = await llm.chat(sdb, messages, company_id, temperature=0.0,
+                                     max_tokens=MERGE_MAX_TOKENS, model=model,
+                                     reasoning_effort="low", send_max_tokens=True,
+                                     note=f"merge nm {nm_id}", scenario="newcard_merge",
+                                     user_id=user_id, nm_id=nm_id)
+        except Exception as exc:
+            errors.append(f"слияние: {type(exc).__name__}: {exc}")
+            return []
+        if res.get("error"):
+            errors.append(f"слияние: {res['error']}")
+            return []
+        raw = res.get("content") or ""
+        groups = _groups_from_parsed(_parse_json(raw))
+        if not groups:
+            head = " ".join(raw.split())[:200]
+            finish = str(res.get("finish_reason") or "")
+            err = f"слияние: не разобрали ответ модели{f' (finish_reason={finish})' if finish else ''}: {head!r}"
+            errors.append(err)
+            try:
+                llm.ai_log("merge-parse-error", model, messages, raw,
+                           http=res.get("http") or "", note=f"merge nm {nm_id}",
+                           provider=res.get("provider") or "")
+            except Exception:
+                pass
+            return []
+        return _validate_groups(groups, batch, counts)
+
+    async def _merge_groups(self, phrase_comp: dict[str, set[int]], cands: list[str],
+                            company_id: int, user_id: int | None, nm_id: int,
+                            errors: list[str], run_id: str | None = None,
+                            base_attempt: int = 0) -> list[list[str]]:
+        """Слияние формулировок.
+
+        Шаг 1 (без модели): одинаковые фразы и чистые перестановки слов.
+        Шаг 2 (модель, батчами, до 4 параллельно): синонимы, словоформы, лишние слова.
+
+        Возвращает список групп; в каждой первой идёт канон (по данным: у какой
+        формулировки больше разных конкурентов).
+        """
+        # шаг 1: кластеры (точные дубли + перестановки слов)
+        clusters: list[list[str]] = []
+        by_key: dict[tuple, int] = {}
+        for p in dict.fromkeys(phrase_comp.keys()):
+            if not p:
+                continue
+            k = _perm_key(p)
+            idx = by_key.get(k)
+            if idx is None:
+                by_key[k] = len(clusters)
+                clusters.append([p])
+            else:
+                clusters[idx].append(p)
+        if len(clusters) <= 1:
+            return clusters
+        cluster_of = {c[0]: c for c in clusters}
+        reps = list(cluster_of.keys())
+        counts: dict[str, int] = {}
+        for rep in reps:
+            comps: set[int] = set()
+            for m in cluster_of[rep]:
+                comps |= phrase_comp.get(m, set())
+            counts[rep] = len(comps)
+        # шаг 2: модель по представителям кластеров
+        batches = [reps[i:i + MERGE_BATCH] for i in range(0, len(reps), MERGE_BATCH)]
+        sem = asyncio.Semaphore(LLM_PARALLEL)
+        last_model = {"m": ""}
+
+        async def one(batch: list[str]) -> list[list[str]]:
+            async with sem:
+                for model in cands[:PER_CALL_ATTEMPTS]:
+                    groups = await self._merge_batch(batch, counts, model, company_id,
+                                                     user_id, nm_id, errors)
+                    last_model["m"] = model
+                    if groups:
+                        return groups
+                return []
+
+        merged: list[list[str]] = []
+        done = 0
+        tasks = [asyncio.create_task(one(b)) for b in batches]
+        for fut in asyncio.as_completed(tasks):
+            merged.extend(await fut)
+            done += 1
+            if run_id:
+                try:
+                    await self._run_step(run_id, base_attempt + done, last_model["m"], "merge")
+                except Exception:
+                    await self.db.rollback()
+        # раскрываем группы до полных формулировок
+        out: list[list[str]] = []
+        used: set[str] = set()
+        for grp in merged:
+            members: list[str] = []
+            for rep in grp:
+                if rep in used:
+                    continue
+                used.add(rep)
+                members.extend(cluster_of.get(rep, [rep]))
+            if not members:
+                continue
+            members.sort(key=lambda p: (-len(phrase_comp.get(p, set())), 0))
+            out.append(members)
+        for c in clusters:
+            if c[0] not in used:
+                out.append(c)
+        return out
+
+    async def _comp_phrases_cached(self, nm_id: int) -> dict[int, dict]:
+        """Уже собранные фразы по конкурентам: хэш описания + список фраз.
+
+        Только строки с заполненным phrase_id — это завершённый разбор (после слияния).
+        Сырьё без группы (прерванный прогон) не считаем кэшем.
+        """
+        out: dict[int, dict] = {}
+        try:
+            rows = (await self.db.execute(text("""
+                SELECT competitor_nm_id, phrase, content_hash, model
+                FROM wb_competitor_phrase_comp
+                WHERE source_nm_id=:n AND phrase_id IS NOT NULL
+            """), {"n": nm_id})).mappings().all()
+        except Exception:
+            await self.db.rollback()
+            return out
+        for r in rows:
+            d = out.setdefault(int(r["competitor_nm_id"]),
+                               {"hash": r["content_hash"] or "", "phrases": [], "model": r["model"]})
+            if r["phrase"]:
+                d["phrases"].append(r["phrase"])
+        return out
+
+    async def _save_comp_rows(self, nm_id: int, company_id: int, cid: int,
+                               phrases: list[str], model: str | None,
+                               content_hash: str) -> None:
+        """Сырьё по конкуренту — сразу в БД (phrase_id заполнится после слияния)."""
+        rows = [{"c": company_id, "n": nm_id, "cn": cid, "p": p, "m": model, "h": content_hash}
+                for p in phrases]
+        if not rows:
+            return
+        await self.db.execute(text("""
+            INSERT INTO wb_competitor_phrase_comp
+              (company_id, source_nm_id, competitor_nm_id, phrase_id, phrase, model, content_hash)
+            VALUES (:c, :n, :cn, NULL, :p, :m, :h)
+            ON DUPLICATE KEY UPDATE
+              phrase=VALUES(phrase), model=VALUES(model), content_hash=VALUES(content_hash)
+        """), rows)
+        await self.db.commit()
+
     async def list_phrases(self, nm_id: int) -> dict:
-        rows = (await self.db.execute(text("""
-            SELECT p.id, p.phrase, p.source, p.hit_cnt, p.orders, p.freq, p.cards_cnt,
+        """Рабочий список фраз (групп) + у кого встречается + варианты формулировок."""
+        has = await _phrase_schema_ready(self.db)
+        cols = "p.variants_cnt, " if has else ""
+        rows = (await self.db.execute(text(f"""
+            SELECT p.id, p.phrase, p.source, p.hit_cnt, {cols}p.orders, p.freq, p.cards_cnt,
                    p.in_db, p.is_selected, p.model, p.created_at,
                    EXISTS(SELECT 1 FROM wb_seo_target t
                           WHERE t.nmID=p.source_nm_id AND LOWER(t.phrase)=LOWER(p.phrase)) AS in_targets
             FROM wb_competitor_phrase p
             WHERE p.source_nm_id=:n
-            ORDER BY p.is_selected DESC, p.in_db DESC, p.orders DESC, p.hit_cnt DESC, p.id
+            ORDER BY p.is_selected DESC, p.orders DESC, p.hit_cnt DESC, p.in_db DESC, p.id
         """), {"n": nm_id})).mappings().all()
+        cmap: dict[int, list[dict]] = {}
+        vmap: dict[int, list[str]] = {}
+        if rows and has:
+            ids = [int(r["id"]) for r in rows]
+            ph = ",".join(f":p{i}" for i in range(len(ids)))
+            params = {"n": nm_id, **{f"p{i}": v for i, v in enumerate(ids)}}
+            for r in (await self.db.execute(text(f"""
+                SELECT pc.phrase_id, pc.competitor_nm_id, pc.phrase,
+                       COALESCE(d.title, c.title) AS title
+                FROM wb_competitor_phrase_comp pc
+                LEFT JOIN wb_competitor_details d ON d.nm_id = pc.competitor_nm_id
+                LEFT JOIN (SELECT nm_id, MAX(title) AS title FROM wb_competitor_cards
+                           WHERE source_nm_id=:n GROUP BY nm_id) c
+                       ON c.nm_id = pc.competitor_nm_id
+                WHERE pc.source_nm_id=:n AND pc.phrase_id IN ({ph})
+            """), params)).mappings().all():
+                pid = int(r["phrase_id"])
+                lst = cmap.setdefault(pid, [])
+                cn = int(r["competitor_nm_id"])
+                if not any(x["nm_id"] == cn for x in lst):
+                    lst.append({"nm_id": cn, "title": r["title"] or ""})
+                vs = vmap.setdefault(pid, [])
+                if r["phrase"] and r["phrase"] not in vs:
+                    vs.append(r["phrase"])
         items = []
         for r in rows:
             d = dict(r)
+            pid = int(d["id"])
             d["in_db"] = bool(d.get("in_db"))
             d["is_selected"] = bool(d.get("is_selected"))
             d["in_targets"] = bool(d.get("in_targets"))
-            for k in ("hit_cnt", "orders", "freq", "cards_cnt"):
+            for k in ("hit_cnt", "orders", "freq", "cards_cnt", "variants_cnt"):
                 d[k] = int(d.get(k) or 0)
+            d["competitors"] = sorted(cmap.get(pid, []), key=lambda x: x["nm_id"])
+            variants = [d["phrase"]] + [v for v in vmap.get(pid, []) if v != d["phrase"]]
+            d["variants"] = variants
+            d["variants_cnt"] = max(d["variants_cnt"], len(variants))
             items.append(d)
-        return {"nm_id": nm_id, "items": items,
+        # сколько сырых формулировок есть (до слияния) — для кнопки «Слить формулировки»
+        raw_cnt = 0
+        if has:
+            try:
+                raw_cnt = int((await self.db.execute(text("""
+                    SELECT COUNT(DISTINCT phrase) FROM wb_competitor_phrase_comp
+                    WHERE source_nm_id=:n AND phrase IS NOT NULL AND phrase <> ''
+                """), {"n": nm_id})).scalar() or 0)
+            except Exception:
+                await self.db.rollback()
+        return {"nm_id": nm_id, "items": items, "raw_cnt": raw_cnt,
                 "selected_cnt": sum(1 for x in items if x["is_selected"])}
+
+    async def _write_groups(self, nm_id: int, company_id: int, groups: list[list[str]],
+                            phrase_comp: dict[str, set[int]], stats: dict[str, dict],
+                            main_model: str | None) -> None:
+        """Группы → wb_competitor_phrase (рабочий список) + phrase_id в сырье.
+
+        «Протухшие» ai-фразы карточки удаляются (ручные — нет), is_selected у
+        переживших фраз сохраняется.
+        """
+        await self.db.rollback()
+        async with self.db.begin():
+            keep: list[str] = []
+            for grp in groups:
+                canon = grp[0]
+                comps_n: set[int] = set()
+                for m in grp:
+                    comps_n |= phrase_comp.get(m, set())
+                s = stats.get(canon) or {}
+                await self.db.execute(text("""
+                    INSERT INTO wb_competitor_phrase
+                      (company_id, source_nm_id, phrase, source, hit_cnt, variants_cnt,
+                       orders, freq, cards_cnt, in_db, model)
+                    VALUES (:c, :n, :p, 'ai', :h, :v, :o, :f, :cc, :indb, :m)
+                    ON DUPLICATE KEY UPDATE
+                      hit_cnt=VALUES(hit_cnt), variants_cnt=VALUES(variants_cnt),
+                      orders=VALUES(orders), freq=VALUES(freq), cards_cnt=VALUES(cards_cnt),
+                      in_db=VALUES(in_db),
+                      model=IF(:m IS NULL, model, VALUES(model))
+                """), {"c": company_id, "n": nm_id, "p": canon, "h": len(comps_n),
+                       "v": len(grp), "o": int(s.get("orders") or 0),
+                       "f": int(s.get("freq") or 0), "cc": int(s.get("cards") or 0),
+                       "indb": 1 if s else 0, "m": main_model or None})
+                keep.append(canon)
+            ids_map: dict[str, int] = {}
+            if keep:
+                ph = ",".join(f":k{i}" for i in range(len(keep)))
+                params = {"n": nm_id, **{f"k{i}": v for i, v in enumerate(keep)}}
+                for r in (await self.db.execute(text(f"""
+                    SELECT id, phrase FROM wb_competitor_phrase
+                    WHERE source_nm_id=:n AND phrase IN ({ph})
+                """), params)).mappings().all():
+                    ids_map[str(r["phrase"])] = int(r["id"])
+            old_ai = [int(r[0]) for r in (await self.db.execute(text("""
+                SELECT id FROM wb_competitor_phrase WHERE source_nm_id=:n AND source='ai'
+            """), {"n": nm_id})).all()]
+            new_ids = set(ids_map.values())
+            stale = [i for i in old_ai if i not in new_ids]
+            if stale:
+                ph = ",".join(f":s{i}" for i in range(len(stale)))
+                await self.db.execute(
+                    text(f"DELETE FROM wb_competitor_phrase WHERE id IN ({ph})"),
+                    {f"s{i}": v for i, v in enumerate(stale)})
+            # сырьё уже записано по ходу разбора — проставляем группу
+            for grp in groups:
+                gid = ids_map.get(grp[0])
+                if not gid:
+                    continue
+                members = [m for m in grp if m]
+                ph = ",".join(f":m{i}" for i in range(len(members)))
+                await self.db.execute(text(f"""
+                    UPDATE wb_competitor_phrase_comp SET phrase_id=:pid
+                    WHERE source_nm_id=:n AND phrase IN ({ph})
+                """), {"pid": gid, "n": nm_id,
+                       **{f"m{i}": v for i, v in enumerate(members)}})
+
+    async def merge_phrases(self, nm_id: int, run_id: str | None = None,
+                            user_id: int | None = None) -> dict:
+        """ТОЛЬКО слияние формулировок — без повторного разбора описаний.
+
+        Сырьё берём из wb_competitor_phrase_comp (уже разобранные конкуренты),
+        группы собираем заново и перезаписываем рабочий список. Дёшево: 1–3 вызова
+        модели вместо 14 (разбор описаний).
+        """
+        if not await _phrase_schema_ready(self.db):
+            raise ValueError("Нужна миграция 20261026_competitor_phrase_comp.sql")
+        # 20261027 нужна только для прогресса по фазам; без неё слияние всё равно работает
+        progress = await _run_progress_ready(self.db)
+        card = await self._card(nm_id) or {}
+        st = await self._company_settings(nm_id)
+        company_id = st.get("company_id") or self.company_id or card.get("company_id")
+        if not company_id:
+            raise ValueError("Не удалось определить компанию карточки")
+        rows = (await self.db.execute(text("""
+            SELECT phrase, competitor_nm_id FROM wb_competitor_phrase_comp
+            WHERE source_nm_id=:n AND phrase IS NOT NULL AND phrase <> ''
+        """), {"n": nm_id})).mappings().all()
+        phrase_comp: dict[str, set[int]] = {}
+        for r in rows:
+            p = _norm_phrase(r["phrase"])
+            if p:
+                phrase_comp.setdefault(p, set()).add(int(r["competitor_nm_id"]))
+        if not phrase_comp:
+            raise ValueError("Нет разобранных фраз — сначала запустите анализ описаний конкурентов")
+        cands = (await llm.model_candidates(self.db, company_id, kind="newcard"))[:MAX_AI_ATTEMPTS]
+        if not cands:
+            raise ValueError("Нет доступных моделей для слияния")
+        errors: list[str] = []
+        merge_batches = max(1, -(-len(set(_perm_key(p) for p in phrase_comp)) // MERGE_BATCH))
+        await self._run_start(run_id, nm_id, "merge", merge_batches, company_id, phase="merge")
+        groups = await self._merge_groups(phrase_comp, cands, company_id, user_id,
+                                          nm_id, errors, run_id=run_id)
+        groups = [g for g in (groups or []) if g]
+        if not groups:
+            await self._run_finish(run_id, "error", "После слияния не осталось фраз")
+            raise ValueError("После слияния не осталось фраз")
+        stats = await self._phrase_stats([p for g in groups for p in g],
+                                         card.get("subject_name") or "")
+        await self._write_groups(nm_id, company_id, groups, phrase_comp, stats, None)
+        out = await self.list_phrases(nm_id)
+        out["groups_cnt"] = len(groups)
+        out["raw_cnt"] = len(phrase_comp)
+        out["merged_cnt"] = max(0, len(phrase_comp) - len(groups))
+        out["errors"] = errors[:5]
+        out["merge_prompt_version"] = MERGE_PROMPT_VERSION
+        await self._run_finish(run_id, "done")
+        return out
 
     async def analyze_phrases(self, nm_id: int, run_id: str | None = None,
                               user_id: int | None = None) -> dict:
-        """LLM: вытащить поисковые фразы из описаний конкурентов + статистика нашей базы."""
+        """Фразы по каждому конкуренту ОТДЕЛЬНО → слияние → рабочий список.
+
+        Шаг 1: по одному LLM-вызову на конкурента (до 4 параллельно). Модель не
+               «сплавляет» описания 20 разных товаров и выдаёт конкретные
+               формулировки каждого, а не общие слова категории.
+        Шаг 2: слияние формулировок (LLM, батчами) — «книга по вязанию крючком»
+               и «вязание крючком книга» становятся одной фразой.
+        Шаг 3: запись — wb_competitor_phrase (канон-группы) +
+               wb_competitor_phrase_comp (сырьё с привязкой «фраза → конкурент»).
+        """
+        if not await _phrase_schema_ready(self.db):
+            raise ValueError("Нужна миграция 20261026_competitor_phrase_comp.sql")
+        if not await _run_progress_ready(self.db):
+            raise ValueError("Нужна миграция 20261027_competitor_phrase_progress.sql")
         card = await self._card(nm_id) or {}
         comps = await self._competitors_with_content(nm_id)
         if not comps:
@@ -1504,111 +2488,134 @@ class CompetitorsNewcardService:
         company_id = st.get("company_id") or self.company_id or card.get("company_id")
         if not company_id:
             raise ValueError("Не удалось определить компанию карточки")
-        parts = []
-        for c in comps:
-            parts.append(f"--- Конкурент nmID {c['nm_id']} ---\n"
-                         f"Заголовок: {(c.get('title') or '')[:200]}\n"
-                         f"Описание: {(c.get('description') or '')[:1000]}\n")
-        up = (f"=== НАШ ТОВАР ===\nНазвание: {card.get('title') or ''}\n"
-              f"Предмет: {card.get('subject_name') or ''}\nБренд: {card.get('brand') or ''}\n\n"
-              f"=== ОПИСАНИЯ КОНКУРЕНТОВ ({len(comps)} шт) ===\n"
-              + "\n".join(parts)
-              + '\nИзвлеки поисковые фразы и верни JSON {"phrases": [...]}. '
-                'Не рассуждай, не пиши пояснений — только JSON.')
         custom_prompt = (st.get("seo_phrases_prompt") or "").strip()
-        prompt = custom_prompt or DEFAULT_PHRASES_PROMPT
+        prompt = (custom_prompt + PHRASES_TASK_SUFFIX) if custom_prompt else DEFAULT_PHRASES_PROMPT
         prompt_source = "company" if custom_prompt else "default"
-        messages = [{"role": "system", "content": prompt},
-                    {"role": "user", "content": up}]
         cands = (await llm.model_candidates(
             self.db, company_id, kind="newcard",
         ))[:MAX_AI_ATTEMPTS]
-        await self._run_start(run_id, nm_id, "phrases", len(cands), company_id)
-        last_err, data, used_model = "All models failed", None, None
-        for i, try_model in enumerate(cands):
-            await self._run_step(run_id, i + 1, try_model)
-            res = await llm.chat(self.db, messages, company_id, temperature=0.1,
-                                 max_tokens=PHRASES_MAX_TOKENS, model=try_model,
-                                 reasoning_effort="low", send_max_tokens=True,
-                                 note=f"phrases nm {nm_id}, кандидат {i + 1}/{len(cands)}",
-                                 scenario="newcard_phrases", user_id=user_id, nm_id=nm_id)
-            if res.get("error"):
-                detail = str(res["error"])
-                if res.get("finish_reason") and "finish_reason" not in detail:
-                    detail += f", finish_reason={res['finish_reason']}"
-                if res.get("completion_tokens"):
-                    detail += f", tokens={res['completion_tokens']}"
-                await llm.mark_model(self.db, try_model, False, detail)
-                last_err = f"model {try_model}: {detail}"
-                continue
-            raw = res.get("content") or ""
-            parsed = _parse_json(raw)
-            phrases = _phrases_from_parsed(parsed)
-            if not isinstance(phrases, list) or not phrases:
-                head = " ".join(raw.split())[:180]
-                finish = str(res.get("finish_reason") or "")
-                if not raw.strip():
-                    reason = "пустой ответ"
-                    if res.get("empty_reason"):
-                        reason += f" ({str(res['empty_reason'])[:180]})"
-                elif not isinstance(parsed, (dict, list)):
-                    reason = f"ответ не JSON: {head!r}"
-                elif isinstance(parsed, dict) and "phrases" in parsed:
-                    reason = f"phrases не список фраз: {head!r}"
-                else:
-                    reason = f"в JSON нет списка phrases: {head!r}"
-                if finish:
-                    reason += f", finish_reason={finish}"
-                    if finish == "length":
-                        reason += " (ответ обрезан по лимиту токенов)"
-                err = f"model {try_model}: {reason}"
-                await llm.ai_log("parse-error", try_model, messages, raw,
-                                 http=res.get("http") or "",
-                                 note=f"phrases nm {nm_id}", provider=res.get("provider") or "")
-                await llm.mark_model(self.db, try_model, False, err)
-                last_err = err
-                continue
-            await llm.mark_model(self.db, try_model, True)
-            data, used_model = phrases, (res.get("model") or try_model)
-            break
-        if not data:
-            await self._run_finish(run_id, "error", last_err)
-            raise ValueError(last_err)
+        if not cands:
+            raise ValueError("Нет доступных моделей для анализа фраз")
 
-        norm: list[str] = []
-        for raw in data:
-            if isinstance(raw, dict):
-                raw = raw.get("phrase") or raw.get("text") or ""
-            p = _norm_phrase(raw)
-            if 3 <= len(p) <= 200 and p not in norm:
-                norm.append(p)
-        norm = norm[:MAX_PHRASES]
-        if not norm:
-            await self._run_finish(run_id, "error", "Модель не вернула пригодных фраз")
-            raise ValueError("Модель не вернула пригодных фраз")
+        # инкрементальность: описание конкурента не менялось — модель не зовём
+        cached = await self._comp_phrases_cached(nm_id)
+        plan: list[tuple[dict, list[str] | None]] = []
+        for c in comps:
+            old = cached.get(int(c["nm_id"]))
+            if old and old["hash"] and old["hash"] == _comp_content_hash(c) and old["phrases"]:
+                plan.append((c, list(old["phrases"])))
+            else:
+                plan.append((c, None))
+        todo = [c for c, ph in plan if ph is None]
+        cached_n = len(plan) - len(todo)
+        hash_by_id = {int(c["nm_id"]): _comp_content_hash(c) for c in comps}
+        model_by_id = {int(c["nm_id"]): (cached.get(int(c["nm_id"])) or {}).get("model")
+                       for c in comps}
+        merge_batches = 1
+        # total в пределах фазы: extract — сколько конкурентов разобрать,
+        # merge — сколько батчей слить (счётчик перезапускается на фазе)
+        await self._run_start(run_id, nm_id, "phrases", len(todo), company_id)
 
-        descs = [(c.get("description") or "").lower() for c in comps]
-        stats = await self._phrase_stats(norm, card.get("subject_name") or "")
+        # чистим старое сырьё и сразу кладём кэшированных конкурентов (их не пересчитываем)
         await self.db.rollback()
-        async with self.db.begin():
-            for p in norm:
-                s = stats.get(p) or {}
-                hits = sum(1 for d in descs if p in d)
-                await self.db.execute(text("""
-                    INSERT INTO wb_competitor_phrase
-                      (company_id, source_nm_id, phrase, source, hit_cnt, orders, freq,
-                       cards_cnt, in_db, model)
-                    VALUES (:c, :n, :p, 'ai', :h, :o, :f, :cc, :indb, :m)
-                    ON DUPLICATE KEY UPDATE
-                      hit_cnt=VALUES(hit_cnt), orders=VALUES(orders), freq=VALUES(freq),
-                      cards_cnt=VALUES(cards_cnt), in_db=VALUES(in_db), model=VALUES(model)
-                """), {"c": company_id, "n": nm_id, "p": p, "h": hits,
-                       "o": int(s.get("orders") or 0), "f": int(s.get("freq") or 0),
-                       "cc": int(s.get("cards") or 0), "indb": 1 if s else 0, "m": used_model})
+        await self.db.execute(text("""
+            DELETE FROM wb_competitor_phrase_comp WHERE source_nm_id=:n
+        """), {"n": nm_id})
+        await self.db.commit()
+        for c, ph in plan:
+            if ph is not None:
+                await self._save_comp_rows(nm_id, company_id, int(c["nm_id"]), ph,
+                                           model_by_id.get(int(c["nm_id"])),
+                                           hash_by_id.get(int(c["nm_id"]), ""))
+
+        # --- шаг 1: извлечение по конкурентам (параллельно, до LLM_PARALLEL) ---
+        sem = asyncio.Semaphore(LLM_PARALLEL)
+        extracted: dict[int, list[str]] = {}
+        used_model: dict[int, str] = {}
+        errors: list[str] = []
+
+        async def one(comp: dict) -> tuple[int, list[str], str | None, str | None]:
+            async with sem:
+                last = None
+                for model in cands[:PER_CALL_ATTEMPTS]:
+                    phrases, err = await self._phrases_for_competitor(
+                        comp, model, company_id, user_id, nm_id, prompt)
+                    if phrases:
+                        return int(comp["nm_id"]), phrases, None, model
+                    last = err
+                return int(comp["nm_id"]), [], last, cands[0]
+
+        done = 0
+        # кэшированные конкуренты уже готовы — отмечаем сразу
+        done_ids: list[str] = [str(int(c["nm_id"])) for c, ph in plan if ph is not None]
+        if todo:
+            tasks = [asyncio.create_task(one(c)) for c in todo]
+            for fut in asyncio.as_completed(tasks):
+                cid, phrases, err, model = await fut
+                done += 1
+                if model:
+                    try:
+                        await llm.mark_model(self.db, model, bool(phrases), err or "")
+                    except Exception:
+                        await self.db.rollback()
+                if phrases:
+                    extracted[cid] = phrases
+                    if model:
+                        used_model[cid] = model
+                    # сырьё сразу в БД — прогресс виден и не теряется при падении
+                    try:
+                        await self._save_comp_rows(nm_id, company_id, cid, phrases, model,
+                                                   hash_by_id.get(cid, ""))
+                    except Exception:
+                        await self.db.rollback()
+                else:
+                    errors.append(f"nm {cid}: {err or 'нет фраз'}")
+                done_ids.append(str(cid))
+                try:
+                    await self._run_step(run_id, done, model or "", "extract", ",".join(done_ids))
+                except Exception:
+                    await self.db.rollback()
+        for c, ph in plan:
+            if ph is not None:
+                extracted[int(c["nm_id"])] = list(ph)
+        if not extracted:
+            await self._run_finish(run_id, "error", errors[0] if errors else "нет фраз")
+            raise ValueError(errors[0] if errors else "Модель не вернула пригодных фраз")
+
+        # --- шаг 2: слияние формулировок ---
+        phrase_comp: dict[str, set[int]] = {}
+        for cid, phrases in extracted.items():
+            for p in phrases:
+                phrase_comp.setdefault(p, set()).add(cid)
+        # фаза слияния: свой счётчик (батчи), total перезаписываем
+        merge_batches = max(1, -(-len(set(_perm_key(p) for p in phrase_comp)) // MERGE_BATCH))
+        if run_id:
+            await self.db.execute(text(
+                "UPDATE wb_competitor_run SET total=:t, phase='merge', attempt=0 WHERE run_id=:r"),
+                {"t": merge_batches, "r": run_id[:64]})
+            await self.db.commit()
+        main_model = used_model.get(next(iter(extracted)), "") or ""
+        groups = await self._merge_groups(phrase_comp, cands, company_id, user_id,
+                                          nm_id, errors, run_id=run_id)
+        groups = [g for g in (groups or []) if g]
+        if not groups:
+            await self._run_finish(run_id, "error", "После слияния не осталось фраз")
+            raise ValueError("После слияния не осталось фраз")
+        # --- шаг 3: запись ---
+        stats = await self._phrase_stats([p for g in groups for p in g],
+                                         card.get("subject_name") or "")
+        await self._write_groups(nm_id, company_id, groups, phrase_comp, stats, main_model)
         out = await self.list_phrases(nm_id)
-        out["model"] = used_model
+        out["model"] = main_model
         out["competitors_cnt"] = len(comps)
+        out["analyzed_cnt"] = len(todo)
+        out["cached_cnt"] = cached_n
+        out["groups_cnt"] = len(groups)
+        out["raw_cnt"] = len(phrase_comp)
+        out["merged_cnt"] = max(0, len(phrase_comp) - len(groups))
+        out["errors"] = errors[:5]
         out["prompt_version"] = PHRASES_PROMPT_VERSION
+        out["merge_prompt_version"] = MERGE_PROMPT_VERSION
         out["prompt_source"] = prompt_source
         await self._run_finish(run_id, "done")
         return out

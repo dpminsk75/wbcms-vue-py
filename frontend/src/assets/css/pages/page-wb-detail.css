@@ -76,6 +76,7 @@
 .page-wb-detail__chip-status.is-processing { color: #2563eb; }
 .page-wb-detail__chip-status.is-done { color: #15803d; }
 .page-wb-detail__chip-status.is-error { color: #dc2626; }
+.page-wb-detail__chip-found { font-size: 10px; color: #4b5563; white-space: nowrap; }
 
 /* Подсказки из базы */
 .page-wb-detail__suggest-wrap { position: relative; }

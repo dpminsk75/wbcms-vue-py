@@ -9,7 +9,7 @@ import time
 from collections import deque
 from backend.database import get_db
 from backend.deps import get_current_user, get_optional_user, require_admin, get_current_company
-from backend.routers import auth_router, companies_router, dashboard_router, admin_router, admin_timers_router, news_router, tags_router, wb_search_router, cost_router, wb_orders_router, wb_sales_router, feedback_router, reply_rules_router, wb_tokens_router, wb_tokens_expiring_router, competitor_router, competitors_newcard_router, competitors_captured_router, ai_jobs_router, seo_router, seo_models_router, cms_router, ext_router, ext_tokens_admin_router, ext_diag_admin_router, ext_download_router, ext_filters_router, fbs_router, fbs_orders_router, fbs_cancels_router, fbs_commission_router, fbs_pvz_router, geo_sales_router
+from backend.routers import auth_router, companies_router, dashboard_router, admin_router, admin_timers_router, news_router, tags_router, wb_search_router, cost_router, wb_orders_router, wb_sales_router, feedback_router, reply_rules_router, wb_tokens_router, wb_tokens_expiring_router, competitor_router, competitors_newcard_router, competitors_captured_router, competitors_pick_router, competitors_refresh_router, ai_jobs_router, seo_router, seo_models_router, cms_router, ext_router, ext_tokens_admin_router, ext_diag_admin_router, ext_download_router, ext_filters_router, fbs_router, fbs_orders_router, fbs_cancels_router, fbs_commission_router, fbs_pvz_router, geo_sales_router
 from backend.services import auth_service as AuthService
 from backend.services.orders_service import OrdersService
 from backend.services.orders_aggregated_service import OrdersAggregatedService
@@ -61,6 +61,8 @@ app.include_router(wb_tokens_expiring_router)
 app.include_router(competitor_router)
 app.include_router(competitors_newcard_router)
 app.include_router(competitors_captured_router)
+app.include_router(competitors_pick_router)
+app.include_router(competitors_refresh_router)
 app.include_router(ai_jobs_router)
 app.include_router(seo_router)
 app.include_router(seo_models_router)

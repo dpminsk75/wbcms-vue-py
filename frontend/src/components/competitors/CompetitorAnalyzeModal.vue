@@ -25,26 +25,38 @@
             <span class="badge" :class="runInfo.is_free ? 'bg-info text-dark' : 'bg-secondary'">
               {{ runInfo.is_free ? 'бесплатная' : 'платная' }}
             </span>
-            <span class="page-analyze__muted">попытка {{ runInfo.attempt }} из {{ runInfo.total }}</span>
+            <span class="page-analyze__muted">{{ progressText }}</span>
           </template>
           <span v-else class="page-analyze__muted">выбираем модель…</span>
         </div>
 
         <div class="page-analyze__hint">
-          Один запрос к модели по всем собранным описаниям — обычно 20–60 секунд. Окно не закрывайте.
+          Отдельный запрос к модели на каждого конкурента (до 4 параллельно), затем слияние формулировок.
+          Обычно 30–120 секунд. Окно не закрывайте.
         </div>
 
         <div class="page-analyze__comps">
           <div class="page-analyze__comps-label">
             Описания конкурентов: {{ usableCount }} из {{ competitors.length }}
             <span v-if="skippedCount"> · {{ skippedCount }} без описания пропускаем</span>
+            <span v-if="doneIds.size"> · разобрано: {{ doneIds.size }}</span>
           </div>
-          <div v-for="c in competitors" :key="c.nm_id" class="page-analyze__comp">
+          <div
+            v-for="c in competitors"
+            :key="c.nm_id"
+            class="page-analyze__comp"
+            :class="{ 'page-analyze__comp--done': doneIds.has(String(c.nm_id)) }"
+          >
             <span class="page-analyze__comp-nm">{{ c.nm_id }}</span>
             <span class="page-analyze__comp-title" :title="c.title || ''">{{ c.title || '—' }}</span>
             <span class="badge" :class="(c.desc_len || 0) >= descMin ? 'bg-success' : 'bg-secondary'">
               {{ c.desc_len || 0 }} симв.
             </span>
+            <i
+              v-if="doneIds.has(String(c.nm_id))"
+              class="bi bi-check-circle-fill page-analyze__comp-ok"
+              title="Разобран"
+            ></i>
           </div>
         </div>
       </div>
@@ -62,14 +74,25 @@
       <div v-else-if="state === 'done'" class="page-analyze__done">
         <div class="page-analyze__summary">
           Найдено <b>{{ items.length }}</b> фраз по <b>{{ competitorsCnt }}</b> конкурентам
+          <span v-if="rawCnt" class="page-analyze__muted">
+            · формулировок было {{ rawCnt }}, слито в группы: {{ mergedCnt }}
+          </span>
+          <span v-if="analyzedCnt" class="page-analyze__muted"> · заново: {{ analyzedCnt }}</span>
+          <span v-if="cachedCnt" class="page-analyze__muted"> · из кэша: {{ cachedCnt }}</span>
           <span v-if="model" class="page-analyze__muted"> · модель {{ model }}</span>
           <span v-if="promptVersion" class="page-analyze__muted"> · {{ promptVersion }}</span>
           <span class="page-analyze__muted"> · {{ elapsed }} с</span>
         </div>
 
+        <div v-if="errors.length" class="page-analyze__errors">
+          Не удалось разобрать: {{ errors.join('; ') }}
+        </div>
+
         <div class="page-analyze__toolbar">
-          <button class="btn btn-sm btn-outline-secondary" @click="chooseAll(true)">Выбрать все</button>
+          <button class="btn btn-sm btn-outline-primary" @click="chooseRecommended">Рекомендованные</button>
+          <button class="btn btn-sm btn-outline-secondary" @click="chooseCommon">Только общие</button>
           <button class="btn btn-sm btn-outline-secondary" @click="chooseInDb">Только в базе</button>
+          <button class="btn btn-sm btn-outline-secondary" @click="chooseAll(true)">Выбрать все</button>
           <button class="btn btn-sm btn-outline-secondary" @click="chooseAll(false)">Снять все</button>
           <span class="badge bg-primary">выбрано: {{ chosen.length }}</span>
         </div>
@@ -80,7 +103,7 @@
               <tr>
                 <th class="page-analyze__col-check"></th>
                 <th>Фраза</th>
-                <th class="text-center" title="У скольких конкурентов встречается">Конк.</th>
+                <th class="text-center" title="У скольких конкурентов встречается — наведите, чтобы увидеть список">Конк.</th>
                 <th class="text-center" title="Заказы в нашей базе">Заказы</th>
                 <th>База</th>
               </tr>
@@ -90,8 +113,27 @@
                 <td class="text-center">
                   <input type="checkbox" :checked="chosen.includes(p.phrase)" @change="toggle(p.phrase, $event)" />
                 </td>
-                <td class="page-analyze__phrase">{{ p.phrase }}</td>
-                <td class="text-center">{{ p.hit_cnt }}</td>
+                <td class="page-analyze__phrase" :title="variantsTitle(p)">
+                  <span>{{ p.phrase }}</span>
+                  <span v-if="p.variants_cnt > 1" class="page-analyze__variants">
+                    +{{ p.variants_cnt - 1 }}
+                  </span>
+                </td>
+                <td class="text-center">
+                  <span class="page-analyze__whos">
+                    <button type="button" class="btn btn-sm btn-link p-0 page-analyze__whos-btn">
+                      {{ p.hit_cnt }}
+                    </button>
+                    <span class="page-analyze__whos-pop">
+                      <span class="page-analyze__whos-title">Фраза встречается у конкурентов:</span>
+                      <span v-for="c in p.competitors || []" :key="c.nm_id" class="page-analyze__whos-row">
+                        <span class="page-analyze__whos-nm">{{ c.nm_id }}</span>
+                        <span class="page-analyze__whos-name">{{ c.title || '—' }}</span>
+                      </span>
+                      <span v-if="!p.competitors.length" class="page-analyze__muted">нет данных</span>
+                    </span>
+                  </span>
+                </td>
                 <td class="text-center">{{ p.orders || '—' }}</td>
                 <td>
                   <span v-if="p.in_db" class="badge bg-success">в базе</span>
@@ -141,6 +183,12 @@ const items = ref<NewCardPhrase[]>([])
 const chosen = ref<string[]>([])
 const model = ref('')
 const competitorsCnt = ref(0)
+const analyzedCnt = ref(0)
+const cachedCnt = ref(0)
+const groupsCnt = ref(0)
+const rawCnt = ref(0)
+const mergedCnt = ref(0)
+const errors = ref<string[]>([])
 const elapsed = ref(0)
 const applying = ref(false)
 const runInfo = ref<NewCardRunStatus | null>(null)
@@ -152,9 +200,25 @@ let started = 0
 let runId = ''
 
 const statusText = computed(() => {
+  const phase = runInfo.value?.phase
+  if (phase === 'merge') return 'Сливаем формулировки в группы…'
+  if (phase === 'extract') return 'Разбираем описания по одному конкуренту…'
   if (elapsed.value < 6) return 'Собираем описания конкурентов…'
-  if (elapsed.value < 15) return 'Отправляем описания в модель…'
-  return 'Модель извлекает поисковые фразы…'
+  return 'Разбираем описания по одному конкуренту…'
+})
+
+/** Прогресс по фазам: сервер знает, что сейчас — разбор или слияние, и ведёт свой счётчик. */
+const progressText = computed(() => {
+  const r = runInfo.value
+  if (!r) return ''
+  if (r.phase === 'merge') return `сливаем формулировки: батч ${r.attempt} из ${r.total}`
+  return `разобрано конкурентов: ${r.attempt} из ${r.total}`
+})
+
+/** nmID конкурентов, которых уже разобрали. */
+const doneIds = computed(() => {
+  const raw = runInfo.value?.done_ids || ''
+  return new Set(raw.split(',').map((x) => x.trim()).filter(Boolean))
 })
 
 function stopTimer() {
@@ -211,6 +275,23 @@ function chooseInDb() {
   chosen.value = items.value.filter((p) => p.in_db).map((p) => p.phrase)
 }
 
+/** Общие формулировки: используют ≥2 разных конкурента. */
+function chooseCommon() {
+  chosen.value = items.value.filter((p) => p.hit_cnt >= 2).map((p) => p.phrase)
+}
+
+/** Рекомендованные: есть наши заказы И формулировку подтвердили конкуренты. */
+function chooseRecommended() {
+  chosen.value = items.value.filter((p) => p.orders > 0 && p.hit_cnt >= 2).map((p) => p.phrase)
+}
+
+/** Подсказка по фразе: как её формулируют конкуренты (если формулировок несколько). */
+function variantsTitle(p: NewCardPhrase): string {
+  const variants = p.variants || []
+  if (variants.length < 2) return ''
+  return 'У конкурентов так:\n' + variants.map((v) => '· ' + v).join('\n')
+}
+
 async function run() {
   const nm = Number(props.nmId || 0)
   if (!nm) return
@@ -220,6 +301,12 @@ async function run() {
   chosen.value = []
   model.value = ''
   competitorsCnt.value = 0
+  analyzedCnt.value = 0
+  cachedCnt.value = 0
+  groupsCnt.value = 0
+  rawCnt.value = 0
+  mergedCnt.value = 0
+  errors.value = []
   promptVersion.value = ''
   runInfo.value = null
   elapsed.value = 0
@@ -238,6 +325,12 @@ async function run() {
     chosen.value = (d.items || []).filter((p) => p.is_selected).map((p) => p.phrase)
     model.value = d.model || ''
     competitorsCnt.value = d.competitors_cnt || 0
+    analyzedCnt.value = d.analyzed_cnt || 0
+    cachedCnt.value = d.cached_cnt || 0
+    groupsCnt.value = d.groups_cnt || 0
+    rawCnt.value = d.raw_cnt || 0
+    mergedCnt.value = d.merged_cnt || 0
+    errors.value = d.errors || []
     promptVersion.value = d.prompt_version || ''
     elapsed.value = Math.max(1, Math.round((Date.now() - started) / 1000))
     state.value = 'done'

@@ -15,6 +15,10 @@ from backend.services.competitors_newcard_service import CompetitorsNewcardServi
 router = APIRouter(prefix="/api/competitors/new-cards", tags=["competitors-new-cards"])
 # «Собранные карточки» — отдельный префикс, чтобы не ловить `/{nm_id}` (см. §9 плана).
 captured_router = APIRouter(prefix="/api/competitors/captured", tags=["competitors-captured"])
+# §16: подбор конкурентов и массовая привязка.
+pick_router = APIRouter(prefix="/api/competitors/pick", tags=["competitors-pick"])
+# §17.2: повторный обход устаревших карточек конкурентов.
+refresh_router = APIRouter(prefix="/api/competitors/refresh", tags=["competitors-refresh"])
 
 
 async def _svc(db: AsyncSession, company_id: int | None, nm_id: int) -> CompetitorsNewcardService:
@@ -122,6 +126,24 @@ async def competitors_list(
     return await svc.list_competitors(nm_id)
 
 
+@router.get("/{nm_id}/competitors/{cid}/details")
+async def competitors_details(
+    nm_id: int = Path(..., ge=1),
+    cid: int = Path(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Полная карточка привязанного конкурента: фото, описание, характеристики, история цен."""
+    svc = await _svc(db, company_id, nm_id)
+    if not await svc.has_competitor(nm_id, cid):
+        raise HTTPException(status_code=404, detail="competitor not found")
+    data = await svc.details(cid)
+    if not data:
+        raise HTTPException(status_code=404, detail="details not collected")
+    return data
+
+
 @router.post("/{nm_id}/competitors")
 async def competitors_add(
     nm_id: int = Path(..., ge=1),
@@ -191,7 +213,7 @@ async def competitors_phrases_analyze(
     nm_id: int = Path(..., ge=1),
     payload: dict = Body(default={}),
     db: AsyncSession = Depends(get_db),
-    _user: dict = Depends(require_seo),
+    user: dict = Depends(require_seo),
     company_id: int | None = Depends(get_current_company),
 ):
     """LLM: вытащить фразы из описаний привязанных конкурентов + статистика нашей базы.
@@ -202,7 +224,28 @@ async def competitors_phrases_analyze(
     svc = await _svc(db, company_id, nm_id)
     run_id = str((payload or {}).get("run_id") or "").strip()[:64] or None
     try:
-        return await svc.analyze_phrases(nm_id, run_id)
+        return await svc.analyze_phrases(nm_id, run_id, user_id=user["id"])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/{nm_id}/phrases/merge")
+async def competitors_phrases_merge(
+    nm_id: int = Path(..., ge=1),
+    payload: dict = Body(default={}),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Только слияние формулировок в группы — без повторного разбора описаний.
+
+    Сырьё берётся из wb_competitor_phrase_comp (уже разобранные конкуренты),
+    поэтому 1–3 вызова модели вместо 14. Рабочий список перезаписывается.
+    """
+    svc = await _svc(db, company_id, nm_id)
+    run_id = str((payload or {}).get("run_id") or "").strip()[:64] or None
+    try:
+        return await svc.merge_phrases(nm_id, run_id, user_id=user["id"])
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -258,14 +301,15 @@ async def competitors_generate(
     nm_id: int = Path(..., ge=1),
     payload: dict = Body(default={}),
     db: AsyncSession = Depends(get_db),
-    _user: dict = Depends(require_seo),
+    user: dict = Depends(require_seo),
     company_id: int | None = Depends(get_current_company),
 ):
     """Title + description по выбранным фразам. Результат — в wb_competitor_summary."""
     svc = await _svc(db, company_id, nm_id)
     run_id = str((payload or {}).get("run_id") or "").strip()[:64] or None
     try:
-        return await svc.generate_description(nm_id, (payload or {}).get("phrases"), run_id)
+        return await svc.generate_description(nm_id, (payload or {}).get("phrases"), run_id,
+                                              user_id=user["id"])
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -280,10 +324,85 @@ async def competitors_run_status(
 ):
     """Прогресс AI-вызова: статус, модель, попытка (для модалок)."""
     svc = await _svc(db, company_id, nm_id)
-    row = await svc.get_run(nm_id, run_id)
+    row = await svc.get_run_safe(nm_id, run_id)
     if not row:
         raise HTTPException(status_code=404, detail="run not found")
     return row
+
+
+# ---------- §16: подбор конкурентов и массовая привязка ----------
+
+@pick_router.get("/cards")
+async def pick_cards(
+    q: str = Query(default=""),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Наши карточки для выбора источника/цели: nmID, vendorCode, title + счётчики."""
+    return await CompetitorsNewcardService(db, company_id).pick_cards(q, limit)
+
+
+@pick_router.get("/candidates")
+async def pick_candidates(
+    source_nm_ids: str = Query(default=""),
+    mode: str = Query(default="recommend"),
+    q: str = Query(default=""),
+    only_content: bool = Query(default=False),
+    only_recommended: bool = Query(default=False),
+    limit: int = Query(default=200, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    sort: str = Query(default="relevance"),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Пул кандидатов: recommend=A∪B (B — рекомендации конкурентов A), competitors=A, captured=вся база компании."""
+    svc = CompetitorsNewcardService(db, company_id)
+    try:
+        return await svc.pick_candidates(
+            source_nm_ids, mode, q, only_content, only_recommended, limit, offset, sort,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@pick_router.get("/candidates/{nm_id}/details")
+async def pick_candidate_details(
+    nm_id: int = Path(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Попап конкурента из пула: capture, привязка или рекомендация (B)."""
+    data = await CompetitorsNewcardService(db, company_id).pick_details(nm_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="details not collected")
+    return data
+
+
+@pick_router.post("/attach")
+async def pick_attach(
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Массовая привязка captured-кандидатов к нашим карточкам (идемпотентно)."""
+    body = payload or {}
+    svc = CompetitorsNewcardService(db, company_id)
+    try:
+        return await svc.bulk_attach(
+            body.get("nm_ids"), body.get("target_nm_ids"),
+            user["id"], str(body.get("mode") or "recommend"),
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 # ---------- §8.5/§11.3: «Собранные карточки» (capture) ----------
@@ -315,6 +434,23 @@ async def captured_history(
 ):
     """Снимки контента по content_hash (append-only, дедуп)."""
     return await CompetitorsNewcardService(db, company_id).history(nm_id, limit)
+
+
+@captured_router.get("/{nm_id}/details")
+async def captured_details(
+    nm_id: int = Path(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Полная карточка собранного конкурента для попапа."""
+    svc = CompetitorsNewcardService(db, company_id)
+    if not await svc.capture_visible(nm_id):
+        raise HTTPException(status_code=404, detail="card not found")
+    data = await svc.details(nm_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="details not collected")
+    return data
 
 
 @captured_router.post("/{nm_id}/attach")
@@ -361,5 +497,56 @@ async def captured_hide(
     svc = CompetitorsNewcardService(db, company_id)
     try:
         return await svc.hide(nm_id, hidden)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+# ---------- §17.2: повторный обход устаревших конкурентов ----------
+
+@refresh_router.get("")
+async def refresh_list(
+    days: int = Query(default=30, ge=1, le=3650),
+    q: str = Query(default=""),
+    only_captured: bool = Query(default=False),
+    include_hidden: bool = Query(default=False),
+    source_nm_id: int | None = Query(default=None, ge=1),
+    status: str = Query(default=""),
+    limit: int = Query(default=300, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    svc = CompetitorsNewcardService(db, company_id)
+    try:
+        return await svc.list_refresh(
+            days=days, q=q, only_captured=only_captured, include_hidden=include_hidden,
+            source_nm_id=source_nm_id, status=status, limit=limit, offset=offset,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@refresh_router.post("/assign")
+async def refresh_assign(
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    raw = (payload or {}).get("nm_ids") or []
+    if not isinstance(raw, list):
+        raise HTTPException(status_code=400, detail="nm_ids должен быть массивом")
+    try:
+        days = int((payload or {}).get("days") or 30)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="bad days")
+    svc = CompetitorsNewcardService(db, company_id)
+    try:
+        return await svc.assign_refresh(raw, days=days, user_id=user["id"])
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))

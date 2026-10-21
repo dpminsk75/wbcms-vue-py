@@ -1,0 +1,38 @@
+/* page-competitor-refresh.css — страница /competitor/refresh (§17.2). */
+.page-refresh__toolbar { margin-top: 12px; }
+.page-refresh__search { max-width: 320px; }
+.page-refresh__days { max-width: 150px; }
+.page-refresh__source { max-width: 300px; }
+
+.page-refresh__tabs {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin: 0 0 12px;
+}
+.page-refresh__tab {
+  border: 1px solid #cfd6e4; background: #fff; color: #374151;
+  border-radius: 999px; padding: 3px 10px; font-size: 12px; line-height: 1.5;
+}
+.page-refresh__tab:hover { border-color: #0d6efd; }
+.page-refresh__tab.is-active { background: #0d6efd; border-color: #0d6efd; color: #fff; }
+.page-refresh__tab-count {
+  display: inline-block; min-width: 18px; margin-left: 4px; padding: 0 5px;
+  border-radius: 999px; background: rgba(0, 0, 0, .08); font-size: 11px;
+}
+.page-refresh__tab.is-active .page-refresh__tab-count { background: rgba(255, 255, 255, .22); }
+
+.page-refresh__grid td { vertical-align: middle; }
+.page-refresh__col-product { min-width: 320px; }
+.page-refresh__col-date { width: 128px; }
+.page-refresh__col-attach { min-width: 130px; }
+.page-refresh__col-status { min-width: 120px; }
+.page-refresh__col-actions { min-width: 150px; }
+.page-refresh__badges { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.page-refresh__badges .badge { font-weight: 500; }
+.page-refresh__date { white-space: nowrap; font-size: 12px; color: #4b5563; }
+.page-refresh__days { font-weight: 600; color: #1f2937; }
+.page-refresh__date-full { color: #6b7280; }
+.page-refresh__attach { white-space: normal; }
+.page-refresh__actions { white-space: nowrap; }
+.page-refresh__actions .btn + .btn { margin-left: 4px; }
+.page-refresh__more { margin-top: 10px; font-size: 12px; color: #6b7280; }
+.page-refresh__bar { margin-top: 16px; }

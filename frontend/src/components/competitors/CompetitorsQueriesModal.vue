@@ -10,13 +10,16 @@
       </div>
       <p class="page-wb-detail__modal-hint">
         Широкие запросы — нужны только для сбора конкурентов. В промпт описания они <b>не идут</b>
-        (там целевые фразы).
+        (там целевые фразы). Запуск — в попапе расширения, источник «Запросы конкурентов».
       </p>
 
       <div class="page-wb-detail__chips">
         <span v-for="q in items" :key="q.id" class="badge bg-light text-dark page-wb-detail__chip page-wb-detail__chip--query">
           {{ q.phrase }}
           <span class="page-wb-detail__chip-status" :class="'is-' + q.status">{{ statusLabel(q.status) }}</span>
+          <span v-if="q.status === 'done' || q.found_cnt" class="page-wb-detail__chip-found" title="Сколько конкурентов найдено по этому запросу">
+            найдено {{ q.found_cnt || 0 }}<template v-if="q.best_position"> · лучшая {{ q.best_position }}</template>
+          </span>
           <a href="#" class="page-wb-detail__chip-x" title="Удалить" @click.prevent="remove(q.id)">×</a>
         </span>
         <span v-if="!items.length" class="text-muted small">Пока нет — добавь ниже</span>
@@ -88,6 +91,8 @@ const suggest = ref<CompetitorQuerySuggest[]>([])
 const suggestVisible = ref(false)
 const suggestLoading = ref(false)
 let timer: ReturnType<typeof setTimeout> | null = null
+let pollTimer: ReturnType<typeof setInterval> | null = null
+let pollInFlight = false
 let seq = 0
 
 const nm = () => Number(props.nmId || 0)
@@ -97,20 +102,40 @@ const STATUS: Record<string, string> = {
 }
 const statusLabel = (s: string) => STATUS[s] || s
 
-async function load() {
+async function load(silent = false) {
   const id = nm()
   if (!id) return
-  loading.value = true
-  error.value = ''
+  if (!silent) {
+    loading.value = true
+    error.value = ''
+  }
   try {
     const d = await competitorsNewcardApi.queries(id)
     items.value = d.items || []
   } catch (e: any) {
-    error.value = e?.response?.data?.detail || 'Не удалось загрузить запросы'
-    items.value = []
+    if (!silent) {
+      error.value = e?.response?.data?.detail || 'Не удалось загрузить запросы'
+      items.value = []
+    }
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
+}
+
+function stopPoll() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+function startPoll() {
+  stopPoll()
+  pollTimer = setInterval(async () => {
+    if (pollInFlight || loading.value || busy.value) return
+    pollInFlight = true
+    try { await load(true) } finally { pollInFlight = false }
+  }, 3000)
 }
 
 function onInput() {
@@ -189,9 +214,15 @@ watch(
       phrase.value = ''
       suggest.value = []
       load()
+      startPoll()
+    } else {
+      stopPoll()
     }
   },
 )
 
-onUnmounted(() => { if (timer) clearTimeout(timer) })
+onUnmounted(() => {
+  if (timer) clearTimeout(timer)
+  stopPoll()
+})
 </script>

@@ -84,6 +84,7 @@ const router = createRouter({
     { path: '/competitor/new-cards/:nm', name: 'competitor-card-workspace', component: () => import('../pages/CompetitorCardWorkspacePage.vue'), meta: { title: 'Карточка: конкуренты и описание — wbcms' } },
     { path: '/competitor/captured', name: 'competitor-captured', component: () => import('../pages/CompetitorCapturedPage.vue'), meta: { title: 'Собранные карточки — wbcms' } },
     { path: '/competitor/pick', name: 'competitor-pick', component: () => import('../pages/CompetitorPickPage.vue'), meta: { title: 'Подбор конкурентов — wbcms' } },
+    { path: '/competitor/refresh', name: 'competitor-refresh', component: () => import('../pages/CompetitorRefreshPage.vue'), meta: { title: 'Обновление конкурентов — wbcms' } },
     { path: '/competitor/index', name: 'competitor-index', component: () => import('../pages/CompetitorIndexPage.vue'), alias: ['/competitor/', '/competitor'], meta: { title: 'Конкуренты — анализ — wbcms' } },
     { path: '/competitor/select/:nm', name: 'competitor-select', component: () => import('../pages/CompetitorSelectPage.vue'), meta: { title: 'Конкуренты: выбор фраз — wbcms' } },
     { path: '/competitor/selected/:nm', name: 'competitor-selected', component: () => import('../pages/CompetitorSelectedPage.vue'), meta: { title: 'Конкуренты: отбор — wbcms' } },
