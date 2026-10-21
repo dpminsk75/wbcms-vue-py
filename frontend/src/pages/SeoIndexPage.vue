@@ -149,6 +149,15 @@
     </div>
 
     <SeoBatchModal :job-id="batchJobId" :open="batchOpen" @close="batchOpen = false" @done="onBatchDone" @fallback="onBatchFallback" />
+    <WbConfirmDialog
+      :open="confirmState.open"
+      :text="confirmState.text"
+      :hint="confirmState.hint"
+      :confirm-text="confirmState.confirmText"
+      :busy="confirmBusy"
+      @confirm="onConfirm"
+      @cancel="confirmState.open = false"
+    />
   </div>
 </template>
 
@@ -159,6 +168,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { seoApi, type SeoRec } from '../api/seo'
 import { useAuthStore } from '../stores/auth'
 import SeoBatchModal from '../components/seo/SeoBatchModal.vue'
+import WbConfirmDialog from '../components/common/WbConfirmDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -173,6 +183,28 @@ const total = ref(0)
 const counts = ref({ new: 0, viewed: 0 })
 const loading = ref(false)
 const error = ref('')
+
+// Диалог подтверждения вместо нативного confirm()
+const confirmBusy = ref(false)
+const confirmState = ref({
+  open: false,
+  text: '',
+  hint: '',
+  confirmText: 'Подтвердить',
+  action: null as null | (() => Promise<void>),
+})
+
+async function onConfirm() {
+  const action = confirmState.value.action
+  if (!action || confirmBusy.value) return
+  confirmBusy.value = true
+  try {
+    await action()
+    confirmState.value.open = false
+  } finally {
+    confirmBusy.value = false
+  }
+}
 const showUnprocessed = ref(route.query.unprocessed !== undefined)
 const unprocessed = ref<Array<{ nmID: number; title?: string; subjectName?: string; brand?: string; vendorCode?: string; photo?: string | null; total_qnt: number }>>([])
 const cards = ref<Array<{ nmID: number; title?: string; subjectName?: string; brand?: string; vendorCode?: string; photo?: string | null }>>([])
@@ -245,9 +277,17 @@ function onQueryChange() {
 }
 
 async function markViewed(id: number) {
-  if (!confirm('Отметить как просмотрено?')) return
-  await seoApi.markViewed(id)
-  load()
+  if (confirmState.value.open) return
+  confirmState.value = {
+    open: true,
+    text: 'Отметить рекомендацию как просмотренную?',
+    hint: 'Она уйдёт из списка «новые».',
+    confirmText: 'Отметить',
+    action: async () => {
+      await seoApi.markViewed(id)
+      load()
+    },
+  }
 }
 async function requeue(id: number) {
   await seoApi.requeue(id)

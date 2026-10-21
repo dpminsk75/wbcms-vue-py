@@ -122,6 +122,17 @@
         <button class="btn btn-sm btn-secondary" @click="$emit('close')">Закрыть</button>
       </div>
     </div>
+
+    <WbConfirmDialog
+      :open="confirmState.open"
+      :text="confirmState.text"
+      :hint="confirmState.hint"
+      :confirm-text="confirmState.confirmText"
+      danger
+      :busy="busy"
+      @confirm="onConfirm"
+      @cancel="confirmState.open = false"
+    />
   </div>
 </template>
 
@@ -132,6 +143,7 @@ import {
   type CapturedAttachedCard,
   type WbCardOption,
 } from '../../api/competitorsNewcard'
+import WbConfirmDialog from '../common/WbConfirmDialog.vue'
 
 const props = defineProps<{
   open: boolean
@@ -148,6 +160,32 @@ const searching = ref(false)
 const busy = ref(false)
 const progress = ref('')
 const error = ref('')
+
+// Диалог подтверждения (нативный confirm() блокирует поток — лишние клики в очередь)
+const confirmState = ref({
+  open: false,
+  text: '',
+  hint: '',
+  confirmText: 'Подтвердить',
+  action: null as null | (() => Promise<void>),
+})
+
+async function onConfirm() {
+  const action = confirmState.value.action
+  if (!action || busy.value) return
+  busy.value = true
+  error.value = ''
+  notice.value = ''
+  try {
+    await action()
+    confirmState.value.open = false
+  } catch (e: any) {
+    error.value = e?.response?.data?.detail || 'Не удалось выполнить действие'
+    confirmState.value.open = false
+  } finally {
+    busy.value = false
+  }
+}
 const notice = ref('')
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 let reqSeq = 0
@@ -234,18 +272,17 @@ async function attachSelected() {
 
 async function detach(sourceNm: number) {
   const nm = Number(props.nmId || 0)
-  if (!nm || busy.value) return
-  busy.value = true
-  error.value = ''
-  notice.value = ''
-  try {
-    await competitorsNewcardApi.detachCaptured(nm, sourceNm)
-    notice.value = `Отвязано от ${sourceNm}`
-    emit('changed')
-  } catch (e: any) {
-    error.value = e?.response?.data?.detail || 'Не удалось отвязать'
-  } finally {
-    busy.value = false
+  if (!nm || busy.value || confirmState.value.open) return
+  confirmState.value = {
+    open: true,
+    text: `Отвязать конкурента от карточки ${sourceNm}?`,
+    hint: 'Содержимое и история карточки останутся в «Собранных карточках» — привязку можно вернуть.',
+    confirmText: 'Отвязать',
+    action: async () => {
+      await competitorsNewcardApi.detachCaptured(nm, sourceNm)
+      notice.value = `Отвязано от ${sourceNm}`
+      emit('changed')
+    },
   }
 }
 

@@ -1039,8 +1039,55 @@ async def ext_filters_for_extension(
 
 # ---------- скачивание расширения (JWT, side-load, §10 п.4) ----------
 
-EXT_ZIP_FILES = ("manifest.json", "background.js", "content.js", "content_search.js",
-                 "popup.html", "popup.js")
+# Что НЕ тащим в архив (служебное/мусор)
+EXT_ZIP_SKIP_SUFFIX = {".md", ".txt", ".log", ".map", ".bak", ".tmp", ".zip"}
+EXT_ZIP_SKIP_NAMES = {".DS_Store", "Thumbs.db", "package.json", "package-lock.json"}
+
+
+def _ext_zip_files(src: pathlib.Path) -> list[str]:
+    """Все файлы расширения из папки — относительные пути через '/'.
+
+    Раньше был жёсткий список: новый файл (иконка, новый content-script) молча
+    не попадал в архив, а отсутствующий в папке — ронял скачивание на 500.
+    """
+    out: list[str] = []
+    for p in sorted(src.rglob("*")):
+        if not p.is_file():
+            continue
+        if p.name in EXT_ZIP_SKIP_NAMES or p.name.startswith("."):
+            continue
+        if p.suffix.lower() in EXT_ZIP_SKIP_SUFFIX:
+            continue
+        out.append(p.relative_to(src).as_posix())
+    return out
+
+
+def _ext_manifest_cleanup(manifest: dict, files: list[str]) -> dict:
+    """Убрать из манифеста ссылки на файлы, которых нет в архиве.
+
+    Иначе Chrome при установке ругается «Could not load icon ...».
+    """
+    have = set(files)
+
+    def _exists(path: str) -> bool:
+        return str(path or "").replace("\\", "/") in have
+
+    icons = manifest.get("icons")
+    if isinstance(icons, dict):
+        manifest["icons"] = {k: v for k, v in icons.items() if _exists(k)}
+        if not manifest["icons"]:
+            manifest.pop("icons", None)
+    action = manifest.get("action")
+    if isinstance(action, dict) and "default_icon" in action:
+        if not _exists(action["default_icon"]):
+            manifest["action"] = {k: v for k, v in action.items() if k != "default_icon"}
+    for cs in manifest.get("content_scripts") or []:
+        if not isinstance(cs, dict):
+            continue
+        for key in ("js", "css"):
+            if key in cs:
+                cs[key] = [x for x in (cs[key] or []) if _exists(x)]
+    return manifest
 
 
 @dl_router.get("")
@@ -1063,31 +1110,49 @@ async def ext_download(
     base = os.getenv("EXT_PUBLIC_BASE", "http://31.130.204.146:3000").rstrip("/")
     if not src:
         raise HTTPException(status_code=500, detail="EXTENSION_DIR is not set (см. backend/.env.example)")
-    manifest_p = pathlib.Path(src) / "manifest.json"
+    root = pathlib.Path(src)
+    manifest_p = root / "manifest.json"
     if not manifest_p.exists():
         raise HTTPException(status_code=500, detail=f"extension not found in EXTENSION_DIR={src}")
     try:
         manifest = json.loads(manifest_p.read_text(encoding="utf-8"))
     except ValueError:
         raise HTTPException(status_code=500, detail="bad manifest.json in EXTENSION_DIR")
+    files = _ext_zip_files(root)
+    if "manifest.json" not in files:
+        raise HTTPException(status_code=500, detail="extension folder has no manifest.json")
     version = str(manifest.get("version") or "1.0")
     hp = list(manifest.get("host_permissions") or [])
     if f"{base}/*" not in hp:
         hp.append(f"{base}/*")
     manifest["host_permissions"] = hp
+    manifest = _ext_manifest_cleanup(manifest, files)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for name in EXT_ZIP_FILES:
-            p = pathlib.Path(src) / name
-            if not p.exists():
-                raise HTTPException(status_code=500, detail=f"extension file missing: {name}")
-            data = p.read_text(encoding="utf-8")
-            if name in ("background.js", "popup.js"):
-                data = re.sub(r'const DEFAULT_SERVER = "[^"]*";',
-                              f'const DEFAULT_SERVER = "{base}";', data, count=1)
+        for name in files:
+            p = root / name
+            try:
+                data = p.read_bytes()
+            except OSError:
+                continue
+            if name.endswith(".js"):
+                # вшиваем адрес сервера во ВСЕ js-файлы (раньше — только в два)
+                try:
+                    text_js = data.decode("utf-8")
+                except UnicodeDecodeError:
+                    text_js = None
+                if text_js is not None:
+                    text_js = re.sub(r'const DEFAULT_SERVER = "[^"]*";',
+                                     f'const DEFAULT_SERVER = "{base}";', text_js, count=1)
+                    data = text_js.encode("utf-8")
             if name == "manifest.json":
-                data = json.dumps(manifest, ensure_ascii=False, indent=2)
+                data = json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8")
             zf.writestr(name, data)
     buf.seek(0)
-    return StreamingResponse(buf, media_type="application/zip", headers={
-        "Content-Disposition": f'attachment; filename="wb-competitor-parser-{version}.zip"'})
+    return StreamingResponse(
+        buf, media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="wb-competitor-parser-{version}.zip"',
+            # что реально внутри архива — видно в devtools/curl
+            "X-Ext-Files": ",".join(files),
+        })

@@ -82,6 +82,11 @@
 .wb-modal-box--wide { min-width: 360px; }
 .wb-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
+/* Диалог подтверждения (WbConfirmDialog) */
+.wb-confirm__box { max-width: 440px; }
+.wb-confirm__text { font-size: 14px; line-height: 1.45; color: #1f2937; }
+.wb-confirm__hint { font-size: 12px; line-height: 1.5; color: #6b7280; }
+
 /* Фирменная кнопка #4A3A8C (дедуп ~10 мест в админках/регистрации) */
 .wb-btn-brand { background: #4A3A8C; color: #fff; border: none; }
 .wb-btn-brand--sm { padding: 4px 10px; border-radius: 6px; }

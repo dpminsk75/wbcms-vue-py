@@ -92,6 +92,16 @@
         </details>
       </div>
     </div>
+    <WbConfirmDialog
+      :open="confirmState.open"
+      :text="confirmState.text"
+      :hint="confirmState.hint"
+      :confirm-text="confirmState.confirmText"
+      danger
+      :busy="confirmBusy"
+      @confirm="onConfirm"
+      @cancel="confirmState.open = false"
+    />
   </div>
 </template>
 
@@ -101,6 +111,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { competitorApi, type CompetitorDetail } from '../api/competitor'
 import { useAiJob } from '../composables/useAiJob'
+import WbConfirmDialog from '../components/common/WbConfirmDialog.vue'
 
 const route = useRoute()
 const nmId = Number(route.params.nm)
@@ -111,6 +122,28 @@ const summary = ref<any>(null)
 const summaryLoading = ref(false)
 const job = useAiJob()
 const jobActive = computed(() => job.polling.value && !job.finished.value)
+
+// Диалог подтверждения вместо нативного confirm()
+const confirmBusy = ref(false)
+const confirmState = ref({
+  open: false,
+  text: '',
+  hint: '',
+  confirmText: 'Подтвердить',
+  action: null as null | (() => Promise<void>),
+})
+
+async function onConfirm() {
+  const action = confirmState.value.action
+  if (!action || confirmBusy.value) return
+  confirmBusy.value = true
+  try {
+    await action()
+    confirmState.value.open = false
+  } finally {
+    confirmBusy.value = false
+  }
+}
 
 const shortDesc = (t: any) => String(t || '').slice(0, 600)
 function jobItem(nm: number) {
@@ -163,9 +196,17 @@ function analyzeAll() {
   runJob(competitorApi.analyzeAll(nmId).then((r) => { load(); return r }))
 }
 async function removeOne(cnm: number) {
-  if (!confirm('Убрать из отбора?')) return
-  await competitorApi.remove(nmId, cnm)
-  load()
+  if (confirmState.value.open) return
+  confirmState.value = {
+    open: true,
+    text: `Убрать конкурента nm ${cnm} из отбора?`,
+    hint: 'Он перестанет участвовать в анализе и сводке. Содержимое карточки не изменится.',
+    confirmText: 'Убрать',
+    action: async () => {
+      await competitorApi.remove(nmId, cnm)
+      load()
+    },
+  }
 }
 async function loadSummary(force: boolean) {
   summaryLoading.value = true

@@ -167,7 +167,7 @@
                   <button
                     class="btn btn-sm btn-link text-danger"
                     title="Отвязать конкурента (контент останется в «Собранных карточках»)"
-                    @click="detachCompetitor(c)"
+                    @click="askDetachCompetitor(c)"
                   >
                     <i class="bi bi-x-lg"></i>
                   </button>
@@ -273,7 +273,7 @@
                 <span v-if="p.source === 'manual'" class="badge bg-light text-dark">вручную</span>
               </td>
               <td class="text-center">
-                <button class="btn btn-sm btn-link text-danger" title="Удалить" @click="removePhrase(p)">
+                <button class="btn btn-sm btn-link text-danger" title="Удалить" @click="askRemovePhrase(p)">
                   <i class="bi bi-trash"></i>
                 </button>
               </td>
@@ -378,6 +378,17 @@
       @close="copyOpen = false"
       @done="onCopied"
     />
+
+    <WbConfirmDialog
+      :open="confirmState.open"
+      :text="confirmState.text"
+      :hint="confirmState.hint"
+      :confirm-text="confirmState.confirmText"
+      danger
+      :busy="busy"
+      @confirm="onConfirm"
+      @cancel="confirmState.open = false"
+    />
   </div>
 </template>
 
@@ -395,6 +406,7 @@ import {
   type NewCardPhrase,
 } from '../api/competitorsNewcard'
 import { copyText } from '../utils/clipboard'
+import WbConfirmDialog from '../components/common/WbConfirmDialog.vue'
 import CompetitorAnalyzeModal from '../components/competitors/CompetitorAnalyzeModal.vue'
 import CompetitorCopyFromCardModal from '../components/competitors/CompetitorCopyFromCardModal.vue'
 import CompetitorDetailsModal from '../components/competitors/CompetitorDetailsModal.vue'
@@ -426,6 +438,17 @@ const mergeInfo = ref('')
 const rawPhrasesCnt = ref(0)
 const mergeAttempt = ref(0)
 const mergeTotal = ref(0)
+
+// Диалог подтверждения вместо нативного confirm(): нативный блокирует поток,
+// лишний клик уходит в очередь и срабатывает после закрытия — действие повторяется.
+const busy = ref(false)
+const confirmState = ref({
+  open: false,
+  text: '',
+  hint: '',
+  confirmText: 'Подтвердить',
+  action: null as null | (() => Promise<void>),
+})
 
 const result = ref<NewCardGenerateResult | null>(null)
 const resultAt = ref('')
@@ -592,14 +615,51 @@ async function onCopied(res: { added: number; source_nm_id: number }) {
   await load()
 }
 
+function askDetachCompetitor(c: CompetitorRow) {
+  confirmState.value = {
+    open: true,
+    text: `Отвязать конкурента nm ${c.nm_id}?`,
+    hint: 'Контент и история останутся в «Собранных карточках», привязку можно вернуть.',
+    confirmText: 'Отвязать',
+    action: () => detachCompetitor(c),
+  }
+}
+
+function askRemovePhrase(p: NewCardPhrase) {
+  confirmState.value = {
+    open: true,
+    text: `Удалить фразу «${p.phrase}»?`,
+    hint: 'Фраза пропадёт из списка и из выбранных для генерации.',
+    confirmText: 'Удалить',
+    action: () => removePhrase(p),
+  }
+}
+
+async function onConfirm() {
+  const action = confirmState.value.action
+  if (!action || busy.value) return
+  busy.value = true
+  try {
+    await action()
+    confirmState.value.open = false
+  } finally {
+    busy.value = false
+  }
+}
+
 async function detachCompetitor(c: CompetitorRow) {
   if (!nm.value) return
-  if (!confirm(`Отвязать конкурента nm ${c.nm_id}?\n\nКонтент и история останутся в «Собранных карточках», привязку можно вернуть.`)) return
   error.value = ''
   notice.value = ''
   try {
     await competitorsNewcardApi.detachCompetitor(nm.value, c.nm_id)
-    await load()
+    // убираем строку локально — без перезагрузки (список не прыгает)
+    if (detail.value) {
+      const i = detail.value.competitors.findIndex((x) => x.nm_id === c.nm_id)
+      if (i >= 0) detail.value.competitors.splice(i, 1)
+      detail.value.counts.competitors_cnt = detail.value.competitors.length
+    }
+    notice.value = `Конкурент nm ${c.nm_id} отвязан`
   } catch (e: any) {
     error.value = e?.response?.data?.detail || 'Не удалось отвязать конкурента'
   }
@@ -648,11 +708,17 @@ async function addPhrase() {
 
 async function removePhrase(p: NewCardPhrase) {
   if (!nm.value) return
-  if (!confirm(`Удалить фразу «${p.phrase}»?`)) return
   error.value = ''
   try {
     await competitorsNewcardApi.removePhrase(nm.value, p.id)
-    await loadPhrases()
+    // убираем строку локально — без перезагрузки списка фраз
+    if (detail.value) {
+      const i = detail.value.phrases.findIndex((x) => x.id === p.id)
+      if (i >= 0) detail.value.phrases.splice(i, 1)
+      detail.value.counts.phrases_cnt = detail.value.phrases.length
+      detail.value.counts.selected_cnt = selectedCnt.value
+    }
+    notice.value = `Фраза «${p.phrase}» удалена`
   } catch (e: any) {
     error.value = e?.response?.data?.detail || 'Не удалось удалить фразу'
   }

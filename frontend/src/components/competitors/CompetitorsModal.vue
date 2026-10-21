@@ -77,6 +77,14 @@
             >
               <i class="bi bi-stars"></i> Анализ
             </button>
+            <button
+              class="btn btn-sm btn-outline-danger"
+              :disabled="busy"
+              title="Отвязать конкурента от этой карточки (контент и история останутся в «Собранных карточках»)"
+              @click="askDetach(c.nm_id)"
+            >
+              <i class="bi bi-link-45deg"></i> Отвязать
+            </button>
           </div>
         </div>
       </div>
@@ -100,6 +108,18 @@
           <span v-if="summary.created_at"> · {{ summary.created_at }}</span>
         </div>
       </div>
+
+      <!-- Подтверждение отвязки (свой диалог: нативный confirm() ставит лишние клики в очередь) -->
+      <WbConfirmDialog
+        :open="pendingDetach !== null"
+        :text="`Отвязать конкурента nm ${pendingDetach ?? ''} от карточки ${nmId ?? ''}?`"
+        hint="Описание и история останутся в «Собранных карточках» — конкурент не пропадёт совсем."
+        confirm-text="Отвязать"
+        danger
+        :busy="busy"
+        @confirm="doDetach"
+        @cancel="pendingDetach = null"
+      />
     </div>
   </div>
 </template>
@@ -109,6 +129,7 @@ import { ref, watch } from 'vue'
 import { api } from '@/api/client'
 import { aiJobsApi } from '@/api/aiJobs'
 import { competitorsNewcardApi, type CompetitorRow } from '@/api/competitorsNewcard'
+import WbConfirmDialog from '../common/WbConfirmDialog.vue'
 
 const props = defineProps<{ open: boolean; nmId: number | string | null | undefined }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'changed'): void }>()
@@ -121,6 +142,7 @@ const loading = ref(false)
 const error = ref('')
 const notice = ref('')
 const analyzing = ref<number | null>(null)
+const pendingDetach = ref<number | null>(null)
 const summary = ref<any>(null)
 
 const nm = () => Number(props.nmId || 0)
@@ -211,6 +233,33 @@ async function analyze(competitorNm: number) {
   }
 }
 
+/** Отвязать конкурента от нашей карточки: удаляем все строки пары. */
+function askDetach(competitorNm: number) {
+  if (busy.value || pendingDetach.value !== null) return
+  pendingDetach.value = competitorNm
+}
+
+async function doDetach() {
+  const competitorNm = pendingDetach.value
+  if (competitorNm === null || busy.value) return
+  busy.value = true
+  error.value = ''
+  notice.value = ''
+  try {
+    await competitorsNewcardApi.detachCompetitor(nm(), competitorNm)
+    // убираем строку локально — без перезагрузки списка (и без прыжка скролла)
+    const i = items.value.findIndex((x) => x.nm_id === competitorNm)
+    if (i >= 0) items.value.splice(i, 1)
+    pendingDetach.value = null
+    notice.value = `Конкурент nm ${competitorNm} отвязан.`
+    emit('changed')
+  } catch (e: any) {
+    error.value = e?.response?.data?.detail || 'Не удалось отвязать конкурента'
+  } finally {
+    busy.value = false
+  }
+}
+
 async function pollJob(jobId: number) {
   const finished = new Set(['done', 'error', 'interrupted'])
   for (let i = 0; i < 300; i++) {
@@ -266,6 +315,7 @@ watch(
     fromCard.value = ''
     notice.value = ''
     error.value = ''
+    pendingDetach.value = null
     summary.value = null
     load()
   },

@@ -46,6 +46,13 @@
     <div v-if="raw" class="ext-tokens-block__once">
       <div>Токен (показан один раз): <code>{{ raw }}</code></div>
     </div>
+    <div class="ext-tokens-block__hint">
+      <i class="bi bi-info-circle"></i>
+      Скачанный zip <b>Chrome не устанавливает</b> — он ставит только .crx из Web Store или
+      распакованную папку. Распакуйте zip в постоянную папку и откройте
+      <code>chrome://extensions</code> → включите <b>«Режим разработчика»</b> →
+      <b>«Загрузить распакованное расширение»</b> → выберите эту папку.
+    </div>
     <ExtInstallModal :open="showGuide" :companyId="companyId" @close="showGuide = false" />
   </div>
 </template>
@@ -153,4 +160,9 @@ onMounted(load)
 .ext-tokens-block__form { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
 .ext-tokens-block__input { max-width: 220px; }
 .ext-tokens-block__once { margin-top: 12px; padding: 10px; background: #eef7ee; border-radius: 6px; word-break: break-all; }
+.ext-tokens-block__hint {
+  margin-top: 10px; padding: 8px 10px; font-size: 12px; line-height: 1.5;
+  color: #6b7280; background: #f8fafc; border: 1px solid #eef1f6; border-radius: 6px;
+}
+.ext-tokens-block__hint code { color: #8A2BE0; }
 </style>

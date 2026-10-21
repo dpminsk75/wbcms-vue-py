@@ -105,7 +105,7 @@ button.page-wb-detail__suggest-row:hover { background: #f3f4f6; }
 .page-wb-detail__comp-title a { color: #111827; text-decoration: none; }
 .page-wb-detail__comp-title a:hover { color: #8a2be0; }
 .page-wb-detail__comp-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; color: #4b5563; margin-top: 2px; }
-.page-wb-detail__comp-actions { flex: 0 0 auto; display: flex; align-items: center; }
+.page-wb-detail__comp-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
 
 /* Сводка */
 .page-wb-detail__summary { margin-top: 12px; padding: 10px 12px; border: 1px dashed #d1d5db; border-radius: 8px; background: #fcfcfd; }
