@@ -1,0 +1,195 @@
+/* page-competitor-new-cards.css — чанки CompetitorNewCardsPage (/competitor/new-cards)
+ * и CompetitorCardWorkspacePage (/competitor/new-cards/:nm).
+ * Базовые стили таблицы и товара — page-competitor.css, таблица — .wb-admin-table.
+ */
+.page-competitor-new-cards .page-competitor__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.page-competitor-new-cards .page-competitor__head-actions { display: flex; gap: 6px; }
+.page-competitor-new-cards .page-competitor__toolbar,
+.page-workspace__toolbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 12px 0; padding: 10px 12px; background: #f8f9fa;
+  border: 1px solid #e5e7eb; border-radius: 8px;
+}
+.page-competitor-new-cards .page-competitor__search { max-width: 320px; }
+.page-competitor-new-cards .page-competitor__col-subject { min-width: 170px; }
+.page-competitor-new-cards .page-competitor__subject { font-size: 13px; color: #2c3e50; }
+.page-competitor-new-cards code { font-size: 12px; color: #6b7280; }
+
+.page-competitor__check,
+.page-workspace__check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #444; cursor: pointer; }
+.page-competitor__check input,
+.page-workspace__check input { margin: 0; }
+
+/* «добавить карточку из общего списка» */
+.page-competitor__picker {
+  margin: 0 0 14px; padding: 10px 12px; border: 1px dashed #cfd6e4; border-radius: 8px;
+  background: #fff;
+}
+.page-competitor__picker-label { font-size: 12px; font-weight: 600; color: #4b5563; margin-bottom: 6px; }
+.page-competitor__picker-row { display: flex; gap: 8px; align-items: center; }
+.page-competitor__picker-row input { max-width: 420px; }
+.page-competitor__picker-hint { font-size: 11px; color: #8a94a6; margin-top: 5px; }
+.page-competitor__mini { margin-left: 6px; font-size: 10px; font-weight: 500; }
+
+/* ---------- рабочий стол карточки ---------- */
+
+.page-workspace__crumbs { margin-bottom: 8px; font-size: 13px; }
+.page-workspace__crumbs a { text-decoration: none; }
+
+.page-workspace__card {
+  display: flex; gap: 14px; align-items: flex-start;
+  padding: 12px 14px; margin-bottom: 14px;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+}
+.page-workspace__thumb { width: 84px; height: 112px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+.page-workspace__card-text { min-width: 0; flex: 1; }
+.page-workspace__title { font-size: 16px; font-weight: 600; color: #1f2937; margin-bottom: 4px; }
+.page-workspace__meta { font-size: 12px; color: #6b7280; margin-bottom: 8px; }
+.page-workspace__badges { display: flex; gap: 5px; flex-wrap: wrap; }
+.page-workspace__badges .badge { font-weight: 500; }
+.page-workspace__chars { margin-top: 8px; font-size: 12px; color: #374151; }
+.page-workspace__chars summary { cursor: pointer; color: #0d6efd; }
+.page-workspace__char { margin-top: 2px; }
+
+.page-workspace__notice { color: #2e7d32; font-size: 13px; margin-bottom: 8px; }
+
+.page-workspace__step {
+  margin-bottom: 16px; padding: 12px 14px;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+}
+.page-workspace__step-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.page-workspace__step-head h4 { font-size: 15px; margin: 0; display: flex; align-items: center; gap: 8px; }
+.page-workspace__step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #0d6efd; color: #fff; font-size: 12px; font-weight: 700;
+}
+.page-workspace__step-actions { display: flex; gap: 6px; }
+.page-workspace__hint { font-size: 11px; color: #8a94a6; margin-top: 6px; }
+.page-workspace__empty { padding: 10px 0; font-size: 13px; color: #6b7280; }
+.page-workspace__muted { font-size: 12px; color: #6b7280; white-space: nowrap; }
+
+.page-workspace__grid td { vertical-align: middle; }
+.page-workspace__comp { display: flex; gap: 8px; align-items: center; min-width: 280px; }
+.page-workspace__comp-thumb { width: 36px; height: 48px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
+.page-workspace__comp-title { font-size: 13px; color: #1f2937; }
+.page-workspace__comp-sub { font-size: 11px; color: #6b7280; }
+
+.page-workspace__search { max-width: 260px; }
+.page-workspace__add { display: flex; gap: 6px; align-items: center; margin-left: auto; }
+.page-workspace__add input { width: 220px; }
+.page-workspace__col-check { width: 34px; }
+.page-workspace__phrases td { font-size: 13px; }
+.page-workspace__phrase { font-weight: 500; }
+.page-workspace__row--sel { background: #f0f7ff; }
+
+.page-workspace__result {
+  margin-top: 10px; padding: 12px; border: 1px solid #dbe4f0; border-radius: 8px; background: #fbfdff;
+}
+.page-workspace__result-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 4px; }
+.page-workspace__result-head:first-child { margin-top: 0; }
+.page-workspace__result-label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; }
+.page-workspace__result-title { font-size: 16px; font-weight: 600; color: #111827; }
+.page-workspace__result-desc { white-space: pre-wrap; font-size: 13px; line-height: 1.55; color: #1f2937; margin-top: 4px; }
+.page-workspace__result-meta { font-size: 11px; color: #8a94a6; margin-top: 8px; }
+
+.page-workspace__col-detach { width: 44px; }
+
+/* ---------- модалка анализа описаний ---------- */
+
+.page-analyze__box,
+.page-gen__box {
+  width: min(920px, 96vw);
+  max-height: 90vh;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+.page-analyze__head,
+.page-gen__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 12px 16px; border-bottom: 1px solid #e5e7eb; flex-shrink: 0;
+}
+.page-analyze__title,
+.page-gen__title {
+  font-size: 16px; margin: 0; display: flex; align-items: center; gap: 8px; color: #1f2937;
+}
+.page-analyze__running,
+.page-analyze__done,
+.page-analyze__error,
+.page-gen__running,
+.page-gen__done,
+.page-gen__error {
+  padding: 14px 16px; overflow: auto; max-height: calc(90vh - 57px);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.page-analyze__status,
+.page-gen__status { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.page-analyze__model,
+.page-gen__model { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: #374151; }
+.page-analyze__status-text,
+.page-gen__status-text { color: #374151; }
+.page-analyze__timer,
+.page-gen__timer { margin-left: auto; font-variant-numeric: tabular-nums; color: #6b7280; font-size: 12px; }
+
+.page-analyze__bar { height: 4px; background: #e5edf7; border-radius: 2px; overflow: hidden; position: relative; }
+.page-analyze__bar-fill {
+  position: absolute; top: 0; bottom: 0; width: 35%; background: #0d6efd; border-radius: 2px;
+  animation: page-analyze-slide 1.4s ease-in-out infinite;
+}
+@keyframes page-analyze-slide { 0% { left: -35%; } 100% { left: 100%; } }
+
+.page-analyze__hint,
+.page-gen__hint { font-size: 11px; color: #8a94a6; }
+.page-analyze__muted,
+.page-gen__muted { font-size: 12px; color: #6b7280; }
+
+.page-analyze__comps { border: 1px solid #eef1f6; border-radius: 8px; overflow: auto; max-height: 260px; }
+.page-analyze__comps-label {
+  position: sticky; top: 0; background: #f8f9fa; padding: 7px 10px;
+  font-size: 12px; color: #4b5563; border-bottom: 1px solid #eef1f6; z-index: 1;
+}
+.page-analyze__comp {
+  display: grid; grid-template-columns: 90px 1fr auto; gap: 8px; align-items: center;
+  padding: 5px 10px; font-size: 12px; border-bottom: 1px solid #f3f5f8;
+}
+.page-analyze__comp:last-child { border-bottom: 0; }
+.page-analyze__comp-nm { color: #6b7280; font-variant-numeric: tabular-nums; }
+.page-analyze__comp-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #1f2937; }
+
+.page-analyze__summary,
+.page-gen__done-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; color: #1f2937; }
+.page-analyze__toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.page-analyze__list { border: 1px solid #eef1f6; border-radius: 8px; overflow: auto; max-height: 45vh; }
+.page-analyze__grid { margin: 0; }
+.page-analyze__grid thead th { position: sticky; top: 0; background: #f8f9fa; z-index: 1; }
+.page-analyze__col-check { width: 34px; }
+.page-analyze__phrase { font-weight: 500; }
+.page-analyze__error .wb-error { margin: 0; }
+
+/* ---------- модалка генерации ---------- */
+
+.page-gen__steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.page-gen__step { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #9aa3af; }
+.page-gen__step--active { color: #1f2937; }
+.page-gen__step--done { color: #2e7d32; }
+.page-gen__step--active i { animation: page-gen-spin 1s linear infinite; }
+.page-gen__step-hint { font-size: 11px; color: #8a94a6; margin-left: 4px; }
+@keyframes page-gen-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+.page-gen__input { border: 1px solid #eef1f6; border-radius: 8px; padding: 10px 12px; }
+.page-gen__input-label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; margin-bottom: 6px; }
+.page-gen__input-row { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-bottom: 4px; flex-wrap: wrap; }
+.page-gen__card-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; color: #1f2937; }
+.page-gen__chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; max-height: 120px; overflow: auto; }
+.page-gen__chip { font-size: 11px; background: #eef4ff; color: #1d4ed8; border-radius: 10px; padding: 2px 8px; }
+
+.page-gen__done-ok { color: #2e7d32; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; }
+.page-gen__block { border: 1px solid #dbe4f0; border-radius: 8px; padding: 10px 12px; background: #fbfdff; }
+.page-gen__block-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 5px; }
+.page-gen__label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; }
+.page-gen__title { font-size: 16px; font-weight: 600; color: #111827; margin-top: 4px; }
+.page-gen__desc { white-space: pre-wrap; font-size: 13px; line-height: 1.55; color: #1f2937; margin-top: 4px; max-height: 38vh; overflow: auto; }
+.page-gen__meta { font-size: 11px; color: #8a94a6; }
+.page-gen__error .wb-error { margin: 0; }
+

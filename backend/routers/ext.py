@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
 from backend.deps import get_current_company, get_current_user, require_ext_token, require_seo
-from backend.services import ext_service
+from backend.services import ext_service, capture_service
 
 router = APIRouter(prefix="/api/ext", tags=["ext"])
 admin_router = APIRouter(prefix="/api/companies/{company_id}/ext-tokens", tags=["ext-tokens"])
@@ -214,11 +214,13 @@ async def ext_result(
         SELECT id, recommendations, collected_at FROM wb_competitor_details WHERE nm_id=:n
     """), {"n": nm_id})).mappings().first()
     new_recs = json.dumps(payload.get("recommendations") or [], ensure_ascii=False)
+    new_chars = json.dumps(payload.get("characteristics") or [], ensure_ascii=False)
     params = {
         "n": nm_id, "t": payload.get("title", ""), "d": payload.get("description", ""),
         "u": payload.get("url", ""), "b": payload.get("brand", ""), "s": payload.get("seller", ""),
         "p": payload.get("price", ""), "o": payload.get("old_price", ""),
         "img": json.dumps(payload.get("images") or [], ensure_ascii=False),
+        "chars": new_chars, "subj": str(payload.get("subject_name") or "")[:255],
     }
     if existing:
         age_h = 25.0
@@ -232,26 +234,54 @@ async def ext_result(
                 UPDATE wb_competitor_details SET
                   title=:t, description=:d, recommendations=:r, url=:u,
                   brand=:b, seller=:s, price=:p, old_price=:o,
-                  images=:img, collected_at=NOW()
+                  images=:img, collected_at=NOW(),
+                  characteristics=IF(:chars='[]', characteristics, :chars),
+                  subject_name=IF(:subj='', subject_name, :subj)
                 WHERE nm_id=:n
             """), {**params, "r": final_recs})
         else:
+            # было REPLACE INTO: терялись first_collected_at/captured_* — теперь UPDATE
             await db.execute(text("""
-                REPLACE INTO wb_competitor_details
-                  (nm_id, title, description, recommendations, url, brand, seller, price, old_price, images)
-                VALUES (:n, :t, :d, :nr, :u, :b, :s, :p, :o, :img)
-            """), {**params, "nr": new_recs})
+                UPDATE wb_competitor_details SET
+                  title=:t, description=:d, recommendations=:r, url=:u,
+                  brand=:b, seller=:s, price=:p, old_price=:o,
+                  images=:img, collected_at=NOW(),
+                  characteristics=IF(:chars='[]', characteristics, :chars),
+                  subject_name=IF(:subj='', subject_name, :subj)
+                WHERE nm_id=:n
+            """), {**params, "r": new_recs})
     else:
         await db.execute(text("""
             INSERT INTO wb_competitor_details
-              (nm_id, title, description, recommendations, url, brand, seller, price, old_price, images)
-            VALUES (:n, :t, :d, :nr, :u, :b, :s, :p, :o, :img)
+              (nm_id, title, description, recommendations, url, brand, seller, price, old_price, images,
+               characteristics, subject_name, first_collected_at)
+            VALUES (:n, :t, :d, :nr, :u, :b, :s, :p, :o, :img, :chars, :subj, NOW())
         """), {**params, "nr": new_recs})
     await db.execute(text("""
         UPDATE wb_enrich_queue SET status='done', processed_at=NOW(), company_id=:c WHERE nm_id=:n
     """), {"n": nm_id, "c": cid})
     await db.commit()
     return {"ok": True}
+
+
+@router.post("/capture")
+async def ext_capture(
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    ext: dict = Depends(require_ext_token),
+):
+    """Коллектор «текущей страницы» (§8 md): контент конкурента без привязок.
+
+    В отличие от /result пишет, даже если nm не в очереди и не в наших конкурентах:
+    details + capture-видимость + снимок истории. Своя карточка → skip own_card,
+    свежее 24 ч → skip fresh (force обходит оба ограничения, allow_own — только своё).
+    """
+    try:
+        return await capture_service.capture(
+            db, int(ext["company_id"]), ext.get("created_by"), payload or {}
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.post("/error")

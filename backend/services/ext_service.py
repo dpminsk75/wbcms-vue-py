@@ -72,7 +72,7 @@ async def lookup_token(db: AsyncSession, raw: str) -> dict | None:
         return None
     try:
         row = (await db.execute(text("""
-            SELECT id, company_id, name FROM ext_tokens
+            SELECT id, company_id, name, created_by FROM ext_tokens
             WHERE token_sha256=:h AND is_active=1 LIMIT 1
         """), {"h": _sha(raw.strip())})).mappings().first()
     except Exception:

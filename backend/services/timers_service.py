@@ -79,6 +79,11 @@ ALLOWED: dict[str, dict] = {
         "default": "04:30",
         "group": "night",
     },
+    "wbcms-search-report": {
+        "title": "Search-report WB (позиции + фразы)",
+        "default": "02:00",
+        "group": "night",
+    },
     "wbcms-wb-tokens": {
         "title": "WB-токены health-check (daily)",
         "default": "daily",

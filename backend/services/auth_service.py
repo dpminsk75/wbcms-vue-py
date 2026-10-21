@@ -467,6 +467,8 @@ async def create_company(
     seo_prompt: str | None = None,
     seo_competitor_prompt: str | None = None,
     seo_summary_prompt: str | None = None,
+    seo_newcard_prompt: str | None = None,
+    seo_newcard_model: str | None = None,
 ) -> dict:
     name = name.strip()
     if not name:
@@ -477,13 +479,14 @@ async def create_company(
           name, abbreviation, inn, api_key, seo_model, seo_summary_model, seo_summary_max_tokens,
           seo_daily_limit, seo_desc_min, seo_desc_max, seo_anti_spam_days, seo_openrouter_key,
           seo_openrouter_referer, seo_openrouter_title, seo_prompt, seo_competitor_prompt,
-          seo_summary_prompt, is_active, fbs_deduct_enabled, fbs_deduct_test
+          seo_summary_prompt, seo_newcard_prompt, seo_newcard_model,
+          is_active, fbs_deduct_enabled, fbs_deduct_test
         )
         VALUES (
           :name, :abbreviation, :inn, NULL, :seo_model, :seo_summary_model, :seo_summary_max_tokens,
           :seo_daily_limit, :seo_desc_min, :seo_desc_max, :seo_anti_spam_days, :seo_openrouter_key,
           :seo_openrouter_referer, :seo_openrouter_title, :seo_prompt, :seo_competitor_prompt,
-          :seo_summary_prompt, 1, 0, 1
+          :seo_summary_prompt, :seo_newcard_prompt, :seo_newcard_model, 1, 0, 1
         )
     """), {
         "name": name,
@@ -502,6 +505,8 @@ async def create_company(
         "seo_prompt": seo_prompt,
         "seo_competitor_prompt": seo_competitor_prompt,
         "seo_summary_prompt": seo_summary_prompt,
+        "seo_newcard_prompt": seo_newcard_prompt,
+        "seo_newcard_model": seo_newcard_model,
     })
 
     company_id = (await db.execute(text("SELECT LAST_INSERT_ID()"))).scalar()
@@ -516,6 +521,7 @@ COMPANY_UPDATE_FIELDS = (
     "seo_daily_limit", "seo_desc_min", "seo_desc_max", "seo_anti_spam_days",
     "seo_openrouter_key", "seo_openrouter_referer", "seo_openrouter_title",
     "seo_prompt", "seo_competitor_prompt", "seo_summary_prompt",
+    "seo_newcard_prompt", "seo_newcard_model",
 )
 
 # Поля yii2 company/_form.php с ограниченным доступом (п.4 пользователя):
@@ -525,6 +531,7 @@ SEO_FIELDS = (
     "seo_daily_limit", "seo_desc_min", "seo_desc_max", "seo_anti_spam_days",
     "seo_openrouter_key", "seo_openrouter_referer", "seo_openrouter_title",
     "seo_prompt", "seo_competitor_prompt", "seo_summary_prompt",
+    "seo_newcard_prompt", "seo_newcard_model",
 )
 
 

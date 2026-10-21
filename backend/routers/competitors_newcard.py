@@ -1,0 +1,365 @@
+"""Конкуренты (новый товар): /api/competitors/new-cards (§9, §15 Ш2/Ш4/Ш5 плана 2026-10-20).
+
+Гейт — require_seo (viewSeo|admin), company-scope через get_current_company.
+Префикс вложен в /api/competitors, но роут статический: GET /api/competitors/{nm}
+не существует, все {nm}-роуты competitor.py двухсегментные — конфликта нет.
+"""
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.database import get_db
+from backend.deps import get_current_company, require_seo
+from backend.services.competitors_newcard_service import CompetitorsNewcardService
+
+router = APIRouter(prefix="/api/competitors/new-cards", tags=["competitors-new-cards"])
+# «Собранные карточки» — отдельный префикс, чтобы не ловить `/{nm_id}` (см. §9 плана).
+captured_router = APIRouter(prefix="/api/competitors/captured", tags=["competitors-captured"])
+
+
+async def _svc(db: AsyncSession, company_id: int | None, nm_id: int) -> CompetitorsNewcardService:
+    svc = CompetitorsNewcardService(db, company_id)
+    if not await svc.owns_card(nm_id):
+        raise HTTPException(status_code=404, detail="card not found")
+    return svc
+
+
+@router.get("")
+async def competitors_new_cards(
+    q: str = Query(default=""),
+    include_all: bool = Query(default=False),
+    limit: int = Query(default=200, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Карточки «в работе» (есть запросы или конкуренты) + счётчики.
+
+    `include_all=1` — все активные карточки компании; `q` — маска nmID/vendorCode/title.
+    """
+    return await CompetitorsNewcardService(db, company_id).list_cards(q, limit, include_all)
+
+
+@router.get("/{nm_id}")
+async def competitors_new_card(
+    nm_id: int = Path(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    svc = await _svc(db, company_id, nm_id)
+    data = await svc.card_detail(nm_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="card not found")
+    return data
+
+
+# ---------- поисковые запросы (широкие, для сбора конкурентов) ----------
+
+@router.get("/{nm_id}/queries")
+async def competitors_queries(
+    nm_id: int = Path(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    svc = await _svc(db, company_id, nm_id)
+    return await svc.list_queries(nm_id)
+
+
+@router.get("/{nm_id}/queries/suggest")
+async def competitors_queries_suggest(
+    nm_id: int = Path(..., ge=1),
+    q: str = Query(default=""),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Подсказки из wb_sr_report_item_phrases по всей базе (фильтр по subject_name карточки)."""
+    svc = await _svc(db, company_id, nm_id)
+    return await svc.suggest_queries(nm_id, q)
+
+
+@router.post("/{nm_id}/queries")
+async def competitors_queries_add(
+    nm_id: int = Path(..., ge=1),
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    svc = await _svc(db, company_id, nm_id)
+    try:
+        return await svc.add_query(nm_id, str((payload or {}).get("phrase") or ""), user["id"])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.delete("/{nm_id}/queries/{qid}")
+async def competitors_queries_remove(
+    nm_id: int = Path(..., ge=1),
+    qid: int = Path(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    svc = await _svc(db, company_id, nm_id)
+    if not await svc.remove_query(nm_id, qid):
+        raise HTTPException(status_code=404, detail="query not found")
+    return {"ok": True}
+
+
+# ---------- конкуренты ----------
+
+@router.get("/{nm_id}/competitors")
+async def competitors_list(
+    nm_id: int = Path(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    svc = await _svc(db, company_id, nm_id)
+    return await svc.list_competitors(nm_id)
+
+
+@router.post("/{nm_id}/competitors")
+async def competitors_add(
+    nm_id: int = Path(..., ge=1),
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Ручное добавление: {"nm_ids": [123, 456]} → wb_competitor_cards(source='manual') + очередь."""
+    svc = await _svc(db, company_id, nm_id)
+    try:
+        return await svc.add_competitors(nm_id, (payload or {}).get("nm_ids") or [], user["id"])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/{nm_id}/competitors/from-card")
+async def competitors_from_card(
+    nm_id: int = Path(..., ge=1),
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Скопировать конкурентов с другой нашей карточки: {"source_nm_id": N} → source='sibling'."""
+    svc = await _svc(db, company_id, nm_id)
+    try:
+        return await svc.copy_from_card(nm_id, int((payload or {}).get("source_nm_id") or 0), user["id"])
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.delete("/{nm_id}/competitors/{cid}")
+async def competitors_detach(
+    nm_id: int = Path(..., ge=1),
+    cid: int = Path(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Отвязать конкурента от нашей карточки (контент и история остаются)."""
+    svc = await _svc(db, company_id, nm_id)
+    try:
+        ok = await svc.detach_competitor(nm_id, cid)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not ok:
+        raise HTTPException(status_code=404, detail="competitor not found")
+    return {"ok": True, "nm_id": nm_id, "competitor_nm_id": cid}
+
+
+# ---------- Ш11: фразы из описаний конкурентов + генерация ----------
+
+@router.get("/{nm_id}/phrases")
+async def competitors_phrases(
+    nm_id: int = Path(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    svc = await _svc(db, company_id, nm_id)
+    return await svc.list_phrases(nm_id)
+
+
+@router.post("/{nm_id}/phrases/analyze")
+async def competitors_phrases_analyze(
+    nm_id: int = Path(..., ge=1),
+    payload: dict = Body(default={}),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """LLM: вытащить фразы из описаний привязанных конкурентов + статистика нашей базы.
+
+    Синхронно (один вызов модели, до ~60 с): фронт показывает спиннер.
+    `run_id` (uuid клиента) — для прогресса: какая модель и попытка.
+    """
+    svc = await _svc(db, company_id, nm_id)
+    run_id = str((payload or {}).get("run_id") or "").strip()[:64] or None
+    try:
+        return await svc.analyze_phrases(nm_id, run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/{nm_id}/phrases")
+async def competitors_phrases_add(
+    nm_id: int = Path(..., ge=1),
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    svc = await _svc(db, company_id, nm_id)
+    try:
+        return await svc.add_phrase(nm_id, str((payload or {}).get("phrase") or ""), user["id"])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/{nm_id}/phrases/select")
+async def competitors_phrases_select(
+    nm_id: int = Path(..., ge=1),
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """{"phrases": ["..."], "selected": true|false} — отметить набор для генерации."""
+    svc = await _svc(db, company_id, nm_id)
+    try:
+        return await svc.select_phrases(nm_id, (payload or {}).get("phrases") or [],
+                                        bool((payload or {}).get("selected", True)))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.delete("/{nm_id}/phrases/{pid}")
+async def competitors_phrases_remove(
+    nm_id: int = Path(..., ge=1),
+    pid: int = Path(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    svc = await _svc(db, company_id, nm_id)
+    if not await svc.delete_phrase(nm_id, pid):
+        raise HTTPException(status_code=404, detail="phrase not found")
+    return {"ok": True}
+
+
+@router.post("/{nm_id}/generate")
+async def competitors_generate(
+    nm_id: int = Path(..., ge=1),
+    payload: dict = Body(default={}),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Title + description по выбранным фразам. Результат — в wb_competitor_summary."""
+    svc = await _svc(db, company_id, nm_id)
+    run_id = str((payload or {}).get("run_id") or "").strip()[:64] or None
+    try:
+        return await svc.generate_description(nm_id, (payload or {}).get("phrases"), run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/{nm_id}/runs/{run_id}")
+async def competitors_run_status(
+    nm_id: int = Path(..., ge=1),
+    run_id: str = Path(..., min_length=1, max_length=64),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Прогресс AI-вызова: статус, модель, попытка (для модалок)."""
+    svc = await _svc(db, company_id, nm_id)
+    row = await svc.get_run(nm_id, run_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="run not found")
+    return row
+
+
+# ---------- §8.5/§11.3: «Собранные карточки» (capture) ----------
+
+@captured_router.get("")
+async def captured_list(
+    q: str = Query(default=""),
+    include_hidden: bool = Query(default=False),
+    limit: int = Query(default=300, ge=1, le=1000),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Что расширение собрало в общую базу. Ничего не привязано — только видимость компании.
+
+    `include_hidden=1` — показать скрытые этой компанией (скрытая не всплывает от
+    авто-capture, но явная кнопка «Собрать» её возвращает).
+    """
+    return await CompetitorsNewcardService(db, company_id).list_captured(q, include_hidden, limit)
+
+
+@captured_router.get("/{nm_id}/history")
+async def captured_history(
+    nm_id: int = Path(..., ge=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Снимки контента по content_hash (append-only, дедуп)."""
+    return await CompetitorsNewcardService(db, company_id).history(nm_id, limit)
+
+
+@captured_router.post("/{nm_id}/attach")
+async def captured_attach(
+    nm_id: int = Path(..., ge=1),
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Привязать собранную карточку к нашей: `wb_competitor_cards(source='capture')`."""
+    svc = CompetitorsNewcardService(db, company_id)
+    try:
+        return await svc.attach(nm_id, int((payload or {}).get("source_nm_id") or 0), user["id"])
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@captured_router.post("/{nm_id}/detach")
+async def captured_detach(
+    nm_id: int = Path(..., ge=1),
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Отвязать пару (только `source='capture'`), контент и история остаются."""
+    svc = CompetitorsNewcardService(db, company_id)
+    try:
+        return await svc.detach(nm_id, int((payload or {}).get("source_nm_id") or 0))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@captured_router.post("/{nm_id}/hide")
+async def captured_hide(
+    nm_id: int = Path(..., ge=1),
+    hidden: bool = Query(default=True),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Скрыть/вернуть в списке компании (`?hidden=0` — вернуть)."""
+    svc = CompetitorsNewcardService(db, company_id)
+    try:
+        return await svc.hide(nm_id, hidden)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))

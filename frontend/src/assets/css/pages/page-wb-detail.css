@@ -43,3 +43,70 @@
 /* Кнопка «Увидеть больше» */
 .page-wb-detail__expand-btn { text-align: center; margin: 10px 0 0; }
 .page-wb-detail__more-btn { font-size: 12px; padding: 4px 16px; border-radius: 6px; }
+
+/* ===== Модалки карточки: «Целевые», «Поисковые запросы», «Конкуренты» =====
+ * Bootstrap JS в проекте не подключён (main.ts — только CSS), поэтому модалки ручные.
+ */
+.page-wb-detail__modal-backdrop {
+  position: fixed; inset: 0; z-index: 1080;
+  background: rgba(17, 24, 39, .45);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 48px 16px; overflow-y: auto;
+}
+.page-wb-detail__modal-box {
+  background: #fff; border-radius: 12px; width: 100%; max-width: 520px;
+  padding: 16px 18px 18px; box-shadow: 0 18px 48px rgba(0, 0, 0, .25);
+}
+.page-wb-detail__modal-box--wide { max-width: 760px; }
+.page-wb-detail__modal-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.page-wb-detail__modal-title { font-size: 16px; font-weight: 700; margin: 0; flex: 1 1 auto; display: flex; align-items: center; gap: 6px; }
+.page-wb-detail__modal-count { font-size: 12px; font-weight: 400; color: #6b7280; }
+.page-wb-detail__modal-hint { font-size: 12px; color: #6b7280; margin: 0 0 10px; }
+.page-wb-detail__modal-foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+.page-wb-detail__modal-footnote { font-size: 11px; color: #9ca3af; margin-top: 6px; }
+
+/* Бейджи-фразы */
+.page-wb-detail__chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.page-wb-detail__chip { font-size: 12px; font-weight: 500; padding: 5px 8px; display: inline-flex; align-items: center; gap: 6px; }
+.page-wb-detail__chip--query { border: 1px solid #e5e7eb; }
+.page-wb-detail__chip-x { text-decoration: none; color: #6b7280; font-weight: 700; line-height: 1; }
+.page-wb-detail__chip-x:hover { color: #dc3545; }
+.page-wb-detail__chip-status { font-size: 10px; text-transform: uppercase; letter-spacing: .02em; color: #6b7280; }
+.page-wb-detail__chip-status.is-pending { color: #b45309; }
+.page-wb-detail__chip-status.is-processing { color: #2563eb; }
+.page-wb-detail__chip-status.is-done { color: #15803d; }
+.page-wb-detail__chip-status.is-error { color: #dc2626; }
+
+/* Подсказки из базы */
+.page-wb-detail__suggest-wrap { position: relative; }
+.page-wb-detail__suggest {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .12); max-height: 240px; overflow-y: auto;
+}
+.page-wb-detail__suggest-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; padding: 6px 10px; border: 0; background: none; text-align: left; font-size: 12px;
+}
+button.page-wb-detail__suggest-row:hover { background: #f3f4f6; }
+.page-wb-detail__suggest-row.is-added { color: #9ca3af; cursor: default; }
+.page-wb-detail__suggest-phrase { font-weight: 500; }
+.page-wb-detail__suggest-meta { color: #6b7280; font-size: 11px; white-space: nowrap; }
+
+/* Конкуренты */
+.page-wb-detail__add-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.page-wb-detail__comp-list { margin-top: 10px; max-height: 46vh; overflow-y: auto; }
+.page-wb-detail__comp-row { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid #f1f2f4; align-items: flex-start; }
+.page-wb-detail__comp-photo { width: 44px; height: 56px; object-fit: cover; border-radius: 6px; border: 1px solid #eee; flex: 0 0 auto; }
+.page-wb-detail__comp-photo--empty { display: flex; align-items: center; justify-content: center; color: #cbd5e1; background: #f8fafc; }
+.page-wb-detail__comp-main { flex: 1 1 auto; min-width: 0; }
+.page-wb-detail__comp-title { font-size: 13px; font-weight: 600; }
+.page-wb-detail__comp-title a { color: #111827; text-decoration: none; }
+.page-wb-detail__comp-title a:hover { color: #8a2be0; }
+.page-wb-detail__comp-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; color: #4b5563; margin-top: 2px; }
+.page-wb-detail__comp-actions { flex: 0 0 auto; display: flex; align-items: center; }
+
+/* Сводка */
+.page-wb-detail__summary { margin-top: 12px; padding: 10px 12px; border: 1px dashed #d1d5db; border-radius: 8px; background: #fcfcfd; }
+.page-wb-detail__summary-title { font-size: 14px; font-weight: 700; }
+.page-wb-detail__summary-desc { font-size: 12px; white-space: pre-wrap; margin-top: 6px; color: #374151; }

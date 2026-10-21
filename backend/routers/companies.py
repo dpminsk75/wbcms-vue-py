@@ -32,6 +32,8 @@ class CompanyCreateIn(BaseModel):
     seo_prompt: str | None = None
     seo_competitor_prompt: str | None = None
     seo_summary_prompt: str | None = None
+    seo_newcard_prompt: str | None = None
+    seo_newcard_model: str | None = None
 
 
 class MemberInviteIn(BaseModel):
@@ -62,6 +64,8 @@ class CompanyUpdateIn(BaseModel):
     seo_prompt: str | None = None
     seo_competitor_prompt: str | None = None
     seo_summary_prompt: str | None = None
+    seo_newcard_prompt: str | None = None
+    seo_newcard_model: str | None = None
 
 
 class MemberUpdateIn(BaseModel):
@@ -115,6 +119,8 @@ async def create_company(
                 seo_prompt=payload.seo_prompt,
                 seo_competitor_prompt=payload.seo_competitor_prompt,
                 seo_summary_prompt=payload.seo_summary_prompt,
+                seo_newcard_prompt=payload.seo_newcard_prompt,
+                seo_newcard_model=payload.seo_newcard_model,
             )
             return auth_service.public_company(company)
     except IntegrityError:

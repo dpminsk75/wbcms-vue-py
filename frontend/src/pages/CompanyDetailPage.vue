@@ -205,6 +205,24 @@
                   <label class="form-label mb-1">Промпт сводки</label>
                   <textarea v-model="companyForm.seo_summary_prompt" rows="3" placeholder="Пусто = стандартный" class="form-control form-control-sm"></textarea>
                 </div>
+                <div class="mb-2">
+                  <label class="form-label mb-1">
+                    Промпт новой карточки
+                    <small class="text-muted">(фразы конкурентов → title/description; {DESC_MIN}/{DESC_MAX} подставятся)</small>
+                  </label>
+                  <textarea v-model="companyForm.seo_newcard_prompt" rows="4" placeholder="Пусто = стандартный" class="form-control form-control-sm"></textarea>
+                </div>
+                <div class="mb-1">
+                  <label class="form-label mb-1">
+                    Модель новой карточки
+                    <small class="text-muted">(через запятую, по порядку; пусто = seo_model + пул wb_seo_model)</small>
+                  </label>
+                  <input
+                    v-model="companyForm.seo_newcard_model"
+                    class="form-control form-control-sm"
+                    placeholder="например z-ai/glm-5.2:free, minimax/minimax-m3:free"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -365,6 +383,7 @@ const companyForm = reactive({
   seo_daily_limit: '', seo_desc_min: '', seo_desc_max: '', seo_anti_spam_days: '',
   seo_openrouter_key: '', seo_openrouter_referer: '', seo_openrouter_title: '',
   seo_prompt: '', seo_competitor_prompt: '', seo_summary_prompt: '',
+  seo_newcard_prompt: '', seo_newcard_model: '',
 })
 const showApi = ref(false)
 const showSeo = ref(false)
@@ -523,6 +542,8 @@ async function load() {
       companyForm.seo_prompt = c.seo_prompt || ''
       companyForm.seo_competitor_prompt = c.seo_competitor_prompt || ''
       companyForm.seo_summary_prompt = c.seo_summary_prompt || ''
+      companyForm.seo_newcard_prompt = c.seo_newcard_prompt || ''
+      companyForm.seo_newcard_model = c.seo_newcard_model || ''
     } catch { /* нет прав на полную запись — только члены */ }
   } catch (e: any) {
     error.value = e?.response?.data?.detail || String(e)
@@ -586,6 +607,8 @@ async function onSaveCompany() {
         seo_prompt: t(companyForm.seo_prompt),
         seo_competitor_prompt: t(companyForm.seo_competitor_prompt),
         seo_summary_prompt: t(companyForm.seo_summary_prompt),
+        seo_newcard_prompt: t(companyForm.seo_newcard_prompt),
+        seo_newcard_model: t(companyForm.seo_newcard_model),
       })
       if (companyForm.seo_openrouter_key) payload.seo_openrouter_key = companyForm.seo_openrouter_key
     }

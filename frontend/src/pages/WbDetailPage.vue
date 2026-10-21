@@ -30,6 +30,14 @@
             <span>Товар: {{ card.title }}</span>
             <span class="page-wb-detail__product-wb">WB: {{ card.nmID }}</span>
           </div>
+          <div>
+                <div class="mt-3 mb-1 d-flex gap-2 px-2">
+                  <a :href="'/seo/index?status=new&q='+filters.nm_id" target="_blank" class="btn btn-sm btn-outline-primary page-wb-detail__card-actions"><i class="fas fa-robot me-1"></i> AI рек.</a>
+                  <button class="btn btn-sm btn-outline-warning page-wb-detail__card-actions" @click="targetsOpen=true"><i class="fas fa-bullseye me-1"></i> Целевые</button>
+                  <button class="btn btn-sm btn-outline-secondary page-wb-detail__card-actions" @click="queriesOpen=true"><i class="bi bi-search me-1"></i> Поиск. запросы</button>
+                  <button class="btn btn-sm btn-outline-secondary page-wb-detail__card-actions" @click="competitorsOpen=true"><i class="bi bi-people me-1"></i> Конкуренты</button>
+                </div>
+          </div>
           <div class="card-body">
             <div class="row mb-2">
               <div class="col-md-6 card_characteristics">
@@ -39,10 +47,6 @@
                   <div class="dl_item"><dt class="card_characteristics__dt">Бренд:</dt><dd class="card_characteristics__dd"><b>{{ card.brand }}</b></dd></div>
                   <div class="dl_item"><dt class="card_characteristics__dt">Размер:</dt><dd class="card_characteristics__dd">{{ dimensions }}</dd></div>
                 </dl>
-                <div class="mt-2 d-flex gap-2">
-                  <a :href="'/seo/index?status=new&q='+filters.nm_id" target="_blank" class="btn btn-sm btn-outline-primary page-wb-detail__card-actions"><i class="fas fa-robot me-1"></i> AI рек.</a>
-                  <button class="btn btn-sm btn-outline-warning page-wb-detail__card-actions" data-bs-toggle="modal" data-bs-target="#seoTargetsModal"><i class="fas fa-bullseye me-1"></i> Целевые</button>
-                </div>
               </div>
               <div class="col-md-6">
                 <div class="panel_stats">
@@ -100,6 +104,10 @@
         <PhrasesMatrix :rows="phraseModels" :dates="phraseDates" :is-loading="phraseLoading" />
       </div>
     </template>
+
+    <SeoTargetsModal :open="targetsOpen" :nm-id="filters.nm_id" @close="targetsOpen=false" />
+    <CompetitorsQueriesModal :open="queriesOpen" :nm-id="filters.nm_id" @close="queriesOpen=false" @changed="fetchCard()" />
+    <CompetitorsModal :open="competitorsOpen" :nm-id="filters.nm_id" @close="competitorsOpen=false" @changed="fetchCard()" />
   </div>
 </template>
 <script setup lang="ts">
@@ -116,9 +124,16 @@ import AdvTable from '../components/wb-detail/AdvTable.vue'
 import OrderFunnel from '../components/wb-detail/OrderFunnel.vue'
 import DailyTables from '../components/wb-detail/DailyTables.vue'
 import DetailCharts from '../components/wb-detail/DetailCharts.vue'
+import SeoTargetsModal from '../components/seo/SeoTargetsModal.vue'
+import CompetitorsQueriesModal from '../components/competitors/CompetitorsQueriesModal.vue'
+import CompetitorsModal from '../components/competitors/CompetitorsModal.vue'
 
 const route = useRoute()
 const router = useRouter()
+
+const targetsOpen = ref(false)
+const queriesOpen = ref(false)
+const competitorsOpen = ref(false)
 
 function mondayOfWeek(d: Date){
   const day=d.getDay(); const diff = day===0 ? -6 : 1-day
