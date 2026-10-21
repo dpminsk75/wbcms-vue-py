@@ -170,3 +170,59 @@ async def seo_process(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"job_id": job_id}
+
+
+@router.get("/ai-usage")
+async def seo_ai_usage(
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    scenario: str | None = Query(default=None),
+    provider: str | None = Query(default=None),
+    model: str | None = Query(default=None),
+    nm_id: int | None = Query(default=None, ge=1),
+    user_id: int | None = Query(default=None, ge=1),
+    company_id: int | None = Query(default=None, ge=1),
+    group_by: str = Query(default="model"),
+    sort: str = Query(default="tokens"),
+    direction: str = Query(default="desc"),
+    limit: int = Query(default=500, ge=1, le=2000),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_seo),
+    company_id_from_selector: int | None = Depends(get_current_company),
+):
+    """Журнал расхода ИИ: токены/стоимость по компаниям, моделям, сценариям.
+
+    Колонка «$» — только глобальному админу (can_see_cost).
+    company_id — из селектора топ-бара; None = «все компании» (глобальный админ).
+    """
+    from backend.services import ai_usage_service
+    from backend.services import auth_service
+    is_global = await auth_service.is_global_admin(db, user["id"])
+    if not is_global:
+        perms = await auth_service.effective_perms(db, user["id"])
+        if "viewSeo" not in perms:
+            raise HTTPException(status_code=403, detail="viewSeo required")
+    # фильтр по конкретной компании — только глобальному админу
+    scope_cid = company_id if (is_global and company_id) else company_id_from_selector
+    data = await ai_usage_service.summary(
+        db, date_from=date_from, date_to=date_to, company_id=scope_cid,
+        group_by=group_by, scenario=scenario, provider=provider, model=model,
+        nm_id=nm_id, user_id=user_id, sort=sort, direction=direction,
+        limit=limit, offset=offset)
+    data["can_see_cost"] = is_global
+    data["group_by_options"] = ai_usage_service.GROUP_LABELS
+    return data
+
+
+@router.get("/ai-usage/artifacts")
+async def seo_ai_usage_artifacts(
+    scenario: str = Query(...),
+    nm_id: int = Query(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """«Что сгенерировали» — артефакт из таблицы сценария по карточке."""
+    from backend.services import ai_usage_service
+    return {"items": await ai_usage_service.artifacts(db, scenario, nm_id, company_id)}

@@ -10,7 +10,7 @@
 .page-company-detail__seo-head { background: #e7f1ff; font-weight: 600; }
 .page-company-detail__seo-note { font-weight: 400; color: #666; }
 .page-company-detail__save-row { margin-top: 10px; display: flex; gap: 8px; align-items: center; }
-.page-company-detail__saved { font-size: 13px; color: #1E9E7C; }
+.page-company-detail__saved { font-size: 13px; color: #1E9E7C; background: #E4F5EF; border: 1px solid #1E9E7C; border-radius: 6px; padding: 3px 10px; }
 .page-company-detail__perm { display: inline-block; background: #eef4ff; border-radius: 8px; padding: 1px 6px; margin: 0 4px 2px 0; font-size: 12px; }
 .page-company-detail__perm-drop { margin-left: 4px; color: #c00; text-decoration: none; }
 .page-company-detail__perm-select { font-size: 12px; max-width: 140px; }
@@ -46,3 +46,10 @@
 /* Табы: одна тема на экран (состояние форм хранится в companyForm, переключение ничего не сбрасывает) */
 .page-company-detail__tabs { margin-bottom: 16px; }
 .page-company-detail__pane { max-width: 780px; }
+/* ИИ-провайдер: OpenRouter | другой сервис (URL/ключ/формат + «Проверить») */
+.page-company-detail__llm { padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px dashed #d7dbe0; }
+.page-company-detail__llm-hint { margin-top: 6px; font-size: 12px; color: #666; }
+.page-company-detail__llm-result { font-size: 13px; }
+.page-company-detail__llm-result.is-ok { color: #1E9E7C; }
+.page-company-detail__llm-result.is-err { color: #E0525C; }
+.page-company-detail__llm-preview { margin-top: 4px; font-size: 12px; color: #555; background: #f8f9fa; border: 1px solid #e3e6ea; border-radius: 6px; padding: 4px 8px; word-break: break-word; }

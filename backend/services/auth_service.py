@@ -469,6 +469,7 @@ async def create_company(
     seo_summary_prompt: str | None = None,
     seo_newcard_prompt: str | None = None,
     seo_newcard_model: str | None = None,
+    seo_phrases_prompt: str | None = None,
 ) -> dict:
     name = name.strip()
     if not name:
@@ -479,14 +480,14 @@ async def create_company(
           name, abbreviation, inn, api_key, seo_model, seo_summary_model, seo_summary_max_tokens,
           seo_daily_limit, seo_desc_min, seo_desc_max, seo_anti_spam_days, seo_openrouter_key,
           seo_openrouter_referer, seo_openrouter_title, seo_prompt, seo_competitor_prompt,
-          seo_summary_prompt, seo_newcard_prompt, seo_newcard_model,
+          seo_summary_prompt, seo_newcard_prompt, seo_newcard_model, seo_phrases_prompt,
           is_active, fbs_deduct_enabled, fbs_deduct_test
         )
         VALUES (
           :name, :abbreviation, :inn, NULL, :seo_model, :seo_summary_model, :seo_summary_max_tokens,
           :seo_daily_limit, :seo_desc_min, :seo_desc_max, :seo_anti_spam_days, :seo_openrouter_key,
           :seo_openrouter_referer, :seo_openrouter_title, :seo_prompt, :seo_competitor_prompt,
-          :seo_summary_prompt, :seo_newcard_prompt, :seo_newcard_model, 1, 0, 1
+          :seo_summary_prompt, :seo_newcard_prompt, :seo_newcard_model, :seo_phrases_prompt, 1, 0, 1
         )
     """), {
         "name": name,
@@ -507,6 +508,7 @@ async def create_company(
         "seo_summary_prompt": seo_summary_prompt,
         "seo_newcard_prompt": seo_newcard_prompt,
         "seo_newcard_model": seo_newcard_model,
+        "seo_phrases_prompt": seo_phrases_prompt,
     })
 
     company_id = (await db.execute(text("SELECT LAST_INSERT_ID()"))).scalar()
@@ -521,7 +523,12 @@ COMPANY_UPDATE_FIELDS = (
     "seo_daily_limit", "seo_desc_min", "seo_desc_max", "seo_anti_spam_days",
     "seo_openrouter_key", "seo_openrouter_referer", "seo_openrouter_title",
     "seo_prompt", "seo_competitor_prompt", "seo_summary_prompt",
-    "seo_newcard_prompt", "seo_newcard_model",
+    "seo_newcard_prompt", "seo_newcard_model", "seo_phrases_prompt",
+    # провайдер ИИ: openrouter (текущие настройки) | custom (другой сервис)
+    "seo_llm_provider", "seo_llm_format", "seo_llm_url", "seo_llm_api_key",
+    "seo_llm_folder_id", "seo_llm_auth_header", "seo_llm_auth_prefix",
+    "seo_llm_extra_headers", "seo_llm_extra_body", "seo_llm_timeout",
+    "seo_llm_model", "seo_llm_summary_model",
 )
 
 # Поля yii2 company/_form.php с ограниченным доступом (п.4 пользователя):
@@ -531,8 +538,41 @@ SEO_FIELDS = (
     "seo_daily_limit", "seo_desc_min", "seo_desc_max", "seo_anti_spam_days",
     "seo_openrouter_key", "seo_openrouter_referer", "seo_openrouter_title",
     "seo_prompt", "seo_competitor_prompt", "seo_summary_prompt",
-    "seo_newcard_prompt", "seo_newcard_model",
+    "seo_newcard_prompt", "seo_newcard_model", "seo_phrases_prompt",
+    "seo_llm_provider", "seo_llm_format", "seo_llm_url", "seo_llm_api_key",
+    "seo_llm_folder_id", "seo_llm_auth_header", "seo_llm_auth_prefix",
+    "seo_llm_extra_headers", "seo_llm_extra_body", "seo_llm_timeout",
+    "seo_llm_model", "seo_llm_summary_model",
 )
+
+LLM_PROVIDERS = ("openrouter", "custom")
+LLM_FORMATS = ("openai", "anthropic", "gemini", "ollama", "yandex")
+
+
+def _validate_llm_fields(sets: dict) -> None:
+    """Провайдер/формат — из белого списка; JSON-поля — валидный JSON."""
+    if "seo_llm_provider" in sets and sets["seo_llm_provider"] not in LLM_PROVIDERS:
+        raise ValueError("seo_llm_provider must be openrouter or custom")
+    if "seo_llm_format" in sets and sets["seo_llm_format"] not in LLM_FORMATS:
+        raise ValueError("seo_llm_format must be one of: " + ", ".join(LLM_FORMATS))
+    for k in ("seo_llm_extra_headers", "seo_llm_extra_body"):
+        if k in sets and sets[k]:
+            import json as _json
+            try:
+                out = _json.loads(sets[k])
+            except ValueError:
+                raise ValueError(f"{k} must be valid JSON")
+            if not isinstance(out, dict):
+                raise ValueError(f"{k} must be a JSON object")
+    if "seo_llm_timeout" in sets and sets["seo_llm_timeout"] is not None:
+        try:
+            t = int(sets["seo_llm_timeout"])
+        except (TypeError, ValueError):
+            raise ValueError("seo_llm_timeout must be a number")
+        if t < 5 or t > 600:
+            raise ValueError("seo_llm_timeout must be 5..600 seconds")
+        sets["seo_llm_timeout"] = t
+
 
 
 async def update_company(db: AsyncSession, company_id: int, fields: dict) -> dict:
@@ -542,13 +582,18 @@ async def update_company(db: AsyncSession, company_id: int, fields: dict) -> dic
     for k in COMPANY_UPDATE_FIELDS:
         if k in fields and fields[k] is not None:
             v = fields[k]
-            sets[k] = v.strip() if isinstance(v, str) else v
+            # у seo_llm_auth_prefix хвостовой пробел значим ("Bearer " → "Bearer key")
+            if isinstance(v, str) and k != "seo_llm_auth_prefix":
+                sets[k] = v.strip()
+            else:
+                sets[k] = v
     if "name" in sets and not sets["name"]:
         raise ValueError("company name is required")
     if sets.get("inn"):
         import re as _re
         if not _re.match(r"^\d{10,12}$", str(sets["inn"])):
             raise ValueError("inn must be 10 or 12 digits")
+    _validate_llm_fields(sets)
     if not sets:
         raise ValueError("nothing to update")
     cols = ", ".join(f"{k}=:{k}" for k in sets)

@@ -140,7 +140,101 @@
             <div class="card h-100 page-company-detail__card-seo">
               <div class="card-header page-company-detail__seo-head">SEO <small class="page-company-detail__seo-note">пусто = из params.php</small></div>
               <div class="card-body">
-                <div class="mb-2">
+                <div class="mb-3 page-company-detail__llm">
+                  <label class="form-label mb-1">ИИ-провайдер</label>
+                  <div class="page-company-detail__llm-hint mb-1">
+                    «Проверить» работает по значениям формы, а сценарии ИИ — по <b>сохранённым</b> настройкам: не забудьте «Сохранить компанию».
+                  </div>
+                  <div class="row g-2">
+                    <div class="col-6">
+                      <select v-model="companyForm.seo_llm_provider" class="form-select form-select-sm" @change="onLlmProviderChange">
+                        <option value="openrouter">OpenRouter (текущие настройки)</option>
+                        <option value="custom">Другой сервис</option>
+                      </select>
+                    </div>
+                    <div class="col-6" v-if="isCustomLlm">
+                      <select v-model="companyForm.seo_llm_format" class="form-select form-select-sm" @change="onLlmFormatChange">
+                        <option v-for="f in LLM_FORMATS" :key="f.key" :value="f.key">{{ f.label }}</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div v-if="isCustomLlm" class="mt-2">
+                    <div class="mb-2">
+                      <label class="form-label mb-1">Модель (другой сервис)</label>
+                      <input v-model="companyForm.seo_llm_model" placeholder="например MiniMax-M2" class="form-control form-control-sm" />
+                      <div class="form-text">Через запятую, по порядку: если модель не ответила — берём следующую. Свои модели сервиса, не OpenRouter.</div>
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label mb-1">Модель сводки (другой сервис)</label>
+                      <input v-model="companyForm.seo_llm_summary_model" placeholder="пусто = основная модель" class="form-control form-control-sm" />
+                      <div class="form-text">Сводка; новые карточки — основная модель сервиса</div>
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label mb-1">URL</label>
+                      <input v-model="companyForm.seo_llm_url" :placeholder="llmFormat.url" class="form-control form-control-sm" />
+                      <div class="form-text">Полный URL эндпоинта. Можно <code>{model}</code> — подставится имя модели.</div>
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label mb-1">API-ключ
+                        <span v-if="hasLlmKey" class="badge wb-key-badge">задан</span>
+                      </label>
+                      <div class="input-group input-group-sm">
+                        <input v-model="companyForm.seo_llm_api_key" :type="showLlm ? 'text' : 'password'" autocomplete="off" placeholder="токен" class="form-control" />
+                        <button type="button" @click="showLlm = !showLlm" class="btn btn-outline-secondary" title="Показать/скрыть"><i class="bi bi-eye"></i></button>
+                      </div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                      <div class="col-6" v-if="llmFormat.folder">
+                        <label class="form-label mb-1">Folder ID</label>
+                        <input v-model="companyForm.seo_llm_folder_id" placeholder="b1g…" class="form-control form-control-sm" />
+                      </div>
+                      <div class="col-6">
+                        <label class="form-label mb-1">Таймаут, сек</label>
+                        <input v-model="companyForm.seo_llm_timeout" type="number" min="5" max="600" placeholder="90" class="form-control form-control-sm" />
+                        <div class="form-text">Долгие задачи (генерация описания) — 300–600 с</div>
+                      </div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                      <div class="col-6">
+                        <label class="form-label mb-1">Заголовок авторизации</label>
+                        <input v-model="companyForm.seo_llm_auth_header" :placeholder="llmFormat.auth_header" class="form-control form-control-sm" />
+                      </div>
+                      <div class="col-6">
+                        <label class="form-label mb-1">Префикс ключа</label>
+                        <input v-model="companyForm.seo_llm_auth_prefix" :placeholder="llmFormat.auth_prefix || '(без префикса)'" class="form-control form-control-sm" />
+                        <div class="form-text">С пробелом в конце: <code>{{ llmFormat.auth_prefix || '—' }}</code></div>
+                      </div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                      <div class="col-6">
+                        <label class="form-label mb-1">Доп. заголовки (JSON)</label>
+                        <textarea v-model="companyForm.seo_llm_extra_headers" rows="2" placeholder='{"X-Example":"1"}' class="form-control form-control-sm"></textarea>
+                      </div>
+                      <div class="col-6">
+                        <label class="form-label mb-1">Доп. параметры (JSON)</label>
+                        <textarea v-model="companyForm.seo_llm_extra_body" rows="2" placeholder='{"reasoning_effort":"low"}' class="form-control form-control-sm"></textarea>
+                        <div class="form-text">Перекрывают настройки: например <code>{"max_tokens":8000}</code></div>
+                      </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                      <button type="button" @click="testLlm" :disabled="llmTesting" class="btn btn-sm btn-outline-primary">
+                        <span v-if="llmTesting" class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                        <span v-if="llmTesting">Проверяем… {{ llmTestElapsed }} с</span><span v-else>Проверить</span>
+                      </button>
+                      <span v-if="llmTestResult" class="page-company-detail__llm-result" :class="llmTestResult.ok ? 'is-ok' : 'is-err'">
+                        {{ llmTestResult.ok ? `OK: ${llmTestResult.model} (${llmTestResult.ms} мс)` : `Ошибка: ${llmTestResult.error || llmTestResult.http}` }}
+                      </span>
+                    </div>
+                    <div class="page-company-detail__llm-hint">
+                      Проба — короткий JSON-запрос, таймаут {{ llmTestTimeout }} с. Глубину рассуждений reasoning-моделей задают в «Доп. параметры»: <code>{"reasoning_effort":"high"}</code> (или <code>"low"</code> — ради скорости).
+                    </div>
+                    <div v-if="llmTestResult && llmTestResult.preview" class="page-company-detail__llm-preview">{{ llmTestResult.preview }}</div>
+                  </div>
+                  <div v-else class="page-company-detail__llm-hint">
+                    Работаем через OpenRouter: ключ, модель и пул бесплатных моделей — в блоках ниже.
+                  </div>
+                </div>
+                <div class="mb-2" v-if="!isCustomLlm">
                   <label class="form-label mb-1">OpenRouter API key
                     <span v-if="hasSeoKey" class="badge wb-key-badge">задан</span>
                     <span v-else class="badge bg-light text-muted border">из params</span>
@@ -150,7 +244,7 @@
                     <button type="button" @click="toggleSeo" class="btn btn-outline-secondary" title="Показать/скрыть"><i class="bi bi-eye"></i></button>
                   </div>
                 </div>
-                <div class="row g-2 mb-2">
+                <div class="row g-2 mb-2" v-if="!isCustomLlm">
                   <div class="col-6">
                     <label class="form-label mb-1">Referer</label>
                     <input v-model="companyForm.seo_openrouter_referer" placeholder="https://wbcms.local" class="form-control form-control-sm" />
@@ -160,15 +254,16 @@
                     <input v-model="companyForm.seo_openrouter_title" placeholder="wbcms SEO" class="form-control form-control-sm" />
                   </div>
                 </div>
-                <div class="mb-2">
+                <div class="mb-2" v-if="!isCustomLlm">
                   <label class="form-label mb-1">SEO модель</label>
                   <input v-model="companyForm.seo_model" placeholder="openrouter/free" class="form-control form-control-sm" />
                   <div class="form-text">Команда: php yii seo/models — список :free</div>
                 </div>
-                <div class="row g-2 mb-2">
+                <div class="row g-2 mb-2" v-if="!isCustomLlm">
                   <div class="col-6">
                     <label class="form-label mb-1">Модель сводки</label>
                     <input v-model="companyForm.seo_summary_model" class="form-control form-control-sm" />
+                    <div class="form-text">Сводка и новые карточки</div>
                   </div>
                   <div class="col-6">
                     <label class="form-label mb-1">max_tokens</label>
@@ -176,15 +271,15 @@
                   </div>
                 </div>
                 <div class="row g-2 mb-2">
-                  <div class="col-4">
+                  <div class="col-4" v-if="!isCustomLlm">
                     <label class="form-label mb-1">Лимит/день</label>
                     <input v-model="companyForm.seo_daily_limit" type="number" placeholder="20" class="form-control form-control-sm" />
                   </div>
-                  <div class="col-4">
+                  <div :class="isCustomLlm ? 'col-6' : 'col-4'">
                     <label class="form-label mb-1">Опис. мин</label>
                     <input v-model="companyForm.seo_desc_min" type="number" placeholder="2000" class="form-control form-control-sm" />
                   </div>
-                  <div class="col-4">
+                  <div :class="isCustomLlm ? 'col-6' : 'col-4'">
                     <label class="form-label mb-1">Опис. макс</label>
                     <input v-model="companyForm.seo_desc_max" type="number" placeholder="5000" class="form-control form-control-sm" />
                   </div>
@@ -207,28 +302,32 @@
                 </div>
                 <div class="mb-2">
                   <label class="form-label mb-1">
+                    Промпт анализа фраз
+                    <small class="text-muted">(описания конкурентов → список фраз; пусто = стандартный)</small>
+                  </label>
+                  <textarea v-model="companyForm.seo_phrases_prompt" rows="4" placeholder="Пусто = стандартный" class="form-control form-control-sm"></textarea>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label mb-1">
                     Промпт новой карточки
-                    <small class="text-muted">(фразы конкурентов → title/description; {DESC_MIN}/{DESC_MAX} подставятся)</small>
+                    <small class="text-muted">(выбранные фразы → title/description; {DESC_MIN}/{DESC_MAX} подставятся)</small>
                   </label>
                   <textarea v-model="companyForm.seo_newcard_prompt" rows="4" placeholder="Пусто = стандартный" class="form-control form-control-sm"></textarea>
                 </div>
-                <div class="mb-1">
-                  <label class="form-label mb-1">
-                    Модель новой карточки
-                    <small class="text-muted">(через запятую, по порядку; пусто = seo_model + пул wb_seo_model)</small>
-                  </label>
-                  <input
-                    v-model="companyForm.seo_newcard_model"
-                    class="form-control form-control-sm"
-                    placeholder="например z-ai/glm-5.2:free, minimax/minimax-m3:free"
-                  />
+                <div class="mb-1 page-company-detail__llm-hint">
+                  Модель для новых карточек: OpenRouter — из поля «Модель сводки», другой сервис — из поля «Модель (другой сервис)».
                 </div>
               </div>
             </div>
           </div>
         <div v-if="isFormTab" class="page-company-detail__save-row">
-          <button type="submit" :disabled="savingCompany" class="wb-btn-brand wb-btn-brand--xl">Сохранить компанию</button>
-          <span v-if="companySaved" class="page-company-detail__saved">Сохранено</span>
+          <button type="submit" :disabled="savingCompany" class="wb-btn-brand wb-btn-brand--xl">
+            <span v-if="savingCompany" class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+            {{ savingCompany ? 'Сохраняем…' : 'Сохранить компанию' }}
+          </button>
+          <span v-if="companySaved" class="page-company-detail__saved">
+            <i class="bi bi-check-circle me-1"></i>Сохранено{{ savedAt ? ' в ' + savedAt : '' }}
+          </span>
         </div>
       </form>
 
@@ -338,7 +437,7 @@ const companyId = Number(route.params.id)
 const tab = ref<'main' | 'wb' | 'seo' | 'ext' | 'members' | 'news'>('main')
 const isFormTab = computed(() => tab.value === 'main' || tab.value === 'wb' || tab.value === 'seo')
 import { useDateFmt } from '../composables/useDateFmt'
-const { fmtDT, fmtDate, fmtDateTime } = useDateFmt()
+const { fmtDT, fmtDate, fmtDateTime, fmtTime } = useDateFmt()
 const data = ref<{ company: any; members: any[] } | null>(null)
 const error = ref('')
 // Новости: типы для сотрудников (пусто = все)
@@ -383,8 +482,72 @@ const companyForm = reactive({
   seo_daily_limit: '', seo_desc_min: '', seo_desc_max: '', seo_anti_spam_days: '',
   seo_openrouter_key: '', seo_openrouter_referer: '', seo_openrouter_title: '',
   seo_prompt: '', seo_competitor_prompt: '', seo_summary_prompt: '',
-  seo_newcard_prompt: '', seo_newcard_model: '',
+  seo_newcard_prompt: '', seo_phrases_prompt: '',
+  // ИИ-провайдер: openrouter (текущие настройки) | custom (другой сервис)
+  seo_llm_provider: 'openrouter', seo_llm_format: 'openai', seo_llm_url: '', seo_llm_api_key: '',
+  seo_llm_folder_id: '', seo_llm_auth_header: '', seo_llm_auth_prefix: '',
+  seo_llm_extra_headers: '', seo_llm_extra_body: '', seo_llm_timeout: '',
+  seo_llm_model: '', seo_llm_summary_model: '',
 })
+// Форматы API другого сервиса: дефолты подставляются при выборе формата
+const LLM_FORMATS: Array<{ key: string; label: string; url: string; auth_header: string; auth_prefix: string; folder: boolean }> = [
+  { key: 'openai', label: 'OpenAI-совместимый', url: 'https://api.deepseek.com/v1/chat/completions', auth_header: 'Authorization', auth_prefix: 'Bearer ', folder: false },
+  { key: 'anthropic', label: 'Anthropic', url: 'https://api.anthropic.com', auth_header: 'x-api-key', auth_prefix: '', folder: false },
+  { key: 'gemini', label: 'Gemini', url: 'https://generativelanguage.googleapis.com', auth_header: 'x-goog-api-key', auth_prefix: '', folder: false },
+  { key: 'ollama', label: 'Ollama (локально)', url: 'http://127.0.0.1:11434', auth_header: 'Authorization', auth_prefix: 'Bearer ', folder: false },
+  { key: 'yandex', label: 'Yandex AI Studio', url: 'https://ai.api.cloud.yandex.net/v1/chat/completions', auth_header: 'Authorization', auth_prefix: 'Api-Key ', folder: true },
+]
+const isCustomLlm = computed(() => companyForm.seo_llm_provider === 'custom')
+const llmFormat = computed(() => LLM_FORMATS.find(f => f.key === companyForm.seo_llm_format) || LLM_FORMATS[0])
+const showLlm = ref(false)
+const hasLlmKey = ref(false)
+const llmTesting = ref(false)
+const llmTestElapsed = ref(0)
+const llmTestTimeout = 60
+let llmTimer: any = null
+const llmTestResult = ref<{ ok: boolean; model: string; http: string; ms: number; timeout: number; preview: string; error: string } | null>(null)
+function onLlmProviderChange() { llmTestResult.value = null }
+function onLlmFormatChange() {
+  const f = LLM_FORMATS.find(x => x.key === companyForm.seo_llm_format)
+  if (!f) return
+  if (!companyForm.seo_llm_url && f.url) companyForm.seo_llm_url = f.url
+  companyForm.seo_llm_auth_header = f.auth_header
+  companyForm.seo_llm_auth_prefix = f.auth_prefix
+  llmTestResult.value = null
+}
+async function testLlm() {
+  llmTesting.value = true
+  llmTestElapsed.value = 0
+  llmTestResult.value = null
+  if (llmTimer) clearInterval(llmTimer)
+  llmTimer = setInterval(() => { llmTestElapsed.value++ }, 1000)
+  const draft = {
+    provider: companyForm.seo_llm_provider,
+    format: companyForm.seo_llm_format,
+    url: companyForm.seo_llm_url,
+    api_key: companyForm.seo_llm_api_key,
+    folder_id: companyForm.seo_llm_folder_id,
+    auth_header: companyForm.seo_llm_auth_header,
+    auth_prefix: companyForm.seo_llm_auth_prefix,
+    extra_headers: companyForm.seo_llm_extra_headers,
+    extra_body: companyForm.seo_llm_extra_body,
+    timeout: companyForm.seo_llm_timeout === '' ? undefined : Number(companyForm.seo_llm_timeout),
+  }
+  // модель для проверки — из поля того провайдера, который выбран
+  const modelSrc = isCustomLlm.value ? companyForm.seo_llm_model : companyForm.seo_model
+  const model = (modelSrc || '').split(',')[0].trim()
+  try {
+    llmTestResult.value = await authApi.llmTest(companyId, { draft, model: model || undefined })
+  } catch (e: any) {
+    const msg = e?.code === 'ECONNABORTED'
+      ? `превышено время ожидания (${llmTestTimeout} с)`
+      : (e?.response?.data?.detail || String(e))
+    llmTestResult.value = { ok: false, model: '', http: '', ms: llmTestElapsed.value * 1000, timeout: llmTestTimeout, preview: '', error: msg }
+  } finally {
+    llmTesting.value = false
+    if (llmTimer) { clearInterval(llmTimer); llmTimer = null }
+  }
+}
 const showApi = ref(false)
 const showSeo = ref(false)
 const hasApiKey = ref(false)
@@ -509,6 +672,8 @@ function toggleApi() { showApi.value = !showApi.value }
 function toggleSeo() { showSeo.value = !showSeo.value }
 const savingCompany = ref(false)
 const companySaved = ref(false)
+const savedAt = ref('')
+let savedTimer: any = null
 const numOrUndef = (v: any) => (v === '' || v == null ? undefined : (Number.isNaN(Number(v)) ? undefined : Number(v)))
 
 async function load() {
@@ -543,7 +708,23 @@ async function load() {
       companyForm.seo_competitor_prompt = c.seo_competitor_prompt || ''
       companyForm.seo_summary_prompt = c.seo_summary_prompt || ''
       companyForm.seo_newcard_prompt = c.seo_newcard_prompt || ''
-      companyForm.seo_newcard_model = c.seo_newcard_model || ''
+      companyForm.seo_phrases_prompt = c.seo_phrases_prompt || ''
+      // ИИ-провайдер: openrouter | custom + настройки другого сервиса
+      companyForm.seo_llm_provider = c.seo_llm_provider === 'custom' ? 'custom' : 'openrouter'
+      const fmtKey = LLM_FORMATS.some(f => f.key === c.seo_llm_format) ? c.seo_llm_format : 'openai'
+      companyForm.seo_llm_format = fmtKey
+      const fmtDef = LLM_FORMATS.find(f => f.key === fmtKey) || LLM_FORMATS[0]
+      companyForm.seo_llm_url = c.seo_llm_url || ''
+      companyForm.seo_llm_api_key = c.seo_llm_api_key || ''
+      hasLlmKey.value = !!c.seo_llm_api_key
+      companyForm.seo_llm_folder_id = c.seo_llm_folder_id || ''
+      companyForm.seo_llm_auth_header = c.seo_llm_auth_header || fmtDef.auth_header
+      companyForm.seo_llm_auth_prefix = c.seo_llm_auth_prefix == null ? fmtDef.auth_prefix : c.seo_llm_auth_prefix
+      companyForm.seo_llm_extra_headers = c.seo_llm_extra_headers || ''
+      companyForm.seo_llm_extra_body = c.seo_llm_extra_body || ''
+      companyForm.seo_llm_timeout = c.seo_llm_timeout ?? ''
+      companyForm.seo_llm_model = c.seo_llm_model || ''
+      companyForm.seo_llm_summary_model = c.seo_llm_summary_model || ''
     } catch { /* нет прав на полную запись — только члены */ }
   } catch (e: any) {
     error.value = e?.response?.data?.detail || String(e)
@@ -608,20 +789,43 @@ async function onSaveCompany() {
         seo_competitor_prompt: t(companyForm.seo_competitor_prompt),
         seo_summary_prompt: t(companyForm.seo_summary_prompt),
         seo_newcard_prompt: t(companyForm.seo_newcard_prompt),
-        seo_newcard_model: t(companyForm.seo_newcard_model),
+        seo_phrases_prompt: t(companyForm.seo_phrases_prompt),
+        // ИИ-провайдер: выбор всегда; настройки «другого сервиса» — только в режиме custom
+        seo_llm_provider: companyForm.seo_llm_provider,
       })
+      if (companyForm.seo_llm_provider === 'custom') {
+        payload.seo_llm_format = companyForm.seo_llm_format
+        payload.seo_llm_model = t(companyForm.seo_llm_model)
+        payload.seo_llm_summary_model = t(companyForm.seo_llm_summary_model)
+        payload.seo_llm_url = t(companyForm.seo_llm_url)
+        payload.seo_llm_folder_id = t(companyForm.seo_llm_folder_id)
+        payload.seo_llm_auth_header = companyForm.seo_llm_auth_header
+        payload.seo_llm_auth_prefix = companyForm.seo_llm_auth_prefix
+        payload.seo_llm_extra_headers = t(companyForm.seo_llm_extra_headers)
+        payload.seo_llm_extra_body = t(companyForm.seo_llm_extra_body)
+        payload.seo_llm_timeout = numOrUndef(companyForm.seo_llm_timeout)
+        if (companyForm.seo_llm_api_key) payload.seo_llm_api_key = companyForm.seo_llm_api_key
+      }
       if (companyForm.seo_openrouter_key) payload.seo_openrouter_key = companyForm.seo_openrouter_key
     }
     await authApi.updateCompany(companyId, payload)
     const hadNewKey = !!payload.api_key
     companyForm.api_key = ''
     companyForm.seo_openrouter_key = ''
-    companySaved.value = true
+    companyForm.seo_llm_api_key = ''
     await load()
+    // «Сохранено» — ПОСЛЕ load(): load() сбрасывает флаг, иначе надпись гаснет сразу
+    companySaved.value = true
+    savedAt.value = fmtTime(new Date())
+    if (savedTimer) clearTimeout(savedTimer)
+    savedTimer = setTimeout(() => { companySaved.value = false }, 8000)
     // Новый токен — сразу живая проверка с лоадером (wbChecking), иначе дешёвый статус
     if (hadNewKey) await checkWb()
     else loadWbStatus()
-  } catch (e: any) { error.value = e?.response?.data?.detail || String(e) }
+  } catch (e: any) {
+    error.value = e?.response?.data?.detail || String(e)
+    companySaved.value = false
+  }
   finally { savingCompany.value = false }
 }
 

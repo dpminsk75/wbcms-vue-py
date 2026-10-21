@@ -71,9 +71,11 @@ async def competitor_remove(
     _user: dict = Depends(require_seo),
     company_id: int | None = Depends(get_current_company),
 ):
-    _ = company_id
-    ok = await CompetitorService(db, None).remove_selected(
-        int(payload.get("source_nm_id") or 0), int(payload.get("nm_id") or 0))
+    try:
+        ok = await CompetitorService(db, company_id).remove_selected(
+            int(payload.get("source_nm_id") or 0), int(payload.get("nm_id") or 0))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
     if not ok:
         raise HTTPException(status_code=404, detail="Не найдено")
     return {"success": True}
@@ -141,4 +143,4 @@ async def competitor_summary(
     from backend.services import auth_service
     is_admin = await auth_service.is_global_admin(db, user["id"])
     return await CompetitorService(db, company_id).get_summary(
-        nm_id, bool((payload or {}).get("force")), is_admin)
+        nm_id, bool((payload or {}).get("force")), is_admin, user_id=user["id"])

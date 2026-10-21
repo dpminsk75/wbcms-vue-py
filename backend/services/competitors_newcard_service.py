@@ -13,11 +13,13 @@
 
 import json
 import re
+from datetime import datetime
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.services import openrouter_service as llm
+from backend.services import llm_provider
 
 # Порог «описания нет»: короче 50 символов считаем пустым (как в §11.2 плана).
 DESC_MIN_LEN = 50
@@ -27,8 +29,11 @@ MAX_PHRASES = 80
 # Сколько моделей пробуем за один вызов: каждая может висеть до ~90 с,
 # поэтому без лимита модалка «висит» 10+ минут.
 MAX_AI_ATTEMPTS = 4
+# Запас на thinking + сам JSON. Для «другого сервиса» шлём явно (send_max_tokens),
+# иначе дефолт провайдера может закончиться на рассуждениях. Плюс reasoning_effort=low.
+PHRASES_MAX_TOKENS = 8000
 # Версии промптов — пишем в результат и ai_log, чтобы понимать, чем сделан текст.
-PHRASES_PROMPT_VERSION = "newcard-phrases-v2"
+PHRASES_PROMPT_VERSION = "newcard-phrases-v3"
 DESC_PROMPT_VERSION = "newcard-desc-v3"
 
 
@@ -36,6 +41,8 @@ DESC_PROMPT_VERSION = "newcard-desc-v3"
 DEFAULT_PHRASES_PROMPT = """Ты — SEO-специалист Wildberries. Тебе дают описания карточек конкурентов по одному товару.
 Задача: собрать поисковые фразы, по которым покупатели находят этот товар.
 Верни ТОЛЬКО JSON без markdown: {"phrases": ["фраза 1", "фраза 2"]}
+Поле должно называться именно `phrases` (не `keywords`).
+Не пиши рассуждений, пояснений и markdown. Первый символ ответа — `{`, последний — `}`.
 
 ПРАВИЛА:
 - 15–40 фраз, 2–4 слова, в нижнем регистре, без знаков препинания и эмодзи.
@@ -113,17 +120,59 @@ def _norm_phrase(raw) -> str:
 def _parse_json(content: str):
     """Достаём JSON из ответа модели (markdown-обёртки, текст вокруг)."""
     s = (content or "").strip()
-    m = re.search(r"```(?:json)?\s*(.*?)\s*```", s, re.S)
+    if not s:
+        return None
+    m = re.search(r"```(?:json)?\s*(.*?)\s*```", s, re.S | re.I)
     if m:
         s = m.group(1).strip()
     data = llm.safe_json_decode(s)
     if isinstance(data, (dict, list)):
         return data
-    m2 = re.search(r"[\[{].*[\]}]", s, re.S)
-    if m2:
-        data = llm.safe_json_decode(m2.group(0))
-        if isinstance(data, (dict, list)):
-            return data
+    # Модель могла добавить цитату/пояснение после JSON — берём первый
+    # самостоятельный объект/массив, а не жадный кусок до последней скобки.
+    dec = json.JSONDecoder()
+    for pat in (r"\{", r"\["):
+        for m2 in re.finditer(pat, s):
+            try:
+                obj, _ = dec.raw_decode(s[m2.start():])
+            except ValueError:
+                continue
+            if isinstance(obj, (dict, list)):
+                return obj
+    return None
+
+
+def _phrases_from_parsed(parsed, depth: int = 0):
+    """Список фраз из разных форм ответа: list, {"phrases": [...]},
+    {"phrases": "a, b"}, вложенные data/result/response/output."""
+    if depth > 4:
+        return None
+    if isinstance(parsed, list):
+        return parsed
+    if not isinstance(parsed, dict):
+        return None
+    for key in ("phrases", "phrases_list", "keywords", "search_phrases", "queries", "items"):
+        val = parsed.get(key)
+        if isinstance(val, list):
+            return val
+        if isinstance(val, str) and val.strip():
+            if val.lstrip().startswith(("{", "[")):
+                found = _phrases_from_parsed(_parse_json(val), depth + 1)
+                if found is not None:
+                    return found
+            parts = re.split(r"[\n,;]+", val)
+            out = [p.strip(" \t-—–•*") for p in parts if p.strip(" \t-—–•*")]
+            if out:
+                return out
+        if isinstance(val, dict):
+            out = [v for v in val.values() if isinstance(v, (str, dict))]
+            if out:
+                return out
+    for key in ("data", "result", "response", "output"):
+        if key in parsed:
+            found = _phrases_from_parsed(parsed[key], depth + 1)
+            if found is not None:
+                return found
     return None
 
 
@@ -202,6 +251,27 @@ def _photo(photos_raw) -> str | None:
     return None
 
 
+def _images(raw) -> list[str]:
+    """Нормализуем images: JSON-строка, двойное кодирование или список объектов."""
+    val = _j(raw)
+    if isinstance(val, str) and val.strip().startswith(("[", "{")):
+        val = _j(val)
+    if isinstance(val, dict):
+        val = val.get("images") or val.get("urls") or []
+    if not isinstance(val, list):
+        return []
+    out: list[str] = []
+    for item in val:
+        if isinstance(item, dict):
+            item = item.get("url") or item.get("big") or item.get("c516x688") or item.get("square")
+        s = str(item or "").strip()
+        if s.startswith("//"):
+            s = "https:" + s
+        if s and s not in out:
+            out.append(s)
+    return out
+
+
 def _like(q: str) -> str:
     """Экранируем % и _ в пользовательском вводе (иначе LIKE-инъекция по спецсимволам)."""
     return "%" + re.sub(r"[%_]", lambda m: "\\" + m.group(0), q.strip()) + "%"
@@ -219,6 +289,27 @@ def _ints(raw, limit: int = MAX_COMPETITORS_PER_REQUEST) -> list[int]:
         if len(out) >= limit:
             break
     return out
+
+
+def _chunks(values: list[int], size: int = 400):
+    """Режем IN (...) на порции: MySQL не любит тысячи параметров в одном запросе."""
+    for i in range(0, len(values), size):
+        yield values[i:i + size]
+
+
+def _ts(v) -> float:
+    """Сортировка по дате: MySQL может вернуть str или datetime."""
+    if not v:
+        return 0.0
+    if isinstance(v, datetime):
+        try:
+            return v.timestamp()
+        except Exception:
+            return 0.0
+    try:
+        return datetime.fromisoformat(str(v).replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return 0.0
 
 
 class CompetitorsNewcardService:
@@ -361,9 +452,17 @@ class CompetitorsNewcardService:
 
     async def list_queries(self, nm_id: int) -> dict:
         rows = (await self.db.execute(text("""
-            SELECT id, phrase, priority, is_active, source, status, added_by, created_at
-            FROM wb_competitor_query WHERE source_nm_id=:n
-            ORDER BY priority, id
+            SELECT q.id, q.phrase, q.priority, q.is_active, q.source, q.status,
+                   q.added_by, q.created_at,
+                   (SELECT COUNT(DISTINCT c.nm_id) FROM wb_competitor_cards c
+                    WHERE c.source_nm_id=q.source_nm_id AND c.query_phrase=q.phrase
+                      AND c.nm_id>0) AS found_cnt,
+                   (SELECT MIN(c.position) FROM wb_competitor_cards c
+                    WHERE c.source_nm_id=q.source_nm_id AND c.query_phrase=q.phrase
+                      AND c.nm_id>0 AND c.position>0) AS best_position
+            FROM wb_competitor_query q
+            WHERE q.source_nm_id=:n
+            ORDER BY q.priority, q.id
         """), {"n": nm_id})).mappings().all()
         return {"nm_id": nm_id, "items": [dict(r) for r in rows]}
 
@@ -444,13 +543,18 @@ class CompetitorsNewcardService:
                    MAX(c.price) AS price,
                    MAX(c.image_url) AS image_url,
                    MAX(c.collected_at) AS collected_at,
+                   MAX(q.status) AS queue_status,
+                   MAX(q.error_msg) AS queue_error,
+                   MAX(q.processed_at) AS queue_processed_at,
                    GROUP_CONCAT(DISTINCT c.source ORDER BY c.source) AS sources,
                    GROUP_CONCAT(DISTINCT NULLIF(c.query_phrase,'') SEPARATOR ' | ') AS phrases
             FROM wb_competitor_cards c
+            LEFT JOIN wb_enrich_queue q ON q.nm_id=c.nm_id
+              AND (:qc IS NULL OR q.company_id=:qc OR q.company_id IS NULL)
             WHERE c.source_nm_id=:n
             GROUP BY c.nm_id
             ORDER BY c.nm_id
-        """), {"n": nm_id})).mappings().all()
+        """), {"n": nm_id, "qc": self.company_id})).mappings().all()
         ids = [r["nm_id"] for r in rows]
         details: dict[int, dict] = {}
         analysis: dict[int, str] = {}
@@ -504,7 +608,7 @@ class CompetitorsNewcardService:
                     VALUES (:s, '', 0, :n, '', '', 0, '', 'manual', :u)
                 """), {"s": nm_id, "n": cn, "u": user_id})
                 added += int(r.rowcount or 0)
-            await self._queue(nm_ids)
+            await self._queue(nm_id, nm_ids)
         return {"added": added, "requested": len(nm_ids), "nm_ids": nm_ids}
 
     async def copy_from_card(self, nm_id: int, src_nm_id: int, user_id: int | None) -> dict:
@@ -525,7 +629,7 @@ class CompetitorsNewcardService:
             ids = (await self.db.execute(text("""
                 SELECT DISTINCT nm_id FROM wb_competitor_cards WHERE source_nm_id=:n
             """), {"n": nm_id})).scalars().all()
-            await self._queue([int(x) for x in ids])
+            await self._queue(nm_id, [int(x) for x in ids])
         return {"added": added, "source_nm_id": src_nm_id}
 
     # ---------- §8.5/§11.3: «Собранные карточки» (capture) ----------
@@ -619,6 +723,485 @@ class CompetitorsNewcardService:
             items.append(d)
         return {"items": items, "total": len(items)}
 
+    # ---------- §16: подбор конкурентов и массовая привязка ----------
+
+    async def pick_cards(self, q: str = "", limit: int = 50) -> dict:
+        """Наши карточки для выбора источника/цели (nmID, vendorCode, title, счётчики)."""
+        limit = max(1, min(int(limit or 50), 200))
+        scope, p = self._scope("w")
+        params: dict = {"lim": limit, "minlen": DESC_MIN_LEN, **p}
+        conds = ["w.is_active=1"]
+        if q.strip():
+            conds.append("(w.title LIKE :like OR w.vendorCode LIKE :like"
+                         " OR w.brand LIKE :like OR CAST(w.nmID AS CHAR) LIKE :like)")
+            params["like"] = _like(q)
+        rows = (await self.db.execute(text(f"""
+            SELECT w.nmID, w.company_id, w.title, w.brand, w.vendorCode,
+                   w.subjectName, w.photos,
+                   (SELECT COUNT(DISTINCT cc.nm_id) FROM wb_competitor_cards cc
+                    WHERE cc.source_nm_id=w.nmID) AS competitors_cnt,
+                   (SELECT COUNT(DISTINCT cc.nm_id)
+                    FROM wb_competitor_cards cc
+                    JOIN wb_competitor_details d ON d.nm_id=cc.nm_id
+                    WHERE cc.source_nm_id=w.nmID
+                      AND CHAR_LENGTH(COALESCE(d.description,'')) >= :minlen) AS content_cnt
+            FROM wbcards w
+            WHERE {' AND '.join(conds)}
+            ORDER BY COALESCE(w.last_seen_at, w.created_at) DESC
+            LIMIT :lim
+        """), params)).mappings().all()
+        items = []
+        for r in rows:
+            d = dict(r)
+            d["photo"] = _photo(d.pop("photos", None))
+            d["vendor_code"] = d.pop("vendorCode", None)
+            d["subject_name"] = d.pop("subjectName", None)
+            d["competitors_cnt"] = int(d.get("competitors_cnt") or 0)
+            d["content_cnt"] = int(d.get("content_cnt") or 0)
+            items.append(d)
+        return {"items": items, "total": len(items), "desc_min_len": DESC_MIN_LEN}
+
+    async def _pick_sources(self, ids: list[int]) -> list[int]:
+        ids = list(dict.fromkeys(int(x) for x in ids if int(x) > 0))
+        if not ids:
+            return []
+        found: set[int] = set()
+        for chunk in _chunks(ids):
+            ph = ",".join(f":s{i}" for i in range(len(chunk)))
+            params: dict = {f"s{i}": v for i, v in enumerate(chunk)}
+            scope = ""
+            if self.company_id is not None:
+                scope = " AND company_id=:cid"
+                params["cid"] = self.company_id
+            rows = (await self.db.execute(text(f"""
+                SELECT nmID FROM wbcards WHERE nmID IN ({ph}) {scope}
+            """), params)).scalars().all()
+            found.update(int(x) for x in rows)
+        missing = [n for n in ids if n not in found]
+        if missing:
+            if self.company_id is not None:
+                foreign: set[int] = set()
+                for chunk in _chunks(missing):
+                    ph = ",".join(f":f{i}" for i in range(len(chunk)))
+                    rows = (await self.db.execute(text(f"""
+                        SELECT nmID FROM wbcards
+                        WHERE nmID IN ({ph}) AND company_id<>:cid
+                    """), {**{f"f{i}": v for i, v in enumerate(chunk)}, "cid": self.company_id})).scalars().all()
+                    foreign.update(int(x) for x in rows)
+                if foreign:
+                    raise PermissionError("Карточка принадлежит другой компании: "
+                                          + ", ".join(str(n) for n in sorted(foreign)[:10]))
+            raise ValueError("Карточки не найдены: " + ", ".join(str(n) for n in missing[:10]))
+        return ids
+
+    async def _own_card_ids(self) -> set[int]:
+        if self.company_id is None:
+            rows = (await self.db.execute(text("SELECT nmID FROM wbcards"))).scalars().all()
+        else:
+            rows = (await self.db.execute(text(
+                "SELECT nmID FROM wbcards WHERE company_id=:cid"
+            ), {"cid": self.company_id})).scalars().all()
+        return {int(x) for x in rows}
+
+    async def _details_map(self, ids: list[int]) -> dict[int, dict]:
+        out: dict[int, dict] = {}
+        for chunk in _chunks(ids):
+            ph = ",".join(f":d{i}" for i in range(len(chunk)))
+            rows = (await self.db.execute(text(f"""
+                SELECT nm_id, title, brand, seller, price, old_price, images,
+                       recommendations,
+                       CHAR_LENGTH(COALESCE(description,'')) AS desc_len,
+                       JSON_LENGTH(COALESCE(characteristics, JSON_ARRAY())) AS chars_cnt,
+                       collected_at
+                FROM wb_competitor_details
+                WHERE nm_id IN ({ph})
+                ORDER BY collected_at DESC
+            """), {f"d{i}": v for i, v in enumerate(chunk)})).mappings().all()
+            for r in rows:
+                out.setdefault(int(r["nm_id"]), dict(r))
+        return out
+
+    async def _cards_meta_map(self, ids: list[int]) -> dict[int, dict]:
+        out: dict[int, dict] = {}
+        for chunk in _chunks(ids):
+            ph = ",".join(f":m{i}" for i in range(len(chunk)))
+            rows = (await self.db.execute(text(f"""
+                SELECT nm_id, MAX(title) AS title, MAX(brand) AS brand,
+                       MAX(price) AS price, MAX(image_url) AS image_url,
+                       MAX(collected_at) AS collected_at,
+                       GROUP_CONCAT(DISTINCT source) AS sources
+                FROM wb_competitor_cards
+                WHERE nm_id IN ({ph})
+                GROUP BY nm_id
+            """), {f"m{i}": v for i, v in enumerate(chunk)})).mappings().all()
+            for r in rows:
+                out[int(r["nm_id"])] = dict(r)
+        return out
+
+    async def _capture_map(self, ids: list[int]) -> dict[int, dict]:
+        out: dict[int, dict] = {}
+        for chunk in _chunks(ids):
+            ph = ",".join(f":c{i}" for i in range(len(chunk)))
+            params: dict = {f"c{i}": v for i, v in enumerate(chunk)}
+            if self.company_id is None:
+                rows = (await self.db.execute(text(f"""
+                    SELECT nm_id, MAX(is_own) AS is_own, MIN(is_hidden) AS is_hidden
+                    FROM wb_competitor_capture
+                    WHERE nm_id IN ({ph})
+                    GROUP BY nm_id
+                """), params)).mappings().all()
+            else:
+                params["cid"] = self.company_id
+                rows = (await self.db.execute(text(f"""
+                    SELECT nm_id, is_own, is_hidden
+                    FROM wb_competitor_capture
+                    WHERE nm_id IN ({ph}) AND company_id=:cid
+                """), params)).mappings().all()
+            for r in rows:
+                out[int(r["nm_id"])] = dict(r)
+        return out
+
+    async def _attached_map(self, ids: list[int]) -> dict[int, list[dict]]:
+        out: dict[int, list[dict]] = {}
+        for chunk in _chunks(ids):
+            ph = ",".join(f":a{i}" for i in range(len(chunk)))
+            params: dict = {f"a{i}": v for i, v in enumerate(chunk)}
+            scope = ""
+            if self.company_id is not None:
+                scope = (" AND cc.source_nm_id IN "
+                         "(SELECT nmID FROM wbcards WHERE company_id=:cid)")
+                params["cid"] = self.company_id
+            rows = (await self.db.execute(text(f"""
+                SELECT cc.nm_id, cc.source_nm_id, cc.source,
+                       w.title AS source_title
+                FROM wb_competitor_cards cc
+                LEFT JOIN wbcards w ON w.nmID=cc.source_nm_id
+                WHERE cc.nm_id IN ({ph}) {scope}
+                ORDER BY cc.source_nm_id
+            """), params)).mappings().all()
+            for r in rows:
+                n = int(r["nm_id"])
+                src = int(r["source_nm_id"])
+                bucket = out.setdefault(n, [])
+                if any(x["nm_id"] == src for x in bucket):
+                    continue
+                bucket.append({
+                    "nm_id": src,
+                    "title": r["source_title"],
+                    "source": r["source"],
+                })
+        return out
+
+    async def _queue_map(self, ids: list[int]) -> dict[int, dict]:
+        out: dict[int, dict] = {}
+        for chunk in _chunks(ids):
+            ph = ",".join(f":q{i}" for i in range(len(chunk)))
+            params: dict = {f"q{i}": v for i, v in enumerate(chunk)}
+            params["cid"] = self.company_id
+            rows = (await self.db.execute(text(f"""
+                SELECT nm_id, status, error_msg, processed_at
+                FROM wb_enrich_queue
+                WHERE nm_id IN ({ph})
+                  AND (:cid IS NULL OR company_id=:cid OR company_id IS NULL)
+                ORDER BY id DESC
+            """), params)).mappings().all()
+            for r in rows:
+                out.setdefault(int(r["nm_id"]), dict(r))
+        return out
+
+    async def pick_candidates(self, raw_source_nm_ids, mode: str = "recommend",
+                              q: str = "", only_content: bool = False,
+                              only_recommended: bool = False,
+                              limit: int = 200, offset: int = 0) -> dict:
+        """Пул кандидатов §16: A ∪ B / только A / вся captured-база компании."""
+        mode = (mode or "recommend").strip().lower()
+        if mode not in ("recommend", "competitors", "captured"):
+            raise ValueError("mode: recommend | competitors | captured")
+        if isinstance(raw_source_nm_ids, str):
+            raw_source_nm_ids = [x for x in re.split(r"[,;\s]+", raw_source_nm_ids) if x]
+        limit = max(1, min(int(limit or 200), 500))
+        offset = max(0, int(offset or 0))
+
+        source_ids: list[int] = []
+        base: dict[int, dict] = {}
+
+        def blank(nm: int) -> dict:
+            return {
+                "nm_id": nm, "in_a": False, "rec_cnt": 0, "recommended_by": [],
+                "title": "", "brand": "", "price": "", "image_url": "",
+                "collected_at": None, "sources": [],
+            }
+
+        if mode in ("recommend", "competitors"):
+            source_ids = await self._pick_sources(_ints(raw_source_nm_ids, 200))
+            if not source_ids:
+                raise ValueError("Выберите хотя бы одну нашу карточку")
+            for chunk in _chunks(source_ids):
+                ph = ",".join(f":s{i}" for i in range(len(chunk)))
+                rows = (await self.db.execute(text(f"""
+                    SELECT nm_id, MAX(title) AS title, MAX(brand) AS brand,
+                           MAX(price) AS price, MAX(image_url) AS image_url,
+                           MAX(collected_at) AS collected_at,
+                           GROUP_CONCAT(DISTINCT source) AS sources
+                    FROM wb_competitor_cards
+                    WHERE source_nm_id IN ({ph}) AND nm_id > 0
+                    GROUP BY nm_id
+                """), {f"s{i}": v for i, v in enumerate(chunk)})).mappings().all()
+                for r in rows:
+                    n = int(r["nm_id"])
+                    item = blank(n)
+                    item.update({
+                        "in_a": True,
+                        "title": r["title"] or "",
+                        "brand": r["brand"] or "",
+                        "price": r["price"] or "",
+                        "image_url": r["image_url"] or "",
+                        "collected_at": r["collected_at"],
+                        "sources": (r["sources"] or "").split(",") if r["sources"] else [],
+                    })
+                    base[n] = item
+
+            if mode == "recommend" and base:
+                a_ids = list(base.keys())
+                for chunk in _chunks(a_ids):
+                    ph = ",".join(f":r{i}" for i in range(len(chunk)))
+                    rows = (await self.db.execute(text(f"""
+                        SELECT nm_id, recommendations
+                        FROM wb_competitor_details
+                        WHERE nm_id IN ({ph})
+                        ORDER BY collected_at DESC
+                    """), {f"r{i}": v for i, v in enumerate(chunk)})).mappings().all()
+                    seen: set[int] = set()
+                    for r in rows:
+                        src = int(r["nm_id"])
+                        if src in seen:
+                            continue
+                        seen.add(src)
+                        recs = _j(r["recommendations"])
+                        if isinstance(recs, dict):
+                            recs = recs.get("items") or recs.get("recommendations") or []
+                        if not isinstance(recs, list):
+                            continue
+                        for rec in recs:
+                            if isinstance(rec, dict):
+                                rn = rec.get("nm_id") or rec.get("nmId") or rec.get("id")
+                                rtitle = rec.get("title") or ""
+                            else:
+                                rn, rtitle = rec, ""
+                            try:
+                                rn = int(rn or 0)
+                            except (TypeError, ValueError):
+                                continue
+                            if rn <= 0 or rn == src:
+                                continue
+                            item = base.get(rn)
+                            if item is None:
+                                item = blank(rn)
+                                item["title"] = str(rtitle or "")
+                                base[rn] = item
+                            if src not in item["recommended_by"]:
+                                item["recommended_by"].append(src)
+                                item["rec_cnt"] = len(item["recommended_by"])
+        else:
+            # captured: вся видимая база компании; source_nm_ids не нужны
+            if self.company_id is None:
+                rows = (await self.db.execute(text(
+                    "SELECT nm_id FROM wb_competitor_capture GROUP BY nm_id"
+                ))).scalars().all()
+            else:
+                rows = (await self.db.execute(text("""
+                    SELECT nm_id FROM wb_competitor_capture
+                    WHERE company_id=:cid GROUP BY nm_id
+                """), {"cid": self.company_id})).scalars().all()
+            for nm in rows:
+                n = int(nm)
+                base[n] = blank(n)
+
+        own = await self._own_card_ids()
+        base = {n: v for n, v in base.items() if n not in own}
+        if not base:
+            return {"items": [], "total": 0, "mode": mode, "source_nm_ids": source_ids,
+                    "offset": offset, "limit": limit, "desc_min_len": DESC_MIN_LEN,
+                    "counts": {"a_cnt": 0, "rec_cnt": 0, "captured_cnt": 0}}
+
+        ids = list(base.keys())
+        details = await self._details_map(ids)
+        meta = await self._cards_meta_map(ids)
+        capture = await self._capture_map(ids)
+        attached = await self._attached_map(ids)
+        queue = await self._queue_map(ids)
+
+        ql = q.strip().lower()
+        items: list[dict] = []
+        for n in ids:
+            b = base[n]
+            det = details.get(n) or {}
+            m = meta.get(n) or {}
+            cap = capture.get(n)
+            sources = b.get("sources") or ((m.get("sources") or "").split(",") if m.get("sources") else [])
+            item = {
+                "nm_id": n,
+                "title": det.get("title") or b.get("title") or m.get("title") or "",
+                "brand": det.get("brand") or b.get("brand") or m.get("brand") or "",
+                "seller": det.get("seller") or "",
+                "price": det.get("price") or b.get("price") or m.get("price") or "",
+                "old_price": det.get("old_price") or "",
+                "photo": _photo(det.get("images")) or b.get("image_url") or m.get("image_url"),
+                "desc_len": int(det.get("desc_len") or 0),
+                "chars_cnt": int(det.get("chars_cnt") or 0),
+                "collected_at": det.get("collected_at") or b.get("collected_at") or m.get("collected_at"),
+                "in_a": bool(b.get("in_a")),
+                "rec_cnt": int(b.get("rec_cnt") or 0),
+                "recommended_by": list(b.get("recommended_by") or [])[:5],
+                "captured": bool(cap),
+                "is_own": bool(cap.get("is_own")) if cap else False,
+                "is_hidden": bool(cap.get("is_hidden")) if cap else False,
+                "attached_to": attached.get(n, []),
+                "queue_status": (queue.get(n) or {}).get("status"),
+                "queue_error": (queue.get(n) or {}).get("error_msg"),
+                "queue_processed_at": (queue.get(n) or {}).get("processed_at"),
+                "sources": sources,
+            }
+            item["has_content"] = item["desc_len"] >= DESC_MIN_LEN
+            item["visible"] = bool(item["captured"] or item["in_a"] or item["attached_to"])
+            item["can_attach"] = bool(item["visible"] and not item["is_hidden"] and not item["is_own"])
+            if ql:
+                hay = " ".join(str(item.get(k) or "") for k in
+                               ("title", "brand", "seller", "nm_id")).lower()
+                hay += " " + " ".join(str(a.get("title") or "") for a in item["attached_to"]).lower()
+                if ql not in hay:
+                    continue
+            if only_content and not item["has_content"]:
+                continue
+            if only_recommended and not item["rec_cnt"]:
+                continue
+            items.append(item)
+
+        items.sort(key=lambda x: (
+            0 if x["in_a"] else 1,
+            -int(x["rec_cnt"] or 0),
+            -int(x["desc_len"] or 0),
+            -int(x["chars_cnt"] or 0),
+            -_ts(x.get("collected_at")),
+        ))
+        total = len(items)
+        counts = {
+            "a_cnt": sum(1 for x in items if x["in_a"]),
+            "rec_cnt": sum(1 for x in items if x["rec_cnt"]),
+            "captured_cnt": sum(1 for x in items if x["captured"]),
+        }
+        return {
+            "items": items[offset:offset + limit],
+            "total": total,
+            "mode": mode,
+            "source_nm_ids": source_ids,
+            "offset": offset,
+            "limit": limit,
+            "desc_min_len": DESC_MIN_LEN,
+            "counts": counts,
+        }
+
+    async def bulk_attach(self, raw_nm_ids, raw_target_nm_ids,
+                          user_id: int | None = None, mode: str = "recommend") -> dict:
+        """Массовая привязка captured-кандидатов к нашим карточкам (§16.5).
+
+        Не трогает `search/manual/sibling`, не ставит в очередь, идемпотентна по паре.
+        """
+        nm_ids = _ints(raw_nm_ids, limit=200)
+        target_ids = _ints(raw_target_nm_ids, limit=20)
+        if not nm_ids:
+            raise ValueError("Выберите хотя бы одного конкурента")
+        if not target_ids:
+            raise ValueError("Выберите хотя бы одну нашу карточку")
+        target_ids = await self._pick_sources(target_ids)
+
+        own = await self._own_card_ids()
+        nm_ids = [n for n in nm_ids if n not in own and n not in target_ids]
+        if not nm_ids:
+            raise ValueError("Нечего привязывать: кандидаты совпадают с нашими карточками")
+
+        capture = await self._capture_map(nm_ids)
+        attached = await self._attached_map(nm_ids)
+        eligible: list[int] = []
+        skipped_candidates: list[dict] = []
+        for n in nm_ids:
+            cap = capture.get(n)
+            if cap and bool(cap.get("is_own")):
+                skipped_candidates.append({"nm_id": n, "reason": "own"})
+            elif cap and bool(cap.get("is_hidden")):
+                skipped_candidates.append({"nm_id": n, "reason": "hidden"})
+            elif not cap and not attached.get(n):
+                # Нет capture и нет привязки к нашей карточке — кандидат не виден компании.
+                skipped_candidates.append({"nm_id": n, "reason": "not_captured"})
+            else:
+                eligible.append(n)
+
+        requested = len(nm_ids) * len(target_ids)
+        if not eligible:
+            return {
+                "added": 0, "exists": 0,
+                "skipped": len(skipped_candidates) * len(target_ids),
+                "requested": requested, "mode": mode,
+                "target_nm_ids": target_ids,
+                "skipped_candidates": skipped_candidates[:50],
+                "errors": [],
+            }
+
+        details = await self._details_map(eligible)
+        meta = await self._cards_meta_map(eligible)
+
+        # Какие пары уже есть: один запрос вместо SELECT на каждую пару.
+        existing: set[tuple[int, int]] = set()
+        tph = ",".join(f":t{i}" for i in range(len(target_ids)))
+        tparams = {f"t{i}": v for i, v in enumerate(target_ids)}
+        for chunk in _chunks(eligible):
+            ph = ",".join(f":n{i}" for i in range(len(chunk)))
+            rows = (await self.db.execute(text(f"""
+                SELECT source_nm_id, nm_id FROM wb_competitor_cards
+                WHERE source_nm_id IN ({tph}) AND nm_id IN ({ph})
+            """), {**tparams, **{f"n{i}": v for i, v in enumerate(chunk)}})).mappings().all()
+            for r in rows:
+                existing.add((int(r["source_nm_id"]), int(r["nm_id"])))
+
+        added = 0
+        exists = 0
+        await self.db.rollback()
+        async with self.db.begin():
+            for n in eligible:
+                det = details.get(n) or {}
+                m = meta.get(n) or {}
+                title = str(det.get("title") or m.get("title") or "")[:500]
+                brand = str(det.get("brand") or m.get("brand") or "")[:255]
+                price = str(det.get("price") or m.get("price") or "")[:50]
+                img = str(_photo(det.get("images")) or m.get("image_url") or "")[:1000]
+                for t in target_ids:
+                    if (t, n) in existing:
+                        exists += 1
+                        continue
+                    r = await self.db.execute(text("""
+                        INSERT IGNORE INTO wb_competitor_cards
+                          (source_nm_id, query_phrase, position, nm_id, title, brand,
+                           price, image_url, source, added_by)
+                        VALUES (:s, '', 0, :n, :t, :b, :p, :img, 'capture', :u)
+                    """), {"s": t, "n": n, "t": title, "b": brand,
+                           "p": price, "img": img, "u": user_id})
+                    if int(r.rowcount or 0) > 0:
+                        added += 1
+                        existing.add((t, n))
+                    else:
+                        exists += 1
+
+        return {
+            "added": added,
+            "exists": exists,
+            "skipped": len(skipped_candidates) * len(target_ids),
+            "requested": requested,
+            "mode": mode,
+            "target_nm_ids": target_ids,
+            "skipped_candidates": skipped_candidates[:50],
+            "errors": [],
+        }
+
     async def history(self, nm_id: int, limit: int = 50) -> dict:
         """Снимки контента (append-only, дедуп по content_hash при capture)."""
         rows = (await self.db.execute(text("""
@@ -638,6 +1221,70 @@ class CompetitorsNewcardService:
             d.pop("description", None)
             items.append(d)
         return {"nm_id": nm_id, "items": items}
+
+    async def details(self, nm_id: int) -> dict | None:
+        """Полная карточка конкурента для попапа: контент, фото, характеристики, цены."""
+        row = (await self.db.execute(text("""
+            SELECT nm_id, title, description, brand, seller, subject_name, url,
+                   price, old_price, images, characteristics,
+                   COALESCE(collected_at, first_collected_at) AS collected_at,
+                   first_collected_at
+            FROM wb_competitor_details
+            WHERE nm_id=:n ORDER BY COALESCE(collected_at, first_collected_at) DESC, id DESC LIMIT 1
+        """), {"n": nm_id})).mappings().first()
+        if not row:
+            return None
+        d = dict(row)
+        images = _images(d.get("images"))
+        d["images"] = images
+        d["photo"] = images[0] if images else None
+        chars = _j(d.get("characteristics")) or []
+        d["characteristics"] = chars if isinstance(chars, list) else []
+        d["url"] = d.get("url") or f"https://www.wildberries.ru/catalog/{nm_id}/detail.aspx"
+        d["price_history"] = await self._price_history(
+            nm_id, d.get("price"), d.get("old_price"), d.get("collected_at")
+        )
+        return d
+
+    async def _price_history(self, nm_id: int, price, old_price, collected_at) -> list[dict]:
+        """Точки изменения цены из снимков истории (только когда цена реально менялась)."""
+        rows = (await self.db.execute(text("""
+            SELECT price, old_price, created_at
+            FROM wb_competitor_details_history
+            WHERE nm_id=:n ORDER BY id
+        """), {"n": nm_id})).mappings().all()
+        points: list[dict] = []
+        prev: tuple[str, str] | None = None
+        for r in rows:
+            pair = (str(r.get("price") or ""), str(r.get("old_price") or ""))
+            if pair == prev:
+                continue
+            points.append({
+                "price": pair[0],
+                "old_price": pair[1],
+                "at": r.get("created_at"),
+            })
+            prev = pair
+        cur = (str(price or ""), str(old_price or ""))
+        if cur[0] and cur != prev:
+            points.append({
+                "price": cur[0],
+                "old_price": cur[1],
+                "at": collected_at,
+            })
+        return points
+
+    async def capture_visible(self, nm_id: int) -> bool:
+        """Есть ли карточка в собранных у этой компании (для доступа к попапу)."""
+        return bool(await self._capture_row(nm_id))
+
+    async def has_competitor(self, source_nm_id: int, nm_id: int) -> bool:
+        """Привязан ли конкурент к нашей карточке (для доступа к попапу)."""
+        r = (await self.db.execute(text("""
+            SELECT 1 FROM wb_competitor_cards
+            WHERE source_nm_id=:s AND nm_id=:n LIMIT 1
+        """), {"s": source_nm_id, "n": nm_id})).first()
+        return r is not None
 
     async def _capture_row(self, nm_id: int) -> dict | None:
         scope = ""
@@ -782,11 +1429,8 @@ class CompetitorsNewcardService:
         company_id = self.company_id or await self._company_for(nm_id)
         if not company_id:
             return {}
-        row = (await self.db.execute(text("""
-            SELECT id, seo_model, seo_summary_model, seo_summary_max_tokens,
-                   seo_desc_min, seo_desc_max, seo_newcard_prompt, seo_newcard_model
-            FROM companies WHERE id=:c LIMIT 1
-        """), {"c": company_id})).mappings().first()
+        # единый загрузчик настроек (в т.ч. seo_llm_* — модели «другого сервиса»)
+        row = await llm_provider.company_row(self.db, company_id)
         d = dict(row) if row else {}
         d["company_id"] = company_id
         return d
@@ -849,7 +1493,8 @@ class CompetitorsNewcardService:
         return {"nm_id": nm_id, "items": items,
                 "selected_cnt": sum(1 for x in items if x["is_selected"])}
 
-    async def analyze_phrases(self, nm_id: int, run_id: str | None = None) -> dict:
+    async def analyze_phrases(self, nm_id: int, run_id: str | None = None,
+                              user_id: int | None = None) -> dict:
         """LLM: вытащить поисковые фразы из описаний конкурентов + статистика нашей базы."""
         card = await self._card(nm_id) or {}
         comps = await self._competitors_with_content(nm_id)
@@ -857,6 +1502,8 @@ class CompetitorsNewcardService:
             raise ValueError("Нет собранных описаний конкурентов: привяжите конкурентов и соберите контент расширением")
         st = await self._company_settings(nm_id)
         company_id = st.get("company_id") or self.company_id or card.get("company_id")
+        if not company_id:
+            raise ValueError("Не удалось определить компанию карточки")
         parts = []
         for c in comps:
             parts.append(f"--- Конкурент nmID {c['nm_id']} ---\n"
@@ -866,27 +1513,58 @@ class CompetitorsNewcardService:
               f"Предмет: {card.get('subject_name') or ''}\nБренд: {card.get('brand') or ''}\n\n"
               f"=== ОПИСАНИЯ КОНКУРЕНТОВ ({len(comps)} шт) ===\n"
               + "\n".join(parts)
-              + '\nИзвлеки поисковые фразы и верни JSON {"phrases": [...]}.')
-        messages = [{"role": "system", "content": DEFAULT_PHRASES_PROMPT},
+              + '\nИзвлеки поисковые фразы и верни JSON {"phrases": [...]}. '
+                'Не рассуждай, не пиши пояснений — только JSON.')
+        custom_prompt = (st.get("seo_phrases_prompt") or "").strip()
+        prompt = custom_prompt or DEFAULT_PHRASES_PROMPT
+        prompt_source = "company" if custom_prompt else "default"
+        messages = [{"role": "system", "content": prompt},
                     {"role": "user", "content": up}]
         cands = (await llm.model_candidates(
-            self.db, company_id, override=(st.get("seo_newcard_model") or "").strip() or None,
+            self.db, company_id, kind="newcard",
         ))[:MAX_AI_ATTEMPTS]
         await self._run_start(run_id, nm_id, "phrases", len(cands), company_id)
         last_err, data, used_model = "All models failed", None, None
         for i, try_model in enumerate(cands):
             await self._run_step(run_id, i + 1, try_model)
-            res = await llm.chat(self.db, messages, company_id, temperature=0.2, max_tokens=2000,
-                                 model=try_model,
-                                 note=f"phrases nm {nm_id}, кандидат {i + 1}/{len(cands)}")
+            res = await llm.chat(self.db, messages, company_id, temperature=0.1,
+                                 max_tokens=PHRASES_MAX_TOKENS, model=try_model,
+                                 reasoning_effort="low", send_max_tokens=True,
+                                 note=f"phrases nm {nm_id}, кандидат {i + 1}/{len(cands)}",
+                                 scenario="newcard_phrases", user_id=user_id, nm_id=nm_id)
             if res.get("error"):
-                await llm.mark_model(self.db, try_model, False, res["error"])
-                last_err = f"model {try_model}: {res['error']}"
+                detail = str(res["error"])
+                if res.get("finish_reason") and "finish_reason" not in detail:
+                    detail += f", finish_reason={res['finish_reason']}"
+                if res.get("completion_tokens"):
+                    detail += f", tokens={res['completion_tokens']}"
+                await llm.mark_model(self.db, try_model, False, detail)
+                last_err = f"model {try_model}: {detail}"
                 continue
-            parsed = _parse_json(res.get("content") or "")
-            phrases = parsed.get("phrases") if isinstance(parsed, dict) else parsed
+            raw = res.get("content") or ""
+            parsed = _parse_json(raw)
+            phrases = _phrases_from_parsed(parsed)
             if not isinstance(phrases, list) or not phrases:
-                err = f"model {try_model}: не удалось разобрать список фраз"
+                head = " ".join(raw.split())[:180]
+                finish = str(res.get("finish_reason") or "")
+                if not raw.strip():
+                    reason = "пустой ответ"
+                    if res.get("empty_reason"):
+                        reason += f" ({str(res['empty_reason'])[:180]})"
+                elif not isinstance(parsed, (dict, list)):
+                    reason = f"ответ не JSON: {head!r}"
+                elif isinstance(parsed, dict) and "phrases" in parsed:
+                    reason = f"phrases не список фраз: {head!r}"
+                else:
+                    reason = f"в JSON нет списка phrases: {head!r}"
+                if finish:
+                    reason += f", finish_reason={finish}"
+                    if finish == "length":
+                        reason += " (ответ обрезан по лимиту токенов)"
+                err = f"model {try_model}: {reason}"
+                await llm.ai_log("parse-error", try_model, messages, raw,
+                                 http=res.get("http") or "",
+                                 note=f"phrases nm {nm_id}", provider=res.get("provider") or "")
                 await llm.mark_model(self.db, try_model, False, err)
                 last_err = err
                 continue
@@ -911,8 +1589,6 @@ class CompetitorsNewcardService:
 
         descs = [(c.get("description") or "").lower() for c in comps]
         stats = await self._phrase_stats(norm, card.get("subject_name") or "")
-        if not company_id:
-            raise ValueError("Не удалось определить компанию карточки")
         await self.db.rollback()
         async with self.db.begin():
             for p in norm:
@@ -933,6 +1609,7 @@ class CompetitorsNewcardService:
         out["model"] = used_model
         out["competitors_cnt"] = len(comps)
         out["prompt_version"] = PHRASES_PROMPT_VERSION
+        out["prompt_source"] = prompt_source
         await self._run_finish(run_id, "done")
         return out
 
@@ -947,7 +1624,8 @@ class CompetitorsNewcardService:
             r = await self.db.execute(text(f"""
                 UPDATE wb_competitor_phrase SET is_selected=:s
                 WHERE source_nm_id=:n AND phrase IN ({ph})
-            """), {"s": 1 if selected else 0, "n": nm_id,
+                  AND (:cid IS NULL OR company_id=:cid)
+            """), {"s": 1 if selected else 0, "n": nm_id, "cid": self.company_id,
                    **{f"p{i}": v for i, v in enumerate(norm)}})
         return {"updated": int(r.rowcount or 0), "selected": bool(selected)}
 
@@ -980,12 +1658,14 @@ class CompetitorsNewcardService:
         await self.db.rollback()
         async with self.db.begin():
             r = await self.db.execute(text("""
-                DELETE FROM wb_competitor_phrase WHERE id=:i AND source_nm_id=:n
-            """), {"i": phrase_id, "n": nm_id})
+                DELETE FROM wb_competitor_phrase
+                WHERE id=:i AND source_nm_id=:n AND (:cid IS NULL OR company_id=:cid)
+            """), {"i": phrase_id, "n": nm_id, "cid": self.company_id})
         return bool(r.rowcount)
 
     async def generate_description(self, nm_id: int, phrases: list[str] | None = None,
-                                   run_id: str | None = None) -> dict:
+                                   run_id: str | None = None,
+                                   user_id: int | None = None) -> dict:
         """Ш3: title + description по выбранным фразам, характеристикам и описаниям конкурентов."""
         card = await self._card(nm_id)
         if not card:
@@ -1005,6 +1685,8 @@ class CompetitorsNewcardService:
             raise ValueError("Нет описаний конкурентов — генерация не по чему")
         st = await self._company_settings(nm_id)
         company_id = st.get("company_id") or self.company_id or card.get("company_id")
+        if not company_id:
+            raise ValueError("Не удалось определить компанию карточки")
         desc_min = int(st.get("seo_desc_min") or 1500)
         desc_max = int(st.get("seo_desc_max") or 4000)
         custom = (st.get("seo_newcard_prompt") or "").strip()
@@ -1082,7 +1764,7 @@ class CompetitorsNewcardService:
         messages = [{"role": "system", "content": system}, {"role": "user", "content": up}]
 
         cands = (await llm.model_candidates(
-            self.db, company_id, override=(st.get("seo_newcard_model") or "").strip() or None,
+            self.db, company_id, kind="newcard",
         ))[:MAX_AI_ATTEMPTS]
         await self._run_start(run_id, nm_id, "generate", len(cands), company_id)
         max_tokens = int(st.get("seo_summary_max_tokens") or 4000)
@@ -1091,7 +1773,8 @@ class CompetitorsNewcardService:
             await self._run_step(run_id, i + 1, try_model)
             res = await llm.chat(self.db, messages, company_id, temperature=0.7,
                                  max_tokens=max_tokens, model=try_model,
-                                 note=f"generate nm {nm_id}, кандидат {i + 1}/{len(cands)}")
+                                 note=f"generate nm {nm_id}, кандидат {i + 1}/{len(cands)}",
+                                 scenario="newcard_generate", user_id=user_id, nm_id=nm_id)
             if res.get("error"):
                 await llm.mark_model(self.db, try_model, False, res["error"])
                 last_err = f"model {try_model}: {res['error']}"
@@ -1114,7 +1797,8 @@ class CompetitorsNewcardService:
                 ]
                 fix = await llm.chat(self.db, fix_messages, company_id, temperature=0.3,
                                      max_tokens=max_tokens, model=try_model,
-                                     note=f"generate nm {nm_id}, repair {try_model}")
+                                     note=f"generate nm {nm_id}, repair {try_model}",
+                                     scenario="newcard_generate", user_id=user_id, nm_id=nm_id)
                 if not fix.get("error"):
                     p2 = _unwrap_dict(fix.get("content") or "")
                     t2 = _resp_title(p2)
@@ -1190,13 +1874,21 @@ class CompetitorsNewcardService:
             """), {"n": nm_id, "c": competitor_nm_id})
         return bool(r.rowcount)
 
-    async def _queue(self, nm_ids: list[int]) -> None:
-        """Поставить конкурентов в wb_enrich_queue (24ч-правило: свежие не трогаем)."""
+    async def _queue(self, source_nm_id: int, nm_ids: list[int]) -> None:
+        """Поставить конкурентов в wb_enrich_queue (24ч-правило: свежие не трогаем).
+
+        company_id — компания карточки-источника: строка без него (NULL) была бы
+        «ничейной» и её забрал бы любой, кто первый позвонит в /api/ext/next.
+        Уже существующую строку не перебиваем: владельцем остаётся тот, кто засеял.
+        """
         if not nm_ids:
             return
+        cid = self.company_id or await self._company_for(source_nm_id)
+        if not cid:
+            raise ValueError("Не удалось определить компанию карточки")
         ph = ",".join(f":q{i}" for i in range(len(nm_ids)))
         await self.db.execute(text(f"""
-            INSERT IGNORE INTO wb_enrich_queue (nm_id, company_id)
+            INSERT INTO wb_enrich_queue (nm_id, company_id)
             SELECT t.nm_id, :cid FROM (
                 SELECT DISTINCT nm_id FROM wb_competitor_cards
                 WHERE nm_id IN ({ph})
@@ -1205,4 +1897,7 @@ class CompetitorsNewcardService:
                 SELECT nm_id FROM wb_competitor_details
                 WHERE collected_at > NOW() - INTERVAL 24 HOUR
             )
-        """), {"cid": self.company_id, **{f"q{i}": v for i, v in enumerate(nm_ids)}})
+            ON DUPLICATE KEY UPDATE
+              company_id=IF(company_id IS NULL, :cid, company_id),
+              status=IF((company_id IS NULL OR company_id=:cid) AND status IN ('done','error'), 'pending', status)
+        """), {"cid": cid, **{f"q{i}": v for i, v in enumerate(nm_ids)}})

@@ -14,6 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.services import openrouter_service as llm
+from backend.services import llm_provider
 
 PAGE_SIZE = 20
 FALLBACK_MODELS = ["z-ai/glm-5.2:free", "minimax/minimax-m3:free",
@@ -59,14 +60,10 @@ class SeoService:
         return f"AND {alias}.company_id=:cid", {"cid": self.company_id}
 
     async def _company_seo(self, company_id: int | None) -> dict:
+        """Настройки SEO компании (единый загрузчик — llm_provider.company_row)."""
         if company_id is None:
             return {}
-        row = (await self.db.execute(text("""
-            SELECT seo_model, seo_desc_min, seo_desc_max, seo_prompt, seo_anti_spam_days,
-                   seo_summary_model
-            FROM companies WHERE id=:c LIMIT 1
-        """), {"c": company_id})).mappings().first()
-        return dict(row) if row else {}
+        return await llm_provider.company_row(self.db, company_id) or {}
 
     async def counts(self) -> dict:
         scope, p = self._scope("wb_seo_recommendation")
@@ -392,21 +389,25 @@ class SeoService:
 
     async def _model_candidates(self, company_id: int | None, override: str | None,
                                   allow_global: bool = True) -> list[str]:
-        """Эшелон 1: override или ВСЕ из companies.seo_model; эшелон 2: seo_summary_model
-        (обычно платная!). Эшелон 3 (таблица + хардкод) — только при allow_global."""
+        """Эшелон 1: override или ВСЕ из models компании; эшелон 2: модель сводки
+        (обычно платная!). Эшелон 3 (таблица + хардкод) — только при allow_global.
+
+        Модели берём для ТЕКУЩЕГО провайдера (llm_provider.model_list): у «другого
+        сервиса» — свои (seo_llm_model), openrouter-slug'и туда не идут.
+        Для провайдера 'custom' — только модели компании, по порядку: пул wb_seo_model,
+        кулдаун и fallback относятся к openrouter."""
+        company = await self._company_seo(company_id) if company_id else {}
+        provider = llm_provider.provider_of(company)
         cands: list[str] = []
-        summary_raw = ""
         if override:
             cands = [m.strip() for m in override.split(",") if m.strip()]
         else:
-            company = await self._company_seo(company_id) if company_id else {}
-            raw = (company.get("seo_model") or "").strip()
-            if raw:
-                cands = [m.strip() for m in raw.split(",") if m.strip()]
-            summary_raw = (company.get("seo_summary_model") or "").strip()
-        for m in [x.strip() for x in summary_raw.split(",") if x.strip()]:
+            cands = llm_provider.model_list(company, "main")
+        for m in llm_provider.model_list(company, "summary"):
             if m not in cands:
                 cands.append(m)
+        if provider != "openrouter":
+            return cands
         if cands:
             # свои в активном кулдауне — выкидываем поштучно, остальные пробуем
             ph = ", ".join(f":m{i}" for i in range(len(cands)))
@@ -434,6 +435,13 @@ class SeoService:
     async def _mark_model(self, model_id: str, ok: bool, error: str | None = "") -> None:
         error = error or ""
         try:
+            # модель другого провайдера в wb_seo_model не знаем — no-op
+            known = (await self.db.execute(text("""
+                SELECT id FROM wb_seo_model WHERE model_id=:m LIMIT 1
+            """), {"m": model_id})).mappings().first()
+            if not known:
+                await self.db.rollback()
+                return
             if ok:
                 await self.db.execute(text("""
                     UPDATE wb_seo_model SET success_count=success_count+1, consecutive_errors=0,
@@ -565,7 +573,9 @@ async def execute_process_job(job_id: int, db: AsyncSession) -> None:
                 await progress(item["id"], f"кандидат {i + 1}/{len(cands)}: {try_model}")
                 res = await llm.chat(db, built["messages"], company_id,
                                      temperature=0.4, max_tokens=1500, model=try_model,
-                                     note=f"кандидат {i + 1}/{len(cands)}, nm {nm_id}")
+                                     note=f"кандидат {i + 1}/{len(cands)}, nm {nm_id}",
+                                     scenario="seo", user_id=job.get("created_by"),
+                                     nm_id=nm_id, job_id=job_id)
                 if res.get("error"):
                     await svc._mark_model(try_model, False, res["error"])
                     last_err = f"model {try_model}: {res['error']}"

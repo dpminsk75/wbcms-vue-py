@@ -1,6 +1,8 @@
 from typing import Literal
 
+import asyncio
 import secrets
+import time
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path
@@ -34,6 +36,7 @@ class CompanyCreateIn(BaseModel):
     seo_summary_prompt: str | None = None
     seo_newcard_prompt: str | None = None
     seo_newcard_model: str | None = None
+    seo_phrases_prompt: str | None = None
 
 
 class MemberInviteIn(BaseModel):
@@ -66,6 +69,20 @@ class CompanyUpdateIn(BaseModel):
     seo_summary_prompt: str | None = None
     seo_newcard_prompt: str | None = None
     seo_newcard_model: str | None = None
+    seo_phrases_prompt: str | None = None
+    # провайдер ИИ: openrouter (текущие настройки) | custom (другой сервис)
+    seo_llm_provider: Literal["openrouter", "custom"] | None = None
+    seo_llm_format: Literal["openai", "anthropic", "gemini", "ollama", "yandex"] | None = None
+    seo_llm_url: str | None = None
+    seo_llm_api_key: str | None = None
+    seo_llm_folder_id: str | None = None
+    seo_llm_auth_header: str | None = None
+    seo_llm_auth_prefix: str | None = None
+    seo_llm_extra_headers: str | None = None
+    seo_llm_extra_body: str | None = None
+    seo_llm_timeout: int | None = None
+    seo_llm_model: str | None = None
+    seo_llm_summary_model: str | None = None
 
 
 class MemberUpdateIn(BaseModel):
@@ -121,6 +138,7 @@ async def create_company(
                 seo_summary_prompt=payload.seo_summary_prompt,
                 seo_newcard_prompt=payload.seo_newcard_prompt,
                 seo_newcard_model=payload.seo_newcard_model,
+                seo_phrases_prompt=payload.seo_phrases_prompt,
             )
             return auth_service.public_company(company)
     except IntegrityError:
@@ -166,6 +184,87 @@ async def update_company(
     except ValueError as exc:
         await db.rollback()
         raise HTTPException(status_code=400 if str(exc) != "company not found" else 404, detail=str(exc))
+
+
+@router.post("/{company_id}/llm/test")
+async def test_llm(
+    company_id: int = Path(..., ge=1),
+    payload: dict = Body(default=None),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_company_admin),
+):
+    """«Проверить подключение»: один живой запрос к настроенному провайдеру.
+
+    Body: {draft: {...}, model: "..."} — draft необязателен: если он есть, проверка идёт
+    по значениям формы (ДО сохранения, в БД ничего не пишем), если нет — по сохранённым.
+    model — какую модель дёрнуть (по умолчанию — первая из companies.seo_model).
+    """
+    payload = payload or {}
+    if not await auth_service.is_global_admin(db, user["id"]):
+        perms = await auth_service.effective_perms(db, user["id"])
+        if "viewSeo" not in perms:
+            raise HTTPException(status_code=403, detail="seo fields require viewSeo")
+    from backend.services import llm_provider
+    from backend.services import openrouter_service as llm
+    row = await llm_provider.company_row(db, company_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="company not found")
+    draft = payload.get("draft") or {}
+    cfg = llm_provider.config_from_draft(draft, row)
+    model = str(payload.get("model") or "").strip()
+    if not model:
+        model = str(draft.get("model") or "").strip()
+    if not model:
+        # модель — для текущего провайдера (у «другого сервиса» — своя)
+        parts = llm_provider.model_list(row, "main")
+        model = parts[0] if parts else ""
+    if not model:
+        raise HTTPException(status_code=400, detail="model is empty: укажите модель")
+    # Проба: слово «JSON» в промпте обязательно — иначе JSON-режим (response_format)
+    # отвергает запрос. Заодно проба проверяет ровно то, что делают боевые сценарии.
+    messages = [{"role": "user", "content": "Ответь строго JSON: {\"ok\": true}"}]
+    # Проба — ждём до 60 с: reasoning-модель может думать 30-50 с (MiniMax M3.1 — около 46 с).
+    # max_tokens 256 (не 16): у reasoning-моделей thinking съедает весь бюджет → пустой ответ.
+    probe_timeout = min(int(cfg.timeout or 60), 60)
+    t0 = time.monotonic()
+    try:
+        if cfg.provider != "openrouter":
+            res = await asyncio.wait_for(
+                llm_provider.chat(cfg, messages, temperature=0, max_tokens=256,
+                                  model=model, note="llm test", probe=True,
+                                  timeout=probe_timeout, retry_429=False),
+                timeout=probe_timeout + 10)
+        else:
+            res = await asyncio.wait_for(
+                llm.chat(db, messages, company_id, temperature=0, max_tokens=256,
+                         model=model, note="llm test",
+                         timeout=probe_timeout, retry_429=False, journal=False),
+                timeout=probe_timeout + 10)
+    except asyncio.TimeoutError:
+        res = {"error": f"модель не ответила за {probe_timeout} с — для reasoning-моделей укажите в «Доп. параметры» {{\"reasoning_effort\":\"low\"}}"}
+    except Exception as exc:
+        res = {"error": f"{type(exc).__name__}: {exc}"}
+    ms = int((time.monotonic() - t0) * 1000)
+    err = res.get("error") or ""
+    content = (res.get("content") or "").strip()
+    if not err and not content:
+        err = "пустой ответ: модель не вернула текст (частая причина — reasoning-модель: добавьте reasoning_effort в «Доп. параметры»)"
+    # журнал расхода: проба — тоже вызов (scenario=test)
+    try:
+        from backend.services import ai_usage_service
+        await ai_usage_service.record_usage(
+            db, company_id=company_id, user_id=user["id"],
+            provider=cfg.provider, model=res.get("model") or model, scenario="test",
+            prompt_tokens=res.get("prompt_tokens"), completion_tokens=res.get("completion_tokens"),
+            cost=res.get("cost"), preview=content or err, http=res.get("http"),
+            ok=bool(content) and not err, error=err)
+    except Exception:
+        pass
+    return {"ok": bool(content) and not err,
+            "provider": cfg.provider, "format": cfg.fmt,
+            "model": res.get("model") or model,
+            "http": res.get("http") or "", "ms": ms, "timeout": probe_timeout,
+            "preview": content[:200], "error": err}
 
 
 @router.get("/{company_id}/news-types")

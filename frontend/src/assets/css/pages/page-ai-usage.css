@@ -1,0 +1,32 @@
+/* page-ai-usage.css — страница «Затраты ИИ» (журнал вызовов ИИ).
+ * Корни: .container-xxl .page-ai-usage. Таблица — .wb-table-wrap (глобальный).
+ */
+.page-ai-usage { /* паддинги из wb-ui.css */ }
+.page-ai-usage__title { margin-bottom: 16px; }
+.page-ai-usage__filters { margin-bottom: 12px; }
+.page-ai-usage__filters .form-label { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.page-ai-usage__table { font-size: 12px; }
+.page-ai-usage__table th { white-space: normal; font-weight: 600; }
+.page-ai-usage__table td { vertical-align: middle; }
+.page-ai-usage__num { text-align: right; white-space: nowrap; }
+.page-ai-usage__grp { cursor: pointer; }
+.page-ai-usage__grp:hover { color: #8A2BE0; text-decoration: underline; }
+.page-ai-usage__empty { padding: 24px; text-align: center; color: #666; }
+.page-ai-usage__err { color: #E0525C; font-size: 12px; }
+.page-ai-usage__ok { color: #1E9E7C; font-size: 12px; }
+.page-ai-usage__preview { max-width: 420px; font-size: 11px; color: #555; cursor: pointer; }
+.page-ai-usage__preview:hover { color: #8A2BE0; text-decoration: underline; }
+/* Модалка полного ответа (своя, без JS-бандла Bootstrap) */
+.page-ai-usage__modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 1050; padding: 16px; }
+.page-ai-usage__modal-box { background: #fff; border-radius: 8px; width: 100%; max-width: 860px; max-height: 88vh; overflow: auto; padding: 14px 16px; }
+.page-ai-usage__modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.page-ai-usage__modal-title { font-size: 16px; margin: 0; }
+.page-ai-usage__modal-meta { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 12px; color: #444; margin-bottom: 8px; }
+.page-ai-usage__modal-error { background: #FBEBEC; border: 1px solid #E0525C; color: #8a1f28; border-radius: 6px; padding: 6px 8px; font-size: 12px; margin-bottom: 8px; word-break: break-word; }
+.page-ai-usage__modal-label { font-size: 12px; font-weight: 600; color: #555; margin: 10px 0 4px; }
+.page-ai-usage__modal-text { background: #f8f9fa; border: 1px solid #e3e6ea; border-radius: 6px; padding: 8px 10px; font-size: 12px; white-space: pre-wrap; word-break: break-word; margin: 0; max-height: 320px; overflow: auto; }
+.page-ai-usage__modal-foot { margin-top: 12px; display: flex; justify-content: flex-end; }
+.page-ai-usage__artifact { border: 1px solid #e3e6ea; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; background: #fff; }
+.page-ai-usage__back { margin-bottom: 8px; }
+.page-ai-usage__artifact-title { font-weight: 600; margin-bottom: 4px; }
+.page-ai-usage__artifact-text { white-space: pre-wrap; font-size: 12px; color: #333; max-height: 220px; overflow: auto; }

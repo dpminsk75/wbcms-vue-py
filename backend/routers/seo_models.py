@@ -116,10 +116,19 @@ async def seo_models_apply(
     active = {r["model_id"]: bool(r["is_active"]) for r in rows}
     if model_id not in active:
         raise HTTPException(status_code=404, detail="model unknown: run bench first")
-    companies = (await db.execute(text("""
-        SELECT id, seo_model FROM companies
-        WHERE seo_model IS NOT NULL AND seo_model != ''
-    """))).mappings().all()
+    try:
+        # только openrouter-компании: у «другого сервиса» свои модели, подменять нельзя
+        companies = (await db.execute(text("""
+            SELECT id, seo_model FROM companies
+            WHERE seo_model IS NOT NULL AND seo_model != ''
+              AND (seo_llm_provider IS NULL OR seo_llm_provider = 'openrouter')
+        """))).mappings().all()
+    except Exception:
+        await db.rollback()
+        companies = (await db.execute(text("""
+            SELECT id, seo_model FROM companies
+            WHERE seo_model IS NOT NULL AND seo_model != ''
+        """))).mappings().all()
     changed: list[dict] = []
     for c in companies:
         parts = [p.strip() for p in str(c["seo_model"]).split(",") if p.strip()]

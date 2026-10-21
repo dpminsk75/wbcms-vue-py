@@ -71,8 +71,26 @@ export const authApi = {
   inviteLink: (id: number) =>
     api.get(`/api/auth/invites/by-id/${id}/link`).then((r) => r.data as { invite_token: string; register_path: string }),
 
-  updateCompany: (companyId: number, payload: { name?: string; abbreviation?: string; inn?: string; api_key?: string }) =>
+  updateCompany: (companyId: number, payload: {
+    name?: string; abbreviation?: string; inn?: string; api_key?: string; is_active?: boolean
+    seo_model?: string; seo_summary_model?: string; seo_summary_max_tokens?: number
+    seo_daily_limit?: number; seo_desc_min?: number; seo_desc_max?: number; seo_anti_spam_days?: number
+    seo_openrouter_key?: string; seo_openrouter_referer?: string; seo_openrouter_title?: string
+    seo_prompt?: string; seo_competitor_prompt?: string; seo_summary_prompt?: string
+    seo_newcard_prompt?: string; seo_newcard_model?: string; seo_phrases_prompt?: string
+    seo_llm_provider?: 'openrouter' | 'custom'
+    seo_llm_format?: 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'yandex'
+    seo_llm_url?: string; seo_llm_api_key?: string; seo_llm_folder_id?: string
+    seo_llm_auth_header?: string; seo_llm_auth_prefix?: string
+    seo_llm_extra_headers?: string; seo_llm_extra_body?: string; seo_llm_timeout?: number
+    seo_llm_model?: string; seo_llm_summary_model?: string
+  }) =>
     api.patch(`/api/companies/${companyId}`, payload).then((r) => r.data as Company),
+
+  llmTest: (companyId: number, payload: { draft?: Record<string, any>; model?: string }) =>
+    api.post(`/api/companies/${companyId}/llm/test`, payload, { timeout: 90000 }).then((r) => r.data as {
+      ok: boolean; provider: string; format: string; model: string; http: string; ms: number; timeout: number; preview: string; error: string
+    }),
 
   createCompany: (payload: { name: string; abbreviation?: string; inn?: string; seo_model?: string; seo_daily_limit?: number; seo_desc_min?: number; seo_desc_max?: number; seo_anti_spam_days?: number }) =>
     api.post('/api/companies', payload).then((r) => r.data as Company),

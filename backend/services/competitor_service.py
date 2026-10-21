@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.services import openrouter_service as llm
+from backend.services import llm_provider
 
 # Порт CompetitorController::defaultCompetitorPrompt (сокращён без потери формата/правил)
 DEFAULT_COMPETITOR_PROMPT = """Ты — SEO-специалист Wildberries. Сравни две карточки (title + description) и верни ТОЛЬКО JSON без markdown.
@@ -121,10 +122,15 @@ class CompetitorService:
         self.company_id = company_id
 
     def _scope(self, alias: str = "") -> tuple[str, dict]:
+        """Скоуп по компании для wb_competitor_analysis.
+
+        company_id IS NULL — легаси-строки (записи, сделанные до появления скоупа):
+        владельца у них нет, но карточка-источник — наша, поэтому они тоже наши.
+        """
         pre = f"{alias}." if alias else ""
         if self.company_id is None:
             return "", {}
-        return f"AND {pre}company_id=:cid", {"cid": self.company_id}
+        return f"AND ({pre}company_id=:cid OR {pre}company_id IS NULL)", {"cid": self.company_id}
 
     async def _card(self, nm_id: int) -> dict | None:
         r = (await self.db.execute(text("""
@@ -138,13 +144,27 @@ class CompetitorService:
         d["vendor_code"] = d.pop("vendorCode", None)
         return d
 
+    async def _own_card(self, nm_id: int) -> dict | None:
+        """Карточка источника должна принадлежать компании (global admin — любая).
+
+        wbcards.company_id IS NULL — легаси-карточка (общая): доступна всем,
+        как и в capture_service (NULL-легаси считаем своей).
+        """
+        card = await self._card(nm_id)
+        if not card:
+            return None
+        cid = card.get("company_id")
+        if self.company_id is not None and cid is not None and int(cid) != int(self.company_id):
+            return None
+        return card
+
     async def list_sources(self) -> dict:
         params: dict = {}
         scope = ""
         ascope = ""
         if self.company_id is not None:
             scope = "AND c.source_nm_id IN (SELECT nmID FROM wbcards WHERE company_id=:cid)"
-            ascope = "AND company_id=:cid"
+            ascope = "AND (company_id=:cid OR company_id IS NULL)"
             params["cid"] = self.company_id
         rows = (await self.db.execute(text(f"""
             SELECT c.source_nm_id,
@@ -204,14 +224,18 @@ class CompetitorService:
         phrases = [str(x).strip() for x in (phrases or []) if str(x).strip()]
         if not phrases:
             raise ValueError("Выберите хотя бы одну фразу")
-        card = await self._card(nm_id)
-        company_id = self.company_id or (card or {}).get("company_id")
+        card = await self._own_card(nm_id)
+        if not card:
+            raise ValueError("Карточка не найдена в вашей компании")
+        # владелец строки — компания карточки-источника (не выбранная в шапке)
+        company_id = card.get("company_id") or self.company_id
+        scope, sp = self._scope("")
         await self.db.rollback()
         async with self.db.begin():
-            await self.db.execute(text("""
+            await self.db.execute(text(f"""
                 DELETE FROM wb_competitor_analysis
-                WHERE source_nm_id=:n AND status='selected'
-            """), {"n": nm_id})
+                WHERE source_nm_id=:n AND status='selected' {scope}
+            """), {"n": nm_id, **sp})
             in_ph = ",".join(f":p{i}" for i in range(len(phrases)))
             pos = "" if not position_max else "AND position <= :pm"
             rows = (await self.db.execute(text(f"""
@@ -220,10 +244,10 @@ class CompetitorService:
                 ORDER BY nm_id, position
             """), {"n": nm_id, **{f"p{i}": v for i, v in enumerate(phrases)},
                    **({"pm": position_max} if position_max else {})})).mappings().all()
-            existing = (await self.db.execute(text("""
+            existing = (await self.db.execute(text(f"""
                 SELECT id, competitor_nm_id, query_phrase FROM wb_competitor_analysis
-                WHERE source_nm_id=:n
-            """), {"n": nm_id})).mappings().all()
+                WHERE source_nm_id=:n {scope}
+            """), {"n": nm_id, **sp})).mappings().all()
             emap = {(r["competitor_nm_id"], r["query_phrase"]): r["id"] for r in existing}
             saved = 0
             for r in rows:
@@ -232,8 +256,10 @@ class CompetitorService:
                 key = (r["nm_id"], r["query_phrase"])
                 if key in emap:
                     await self.db.execute(text("""
-                        UPDATE wb_competitor_analysis SET status='selected', position=:pos WHERE id=:i
-                    """), {"pos": r["position"], "i": emap[key]})
+                        UPDATE wb_competitor_analysis
+                        SET status='selected', position=:pos, company_id=COALESCE(company_id, :c)
+                        WHERE id=:i
+                    """), {"pos": r["position"], "i": emap[key], "c": company_id})
                 else:
                     await self.db.execute(text("""
                         INSERT INTO wb_competitor_analysis
@@ -277,6 +303,8 @@ class CompetitorService:
                 "position_max": max(positions) if positions else 0}
 
     async def remove_selected(self, source_nm_id: int, nm_id: int) -> bool:
+        if not await self._own_card(source_nm_id):
+            raise ValueError("Карточка не найдена в вашей компании")
         await self.db.rollback()
         async with self.db.begin():
             r = await self.db.execute(text("""
@@ -307,10 +335,10 @@ class CompetitorService:
                                    created_by: int | None, background) -> int:
         """Порт actionAnalyzeDirect: нет записей — создаём selected из cards, дальше job."""
         from backend.services import ai_job_service as jobs
-        card = await self._card(source_nm_id)
+        card = await self._own_card(source_nm_id)
         if not card:
-            raise ValueError("Наша карточка не найдена")
-        company_id = self.company_id or card.get("company_id")
+            raise ValueError("Карточка не найдена в вашей компании")
+        company_id = card.get("company_id") or self.company_id
         scope, p = self._scope("")
         existing = (await self.db.execute(text(f"""
             SELECT id FROM wb_competitor_analysis
@@ -339,7 +367,8 @@ class CompetitorService:
         background.add_task(jobs.run_job, job_id)
         return job_id
 
-    async def get_summary(self, nm_id: int, force: bool, is_admin: bool) -> dict:
+    async def get_summary(self, nm_id: int, force: bool, is_admin: bool,
+                          user_id: int | None = None) -> dict:
         """Порт actionSummary: кэш 30д (force только admin), иначе генерация платной моделью."""
         import json as _json
         cached = (await self.db.execute(text("""
@@ -358,15 +387,15 @@ class CompetitorService:
                     return {"success": False,
                             "error": "Пересчёт доступен только администратору (рекомендация моложе 30 дней)"}
                 return {"success": True, **_summary_out(cached, is_admin)}
-        return await self._generate_summary(nm_id)
+        return await self._generate_summary(nm_id, user_id=user_id)
 
-    async def _generate_summary(self, nm_id: int) -> dict:
+    async def _generate_summary(self, nm_id: int, user_id: int | None = None) -> dict:
         import json as _json
         import re as _re
-        card = await self._card(nm_id)
+        card = await self._own_card(nm_id)
         if not card:
-            return {"success": False, "error": "Наша карточка не найдена"}
-        company_id = self.company_id or card.get("company_id")
+            return {"success": False, "error": "Карточка не найдена в вашей компании"}
+        company_id = card.get("company_id") or self.company_id
         scope, p = self._scope("a")
         items = (await self.db.execute(text(f"""
             SELECT a.* FROM wb_competitor_analysis a
@@ -388,12 +417,7 @@ class CompetitorService:
                 best[nid] = r
         company = {}
         if company_id:
-            crow = (await self.db.execute(text("""
-                SELECT id, seo_summary_model, seo_model, seo_summary_max_tokens,
-                       seo_desc_min, seo_desc_max, seo_summary_prompt
-                FROM companies WHERE id=:c LIMIT 1
-            """), {"c": company_id})).mappings().first()
-            company = dict(crow) if crow else {}
+            company = await llm_provider.company_row(self.db, company_id) or {}
         desc_min = int(company.get("seo_desc_min") or 1500)
         desc_max = int(company.get("seo_desc_max") or 4000)
         summaries = []
@@ -437,10 +461,14 @@ class CompetitorService:
             if s["recommendations"]:
                 up += "Рекомендации: " + "; ".join(s["recommendations"]) + "\n"
         up += f"\nВАЖНО: Сформируй заголовок (до 60 символов!) и описание ({desc_min}-{desc_max} символов), используя поисковые фразы как ключевые слова для индексации."
-        model = (company.get("seo_summary_model") or company.get("seo_model") or "").split(",")[0].strip() or None
+        # модель — для ТЕКУЩЕГО провайдера: openrouter → seo_summary_model/seo_model,
+        # «другой сервис» → seo_llm_summary_model/seo_llm_model (свои, не openrouter-slug)
+        models = llm_provider.model_list(company, "summary")
+        model = models[0] if models else None
         max_tokens = int(company.get("seo_summary_max_tokens") or 4000)
         res = await llm.chat(self.db, [{"role": "system", "content": system}, {"role": "user", "content": up}],
-                             company_id, temperature=0.7, max_tokens=max_tokens, model=model)
+                             company_id, temperature=0.7, max_tokens=max_tokens, model=model,
+                             scenario="summary", user_id=user_id, nm_id=nm_id)
         if res.get("error"):
             return {"success": False, "error": res["error"]}
         content = (res.get("content") or "").strip()
@@ -652,7 +680,9 @@ async def execute_analyze_job(job_id: int, db: AsyncSession) -> None:
                 await progress(item["id"], f"кандидат {i + 1}/{len(cands)}: {try_model}")
                 res = await llm.chat(db, messages, company_id,
                                      temperature=0.3, max_tokens=1500, model=try_model,
-                                     note=f"кандидат {i + 1}/{len(cands)}, nm {an['competitor_nm_id']}")
+                                     note=f"кандидат {i + 1}/{len(cands)}, nm {an['competitor_nm_id']}",
+                                     scenario="competitor", user_id=job.get("created_by"),
+                                     nm_id=an.get("source_nm_id"), job_id=job_id)
                 if res.get("error"):
                     await llm.mark_model(db, try_model, False, res["error"])
                     last_err = f"model {try_model}: {res['error']}"
@@ -681,10 +711,11 @@ async def execute_analyze_job(job_id: int, db: AsyncSession) -> None:
                 await mark(item["id"], "error", error=last_err)
                 continue
             await db.execute(text("""
-                UPDATE wb_competitor_analysis SET ai_result=:r, status='analyzed', model=:m
+                UPDATE wb_competitor_analysis SET ai_result=:r, status='analyzed', model=:m,
+                  company_id=COALESCE(company_id, :cid)
                 WHERE source_nm_id=:s AND competitor_nm_id=:c AND status<>'removed'
             """), {"r": json.dumps(decoded, ensure_ascii=False), "m": used_model,
-                   "s": an["source_nm_id"], "c": an["competitor_nm_id"]})
+                   "s": an["source_nm_id"], "c": an["competitor_nm_id"], "cid": company_id})
             await db.commit()
             await mark(item["id"], "done", result={
                 "competitor_nm_id": an["competitor_nm_id"],
