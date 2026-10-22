@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
 from backend.deps import get_current_company, get_current_user, require_ext_token, require_seo
-from backend.services import ext_service, capture_service
+from backend.services import ext_service, capture_service, shelves_service
 
 router = APIRouter(prefix="/api/ext", tags=["ext"])
 admin_router = APIRouter(prefix="/api/companies/{company_id}/ext-tokens", tags=["ext-tokens"])
@@ -142,7 +142,8 @@ async def ext_seed(
             INSERT INTO wb_enrich_queue (nm_id, company_id)
             SELECT DISTINCT nm_id, :cid FROM wb_competitor_cards
             WHERE source_nm_id=:s
-              AND nm_id NOT IN (SELECT nm_id FROM wb_competitor_details WHERE collected_at > NOW() - INTERVAL 24 HOUR)
+              AND nm_id NOT IN (SELECT nm_id FROM wb_competitor_details
+                               WHERE full_collected_at > NOW() - INTERVAL 24 HOUR)
             ON DUPLICATE KEY UPDATE
               company_id=IF(company_id IS NULL, :cid, company_id),
               status=IF((company_id IS NULL OR company_id=:cid) AND status IN ('done', 'error'), 'pending', status)
@@ -152,7 +153,8 @@ async def ext_seed(
             INSERT INTO wb_enrich_queue (nm_id, company_id)
             SELECT DISTINCT nm_id, :cid FROM wb_competitor_cards
             WHERE source_nm_id IN ({OWNED_CARDS.replace(':cid', ':cid2')})
-              AND nm_id NOT IN (SELECT nm_id FROM wb_competitor_details WHERE collected_at > NOW() - INTERVAL 24 HOUR)
+              AND nm_id NOT IN (SELECT nm_id FROM wb_competitor_details
+                               WHERE full_collected_at > NOW() - INTERVAL 24 HOUR)
             ON DUPLICATE KEY UPDATE
               company_id=IF(company_id IS NULL, :cid, company_id),
               status=IF((company_id IS NULL OR company_id=:cid) AND status IN ('done', 'error'), 'pending', status)
@@ -244,22 +246,32 @@ async def ext_result(
         if not chk:
             raise HTTPException(status_code=403, detail="foreign nm_id")
     existing = (await db.execute(text("""
-        SELECT id, recommendations, collected_at FROM wb_competitor_details WHERE nm_id=:n
+        SELECT id, recommendations, collected_at, full_collected_at
+        FROM wb_competitor_details WHERE nm_id=:n
     """), {"n": nm_id})).mappings().first()
     new_recs = json.dumps(payload.get("recommendations") or [], ensure_ascii=False)
     new_chars = json.dumps(payload.get("characteristics") or [], ensure_ascii=False)
+    new_badges = json.dumps(payload.get("badges") or [], ensure_ascii=False)
+    is_full = 1 if (str(payload.get("description") or "").strip() and payload.get("characteristics")) else 0
     params = {
         "n": nm_id, "t": payload.get("title", ""), "d": payload.get("description", ""),
         "u": payload.get("url", ""), "b": payload.get("brand", ""), "s": payload.get("seller", ""),
-        "p": payload.get("price", ""), "o": payload.get("old_price", ""),
+        "p": capture_service._to_int(payload.get("price")),
+        "o": capture_service._to_int(payload.get("old_price")),
         "img": json.dumps(payload.get("images") or [], ensure_ascii=False),
         "chars": new_chars, "subj": str(payload.get("subject_name") or "")[:255],
+        "rate": capture_service._to_float(payload.get("rating")),
+        "fb": capture_service._to_int(payload.get("feedbacks")),
+        "q": capture_service._to_int(payload.get("questions")),
+        "bg": new_badges, "full": is_full,
         "cid": cid, "uid": uid,
     }
     if existing:
         age_h = 25.0
+        # Свежесть полного сбора — по full_collected_at (пассивное наблюдение его не двигает).
+        ref = existing["full_collected_at"] or existing["collected_at"]
         try:
-            age_h = (datetime.now() - existing["collected_at"]).total_seconds() / 3600
+            age_h = (datetime.now() - ref).total_seconds() / 3600
         except TypeError:
             pass
         if age_h < 24:
@@ -271,6 +283,11 @@ async def ext_result(
                   images=:img, collected_at=NOW(),
                   characteristics=IF(:chars='[]', characteristics, :chars),
                   subject_name=IF(:subj='', subject_name, :subj),
+                  rating=IF(:rate IS NULL, rating, :rate),
+                  feedbacks=IF(:fb IS NULL, feedbacks, :fb),
+                  questions=IF(:q IS NULL, questions, :q),
+                  badges=IF(:bg='[]', badges, :bg),
+                  full_collected_at=IF(:full=1, NOW(), full_collected_at),
                   captured_company_id=COALESCE(captured_company_id, :cid),
                   captured_by=COALESCE(captured_by, :uid)
                 WHERE nm_id=:n
@@ -284,6 +301,11 @@ async def ext_result(
                   images=:img, collected_at=NOW(),
                   characteristics=IF(:chars='[]', characteristics, :chars),
                   subject_name=IF(:subj='', subject_name, :subj),
+                  rating=IF(:rate IS NULL, rating, :rate),
+                  feedbacks=IF(:fb IS NULL, feedbacks, :fb),
+                  questions=IF(:q IS NULL, questions, :q),
+                  badges=IF(:bg='[]', badges, :bg),
+                  full_collected_at=IF(:full=1, NOW(), full_collected_at),
                   captured_company_id=COALESCE(captured_company_id, :cid),
                   captured_by=COALESCE(captured_by, :uid)
                 WHERE nm_id=:n
@@ -292,8 +314,10 @@ async def ext_result(
         await db.execute(text("""
             INSERT INTO wb_competitor_details
               (nm_id, title, description, recommendations, url, brand, seller, price, old_price, images,
-               characteristics, subject_name, first_collected_at, captured_company_id, captured_by)
-            VALUES (:n, :t, :d, :nr, :u, :b, :s, :p, :o, :img, :chars, :subj, NOW(), :cid, :uid)
+               characteristics, subject_name, rating, feedbacks, questions, badges,
+               first_collected_at, full_collected_at, captured_company_id, captured_by)
+            VALUES (:n, :t, :d, :nr, :u, :b, :s, :p, :o, :img, :chars, :subj, :rate, :fb, :q, :bg,
+                    NOW(), IF(:full=1, NOW(), NULL), :cid, :uid)
         """), {**params, "nr": new_recs})
     # История: снимок при смене content_hash (source='enrich', как в capture_service).
     cur = (await db.execute(text("""
@@ -370,6 +394,149 @@ async def ext_error(
     """), {"m": str((payload or {}).get("error", "unknown"))[:500], "n": nm_id, "c": cid})
     await db.commit()
     return {"ok": True}
+
+
+@router.post("/observe_search")
+async def ext_observe_search(
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    ext: dict = Depends(require_ext_token),
+):
+    """Наблюдение выдачи: человек сам что-то искал — сохраняем фразу, позиции, цены, бейджи.
+
+    - все позиции → `wb_competitor_position` (дневные срезы, `source_nm_id` = наша карточка
+      из выдачи, 0 — если наших в выдаче не было);
+    - топ-12 → `wb_competitor_cards` (конкуренты нашей карточки);
+    - топ-12 → `wb_competitor_details` (цена/рейтинг/бейджи — «кто в акции»).
+
+    Ничего не привязывает к анализу: только карточка+позиции+контент.
+    """
+    cid = int(ext["company_id"])
+    data = payload or {}
+    phrase = str(data.get("phrase") or "").strip()[:500]
+    products = data.get("products") or []
+    if not phrase or not products:
+        # 400 — чтобы в журнале сервера было видно, что расширение прислало пустую выдачу
+        raise HTTPException(
+            status_code=400,
+            detail=f"empty observation: phrase={phrase!r} products={len(products)}",
+        )
+
+    # наши карточки среди выдачи (определяем на сервере — расширение о компании не знает)
+    ids = [int(p.get("id")) for p in products[:200] if p.get("id")]
+    our: set[int] = set()
+    if ids:
+        ph = ",".join(f":i{i}" for i in range(len(ids)))
+        rows = (await db.execute(
+            text(f"SELECT nmID FROM wbcards WHERE company_id=:cid AND nmID IN ({ph})"),
+            {**{"cid": cid}, **{f"i{i}": v for i, v in enumerate(ids)}},
+        )).scalars().all()
+        our = {int(x) for x in rows}
+    # если наших в выдаче нет — привязываем к «нашей карточке» нельзя, пишем наблюдение без привязки
+    sources = sorted(our) if our else [0]
+
+    saved = 0
+    for idx, p in enumerate(products[:200], 1):
+        pid = p.get("id")
+        if not pid:
+            continue
+        pos = int(p.get("position") or idx)
+        img = p.get("imageUrl") or p.get("photourl") or ""
+        if img.startswith("//"):
+            img = "https:" + img
+        price = capture_service._to_int(p.get("price", p.get("salePriceU", p.get("priceU", 0))))
+        old_price = capture_service._to_int(p.get("old_price"))
+        rating = capture_service._to_float(p.get("rating", p.get("reviewRating", 0)))
+        fb = capture_service._to_int(p.get("feedbacks", 0))
+        reviews = capture_service._to_int(p.get("reviews", 0))       # отзывы (WB API)
+        badges = p.get("badges") or []
+        seller = str(p.get("seller") or "")[:255]
+        promo_id = capture_service._to_int(p.get("promo_id", 0))
+        uid = ext.get("created_by")
+
+        for src in sources:
+            await db.execute(text("""
+                INSERT INTO wb_competitor_position
+                  (company_id, source_nm_id, query_phrase, position, nm_id, title, brand, seller,
+                   price, old_price, rating, feedbacks, reviews, badges, promo_id, image_url,
+                   created_by, collected_at)
+                VALUES (:cid, :s, :ph, :pos, :pid, :t, :b, :seller, :price, :old_price, :rating,
+                        :fb, :rev, :bg, :promo, :img, :uid, CURDATE())
+                ON DUPLICATE KEY UPDATE
+                  position=VALUES(position), title=VALUES(title), brand=VALUES(brand),
+                  seller=IF(VALUES(seller)='', seller, VALUES(seller)),
+                  price=VALUES(price), old_price=VALUES(old_price), rating=VALUES(rating),
+                  feedbacks=VALUES(feedbacks), reviews=VALUES(reviews),
+                  badges=IF(VALUES(badges)='[]', badges, VALUES(badges)),
+                  promo_id=VALUES(promo_id), image_url=VALUES(image_url)
+            """), {"cid": cid, "s": src, "ph": phrase, "pos": pos, "pid": pid,
+                   "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
+                   "price": price, "old_price": old_price, "rating": rating,
+                   "fb": fb, "rev": reviews,
+                   "bg": json.dumps(badges, ensure_ascii=False),
+                   "promo": promo_id, "img": img, "uid": uid})
+
+        # конкуренты нашей карточки — только топ-12
+        if pos > 12:
+            continue
+        if our:
+            for src in sorted(our):
+                await db.execute(text("""
+                    INSERT INTO wb_competitor_cards
+                      (source_nm_id, query_phrase, position, nm_id, title, brand, seller,
+                       price, old_price, rating, feedbacks, badges, image_url, source, added_by)
+                    VALUES (:s, :ph, :pos, :pid, :t, :b, :seller, :price, :old_price, :rating,
+                            :fb, :bg, :img, 'search', :uid)
+                    ON DUPLICATE KEY UPDATE
+                      position=VALUES(position), title=VALUES(title), brand=VALUES(brand),
+                      seller=IF(VALUES(seller)='', seller, VALUES(seller)),
+                      price=VALUES(price), old_price=VALUES(old_price), rating=VALUES(rating),
+                      feedbacks=VALUES(feedbacks),
+                      badges=IF(VALUES(badges)='[]', badges, VALUES(badges)),
+                      image_url=VALUES(image_url),
+                      added_by=COALESCE(added_by, VALUES(added_by))
+                """), {"s": src, "ph": phrase, "pos": pos, "pid": pid,
+                       "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
+                       "price": price, "old_price": old_price, "rating": rating,
+                       "fb": fb, "bg": json.dumps(badges, ensure_ascii=False),
+                       "img": img, "uid": uid})
+        # контент карточки: цена/рейтинг/бейджи (описания пока нет — доберёт очередь)
+        await db.execute(text("""
+            INSERT INTO wb_competitor_details
+              (nm_id, title, brand, seller, price, old_price, rating, feedbacks, badges, images, url,
+               collected_at, first_collected_at, captured_company_id, captured_by)
+            VALUES (:n, :t, :b, :seller, :p, :o, :r, :fb, :bg, :img, :u, NOW(), NOW(), :cid, :uid)
+            ON DUPLICATE KEY UPDATE
+              title=IF(:t='', title, :t),
+              brand=IF(:b='', brand, :b),
+              seller=IF(:seller='', seller, :seller),
+              price=IF(:p IS NULL, price, :p),
+              old_price=IF(:o IS NULL, old_price, :o),
+              rating=IF(:r IS NULL, rating, :r),
+              feedbacks=IF(:fb IS NULL, feedbacks, :fb),
+              badges=IF(:bg='[]', badges, :bg),
+              images=IF(:img='[]', images, :img),
+              collected_at=NOW()
+        """), {"n": pid, "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
+               "p": price, "o": old_price, "r": rating, "fb": fb,
+               "bg": json.dumps(badges, ensure_ascii=False),
+               "img": json.dumps([img] if img else [], ensure_ascii=False),
+               "u": f"https://www.wildberries.ru/catalog/{pid}/detail.aspx",
+               "cid": cid, "uid": ext.get("created_by")})
+        # видимость: конкурента мы «собрали» (позиция, цена, акции) — он попадает
+        # в «Собранные карточки» и в попап; описание доберёт очередь.
+        await db.execute(text("""
+            INSERT INTO wb_competitor_capture
+              (nm_id, company_id, is_own, is_hidden, first_seen_by, last_seen_by)
+            VALUES (:n, :cid, 0, 0, :uid, :uid)
+            ON DUPLICATE KEY UPDATE
+              last_seen_at=NOW(), last_seen_by=:uid
+        """), {"n": pid, "cid": cid, "uid": ext.get("created_by")})
+        saved += 1
+
+    await db.commit()
+    return {"ok": True, "saved": saved, "positions": len(products),
+            "our_cards": sorted(our), "phrase": phrase}
 
 
 # ---------- search-режим: фразы/выдача/срезы (порт server.py) ----------
@@ -544,25 +711,65 @@ async def ext_search_result(
         raise HTTPException(status_code=400, detail="nm_id required")
     if not await _owns_card(db, cid, nm_id):
         raise HTTPException(status_code=403, detail="foreign nm_id")
-    for pos, p in enumerate(products, 1):
+    uid = ext.get("created_by")
+    for idx, p in enumerate(products, 1):
         pid = p.get("id")
         if not pid:
             continue
+        pos = int(p.get("position") or idx)
         img = p.get("imageUrl", p.get("photourl", ""))
         if img and img.startswith("//"):
             img = "https:" + img
+        price = capture_service._to_int(p.get("price", p.get("salePriceU", p.get("priceU", 0))))
+        old_price = capture_service._to_int(p.get("old_price"))
+        rating = capture_service._to_float(p.get("rating", p.get("reviewRating", 0)))
+        fb = capture_service._to_int(p.get("feedbacks", 0))
+        reviews = capture_service._to_int(p.get("reviews", 0))
+        badges = p.get("badges") or []
+        seller = str(p.get("seller") or "")[:255]
+        promo_id = capture_service._to_int(p.get("promo_id", 0))
+        # Позиции выдачи — дневные срезы (все позиции, хвост не теряем)
         await db.execute(text("""
-            INSERT INTO wb_competitor_cards
-              (source_nm_id, query_phrase, position, nm_id, title, brand, price, rating, feedbacks, image_url, source)
-            VALUES (:s, :ph, :pos, :pid, :t, :b, :price, :rating, :fb, :img, 'search')
+            INSERT INTO wb_competitor_position
+              (company_id, source_nm_id, query_phrase, position, nm_id, title, brand, seller,
+               price, old_price, rating, feedbacks, reviews, badges, promo_id, image_url,
+               created_by, collected_at)
+            VALUES (:cid, :s, :ph, :pos, :pid, :t, :b, :seller, :price, :old_price, :rating,
+                    :fb, :rev, :bg, :promo, :img, :uid, CURDATE())
             ON DUPLICATE KEY UPDATE
               position=VALUES(position), title=VALUES(title), brand=VALUES(brand),
-              price=VALUES(price), rating=VALUES(rating), feedbacks=VALUES(feedbacks),
-              image_url=VALUES(image_url)
+              seller=IF(VALUES(seller)='', seller, VALUES(seller)),
+              price=VALUES(price), old_price=VALUES(old_price), rating=VALUES(rating),
+              feedbacks=VALUES(feedbacks), reviews=VALUES(reviews),
+              badges=IF(VALUES(badges)='[]', badges, VALUES(badges)),
+              promo_id=VALUES(promo_id), image_url=VALUES(image_url)
+        """), {"cid": cid, "s": nm_id, "ph": phrase, "pos": pos, "pid": pid,
+               "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
+               "price": price, "old_price": old_price, "rating": rating, "fb": fb, "rev": reviews,
+               "bg": json.dumps(badges, ensure_ascii=False),
+               "promo": promo_id, "img": img, "uid": uid})
+        # Конкуренты нашей карточки — только топ-12 (схема: «позиция в выдаче, 1-12»)
+        if pos > 12:
+            continue
+        await db.execute(text("""
+            INSERT INTO wb_competitor_cards
+              (source_nm_id, query_phrase, position, nm_id, title, brand, seller,
+               price, old_price, rating, feedbacks, badges, image_url, source, added_by)
+            VALUES (:s, :ph, :pos, :pid, :t, :b, :seller, :price, :old_price, :rating,
+                    :fb, :bg, :img, 'search', :uid)
+            ON DUPLICATE KEY UPDATE
+              position=VALUES(position), title=VALUES(title), brand=VALUES(brand),
+              seller=IF(VALUES(seller)='', seller, VALUES(seller)),
+              price=VALUES(price), old_price=VALUES(old_price), rating=VALUES(rating),
+              feedbacks=VALUES(feedbacks),
+              badges=IF(VALUES(badges)='[]', badges, VALUES(badges)),
+              image_url=VALUES(image_url),
+              added_by=COALESCE(added_by, VALUES(added_by))
         """), {"s": nm_id, "ph": phrase, "pos": pos, "pid": pid,
-               "t": p.get("name", ""), "b": p.get("brand", ""),
-               "price": p.get("salePriceU", p.get("priceU", 0)),
-               "rating": p.get("reviewRating", 0), "fb": p.get("feedbacks", 0), "img": img})
+               "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
+               "price": price, "old_price": old_price, "rating": rating, "fb": fb,
+               "bg": json.dumps(badges, ensure_ascii=False),
+               "img": img, "uid": uid})
     if queue_id:
         if source == "compquery":
             q = (await db.execute(text("""
@@ -741,44 +948,6 @@ async def ext_report_phrases(
         GROUP BY phrase ORDER BY SUM(orders) DESC LIMIT 20
     """), {"n": nm_id})).scalars().all()
     return {"phrases": [str(x) for x in rows]}
-
-
-@router.post("/position_bulk")
-async def ext_position_bulk(
-    payload: dict = Body(...),
-    db: AsyncSession = Depends(get_db),
-    ext: dict = Depends(require_ext_token),
-):
-    """Срезы позиций (только через расширение — WBAAS режет серверный cron, §10).
-    Чужой source отбрасываем со счётчиком skipped."""
-    cid = int(ext["company_id"])
-    positions = (payload or {}).get("positions") or []
-    owned_sources = {r for r in (await db.execute(
-        text("SELECT nmID FROM wbcards WHERE company_id=:c"), {"c": cid})).scalars().all()}
-    saved, skipped = 0, 0
-    for r in positions:
-        try:
-            src = int(r.get("source_nm_id") or 0)
-        except (TypeError, ValueError):
-            skipped += 1
-            continue
-        if src not in owned_sources:
-            skipped += 1
-            continue
-        await db.execute(text("""
-            INSERT INTO wb_competitor_position
-              (source_nm_id, query_phrase, position, nm_id, title, brand, price, rating, feedbacks, image_url, collected_at)
-            VALUES (:s, :ph, :pos, :n, :t, :b, :price, :rating, :fb, :img, COALESCE(:col, CURDATE()))
-            ON DUPLICATE KEY UPDATE
-              title=VALUES(title), brand=VALUES(brand), price=VALUES(price),
-              rating=VALUES(rating), feedbacks=VALUES(feedbacks), image_url=VALUES(image_url)
-        """), {"s": src, "ph": r.get("query_phrase"), "pos": r.get("position"), "n": r.get("nm_id"),
-               "t": r.get("title", ""), "b": r.get("brand", ""), "price": r.get("price", 0),
-               "rating": r.get("rating", 0), "fb": r.get("feedbacks", 0),
-               "img": r.get("image_url", ""), "col": r.get("collected_at")})
-        saved += 1
-    await db.commit()
-    return {"ok": True, "saved": saved, "skipped": skipped}
 
 
 # ---------- diagnose: «чёрный ящик» на смену вёрстки WB ----------
@@ -1156,3 +1325,27 @@ async def ext_download(
             # что реально внутри архива — видно в devtools/curl
             "X-Ext-Files": ",".join(files),
         })
+
+
+# ---------- полки / дубликаты / клипы (пассивный перехват) ----------
+
+@router.post("/shelves")
+async def ext_shelves(
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    ext: dict = Depends(require_ext_token),
+):
+    """Полки «Смотрите также», кластеры дубликатов и UGC-клипы с карточки WB.
+
+    Расширение присылает только то, что страница уже получила сама (без
+    дополнительных запросов к WB). Повторный снимок за день обновляет строки,
+    между днями остаётся история (`snapshot_date`).
+    """
+    try:
+        res = await shelves_service.save_shelves(
+            db, int(ext["company_id"]), ext.get("created_by"), payload or {}
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    await db.commit()
+    return {"ok": True, **res}
