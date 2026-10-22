@@ -81,6 +81,40 @@ def _json(v: Any) -> str | None:
         return None
 
 
+def _trim_strings(val: Any, limit: int = 300) -> Any:
+    """Строки внутри вложенных структур режем по значению (не всей JSON-строке)."""
+    if isinstance(val, str):
+        return val[:limit]
+    if isinstance(val, dict):
+        return {k: _trim_strings(v, limit) for k, v in val.items()}
+    if isinstance(val, list):
+        return [_trim_strings(v, limit) for v in val]
+    return val
+
+
+def _fit_extra(extra: dict, max_len: int = 4000) -> str | None:
+    """JSON для колонки `extra` БЕЗ обрыва сериализованной строки: резка посреди
+    JSON даёт битый текст и MySQL errno 3140 на JSON-колонке (весь /shelves 500).
+    Сначала режем длинные строковые значения, если всё равно не влезает —
+    дропаем поля с конца, наконец None (лучше без extra, чем без всей полки)."""
+    if not isinstance(extra, dict) or not extra:
+        return None
+    try:
+        d = _trim_strings(extra)
+        s = json.dumps(d, ensure_ascii=False)
+        if len(s) <= max_len:
+            return s
+        keys = list(d.keys())
+        while keys:
+            keys.pop()
+            s = json.dumps({k: d[k] for k in keys}, ensure_ascii=False)
+            if len(s) <= max_len:
+                return s
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
 def url_key(kind: str, preset_id: int, subject_id: int | None, parent_subject_id: int | None, dest: int) -> str:
     """Ключ полки: без `page`, иначе каждая страница стала бы новой полкой."""
     raw = f"{kind}|{int(preset_id or 0)}|{int(subject_id or 0)}|{int(parent_subject_id or 0)}|{int(dest or 0)}"
@@ -572,7 +606,7 @@ async def save_shelves(
         # Прямая ссылка на видео — если публичного URL WB не отдал.
         if c.get("video_url"):
             extra.setdefault("video_url", str(c["video_url"])[:512])
-        extra_json = json.dumps(extra, ensure_ascii=False)[:4000] if extra else None
+        extra_json = _fit_extra(extra)
         await db.execute(
             CLIP_SQL,
             {

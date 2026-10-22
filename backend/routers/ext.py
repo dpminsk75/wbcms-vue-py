@@ -166,6 +166,7 @@ async def ext_seed(
             INSERT INTO wb_enrich_queue (nm_id, company_id)
             SELECT DISTINCT nm_id, :cid FROM wb_competitor_cards
             WHERE source_nm_id=:s
+              AND nm_id > 0
               AND nm_id NOT IN (SELECT nm_id FROM wb_competitor_details
                                WHERE full_collected_at > NOW() - INTERVAL 24 HOUR)
             ON DUPLICATE KEY UPDATE
@@ -177,6 +178,7 @@ async def ext_seed(
             INSERT INTO wb_enrich_queue (nm_id, company_id)
             SELECT DISTINCT nm_id, :cid FROM wb_competitor_cards
             WHERE source_nm_id IN ({OWNED_CARDS.replace(':cid', ':cid2')})
+              AND nm_id > 0
               AND nm_id NOT IN (SELECT nm_id FROM wb_competitor_details
                                WHERE full_collected_at > NOW() - INTERVAL 24 HOUR)
             ON DUPLICATE KEY UPDATE
@@ -205,6 +207,18 @@ async def ext_next(
     mode = (mode or "new").strip().lower()
     if mode not in ("new", "refresh", "all"):
         mode = "new"
+    # зависший processing: расширение могли закрыть посреди сбора — снимаем в
+    # pending (тот же 30-минутный reset, что у wb_competitor_query и wb_seo_target).
+    # claimed_at=NULL = claim до миграции/старым кодом — тоже считается зависшим.
+    # Скоуп — только свой company_id: чужие строки поднимает тот, кто их клал.
+    # need_update не трогаем — это флаг «контент устарел», его отдаём как есть.
+    await db.execute(text("""
+        UPDATE wb_enrich_queue SET status='pending', claimed_at=NULL
+        WHERE status='processing'
+          AND company_id=:cid
+          AND (claimed_at IS NULL OR claimed_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE))
+    """), {"cid": cid})
+    await db.commit()
     if mode == "new":
         cond = "q.status='pending' AND (q.company_id=:cid OR q.company_id IS NULL)"
         order = "q.id"
@@ -234,7 +248,8 @@ async def ext_next(
     if not row:
         return {"nm_id": None}
     await db.execute(text("""
-        UPDATE wb_enrich_queue SET status='processing', company_id=:cid
+        UPDATE wb_enrich_queue
+        SET status='processing', company_id=:cid, claimed_at=NOW()
         WHERE id=:i
           AND (status='need_update'
                OR (status='pending' AND (company_id=:cid OR company_id IS NULL)))
@@ -638,9 +653,12 @@ async def ext_search_status(
         """), {"n": nm_id})).mappings().all()
         pending, done = 0, 0
         for r in [x["phrase"] for x in phrases[:20]]:
+            # фраза в отчёте может быть с дефисами/подчёркиваниями — маркер «(empty)»
+            # пишется нормализованной (:np), проверяем оба варианта
             hit = (await db.execute(text("""
-                SELECT 1 FROM wb_competitor_cards WHERE source_nm_id=:n AND query_phrase=:p LIMIT 1
-            """), {"n": nm_id, "p": r})).first()
+                SELECT 1 FROM wb_competitor_cards
+                WHERE source_nm_id=:n AND (query_phrase=:p OR query_phrase=:np) LIMIT 1
+            """), {"n": nm_id, "p": r, "np": capture_service._norm_phrase(r)})).first()
             if hit:
                 done += 1
             else:
@@ -685,9 +703,11 @@ async def _next_report_phrase(db: AsyncSession, nm_id: int) -> dict | None:
         LIMIT 20
     """), {"n": nm_id})).mappings().all()
     for r in phrases:
+        # маркер «(empty)» пишется нормализованной фразой — проверяем оба варианта
         hit = (await db.execute(text("""
-            SELECT 1 FROM wb_competitor_cards WHERE source_nm_id=:n AND query_phrase=:p LIMIT 1
-        """), {"n": nm_id, "p": r["phrase"]})).first()
+            SELECT 1 FROM wb_competitor_cards
+            WHERE source_nm_id=:n AND (query_phrase=:p OR query_phrase=:np) LIMIT 1
+        """), {"n": nm_id, "p": r["phrase"], "np": capture_service._norm_phrase(r["phrase"])})).first()
         if not hit:
             return {"queue_id": None, "nm_id": int(nm_id), "phrase": r["phrase"]}
     return None
@@ -731,6 +751,24 @@ async def ext_search_next(
                 return {"queue_id": row["id"], "nm_id": row["source_nm_id"], "phrase": row["phrase"]}
         return {"nm_id": None}
     if source in ("seo", "both"):
+        # зависший processing: расширение могло закрыться посреди поиска —
+        # снимаем в pending (тот же 30-минутный reset, что у compquery).
+        # updated_at при claim проставляется явно (см. ниже) — по нему и сверяем.
+        if nm_id:
+            await db.execute(text(f"""
+                UPDATE wb_seo_target SET status='pending', updated_at=NOW()
+                WHERE status='processing' AND nmID=:n
+                  AND nmID IN ({OWNED_CARDS.replace(':cid', ':c2')})
+                  AND updated_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE)
+            """), {"n": nm_id, "c2": cid})
+        else:
+            await db.execute(text(f"""
+                UPDATE wb_seo_target SET status='pending', updated_at=NOW()
+                WHERE status='processing'
+                  AND nmID IN ({OWNED_CARDS.replace(':cid', ':c2')})
+                  AND updated_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE)
+            """), {"c2": cid})
+        await db.commit()
         if nm_id:
             row = (await db.execute(text(f"""
                 SELECT id, nmID, phrase FROM wb_seo_target
@@ -744,7 +782,8 @@ async def ext_search_next(
                 ORDER BY priority DESC, id LIMIT 1
             """), {"c2": cid})).mappings().first()
         if row:
-            await db.execute(text("UPDATE wb_seo_target SET status='processing' WHERE id=:i"), {"i": row["id"]})
+            # updated_at=NOW() явно — точка старта 30-минутного таймаута processing
+            await db.execute(text("UPDATE wb_seo_target SET status='processing', updated_at=NOW() WHERE id=:i"), {"i": row["id"]})
             await db.commit()
             return {"queue_id": row["id"], "nm_id": row["nmID"], "phrase": row["phrase"]}
     if source in ("report", "both") and nm_id:
@@ -922,6 +961,23 @@ async def ext_search_error(
             raise HTTPException(status_code=403, detail="foreign queue_id")
         await db.execute(text("UPDATE wb_seo_target SET status='error' WHERE id=:i"), {"i": queue_id})
         await db.commit()
+    elif source == "report":
+        # report-фразы отдаются без queue_id (поиск по отчёту): ошибку по фразе
+        # помечаем тем же маркером «(empty)», что и пустую выдачу (search_result),
+        # иначе search_next возвращает эту фразу бесконечно. Расширение шлёт
+        # nm_id + phrase в payload (background.js reportSearchError).
+        try:
+            nm_id = int(data.get("nm_id") or 0)
+        except (TypeError, ValueError):
+            nm_id = 0
+        phrase = capture_service._norm_phrase(data.get("phrase") or "")[:500]
+        if nm_id and phrase and await _owns_card(db, cid, nm_id):
+            await db.execute(text("""
+                INSERT IGNORE INTO wb_competitor_cards
+                  (source_nm_id, query_phrase, position, nm_id, title)
+                VALUES (:s, :ph, 0, 0, '(empty)')
+            """), {"s": nm_id, "ph": phrase})
+            await db.commit()
     return {"ok": True}
 
 
@@ -982,13 +1038,13 @@ async def ext_reset_search(
             if not await _owns_card(db, cid, nm_id):
                 raise HTTPException(status_code=403, detail="foreign nm_id")
             r = await db.execute(text(f"""
-                UPDATE wb_seo_target SET status='pending'
-                WHERE status='error' AND nmID=:n AND nmID IN ({OWNED_CARDS.replace(':cid', ':c2')})
+                UPDATE wb_seo_target SET status='pending', updated_at=NOW()
+                WHERE status IN ('error','processing') AND nmID=:n AND nmID IN ({OWNED_CARDS.replace(':cid', ':c2')})
             """), {"n": nm_id, "c2": cid})
         else:
             r = await db.execute(text(f"""
-                UPDATE wb_seo_target SET status='pending'
-                WHERE status='error' AND nmID IN ({OWNED_CARDS.replace(':cid', ':c2')})
+                UPDATE wb_seo_target SET status='pending', updated_at=NOW()
+                WHERE status IN ('error','processing') AND nmID IN ({OWNED_CARDS.replace(':cid', ':c2')})
             """), {"c2": cid})
         changed = r.rowcount
     elif source == "compquery":

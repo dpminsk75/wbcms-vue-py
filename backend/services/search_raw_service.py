@@ -24,6 +24,7 @@ import pathlib
 import re
 from datetime import datetime
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,6 +62,29 @@ def _day_of(stamp: str) -> str:
     if len(s) >= 8:
         return f"{s[0:4]}-{s[4:6]}-{s[6:8]}"
     return datetime.now().strftime("%Y-%m-%d")
+
+
+def _page_offset(url: str) -> int:
+    """Смещение выдачи по URL ответа WB: (page-1) * limit.
+
+    JSON-выдача приходит постранично: индекс в products[] — позиция ТОЛЬКО
+    внутри страницы (каждый envelope перезаписывает предыдущий в
+    content_search.js, на сервер доезжает последний page). Без поправки товар
+    со страницы 2 получал бы position_api=1..N своей страницы, а не ранг в
+    выдаче. page/limit лежат в query самого API-URL (u = ?query=..&page=2&limit=100);
+    нет параметров — считаем первой страницей (offset 0, прежнее поведение).
+    """
+    try:
+        q = parse_qs(urlparse(str(url or "")).query)
+        page = int(str(q.get("page", ["1"])[0] or 1))
+        limit = int(str(q.get("limit", ["100"])[0] or 100))
+        if page < 1:
+            page = 1
+        if limit < 1:
+            limit = 100
+        return (page - 1) * limit
+    except (TypeError, ValueError):
+        return 0
 
 
 def _raw_dir(cid: int, day: str) -> pathlib.Path:
@@ -357,12 +381,15 @@ async def _our_nms(db: AsyncSession, cid: int, ids: list) -> list:
 
 async def _enrich_positions(
     db: AsyncSession, cid: int, uid: int | None, tok: int | None,
-    phrase: str, products: list, day: str | None = None
+    phrase: str, products: list, day: str | None = None, offset: int = 0
 ) -> int:
     """Дополняем строки наблюдений полями из JSON-выдачи.
 
     DOM-поля (position, price, old_price, badges, image_url, rating, feedbacks) НЕ трогаем —
     их пишет /observe_search и /search_result. Здесь только то, чего в DOM нет.
+
+    `offset` — поправка постраничности: (page-1)*limit из URL ответа, чтобы
+    position_api был рангом в выдаче, а не индексом внутри страницы.
     """
     if not products:
         return 0
@@ -383,7 +410,8 @@ async def _enrich_positions(
         semantic = p.get("semanticId")
         rows.append({
             "nm_id": nm_id,
-            "position_api": idx,
+            # ранг в выдаче = позиция в странице + смещение страницы
+            "position_api": idx + offset,
             "title": (p.get("name") or "")[:500],
             "brand": (p.get("brand") or "")[:255],
             "brand_id": _num(p.get("brandId")),
@@ -613,7 +641,8 @@ async def save_search_raw(db: AsyncSession, ext: dict, payload: dict) -> dict:
             meta.update(_catalog_summary(parsed if isinstance(parsed, dict) else {}))
             file_name = _write_file(cid, day, stamp, kind, slug, raw, meta)
             products = parsed.get("products") if isinstance(parsed, dict) else []
-            positions = await _enrich_positions(db, cid, uid, tok, phrase, products or [], day)
+            positions = await _enrich_positions(db, cid, uid, tok, phrase, products or [], day,
+                                                offset=_page_offset(url))
         elif kind == "filters":
             f = _parse_filters(parsed if isinstance(parsed, dict) else {})
             meta.update({
