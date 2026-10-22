@@ -10,15 +10,22 @@
 на /competitor/captured (§8.5). В `wb_enrich_queue` закрываем только `need_update`:
 успешный capture уже обновил контент, повторный обход не нужен.
 
+Два режима:
+- `partial` — фоновое НАБЛЮДЕНИЕ (человек сам открыл карточку): пишем то, что уже видно;
+  обновляем изменяемые поля (цена, рейтинг, бейджи…), контент — только если он непустой;
+  `full_collected_at` НЕ двигаем (пассив не должен блокировать очередь) и TTL 24 ч НЕ применяем;
+- обычный — полный сбор (кнопка «Собрать», либо авто-fallback после 403):
+  двигает `full_collected_at`, TTL 24 ч считается по нему.
+
 Правила:
 - своя карточка (`wbcards.company_id` = наша или NULL-легаси) → skip `own_card`, если нет `allow_own`;
-- свежесть 24 ч → skip `fresh`, если нет `force`;
-- `recommendations` / `characteristics` пустыми не затираем;
+- `recommendations` / `characteristics` / `description` пустыми не затираем;
 - `first_collected_at` / `captured_company_id` / `captured_by` — только при первой вставке.
 """
 
 import hashlib
 import json
+import re
 from datetime import datetime
 
 from sqlalchemy import text
@@ -30,7 +37,7 @@ FRESH_HOURS = 24
 def _norm_chars(raw) -> str:
     """Характеристики в канонической строке JSON.
 
-    MySQL отдаёт JSON-колонку нормализованной (ключи объектов отсортированы), Python — нет.
+    MySQL отдаёт JSON-колонку нормализованную (ключи объектов отсортированы), Python — нет.
     Приводим к одному виду (sort_keys), чтобы хэш контента совпадал на всех путях записи
     (capture / enrich) и история не плодила дубли снимков.
     """
@@ -52,10 +59,11 @@ def _norm_chars(raw) -> str:
 
 
 def content_hash(title: str, description: str, characteristics: str,
-                 price: str, old_price: str) -> str:
+                 price, old_price) -> str:
     """md5 от значимых полей контента (порядок фиксирован, json — стабильный)."""
     payload = json.dumps(
-        [title or "", description or "", _norm_chars(characteristics), price or "", old_price or ""],
+        [title or "", description or "", _norm_chars(characteristics),
+         str(price or ""), str(old_price or "")],
         ensure_ascii=False,
     )
     return hashlib.md5(payload.encode("utf-8")).hexdigest()
@@ -68,11 +76,80 @@ def _iso(value) -> str | None:
 
 
 def _json_list(raw) -> str:
+    if isinstance(raw, str):
+        s = raw.strip()
+        if not s or s == "null":
+            return "[]"
+        try:
+            json.loads(s)
+            return s
+        except (TypeError, ValueError):
+            return "[]"
     return json.dumps(raw or [], ensure_ascii=False)
 
 
 def _cnt(raw) -> int:
     return len(raw) if isinstance(raw, list) else 0
+
+
+def _norm_phrase(raw) -> str:
+    """Нормализация фразы: нижний регистр, дефисы/подчёркивания -> пробелы, один пробел.
+
+    WB отдаёт одну и ту же фразу двумя способами (с дефисами в URL страницы и
+    с пробелами в query= внутренних API) — без нормализации это две разные фразы.
+    """
+    s = str(raw or "").lower()
+    s = re.sub(r"[-_]+", " ", s)
+    s = " ".join(s.split())
+    s = s.strip(" .,;:!?'\"()[]{}«»—–")
+    return s[:500]
+
+
+def _to_int(v):
+    """«1 490 ₽» / 1490 / '1490' → 1490; пусто/мусор/0 → None (0 = «не знаем»)."""
+    if v is None or v == "":
+        return None
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return int(round(v)) or None
+    s = str(v).replace("\xa0", " ").strip()
+    m = re.search(r"\d[\d\s]*", s)
+    if not m:
+        return None
+    n = int(re.sub(r"[^\d]", "", m.group(0)))
+    return n if n else None
+
+
+def _to_float(v):
+    if v is None or v == "":
+        return None
+    try:
+        return float(str(v).replace("\xa0", " ").replace(",", ".").strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _pick(new, old):
+    """Новое значение, если оно «непустое», иначе старое (не затираем пустыми)."""
+    if new is None:
+        return old
+    if isinstance(new, str) and not new.strip():
+        return old
+    if isinstance(new, (list, dict)) and not new:
+        return old
+    return new
+
+
+def _json_len(raw) -> int:
+    """Сколько элементов в JSON-списке (с учётом двойного кодирования, мусор → 0)."""
+    try:
+        val = raw if isinstance(raw, (list, dict)) else json.loads(raw or "[]")
+        if isinstance(val, str):
+            val = json.loads(val or "[]")
+    except (TypeError, ValueError):
+        return 0
+    return len(val) if isinstance(val, list) else 0
 
 
 async def capture(db: AsyncSession, company_id: int, user_id: int | None, payload: dict) -> dict:
@@ -90,6 +167,7 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
     allow_own = bool(payload.get("allow_own"))
     force = bool(payload.get("force"))
     explicit = bool(payload.get("explicit"))  # явный клик: снимает is_hidden
+    partial = bool(payload.get("partial"))    # фоновое наблюдение
 
     # 1. Своя ли карточка? (PK wbcards = nmID; company_id NULL — легаси, считаем своей)
     own_row = (await db.execute(text("""
@@ -99,129 +177,216 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
     if is_own and not allow_own:
         return {"skipped": True, "reason": "own_card", "nm_id": nm_id, "is_own": True}
 
-    # 2. Свежесть 24 ч (force обходит)
-    existing = (await db.execute(text("""
-        SELECT collected_at FROM wb_competitor_details WHERE nm_id=:n
+    # 2. Нормализация payload
+    title = str(payload.get("title") or "")[:500]
+    description = str(payload.get("description") or "")
+    chars_raw = payload.get("characteristics") or []
+    recs_raw = payload.get("recommendations") or []
+    images_raw = payload.get("images") or []
+    badges_raw = payload.get("badges") or []
+    price = _to_int(payload.get("price"))
+    old_price = _to_int(payload.get("old_price"))
+    rating = _to_float(payload.get("rating"))
+    feedbacks = _to_int(payload.get("feedbacks"))
+    questions = _to_int(payload.get("questions"))
+    brand = str(payload.get("brand") or "")[:255]
+    seller = str(payload.get("seller") or "")[:255]
+    url = str(payload.get("url") or "")[:500].split("?")[0]
+    subject = str(payload.get("subject_name") or "")[:255]
+
+    # полный сбор = есть описание И характеристики
+    is_full = bool(description.strip()) and bool(chars_raw)
+
+    # 3. Текущее состояние
+    row = (await db.execute(text("""
+        SELECT id, title, description, characteristics, recommendations, images, badges,
+               brand, seller, price, old_price, rating, feedbacks, questions,
+               subject_name, url, collected_at, full_collected_at
+        FROM wb_competitor_details WHERE nm_id=:n LIMIT 1
     """), {"n": nm_id})).mappings().first()
-    age_h = None
-    if existing and existing["collected_at"]:
-        try:
-            age_h = round((datetime.now() - existing["collected_at"]).total_seconds() / 3600, 1)
-        except TypeError:
+
+    if row:
+        # 4. Свежесть полного сбора (TTL 24 ч). Наблюдение TTL не применяет.
+        if not partial and not force and row["full_collected_at"]:
             age_h = None
-    if existing and not force and age_h is not None and age_h < FRESH_HOURS:
-        if explicit:
-            # Явный клик возвращает карточку из «скрытых», даже если контент свежий.
+            try:
+                age_h = (datetime.now() - row["full_collected_at"]).total_seconds() / 3600
+            except TypeError:
+                age_h = None
+            if age_h is not None and age_h < FRESH_HOURS:
+                if explicit:
+                    await db.execute(text("""
+                        INSERT INTO wb_competitor_capture
+                          (nm_id, company_id, is_own, is_hidden, first_seen_by, last_seen_by)
+                        VALUES (:n, :cid, 0, 0, :uid, :uid)
+                        ON DUPLICATE KEY UPDATE
+                          last_seen_at=NOW(), last_seen_by=:uid, is_hidden=0
+                    """), {"n": nm_id, "cid": company_id, "uid": user_id})
+                await db.execute(text("""
+                    UPDATE wb_enrich_queue SET status='done', processed_at=NOW()
+                    WHERE nm_id=:n AND status='need_update'
+                """), {"n": nm_id})
+                await db.commit()
+                return {"skipped": True, "reason": "fresh", "nm_id": nm_id, "age_h": round(age_h, 1),
+                        "collected_at": _iso(row["collected_at"]), "is_own": is_own}
+
+        # 5. Слияние: изменяемое — всегда, контент — только непустой
+        m_title = _pick(title, row["title"])
+        m_desc = _pick(description, row["description"])
+        m_chars = _pick(_json_list(chars_raw) if chars_raw else None, _json_list(row["characteristics"]))
+        m_recs = _pick(_json_list(recs_raw) if recs_raw else None, _json_list(row["recommendations"]))
+        new_images = _json_list(images_raw) if images_raw else None
+        old_images = _json_list(row["images"])
+        # Пассивное наблюдение видит только отрисованные миниатюры — не даём ему
+        # заменить полную галерею (собранную полным проходом) более короткой.
+        if new_images is not None and partial and _json_len(new_images) < _json_len(old_images):
+            m_images = old_images
+        else:
+            m_images = _pick(new_images, old_images)
+        m_badges = _pick(_json_list(badges_raw) if badges_raw else None, _json_list(row["badges"]))
+        m_price = _pick(price, row["price"])
+        m_old = _pick(old_price, row["old_price"])
+        m_rating = _pick(rating, row["rating"])
+        m_fb = _pick(feedbacks, row["feedbacks"])
+        m_q = _pick(questions, row["questions"])
+        m_brand = _pick(brand, row["brand"])
+        m_seller = _pick(seller, row["seller"])
+        m_subject = _pick(subject, row["subject_name"])
+        m_url = _pick(url, row["url"])
+
+        changed = (
+            m_title != (row["title"] or "") or m_desc != (row["description"] or "") or
+            # characteristics: MySQL сортирует ключи в JSON → сравниваем канонически
+            _norm_chars(m_chars) != _norm_chars(row["characteristics"]) or
+            m_recs != _json_list(row["recommendations"]) or
+            m_images != _json_list(row["images"]) or
+            m_badges != _json_list(row["badges"]) or
+            m_price != row["price"] or m_old != row["old_price"] or
+            m_rating != row["rating"] or m_fb != row["feedbacks"] or
+            m_q != row["questions"] or m_brand != (row["brand"] or "") or
+            m_seller != (row["seller"] or "") or m_subject != (row["subject_name"] or "") or
+            m_url != (row["url"] or "")
+        )
+    else:
+        row = None
+        m_title = title
+        m_desc = description
+        m_chars = _json_list(chars_raw)
+        m_recs = _json_list(recs_raw)
+        m_images = _json_list(images_raw)
+        m_badges = _json_list(badges_raw)
+        m_price = price
+        m_old = old_price
+        m_rating = rating
+        m_fb = feedbacks
+        m_q = questions
+        m_brand = brand
+        m_seller = seller
+        m_subject = subject
+        m_url = url
+        changed = True
+
+    # 6. Запись контента (только если что-то изменилось — иначе collected_at «ползёт»)
+    if changed:
+        await db.rollback()
+        async with db.begin():
+            if row:
+                await db.execute(text("""
+                    UPDATE wb_competitor_details SET
+                      title=:t, description=:d, characteristics=:ch, recommendations=:recs,
+                      images=:img, badges=:bg,
+                      brand=:b, seller=:s, price=:p, old_price=:o,
+                      rating=:r, feedbacks=:fb, questions=:q, subject_name=:subj, url=:u,
+                      collected_at=NOW(),
+                      full_collected_at=IF(:full=1, NOW(), full_collected_at)
+                    WHERE id=:id
+                """), {
+                    "id": row["id"], "t": m_title, "d": m_desc, "ch": m_chars, "recs": m_recs,
+                    "img": m_images, "bg": m_badges, "b": m_brand, "s": m_seller,
+                    "p": m_price, "o": m_old, "r": m_rating, "fb": m_fb, "q": m_q,
+                    "subj": m_subject, "u": m_url, "full": 1 if is_full else 0,
+                })
+            else:
+                await db.execute(text("""
+                    INSERT INTO wb_competitor_details
+                      (nm_id, title, description, characteristics, recommendations, images, badges,
+                       brand, seller, price, old_price, rating, feedbacks, questions, subject_name, url,
+                       collected_at, first_collected_at, full_collected_at,
+                       captured_company_id, captured_by)
+                    VALUES (:n, :t, :d, :ch, :recs, :img, :bg,
+                            :b, :s, :p, :o, :r, :fb, :q, :subj, :u,
+                            NOW(), NOW(), IF(:full=1, NOW(), NULL),
+                            :cid, :uid)
+                """), {
+                    "n": nm_id, "t": m_title, "d": m_desc, "ch": m_chars, "recs": m_recs,
+                    "img": m_images, "bg": m_badges, "b": m_brand, "s": m_seller,
+                    "p": m_price, "o": m_old, "r": m_rating, "fb": m_fb, "q": m_q,
+                    "subj": m_subject, "u": m_url, "cid": company_id, "uid": user_id,
+                    "full": 1 if is_full else 0,
+                })
+
+            # 7. Видимость по компании (m:n). Явный клик возвращает скрытую карточку.
             await db.execute(text("""
                 INSERT INTO wb_competitor_capture
                   (nm_id, company_id, is_own, is_hidden, first_seen_by, last_seen_by)
                 VALUES (:n, :cid, :own, 0, :uid, :uid)
                 ON DUPLICATE KEY UPDATE
-                  last_seen_at=NOW(), last_seen_by=:uid, is_own=:own, is_hidden=0
-            """), {"n": nm_id, "cid": company_id, "uid": user_id, "own": 1 if is_own else 0})
-        # Контент уже свежий — назначенное обновление считаем выполненным.
-        await db.execute(text("""
-            UPDATE wb_enrich_queue SET status='done', processed_at=NOW()
-            WHERE nm_id=:n AND status='need_update'
-        """), {"n": nm_id})
-        await db.commit()
-        return {"skipped": True, "reason": "fresh", "nm_id": nm_id, "age_h": age_h,
-                "collected_at": _iso(existing["collected_at"]), "is_own": is_own}
+                  last_seen_at=NOW(),
+                  last_seen_by=:uid,
+                  is_own=:own,
+                  is_hidden=IF(:exp=1, 0, is_hidden)
+            """), {"n": nm_id, "cid": company_id, "own": 1 if is_own else 0, "uid": user_id,
+                   "exp": 1 if explicit else 0})
 
-    # 3. Нормализация payload
-    title = str(payload.get("title") or "")[:500]
-    description = str(payload.get("description") or "")
-    chars_raw = payload.get("characteristics") or []
-    chars = _json_list(chars_raw)
-    recs = _json_list(payload.get("recommendations"))
-    images = _json_list(payload.get("images"))
-    price = str(payload.get("price") or "")[:50]
-    old_price = str(payload.get("old_price") or "")[:50]
-    brand = str(payload.get("brand") or "")[:255]
-    seller = str(payload.get("seller") or "")[:255]
-    url = str(payload.get("url") or "")[:500]
-    subject = str(payload.get("subject_name") or "")[:255]
+            # 8. История: снимок при новом content_hash (по ИТОГОВОЙ строке, не по payload)
+            h = content_hash(m_title, m_desc, m_chars, m_price, m_old)
+            last = (await db.execute(text("""
+                SELECT content_hash FROM wb_competitor_details_history
+                WHERE nm_id=:n ORDER BY id DESC LIMIT 1
+            """), {"n": nm_id})).first()
+            history = "same"
+            if not last or last[0] != h:
+                await db.execute(text("""
+                    INSERT INTO wb_competitor_details_history
+                      (nm_id, title, description, characteristics, brand, seller, price, old_price,
+                       images, content_hash, captured_company_id, captured_by, source)
+                    VALUES (:n, :t, :d, :ch, :b, :s, :p, :o, :img, :h, :cid, :uid, :src)
+                """), {"n": nm_id, "t": m_title, "d": m_desc, "ch": m_chars, "b": m_brand,
+                       "s": m_seller, "p": m_price, "o": m_old, "img": m_images, "h": h,
+                       "cid": company_id, "uid": user_id,
+                       "src": "observe" if partial else "capture"})
+                history = "inserted"
 
-    h = content_hash(title, description, chars, price, old_price)
-
-    params = {
-        "n": nm_id, "t": title, "d": description, "recs": recs, "u": url,
-        "b": brand, "s": seller, "p": price, "o": old_price, "img": images,
-        "chars": chars, "subj": subject, "cid": company_id, "uid": user_id,
-        "own": 1 if is_own else 0, "exp": 1 if explicit else 0,
-    }
-
-    await db.rollback()
-    async with db.begin():
-        # 4. Контент: один на nm, пустым не затираем.
-        # SELECT+UPDATE/INSERT, а не ON DUPLICATE KEY: у wb_competitor_details
-        # уникальность nm_id не гарантирована миграцией (так же пишет /api/ext/result).
-        row = (await db.execute(text("""
-            SELECT id FROM wb_competitor_details WHERE nm_id=:n LIMIT 1
-        """), {"n": nm_id})).first()
-        if row:
+            # 9. Контент обновлён — закрываем назначенное обновление.
             await db.execute(text("""
-                UPDATE wb_competitor_details SET
-                  title=IF(:t='', title, :t),
-                  description=IF(:d='', description, :d),
-                  recommendations=IF(:recs='[]', recommendations, :recs),
-                  url=IF(:u='', url, :u),
-                  brand=IF(:b='', brand, :b),
-                  seller=IF(:s='', seller, :s),
-                  price=IF(:p='', price, :p),
-                  old_price=IF(:o='', old_price, :o),
-                  images=IF(:img='[]', images, :img),
-                  characteristics=IF(:chars='[]', characteristics, :chars),
-                  subject_name=IF(:subj='', subject_name, :subj),
-                  collected_at=NOW()
-                WHERE id=:id
-            """), {**params, "id": row[0]})
-        else:
-            await db.execute(text("""
-                INSERT INTO wb_competitor_details
-                  (nm_id, title, description, recommendations, url, brand, seller, price, old_price, images,
-                   characteristics, subject_name, collected_at, first_collected_at,
-                   captured_company_id, captured_by)
-                VALUES (:n, :t, :d, :recs, :u, :b, :s, :p, :o, :img, :chars, :subj,
-                        NOW(), NOW(), :cid, :uid)
-            """), params)
+                UPDATE wb_enrich_queue SET status='done', processed_at=NOW()
+                WHERE nm_id=:n AND status='need_update'
+            """), {"n": nm_id})
+        return {
+            "ok": True, "skipped": False, "nm_id": nm_id, "is_own": is_own,
+            "content_hash": h, "history": history, "changed": changed, "partial": partial,
+            "collected_at": datetime.now().isoformat(timespec="seconds"),
+            "desc_len": len(m_desc or ""), "chars_cnt": _cnt(chars_raw),
+            "price": m_price, "old_price": m_old, "rating": m_rating,
+            "feedbacks": m_fb, "questions": m_q, "badges": _cnt(json.loads(m_badges or "[]")),
+        }
 
-        # 5. Видимость по компании (m:n). Явный клик возвращает скрытую карточку.
-        await db.execute(text("""
-            INSERT INTO wb_competitor_capture
-              (nm_id, company_id, is_own, is_hidden, first_seen_by, last_seen_by)
-            VALUES (:n, :cid, :own, 0, :uid, :uid)
-            ON DUPLICATE KEY UPDATE
-              last_seen_at=NOW(),
-              last_seen_by=:uid,
-              is_own=:own,
-              is_hidden=IF(:exp=1, 0, is_hidden)
-        """), params)
-
-        # 6. История: только при новом content_hash
-        last = (await db.execute(text("""
-            SELECT content_hash FROM wb_competitor_details_history
-            WHERE nm_id=:n ORDER BY id DESC LIMIT 1
-        """), {"n": nm_id})).first()
-        history = "same"
-        if not last or last[0] != h:
-            await db.execute(text("""
-                INSERT INTO wb_competitor_details_history
-                  (nm_id, title, description, characteristics, brand, seller, price, old_price,
-                   images, content_hash, captured_company_id, captured_by, source)
-                VALUES (:n, :t, :d, :chars, :b, :s, :p, :o, :img, :h, :cid, :uid, 'capture')
-            """), {**params, "h": h})
-            history = "inserted"
-
-        # Успешный capture обновил контент — закрываем назначенное обновление.
-        await db.execute(text("""
-            UPDATE wb_enrich_queue SET status='done', processed_at=NOW()
-            WHERE nm_id=:n AND status='need_update'
-        """), {"n": nm_id})
-
+    # Ничего не изменилось — только отмечаем «мы видели» (last_seen_at)
+    await db.execute(text("""
+        INSERT INTO wb_competitor_capture
+          (nm_id, company_id, is_own, is_hidden, first_seen_by, last_seen_by)
+        VALUES (:n, :cid, :own, 0, :uid, :uid)
+        ON DUPLICATE KEY UPDATE
+          last_seen_at=NOW(), last_seen_by=:uid, is_own=:own,
+          is_hidden=IF(:exp=1, 0, is_hidden)
+    """), {"n": nm_id, "cid": company_id, "own": 1 if is_own else 0, "uid": user_id,
+           "exp": 1 if explicit else 0})
+    await db.commit()
     return {
-        "ok": True, "skipped": False, "nm_id": nm_id, "is_own": is_own,
-        "content_hash": h, "history": history,
+        "ok": True, "skipped": False, "nm_id": nm_id, "is_own": is_own, "changed": False,
+        "partial": partial, "history": "same",
         "collected_at": datetime.now().isoformat(timespec="seconds"),
-        "desc_len": len(description), "chars_cnt": _cnt(chars_raw),
+        "desc_len": len(m_desc or ""), "chars_cnt": _cnt(chars_raw),
+        "price": m_price, "old_price": m_old, "rating": m_rating,
+        "feedbacks": m_fb, "questions": m_q, "badges": 0,
     }

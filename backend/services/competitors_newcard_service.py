@@ -28,6 +28,8 @@ from backend.services import llm_provider
 DESC_MIN_LEN = 50
 # §17.2: через сколько дней контент конкурента считаем устаревшим.
 REFRESH_AFTER_DAYS = 30
+# §13: окно для поведения в таблице конкурентов (полки/поиск/дубликаты).
+BEHAVIOR_DAYS = 30
 MAX_COMPETITORS_PER_REQUEST = 50
 MAX_COMPETITORS_FOR_AI = 20
 MAX_PHRASES = 80
@@ -436,27 +438,29 @@ def _j(raw):
 
 
 def _photo(photos_raw) -> str | None:
-    """Первое фото: photos может быть JSON-строкой или двойным кодированием (как в competitor_service)."""
-    val = _j(photos_raw)
-    if isinstance(val, str) and val.strip().startswith(("[", "{")):
-        val = _j(val)
-    if isinstance(val, list):
-        for u in val:
-            if u:
-                return str(u)
-        return None
-    if isinstance(val, str) and val:
-        return val
-    return None
+    """Первое фото: JSON-строка, двойное кодирование, список объектов или простой URL."""
+    images = _images(photos_raw)
+    return images[0] if images else None
 
 
 def _images(raw) -> list[str]:
-    """Нормализуем images: JSON-строка, двойное кодирование или список объектов."""
-    val = _j(raw)
-    if isinstance(val, str) and val.strip().startswith(("[", "{")):
-        val = _j(val)
+    """Нормализуем images: JSON-строка, двойное кодирование, список объектов или простой URL."""
+    if raw is None:
+        return []
+    if isinstance(raw, (list, dict)):
+        val = raw
+    else:
+        s = str(raw).strip()
+        if not s:
+            return []
+        val = _j(s)
+        if isinstance(val, str):
+            val = _j(val) if val.strip().startswith(("[", "{")) else [val]
+        elif val is None:
+            val = [s]
     if isinstance(val, dict):
-        val = val.get("images") or val.get("urls") or []
+        nested = val.get("images") or val.get("urls")
+        val = nested if nested is not None else [val]
     if not isinstance(val, list):
         return []
     out: list[str] = []
@@ -509,6 +513,14 @@ def _ts(v) -> float:
         return datetime.fromisoformat(str(v).replace("Z", "+00:00")).timestamp()
     except Exception:
         return 0.0
+
+
+def _int_price(v) -> int | None:
+    """Цена из БД: INT или строка вида «1 021 ₽» / «1021.0»."""
+    if v is None or v == "":
+        return None
+    s = re.sub(r"[^\d]", "", str(v))
+    return int(s) if s else None
 
 
 class CompetitorsNewcardService:
@@ -734,6 +746,171 @@ class CompetitorsNewcardService:
 
     # ---------- §11.1: конкуренты ----------
 
+    async def _behavior_map(self, ids: list[int]) -> dict[int, dict]:
+        """Поведение конкурента для таблицы: полки, клипы, поиск, дубликаты, Δ цены.
+
+        Один батч по nm_id (без N+1), окно BEHAVIOR_DAYS, скоуп — компания.
+        Таблицы полок/дубликатов могут отсутствовать на старом стенде — тогда
+        блок просто пустой, остальные метрики считаются.
+        """
+        out: dict[int, dict] = {int(n): {} for n in ids}
+        if not ids:
+            return out
+        cid = self.company_id
+        days = BEHAVIOR_DAYS
+        for chunk in _chunks(ids):
+            ph = ",".join(f":b{i}" for i in range(len(chunk)))
+            params: dict = {f"b{i}": v for i, v in enumerate(chunk)}
+            if cid is not None:
+                params["cid"] = cid
+
+            # 1. Полки: последний срез по каждой полке, где встречался конкурент.
+            try:
+                scope = "" if cid is None else "AND s.company_id=:cid"
+                rows = (await self.db.execute(text(f"""
+                    SELECT i.nm_id,
+                           COUNT(DISTINCT i.shelf_id) AS shelves_cnt,
+                           COUNT(DISTINCT s.nm_id) AS anchors_cnt,
+                           AVG(i.position) AS avg_pos,
+                           MIN(i.position) AS best_pos,
+                           MAX(i.snapshot_date) AS last_at
+                    FROM wb_competitor_cards_shelf_item i
+                    JOIN wb_competitor_cards_shelf s ON s.id = i.shelf_id
+                    JOIN (
+                        SELECT i2.shelf_id, MAX(i2.snapshot_date) AS d
+                        FROM wb_competitor_cards_shelf_item i2
+                        WHERE i2.shelf_id IN (
+                            SELECT DISTINCT i3.shelf_id
+                            FROM wb_competitor_cards_shelf_item i3
+                            WHERE i3.nm_id IN ({ph})
+                              AND i3.snapshot_date >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)
+                        )
+                          AND i2.snapshot_date >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)
+                        GROUP BY i2.shelf_id
+                    ) ld ON ld.shelf_id = i.shelf_id AND ld.d = i.snapshot_date
+                    WHERE i.nm_id IN ({ph})
+                      AND i.snapshot_date >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)
+                      {scope}
+                    GROUP BY i.nm_id
+                """), params)).mappings().all()
+                for r in rows:
+                    out.setdefault(int(r["nm_id"]), {}).update({
+                        "shelves_cnt": int(r["shelves_cnt"] or 0),
+                        "shelf_anchors_cnt": int(r["anchors_cnt"] or 0),
+                        "shelf_avg_pos": round(float(r["avg_pos"]), 1) if r["avg_pos"] is not None else None,
+                        "shelf_best_pos": int(r["best_pos"]) if r["best_pos"] is not None else None,
+                        "shelf_last_at": r["last_at"],
+                    })
+            except Exception:
+                await self.db.rollback()
+
+            # 2. Клипы (глобальные, без скоупа компании).
+            try:
+                rows = (await self.db.execute(text(f"""
+                    SELECT cn.nm_id,
+                           COUNT(DISTINCT cn.clip_id) AS clips_cnt,
+                           COUNT(DISTINCT c.author_id) AS authors_cnt,
+                           MAX(c.publication_date) AS last_at
+                    FROM wb_competitor_cards_clip_nm cn
+                    JOIN wb_competitor_cards_clip c ON c.clip_id = cn.clip_id
+                    WHERE cn.nm_id IN ({ph})
+                    GROUP BY cn.nm_id
+                """), params)).mappings().all()
+                for r in rows:
+                    out.setdefault(int(r["nm_id"]), {}).update({
+                        "clips_cnt": int(r["clips_cnt"] or 0),
+                        "clips_authors_cnt": int(r["authors_cnt"] or 0),
+                        "clips_last_at": r["last_at"],
+                    })
+            except Exception:
+                await self.db.rollback()
+
+            # 3. Поиск: топ-10 по нашим фразам за окно.
+            try:
+                scope = "" if cid is None else "AND p.company_id=:cid"
+                rows = (await self.db.execute(text(f"""
+                    SELECT p.nm_id,
+                           COUNT(DISTINCT CASE WHEN p.position BETWEEN 1 AND 10
+                                               THEN p.query_phrase END) AS top10_cnt,
+                           COUNT(DISTINCT p.query_phrase) AS phrases_cnt,
+                           MIN(NULLIF(p.position, 0)) AS best_pos,
+                           MAX(p.collected_at) AS last_at
+                    FROM wb_competitor_position p
+                    WHERE p.nm_id IN ({ph})
+                      AND p.collected_at >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)
+                      {scope}
+                    GROUP BY p.nm_id
+                """), params)).mappings().all()
+                for r in rows:
+                    out.setdefault(int(r["nm_id"]), {}).update({
+                        "top10_cnt": int(r["top10_cnt"] or 0),
+                        "phrases_cnt": int(r["phrases_cnt"] or 0),
+                        "best_pos": int(r["best_pos"]) if r["best_pos"] is not None else None,
+                        "positions_last_at": r["last_at"],
+                    })
+            except Exception:
+                await self.db.rollback()
+
+            # 4. Дубликаты: минимальная цена кластера и разрыв с ней.
+            try:
+                scope = "" if cid is None else "AND r.company_id=:cid"
+                rows = (await self.db.execute(text(f"""
+                    SELECT o.nm_id,
+                           MIN(o.price_gap_pct) AS gap,
+                           MIN(r.min_price) AS min_price,
+                           MAX(r.offers_total) AS offers_total,
+                           MAX(r.snapshot_date) AS last_at
+                    FROM wb_competitor_cards_offer o
+                    JOIN wb_competitor_cards_offer_run r ON r.id = o.run_id
+                    WHERE o.nm_id IN ({ph})
+                      AND r.snapshot_date >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)
+                      {scope}
+                    GROUP BY o.nm_id
+                """), params)).mappings().all()
+                for r in rows:
+                    out.setdefault(int(r["nm_id"]), {}).update({
+                        "dup_gap_pct": int(r["gap"]) if r["gap"] is not None else None,
+                        "dup_min_price": int(r["min_price"]) if r["min_price"] is not None else None,
+                        "dup_offers_total": int(r["offers_total"]) if r["offers_total"] is not None else None,
+                        "dup_last_at": r["last_at"],
+                    })
+            except Exception:
+                await self.db.rollback()
+
+            # 5. База для Δ цены: последний снимок старше 7 дней.
+            try:
+                rows = (await self.db.execute(text(f"""
+                    SELECT t.nm_id, t.price
+                    FROM (
+                        SELECT nm_id, price,
+                               ROW_NUMBER() OVER (PARTITION BY nm_id
+                                                  ORDER BY created_at DESC, id DESC) AS rn
+                        FROM wb_competitor_details_history
+                        WHERE nm_id IN ({ph})
+                          AND created_at <= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                    ) t
+                    WHERE t.rn = 1
+                """), params)).mappings().all()
+                for r in rows:
+                    out.setdefault(int(r["nm_id"]), {})["price_base"] = r["price"]
+            except Exception:
+                await self.db.rollback()
+
+            # 6. Когда последний раз менялась цена/контент.
+            try:
+                rows = (await self.db.execute(text(f"""
+                    SELECT nm_id, MAX(created_at) AS last_at
+                    FROM wb_competitor_details_history
+                    WHERE nm_id IN ({ph})
+                    GROUP BY nm_id
+                """), params)).mappings().all()
+                for r in rows:
+                    out.setdefault(int(r["nm_id"]), {})["price_last_at"] = r["last_at"]
+            except Exception:
+                await self.db.rollback()
+
+        return out
+
     async def list_competitors(self, nm_id: int) -> dict:
         rows = (await self.db.execute(text("""
             SELECT c.nm_id,
@@ -760,7 +937,7 @@ class CompetitorsNewcardService:
         if ids:
             ph = ",".join(f":d{i}" for i in range(len(ids)))
             for r in (await self.db.execute(text(f"""
-                SELECT nm_id, title, brand, seller, price, old_price, images,
+                SELECT nm_id, title, brand, seller, price, old_price, images, preview_image, badges,
                        CHAR_LENGTH(COALESCE(description,'')) AS desc_len,
                        JSON_LENGTH(COALESCE(characteristics, JSON_ARRAY())) AS chars_cnt,
                        collected_at
@@ -773,6 +950,7 @@ class CompetitorsNewcardService:
                 ORDER BY (status='analyzed') DESC, id DESC
             """), {"n": nm_id, **{f"d{i}": v for i, v in enumerate(ids)}})).mappings().all():
                 analysis.setdefault(r["competitor_nm_id"], r["status"])
+        beh = await self._behavior_map([int(i) for i in ids])
         items = []
         for r in rows:
             d = dict(r)
@@ -782,13 +960,42 @@ class CompetitorsNewcardService:
             d["seller"] = det.get("seller") or ""
             d["price"] = det.get("price") or d.get("price")
             d["old_price"] = det.get("old_price") or ""
-            d["photo"] = _photo(det.get("images")) or (d.get("image_url") or None)
+            d["photo"] = (_photo(det.get("images")) or det.get("preview_image")
+                          or d.get("image_url") or None)
             d["desc_len"] = int(det.get("desc_len") or 0)
             d["chars_cnt"] = int(det.get("chars_cnt") or 0)
             d["collected_at"] = det.get("collected_at") or d.get("collected_at")
             d["analysis_status"] = analysis.get(d["nm_id"])
             d["sources"] = (d.get("sources") or "").split(",") if d.get("sources") else []
             d["manual"] = "manual" in d["sources"] or "capture" in d["sources"]
+
+            # §13.1: поведение для таблицы (полки/клипы/поиск/дубликаты/Δ цены).
+            b = beh.get(d["nm_id"]) or {}
+            cur_price = _int_price(d.get("price"))
+            base_price = _int_price(b.get("price_base"))
+            d["price_delta_7d"] = (
+                round((cur_price - base_price) / base_price * 100, 1)
+                if cur_price and base_price else None
+            )
+            d["shelves_cnt"] = int(b.get("shelves_cnt") or 0)
+            d["shelf_anchors_cnt"] = int(b.get("shelf_anchors_cnt") or 0)
+            d["shelf_avg_pos"] = b.get("shelf_avg_pos")
+            d["shelf_best_pos"] = b.get("shelf_best_pos")
+            d["clips_cnt"] = int(b.get("clips_cnt") or 0)
+            d["clips_last_at"] = b.get("clips_last_at")
+            d["clips_authors_cnt"] = int(b.get("clips_authors_cnt") or 0)
+            d["top10_cnt"] = int(b.get("top10_cnt") or 0)
+            d["phrases_cnt"] = int(b.get("phrases_cnt") or 0)
+            d["best_pos"] = b.get("best_pos")
+            d["dup_min_price"] = b.get("dup_min_price")
+            d["dup_gap_pct"] = b.get("dup_gap_pct")
+            d["dup_offers_total"] = int(b.get("dup_offers_total") or 0)
+            bg = _j(det.get("badges"))
+            d["badges"] = bg if isinstance(bg, list) else []
+            stamps = [d.get("collected_at"), b.get("shelf_last_at"), b.get("clips_last_at"),
+                      b.get("positions_last_at"), b.get("price_last_at"), b.get("dup_last_at")]
+            last = max(stamps, key=_ts) if stamps else None
+            d["last_activity_at"] = last if _ts(last) else None
             items.append(d)
         return {"nm_id": nm_id, "items": items}
 
@@ -866,6 +1073,7 @@ class CompetitorsNewcardService:
                    MAX(d.old_price) AS old_price,
                    MAX(d.url) AS url,
                    MAX(d.images) AS images,
+                   MAX(d.preview_image) AS preview_image,
                    MAX(CHAR_LENGTH(COALESCE(d.description,''))) AS desc_len,
                    MAX(JSON_LENGTH(COALESCE(d.characteristics, JSON_ARRAY()))) AS chars_cnt,
                    MAX(d.collected_at) AS collected_at
@@ -909,7 +1117,7 @@ class CompetitorsNewcardService:
         for r in rows:
             d = dict(r)
             n = int(d["nm_id"])
-            d["photo"] = _photo(d.pop("images", None))
+            d["photo"] = _photo(d.pop("images", None)) or (d.get("preview_image") or None)
             d["desc_len"] = int(d.get("desc_len") or 0)
             d["chars_cnt"] = int(d.get("chars_cnt") or 0)
             d["is_own"] = bool(d.get("is_own"))
@@ -1007,7 +1215,7 @@ class CompetitorsNewcardService:
         for chunk in _chunks(ids):
             ph = ",".join(f":d{i}" for i in range(len(chunk)))
             rows = (await self.db.execute(text(f"""
-                SELECT nm_id, title, brand, seller, price, old_price, images,
+                SELECT nm_id, title, brand, seller, price, old_price, images, preview_image,
                        recommendations,
                        CHAR_LENGTH(COALESCE(description,'')) AS desc_len,
                        JSON_LENGTH(COALESCE(characteristics, JSON_ARRAY())) AS chars_cnt,
@@ -1260,7 +1468,8 @@ class CompetitorsNewcardService:
                 "seller": det.get("seller") or "",
                 "price": det.get("price") or b.get("price") or m.get("price") or "",
                 "old_price": det.get("old_price") or "",
-                "photo": _photo(det.get("images")) or b.get("image_url") or m.get("image_url"),
+                "photo": (_photo(det.get("images")) or det.get("preview_image")
+                          or b.get("image_url") or m.get("image_url")),
                 "desc_len": int(det.get("desc_len") or 0),
                 "chars_cnt": int(det.get("chars_cnt") or 0),
                 "collected_at": det.get("collected_at") or b.get("collected_at") or m.get("collected_at"),
@@ -1400,7 +1609,8 @@ class CompetitorsNewcardService:
                 title = str(det.get("title") or m.get("title") or "")[:500]
                 brand = str(det.get("brand") or m.get("brand") or "")[:255]
                 price = str(det.get("price") or m.get("price") or "")[:50]
-                img = str(_photo(det.get("images")) or m.get("image_url") or "")[:1000]
+                img = str(_photo(det.get("images")) or det.get("preview_image")
+                          or m.get("image_url") or "")[:1000]
                 for t in target_ids:
                     if (t, n) in existing:
                         exists += 1
@@ -1491,7 +1701,7 @@ class CompetitorsNewcardService:
                 WHERE (:cid IS NULL OR cap.company_id=:cid)
             ),
             ranked AS (
-                SELECT d.nm_id, d.title, d.brand, d.seller, d.images,
+                SELECT d.nm_id, d.title, d.brand, d.seller, d.images, d.preview_image,
                        COALESCE(d.collected_at, d.first_collected_at) AS last_at,
                        ROW_NUMBER() OVER (
                          PARTITION BY d.nm_id
@@ -1500,7 +1710,7 @@ class CompetitorsNewcardService:
                 FROM wb_competitor_details d
                 JOIN visible v ON v.nm_id=d.nm_id
             )
-            SELECT r.nm_id, r.title, r.brand, r.seller, r.images, r.last_at,
+            SELECT r.nm_id, r.title, r.brand, r.seller, r.images, r.preview_image, r.last_at,
                    DATEDIFF(NOW(), r.last_at) AS days_old,
                    q.status AS queue_status, q.error_msg AS queue_error,
                    q.processed_at AS queue_processed_at, q.requested_at,
@@ -1550,7 +1760,7 @@ class CompetitorsNewcardService:
                 "title": r.get("title") or "",
                 "brand": r.get("brand") or "",
                 "seller": r.get("seller") or "",
-                "photo": _photo(r.get("images")),
+                "photo": _photo(r.get("images")) or (r.get("preview_image") or None),
                 "collected_at": r.get("last_at"),
                 "days_old": int(r.get("days_old") or 0),
                 "attached_to": att,
@@ -1775,32 +1985,333 @@ class CompetitorsNewcardService:
                                    "freq": int(r.get("freq") or 0),
                                    "cards": int(r.get("cards") or 0)} for r in rows}
 
-    async def details(self, nm_id: int) -> dict | None:
-        """Полная карточка конкурента для попапа: контент, фото, характеристики, цены."""
+    async def details(self, nm_id: int, our_nm: int | None = None) -> dict | None:
+        """Полная карточка конкурента для попапа: контент, поведение, клипы, дубликаты.
+
+        `our_nm` — наша карточка, из которой открыли досье: для неё считается сравнение.
+        Если контент ещё не собран, отдаём заглушку из `wb_competitor_cards` —
+        поведение (полки/клипы/поиск) всё равно полезно.
+        """
         row = (await self.db.execute(text("""
             SELECT nm_id, title, description, brand, seller, subject_name, url,
-                   price, old_price, images, characteristics,
+                   price, old_price, images, preview_image, characteristics,
+                   rating, feedbacks, questions, badges,
                    COALESCE(collected_at, first_collected_at) AS collected_at,
-                   first_collected_at
+                   first_collected_at, full_collected_at
             FROM wb_competitor_details
             WHERE nm_id=:n ORDER BY COALESCE(collected_at, first_collected_at) DESC, id DESC LIMIT 1
         """), {"n": nm_id})).mappings().first()
-        if not row:
-            return None
-        d = dict(row)
-        images = _images(d.get("images"))
-        d["images"] = images
-        d["photo"] = images[0] if images else None
-        chars = _j(d.get("characteristics")) or []
-        d["characteristics"] = chars if isinstance(chars, list) else []
+        if row:
+            d = dict(row)
+            images = _images(row.get("images"))
+            d["images"] = images
+            # Галерея — только с карточки; если её ещё нет, показываем превью из выдачи.
+            d["photo"] = images[0] if images else (d.get("preview_image") or None)
+            chars = _j(d.get("characteristics")) or []
+            d["characteristics"] = chars if isinstance(chars, list) else []
+            badges = _j(d.get("badges")) or []
+            d["badges"] = badges if isinstance(badges, list) else []
+        else:
+            fb = (await self.db.execute(text("""
+                SELECT nm_id, MAX(title) AS title, MAX(brand) AS brand,
+                       MAX(price) AS price, MAX(image_url) AS image_url,
+                       MAX(collected_at) AS collected_at
+                FROM wb_competitor_cards WHERE nm_id=:n
+            """), {"n": nm_id})).mappings().first()
+            if not fb:
+                return None
+            d = {
+                "nm_id": nm_id,
+                "title": fb.get("title") or "",
+                "description": "",
+                "brand": fb.get("brand") or "",
+                "seller": "",
+                "subject_name": None,
+                "url": None,
+                "price": fb.get("price"),
+                "old_price": None,
+                "images": [],
+                "preview_image": fb.get("image_url") or None,
+                "photo": fb.get("image_url") or None,
+                "characteristics": [],
+                "rating": None,
+                "feedbacks": None,
+                "questions": None,
+                "badges": [],
+                "collected_at": fb.get("collected_at"),
+                "first_collected_at": None,
+                "full_collected_at": None,
+            }
         d["url"] = d.get("url") or f"https://www.wildberries.ru/catalog/{nm_id}/detail.aspx"
         d["attached_to"] = (await self._attached_map([nm_id])).get(nm_id, [])
         d["attached_cnt"] = len(d["attached_to"])
         d["price_history"] = await self._price_history(
             nm_id, d.get("price"), d.get("old_price"), d.get("collected_at")
         )
+        d["positions"] = await self._positions(nm_id)
         d["phrases"] = await self._competitor_phrases(nm_id)
+        d["shelves"] = await self._shelves(nm_id)
+        clips = await self._clips(nm_id)
+        d["clips"] = clips["items"]
+        d["clips_cnt"] = clips["total"]
+        d["clips_authors_cnt"] = clips["authors"]
+        d["clips_last_at"] = clips["last_at"]
+        d["duplicates"] = await self._duplicates(nm_id)
+        d["compare"] = await self._compare(our_nm) if our_nm and int(our_nm) != int(nm_id) else None
         return d
+
+    async def _titles_map(self, ids: list[int]) -> dict[int, str]:
+        """nm → название: сначала контент конкурента, потом наши карточки."""
+        out: dict[int, str] = {}
+        uniq = sorted({int(i) for i in ids if i})
+        if not uniq:
+            return out
+        for chunk in _chunks(uniq):
+            ph = ",".join(f":t{i}" for i in range(len(chunk)))
+            params = {f"t{i}": v for i, v in enumerate(chunk)}
+            try:
+                rows = (await self.db.execute(text(f"""
+                    SELECT nm_id, MAX(title) AS title
+                    FROM wb_competitor_details
+                    WHERE nm_id IN ({ph}) AND title <> ''
+                    GROUP BY nm_id
+                """), params)).mappings().all()
+                for r in rows:
+                    out[int(r["nm_id"])] = r["title"]
+            except Exception:
+                await self.db.rollback()
+            try:
+                rows = (await self.db.execute(text(f"""
+                    SELECT nmID AS nm_id, title
+                    FROM wbcards
+                    WHERE nmID IN ({ph})
+                """), params)).mappings().all()
+                for r in rows:
+                    out.setdefault(int(r["nm_id"]), r.get("title") or "")
+            except Exception:
+                await self.db.rollback()
+        return out
+
+    async def _shelves(self, nm_id: int) -> dict:
+        """Полки конкурента: где он стоит (item) и какие полки у него на карточке (anchor)."""
+        cid = self.company_id
+        params: dict = {"n": nm_id}
+        scope = ""
+        if cid is not None:
+            scope = "AND s.company_id=:cid"
+            params["cid"] = cid
+
+        as_item: list[dict] = []
+        try:
+            rows = (await self.db.execute(text(f"""
+                SELECT s.nm_id AS anchor_nm, s.preset_id, s.preset_type, s.dest,
+                       i.snapshot_date, i.position, i.price, i.seller,
+                       COALESCE(NULLIF(p.title, ''), NULLIF(s.title, ''),
+                                CONCAT('#', s.preset_id)) AS shelf_title
+                FROM wb_competitor_cards_shelf_item i
+                JOIN wb_competitor_cards_shelf s ON s.id = i.shelf_id
+                LEFT JOIN wb_competitor_cards_shelf_preset p ON p.preset_id = s.preset_id
+                JOIN (
+                    SELECT i2.shelf_id, MAX(i2.snapshot_date) AS d
+                    FROM wb_competitor_cards_shelf_item i2
+                    WHERE i2.shelf_id IN (
+                        SELECT DISTINCT i3.shelf_id
+                        FROM wb_competitor_cards_shelf_item i3
+                        WHERE i3.nm_id = :n
+                    )
+                    GROUP BY i2.shelf_id
+                ) ld ON ld.shelf_id = i.shelf_id AND ld.d = i.snapshot_date
+                WHERE i.nm_id = :n {scope}
+                ORDER BY i.snapshot_date DESC, i.position
+                LIMIT 100
+            """), params)).mappings().all()
+            as_item = [dict(r) for r in rows]
+        except Exception:
+            await self.db.rollback()
+
+        titles = await self._titles_map([int(r["anchor_nm"]) for r in as_item])
+        for r in as_item:
+            r["anchor_title"] = titles.get(int(r["anchor_nm"]), "")
+
+        as_anchor: list[dict] = []
+        try:
+            rows = (await self.db.execute(text(f"""
+                SELECT s.preset_id, s.preset_type, s.dest,
+                       COALESCE(NULLIF(p.title, ''), NULLIF(s.title, ''),
+                                CONCAT('#', s.preset_id)) AS shelf_title,
+                       s.total_candidates, s.pages_loaded, s.is_partial, s.last_seen_at,
+                       (SELECT COUNT(*) FROM wb_competitor_cards_shelf_item i
+                         WHERE i.shelf_id = s.id
+                           AND i.snapshot_date = (SELECT MAX(i2.snapshot_date)
+                                                    FROM wb_competitor_cards_shelf_item i2
+                                                   WHERE i2.shelf_id = s.id)) AS items_cnt,
+                       (SELECT ROUND(AVG(i.price)) FROM wb_competitor_cards_shelf_item i
+                         WHERE i.shelf_id = s.id
+                           AND i.snapshot_date = (SELECT MAX(i2.snapshot_date)
+                                                    FROM wb_competitor_cards_shelf_item i2
+                                                   WHERE i2.shelf_id = s.id)) AS avg_price
+                FROM wb_competitor_cards_shelf s
+                LEFT JOIN wb_competitor_cards_shelf_preset p ON p.preset_id = s.preset_id
+                WHERE s.nm_id = :n {scope}
+                ORDER BY s.preset_id
+            """), params)).mappings().all()
+            as_anchor = [dict(r) for r in rows]
+        except Exception:
+            await self.db.rollback()
+
+        for r in as_anchor:
+            r["avg_price"] = int(r["avg_price"]) if r.get("avg_price") is not None else None
+            r["items_cnt"] = int(r.get("items_cnt") or 0)
+
+        positions = [int(r["position"]) for r in as_item if r.get("position") is not None]
+        return {
+            "as_item": as_item,
+            "as_anchor": as_anchor,
+            "counts": {
+                "shelves_cnt": len(as_item),
+                "anchors_cnt": len({int(r["anchor_nm"]) for r in as_item}),
+                "avg_pos": round(sum(positions) / len(positions), 1) if positions else None,
+                "best_pos": min(positions) if positions else None,
+            },
+        }
+
+    async def _clips(self, nm_id: int) -> dict:
+        """Клипы, привязанные к карточке (`clip_nm.nm_id = nm`)."""
+        empty = {"items": [], "total": 0, "authors": 0, "last_at": None}
+        try:
+            totals = (await self.db.execute(text("""
+                SELECT COUNT(*) AS total, COUNT(DISTINCT c.author_id) AS authors,
+                       MAX(c.publication_date) AS last_at
+                FROM wb_competitor_cards_clip_nm cn
+                JOIN wb_competitor_cards_clip c ON c.clip_id = cn.clip_id
+                WHERE cn.nm_id = :n
+            """), {"n": nm_id})).mappings().first()
+            if not totals or not int(totals["total"] or 0):
+                return empty
+            rows = (await self.db.execute(text("""
+                SELECT c.clip_id, c.type, c.name, c.description, c.duration_s,
+                       c.publication_date, c.author_id, c.author_name, c.author_verified,
+                       c.preview_url, c.public_url, c.nm_count,
+                       JSON_UNQUOTE(JSON_EXTRACT(c.extra, '$.author.link')) AS author_url
+                FROM wb_competitor_cards_clip_nm cn
+                JOIN wb_competitor_cards_clip c ON c.clip_id = cn.clip_id
+                WHERE cn.nm_id = :n
+                ORDER BY c.publication_date DESC, c.clip_id DESC
+                LIMIT 30
+            """), {"n": nm_id})).mappings().all()
+            items = []
+            for r in rows:
+                item = dict(r)
+                if not item.get("public_url"):
+                    item["public_url"] = f"https://wibes.ru/clips/{item['clip_id']}"
+                items.append(item)
+            return {
+                "items": items,
+                "total": int(totals["total"] or 0),
+                "authors": int(totals["authors"] or 0),
+                "last_at": totals["last_at"],
+            }
+        except Exception:
+            await self.db.rollback()
+            return empty
+
+    async def _duplicates(self, nm_id: int) -> dict | None:
+        """Кластер дубликатов с участием конкурента (последний срез)."""
+        cid = self.company_id
+        params: dict = {"n": nm_id}
+        scope = ""
+        if cid is not None:
+            scope = "AND r.company_id=:cid"
+            params["cid"] = cid
+        try:
+            row = (await self.db.execute(text(f"""
+                SELECT r.id AS run_id, r.match_id, r.anchor_nm_id, r.anchor_price,
+                       r.min_price, r.min_price_nm_id, r.offers_total,
+                       r.snapshot_date, r.dest, o.price AS my_price,
+                       o.price_gap_pct, o.seller
+                FROM wb_competitor_cards_offer o
+                JOIN wb_competitor_cards_offer_run r ON r.id = o.run_id
+                WHERE o.nm_id = :n {scope}
+                ORDER BY r.snapshot_date DESC, r.id DESC
+                LIMIT 1
+            """), params)).mappings().first()
+            if not row:
+                return None
+            offers = (await self.db.execute(text("""
+                SELECT nm_id, name, price, seller, is_anchor, is_min_price, price_gap_pct
+                FROM wb_competitor_cards_offer
+                WHERE run_id = :r
+                ORDER BY price, position
+                LIMIT 20
+            """), {"r": row["run_id"]})).mappings().all()
+            titles = await self._titles_map([
+                int(row["anchor_nm_id"] or 0),
+                int(row["min_price_nm_id"] or 0),
+            ])
+            return {
+                "match_id": row["match_id"],
+                "anchor_nm": row["anchor_nm_id"],
+                "anchor_title": titles.get(int(row["anchor_nm_id"] or 0), ""),
+                "anchor_price": row["anchor_price"],
+                "my_price": row["my_price"],
+                "min_price": row["min_price"],
+                "min_price_nm": row["min_price_nm_id"],
+                "min_price_title": titles.get(int(row["min_price_nm_id"] or 0), ""),
+                "price_gap_pct": row["price_gap_pct"],
+                "offers_total": row["offers_total"],
+                "snapshot_date": row["snapshot_date"],
+                "offers": [dict(o) for o in offers],
+            }
+        except Exception:
+            await self.db.rollback()
+            return None
+
+    async def _compare(self, our_nm: int) -> dict:
+        """Наша карточка для сравнения: контент + клипы (полки сравниваются отдельно)."""
+        row = (await self.db.execute(text("""
+            SELECT nm_id, title, price, old_price, rating, feedbacks, badges,
+                   CHAR_LENGTH(COALESCE(description, '')) AS desc_len,
+                   JSON_LENGTH(COALESCE(characteristics, JSON_ARRAY())) AS chars_cnt,
+                   COALESCE(collected_at, first_collected_at) AS collected_at
+            FROM wb_competitor_details
+            WHERE nm_id = :n
+            ORDER BY COALESCE(collected_at, first_collected_at) DESC, id DESC
+            LIMIT 1
+        """), {"n": our_nm})).mappings().first()
+        out: dict = {"nm_id": our_nm}
+        if row:
+            out.update(dict(row))
+        else:
+            w = (await self.db.execute(text("""
+                SELECT nmID AS nm_id, title, description, characteristics
+                FROM wbcards WHERE nmID = :n LIMIT 1
+            """), {"n": our_nm})).mappings().first()
+            if not w:
+                return out
+            chars = _j(w.get("characteristics")) or []
+            out.update({
+                "nm_id": our_nm,
+                "title": w.get("title") or "",
+                "price": None,
+                "old_price": None,
+                "rating": None,
+                "feedbacks": None,
+                "badges": [],
+                "desc_len": len(w.get("description") or ""),
+                "chars_cnt": len(chars) if isinstance(chars, list) else 0,
+                "collected_at": None,
+            })
+        badges = _j(out.get("badges")) or []
+        out["badges"] = badges if isinstance(badges, list) else []
+        try:
+            cnt = (await self.db.execute(text(
+                "SELECT COUNT(*) FROM wb_competitor_cards_clip_nm WHERE nm_id = :n"
+            ), {"n": our_nm})).scalar()
+            out["clips_cnt"] = int(cnt or 0)
+        except Exception:
+            await self.db.rollback()
+            out["clips_cnt"] = 0
+        return out
 
     async def _price_history(self, nm_id: int, price, old_price, collected_at) -> list[dict]:
         """Точки изменения цены из снимков истории (только когда цена реально менялась)."""
@@ -1829,6 +2340,50 @@ class CompetitorsNewcardService:
                 "at": collected_at,
             })
         return points
+
+    async def _positions(self, nm_id: int) -> list[dict]:
+        """Где конкурент был в выдаче: фраза → позиция/цена по дням (wb_competitor_position)."""
+        scope = ""
+        params = {"n": nm_id}
+        if self.company_id is not None:
+            scope = "AND p.company_id=:cid"
+            params["cid"] = self.company_id
+        rows = (await self.db.execute(text(f"""
+            SELECT p.query_phrase, p.source_nm_id, p.position, p.price, p.collected_at,
+                   w.title AS source_title
+            FROM wb_competitor_position p
+            LEFT JOIN wbcards w ON w.nmID = p.source_nm_id
+            WHERE p.nm_id=:n {scope}
+            ORDER BY p.query_phrase, p.collected_at, p.id
+        """), params)).mappings().all()
+        grouped: dict[tuple, list] = {}
+        for r in rows:
+            grouped.setdefault((r["query_phrase"], r["source_nm_id"]), []).append(r)
+        out: list[dict] = []
+        for (phrase, src), items in grouped.items():
+            hist: list[dict] = []
+            prev = None
+            for it in items:
+                if it["position"] != prev:
+                    hist.append({
+                        "position": it["position"],
+                        "price": it["price"],
+                        "at": it["collected_at"],
+                    })
+                    prev = it["position"]
+            last = hist[-1] if hist else {}
+            out.append({
+                "phrase": phrase,
+                "source_nm_id": src,
+                "source_title": items[0].get("source_title") or "",
+                "last_position": last.get("position"),
+                "last_price": last.get("price"),
+                "at": items[-1]["collected_at"],
+                "days": len(items),
+                "positions": hist,
+            })
+        out.sort(key=lambda x: (str(x.get("at") or ""), str(x.get("phrase") or "")), reverse=True)
+        return out
 
     async def capture_visible(self, nm_id: int) -> bool:
         """Есть ли карточка в собранных у этой компании (для доступа к попапу)."""
@@ -1871,7 +2426,8 @@ class CompetitorsNewcardService:
         if not await self._capture_row(nm_id):
             raise ValueError("Карточка не собрана — нет в wb_competitor_capture")
         det = (await self.db.execute(text("""
-            SELECT title, brand, price, images FROM wb_competitor_details WHERE nm_id=:n LIMIT 1
+            SELECT title, brand, price, images, preview_image
+            FROM wb_competitor_details WHERE nm_id=:n LIMIT 1
         """), {"n": nm_id})).mappings().first()
         det = dict(det) if det else {}
         await self.db.rollback()
@@ -1892,7 +2448,7 @@ class CompetitorsNewcardService:
                 "t": str(det.get("title") or "")[:500],
                 "b": str(det.get("brand") or "")[:255],
                 "p": str(det.get("price") or "")[:50],
-                "img": str(_photo(det.get("images")) or "")[:1000],
+                "img": str(_photo(det.get("images")) or det.get("preview_image") or "")[:1000],
                 "u": user_id,
             })
             added = int(r.rowcount or 0)
@@ -2902,7 +3458,7 @@ class CompetitorsNewcardService:
             ) t
             WHERE t.nm_id NOT IN (
                 SELECT nm_id FROM wb_competitor_details
-                WHERE collected_at > NOW() - INTERVAL 24 HOUR
+                WHERE full_collected_at > NOW() - INTERVAL 24 HOUR
             )
             ON DUPLICATE KEY UPDATE
               company_id=IF(company_id IS NULL, :cid, company_id),

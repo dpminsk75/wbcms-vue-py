@@ -19,19 +19,20 @@
   трогаем не чаще раза в минуту (см. deps.require_ext_token).
 """
 
+import asyncio
 import json
 import pathlib
 from datetime import datetime
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
 from backend.deps import get_current_company, get_current_user, require_ext_token, require_seo
-from backend.services import ext_service, capture_service, shelves_service
+from backend.services import ext_service, capture_service, shelves_service, search_raw_service
 
 router = APIRouter(prefix="/api/ext", tags=["ext"])
 admin_router = APIRouter(prefix="/api/companies/{company_id}/ext-tokens", tags=["ext-tokens"])
@@ -46,6 +47,29 @@ async def _owns_card(db: AsyncSession, cid: int, nm_id: int) -> bool:
     r = (await db.execute(text(f"SELECT 1 FROM wbcards WHERE nmID=:n AND company_id=:c LIMIT 1"),
                           {"n": nm_id, "c": cid})).first()
     return r is not None
+
+
+# MySQL: 1213 — deadlock, 1205 — превышено ожидание блокировки.
+# Расширение шлёт 4 канала почти одновременно, а «позиции» (DOM) и «сырой
+# каталог» (JSON) пишут одни и те же строки wb_competitor_position в разном
+# порядке — два запроса могут упереться в deadlock. Тогда повторяем попытку.
+_DEADLOCK_CODES = (1213, 1205)
+
+
+async def _with_db_retry(db: AsyncSession, fn, tries: int = 3):
+    """Выполнить fn, при deadlock/lock-timeout MySQL — повторить (до tries раз)."""
+    for attempt in range(tries):
+        try:
+            return await fn()
+        except OperationalError as e:
+            code = (getattr(e, "orig", None).args or [None])[0]
+            if code not in _DEADLOCK_CODES or attempt + 1 >= tries:
+                raise
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            await asyncio.sleep(0.4 * (attempt + 1))
 
 
 def _diag_dir(cid: int) -> pathlib.Path:
@@ -280,7 +304,7 @@ async def ext_result(
                 UPDATE wb_competitor_details SET
                   title=:t, description=:d, recommendations=:r, url=:u,
                   brand=:b, seller=:s, price=:p, old_price=:o,
-                  images=:img, collected_at=NOW(),
+                  images=IF(:img='[]', images, :img), collected_at=NOW(),
                   characteristics=IF(:chars='[]', characteristics, :chars),
                   subject_name=IF(:subj='', subject_name, :subj),
                   rating=IF(:rate IS NULL, rating, :rate),
@@ -298,7 +322,7 @@ async def ext_result(
                 UPDATE wb_competitor_details SET
                   title=:t, description=:d, recommendations=:r, url=:u,
                   brand=:b, seller=:s, price=:p, old_price=:o,
-                  images=:img, collected_at=NOW(),
+                  images=IF(:img='[]', images, :img), collected_at=NOW(),
                   characteristics=IF(:chars='[]', characteristics, :chars),
                   subject_name=IF(:subj='', subject_name, :subj),
                   rating=IF(:rate IS NULL, rating, :rate),
@@ -411,9 +435,15 @@ async def ext_observe_search(
 
     Ничего не привязывает к анализу: только карточка+позиции+контент.
     """
+    return await _with_db_retry(db, lambda: _observe_search_impl(payload, db, ext))
+
+
+async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
     cid = int(ext["company_id"])
     data = payload or {}
-    phrase = str(data.get("phrase") or "").strip()[:500]
+    # Фразу нормализуем (WB даёт её и с дефисами, и с пробелами) — иначе один
+    # запрос = две фразы в БД и в отчёте.
+    phrase = capture_service._norm_phrase(data.get("phrase"))[:500]
     products = data.get("products") or []
     if not phrase or not products:
         # 400 — чтобы в журнале сервера было видно, что расширение прислало пустую выдачу
@@ -453,28 +483,34 @@ async def ext_observe_search(
         seller = str(p.get("seller") or "")[:255]
         promo_id = capture_service._to_int(p.get("promo_id", 0))
         uid = ext.get("created_by")
+        tok = ext.get("id")
 
         for src in sources:
             await db.execute(text("""
                 INSERT INTO wb_competitor_position
                   (company_id, source_nm_id, query_phrase, position, nm_id, title, brand, seller,
                    price, old_price, rating, feedbacks, reviews, badges, promo_id, image_url,
-                   created_by, collected_at)
+                   created_by, ext_token_id, collected_at)
                 VALUES (:cid, :s, :ph, :pos, :pid, :t, :b, :seller, :price, :old_price, :rating,
-                        :fb, :rev, :bg, :promo, :img, :uid, CURDATE())
+                        :fb, :rev, :bg, :promo, :img, :uid, :tok, CURDATE())
                 ON DUPLICATE KEY UPDATE
                   position=VALUES(position), title=VALUES(title), brand=VALUES(brand),
                   seller=IF(VALUES(seller)='', seller, VALUES(seller)),
-                  price=VALUES(price), old_price=VALUES(old_price), rating=VALUES(rating),
-                  feedbacks=VALUES(feedbacks), reviews=VALUES(reviews),
+                  price=IF(VALUES(price)>0, VALUES(price), price),
+                  old_price=IF(VALUES(old_price)>0, VALUES(old_price), old_price),
+                  rating=IF(VALUES(rating)>0, VALUES(rating), rating),
+                  feedbacks=IF(VALUES(feedbacks)>0, VALUES(feedbacks), feedbacks),
+                  reviews=IF(VALUES(reviews)>0, VALUES(reviews), reviews),
                   badges=IF(VALUES(badges)='[]', badges, VALUES(badges)),
-                  promo_id=VALUES(promo_id), image_url=VALUES(image_url)
+                  promo_id=VALUES(promo_id), image_url=VALUES(image_url),
+                  created_by=COALESCE(created_by, VALUES(created_by)),
+                  ext_token_id=COALESCE(ext_token_id, VALUES(ext_token_id))
             """), {"cid": cid, "s": src, "ph": phrase, "pos": pos, "pid": pid,
                    "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
                    "price": price, "old_price": old_price, "rating": rating,
                    "fb": fb, "rev": reviews,
                    "bg": json.dumps(badges, ensure_ascii=False),
-                   "promo": promo_id, "img": img, "uid": uid})
+                   "promo": promo_id, "img": img, "uid": uid, "tok": tok})
 
         # конкуренты нашей карточки — только топ-12
         if pos > 12:
@@ -484,9 +520,10 @@ async def ext_observe_search(
                 await db.execute(text("""
                     INSERT INTO wb_competitor_cards
                       (source_nm_id, query_phrase, position, nm_id, title, brand, seller,
-                       price, old_price, rating, feedbacks, badges, image_url, source, added_by)
+                       price, old_price, rating, feedbacks, badges, image_url, source, added_by,
+                       ext_token_id)
                     VALUES (:s, :ph, :pos, :pid, :t, :b, :seller, :price, :old_price, :rating,
-                            :fb, :bg, :img, 'search', :uid)
+                            :fb, :bg, :img, 'search', :uid, :tok)
                     ON DUPLICATE KEY UPDATE
                       position=VALUES(position), title=VALUES(title), brand=VALUES(brand),
                       seller=IF(VALUES(seller)='', seller, VALUES(seller)),
@@ -494,18 +531,24 @@ async def ext_observe_search(
                       feedbacks=VALUES(feedbacks),
                       badges=IF(VALUES(badges)='[]', badges, VALUES(badges)),
                       image_url=VALUES(image_url),
-                      added_by=COALESCE(added_by, VALUES(added_by))
+                      added_by=COALESCE(added_by, VALUES(added_by)),
+                      ext_token_id=COALESCE(ext_token_id, VALUES(ext_token_id))
                 """), {"s": src, "ph": phrase, "pos": pos, "pid": pid,
                        "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
                        "price": price, "old_price": old_price, "rating": rating,
                        "fb": fb, "bg": json.dumps(badges, ensure_ascii=False),
-                       "img": img, "uid": uid})
-        # контент карточки: цена/рейтинг/бейджи (описания пока нет — доберёт очередь)
+                       "img": img, "uid": uid, "tok": tok})
+        # Контент карточки из выдачи: цена/рейтинг/бейджи + превью.
+        # Галерею (`images`) пишет только сбор с карточки (/result, /capture) —
+        # наблюдение выдачи её не трогает, иначе одно превью затирает весь массив.
         await db.execute(text("""
             INSERT INTO wb_competitor_details
-              (nm_id, title, brand, seller, price, old_price, rating, feedbacks, badges, images, url,
+              (nm_id, title, brand, seller, price, old_price, rating, feedbacks, badges,
+               images, preview_image, url,
                collected_at, first_collected_at, captured_company_id, captured_by)
-            VALUES (:n, :t, :b, :seller, :p, :o, :r, :fb, :bg, :img, :u, NOW(), NOW(), :cid, :uid)
+            VALUES (:n, :t, :b, :seller, :p, :o, :r, :fb, :bg,
+                    JSON_ARRAY(), NULLIF(:prev, ''), :u,
+                    NOW(), NOW(), :cid, :uid)
             ON DUPLICATE KEY UPDATE
               title=IF(:t='', title, :t),
               brand=IF(:b='', brand, :b),
@@ -515,12 +558,12 @@ async def ext_observe_search(
               rating=IF(:r IS NULL, rating, :r),
               feedbacks=IF(:fb IS NULL, feedbacks, :fb),
               badges=IF(:bg='[]', badges, :bg),
-              images=IF(:img='[]', images, :img),
+              preview_image=IF(:prev='', preview_image, :prev),
               collected_at=NOW()
         """), {"n": pid, "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
                "p": price, "o": old_price, "r": rating, "fb": fb,
                "bg": json.dumps(badges, ensure_ascii=False),
-               "img": json.dumps([img] if img else [], ensure_ascii=False),
+               "prev": str(img or "")[:1000],
                "u": f"https://www.wildberries.ru/catalog/{pid}/detail.aspx",
                "cid": cid, "uid": ext.get("created_by")})
         # видимость: конкурента мы «собрали» (позиция, цена, акции) — он попадает
@@ -537,6 +580,28 @@ async def ext_observe_search(
     await db.commit()
     return {"ok": True, "saved": saved, "positions": len(products),
             "our_cards": sorted(our), "phrase": phrase}
+
+
+@router.post("/search_raw")
+async def ext_search_raw(
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    ext: dict = Depends(require_ext_token),
+):
+    """Сырые ответы поисковой выдачи WB (план «2026-10-22_wb_search_json.md», Ш4).
+
+    Расширение присылает то, что страница WB уже получила: каталог выдачи, фильтры
+    ниши, баннеры/полки поиска и подсказки (related-запросы). Мы:
+      1) сохраняем тело ответа файлом (как пришло) + компактные метаданные рядом;
+      2) каталог → дополняем `wb_competitor_position` полями JSON
+         (position_api, price_api, продавец, match_id и т.д.);
+      3) фильтры → `wb_seo_search_filters`; баннеры/полки → `wb_seo_search_shelfs`;
+      4) подсказки → только файл.
+
+    Доменные поля выдачи (position, price, badges, картинка) пишет /observe_search —
+    здесь их не трогаем.
+    """
+    return await _with_db_retry(db, lambda: search_raw_service.save_search_raw(db, ext, payload))
 
 
 # ---------- search-режим: фразы/выдача/срезы (порт server.py) ----------
@@ -695,11 +760,15 @@ async def ext_search_result(
     db: AsyncSession = Depends(get_db),
     ext: dict = Depends(require_ext_token),
 ):
+    return await _with_db_retry(db, lambda: _search_result_impl(payload, db, ext))
+
+
+async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
     cid = int(ext["company_id"])
     data = payload or {}
     queue_id = data.get("queue_id")
     nm_id = data.get("nm_id")
-    phrase = data.get("phrase", "")
+    phrase = capture_service._norm_phrase(data.get("phrase", ""))[:500]
     products = data.get("products") or []
     source = str(data.get("source") or "seo")
     try:
@@ -712,6 +781,7 @@ async def ext_search_result(
     if not await _owns_card(db, cid, nm_id):
         raise HTTPException(status_code=403, detail="foreign nm_id")
     uid = ext.get("created_by")
+    tok = ext.get("id")
     for idx, p in enumerate(products, 1):
         pid = p.get("id")
         if not pid:
@@ -733,30 +803,36 @@ async def ext_search_result(
             INSERT INTO wb_competitor_position
               (company_id, source_nm_id, query_phrase, position, nm_id, title, brand, seller,
                price, old_price, rating, feedbacks, reviews, badges, promo_id, image_url,
-               created_by, collected_at)
+               created_by, ext_token_id, collected_at)
             VALUES (:cid, :s, :ph, :pos, :pid, :t, :b, :seller, :price, :old_price, :rating,
-                    :fb, :rev, :bg, :promo, :img, :uid, CURDATE())
+                    :fb, :rev, :bg, :promo, :img, :uid, :tok, CURDATE())
             ON DUPLICATE KEY UPDATE
               position=VALUES(position), title=VALUES(title), brand=VALUES(brand),
               seller=IF(VALUES(seller)='', seller, VALUES(seller)),
-              price=VALUES(price), old_price=VALUES(old_price), rating=VALUES(rating),
-              feedbacks=VALUES(feedbacks), reviews=VALUES(reviews),
+              price=IF(VALUES(price)>0, VALUES(price), price),
+              old_price=IF(VALUES(old_price)>0, VALUES(old_price), old_price),
+              rating=IF(VALUES(rating)>0, VALUES(rating), rating),
+              feedbacks=IF(VALUES(feedbacks)>0, VALUES(feedbacks), feedbacks),
+              reviews=IF(VALUES(reviews)>0, VALUES(reviews), reviews),
               badges=IF(VALUES(badges)='[]', badges, VALUES(badges)),
-              promo_id=VALUES(promo_id), image_url=VALUES(image_url)
+              promo_id=VALUES(promo_id), image_url=VALUES(image_url),
+              created_by=COALESCE(created_by, VALUES(created_by)),
+              ext_token_id=COALESCE(ext_token_id, VALUES(ext_token_id))
         """), {"cid": cid, "s": nm_id, "ph": phrase, "pos": pos, "pid": pid,
                "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
                "price": price, "old_price": old_price, "rating": rating, "fb": fb, "rev": reviews,
                "bg": json.dumps(badges, ensure_ascii=False),
-               "promo": promo_id, "img": img, "uid": uid})
+               "promo": promo_id, "img": img, "uid": uid, "tok": tok})
         # Конкуренты нашей карточки — только топ-12 (схема: «позиция в выдаче, 1-12»)
         if pos > 12:
             continue
         await db.execute(text("""
             INSERT INTO wb_competitor_cards
               (source_nm_id, query_phrase, position, nm_id, title, brand, seller,
-               price, old_price, rating, feedbacks, badges, image_url, source, added_by)
+               price, old_price, rating, feedbacks, badges, image_url, source, added_by,
+               ext_token_id)
             VALUES (:s, :ph, :pos, :pid, :t, :b, :seller, :price, :old_price, :rating,
-                    :fb, :bg, :img, 'search', :uid)
+                    :fb, :bg, :img, 'search', :uid, :tok)
             ON DUPLICATE KEY UPDATE
               position=VALUES(position), title=VALUES(title), brand=VALUES(brand),
               seller=IF(VALUES(seller)='', seller, VALUES(seller)),
@@ -764,7 +840,8 @@ async def ext_search_result(
               feedbacks=VALUES(feedbacks),
               badges=IF(VALUES(badges)='[]', badges, VALUES(badges)),
               image_url=VALUES(image_url),
-              added_by=COALESCE(added_by, VALUES(added_by))
+              added_by=COALESCE(added_by, VALUES(added_by)),
+              ext_token_id=COALESCE(ext_token_id, VALUES(ext_token_id))
         """), {"s": nm_id, "ph": phrase, "pos": pos, "pid": pid,
                "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
                "price": price, "old_price": old_price, "rating": rating, "fb": fb,

@@ -126,6 +126,23 @@ export interface CompetitorRow {
   sources: string[]
   phrases?: string | null
   manual: boolean
+  // §13.1: поведение для таблицы конкурентов
+  price_delta_7d?: number | null
+  shelves_cnt?: number
+  shelf_anchors_cnt?: number
+  shelf_avg_pos?: number | null
+  shelf_best_pos?: number | null
+  clips_cnt?: number
+  clips_last_at?: string | null
+  clips_authors_cnt?: number
+  top10_cnt?: number
+  phrases_cnt?: number
+  best_pos?: number | null
+  dup_min_price?: number | null
+  dup_gap_pct?: number | null
+  dup_offers_total?: number
+  badges?: string[]
+  last_activity_at?: string | null
 }
 
 export interface CapturedAttachedCard {
@@ -317,6 +334,7 @@ export interface CompetitorDetail {
   price?: string | number | null
   old_price?: string | number | null
   images: string[]
+  preview_image?: string | null
   photo?: string | null
   characteristics: Array<{ name?: string; value?: string[] | string }>
   collected_at?: string | null
@@ -324,7 +342,123 @@ export interface CompetitorDetail {
   attached_to: PickAttachedCard[]
   attached_cnt: number
   price_history: Array<{ price?: string | null; old_price?: string | null; at?: string | null }>
+  positions?: CompetitorPosition[]
+  badges?: string[]
+  rating?: number | null
+  feedbacks?: number | null
+  questions?: number | null
+  full_collected_at?: string | null
   phrases?: CompetitorPhrase[]
+  shelves?: CompetitorShelves
+  clips?: CompetitorClip[]
+  clips_cnt?: number
+  clips_authors_cnt?: number
+  clips_last_at?: string | null
+  duplicates?: CompetitorDuplicates | null
+  compare?: CompetitorCompare | null
+}
+
+export interface CompetitorShelfItem {
+  anchor_nm: number
+  anchor_title?: string
+  preset_id: number
+  preset_type?: string
+  dest?: number | string | null
+  shelf_title?: string
+  snapshot_date?: string | null
+  position?: number | null
+  price?: number | null
+  seller?: string | null
+}
+
+export interface CompetitorShelfAnchor {
+  preset_id: number
+  preset_type?: string
+  dest?: number | string | null
+  shelf_title?: string
+  items_cnt?: number
+  avg_price?: number | null
+  total_candidates?: number | null
+  pages_loaded?: number | null
+  is_partial?: boolean | number | null
+  last_seen_at?: string | null
+}
+
+export interface CompetitorShelves {
+  as_item: CompetitorShelfItem[]
+  as_anchor: CompetitorShelfAnchor[]
+  counts: {
+    shelves_cnt: number
+    anchors_cnt: number
+    avg_pos: number | null
+    best_pos: number | null
+  }
+}
+
+export interface CompetitorClip {
+  clip_id: number
+  type?: string | null
+  name?: string | null
+  description?: string | null
+  duration_s?: number | string | null
+  publication_date?: string | null
+  author_id?: number | null
+  author_name?: string | null
+  author_verified?: boolean | number | null
+  preview_url?: string | null
+  public_url?: string | null
+  author_url?: string | null
+  nm_count?: number | null
+}
+
+export interface CompetitorDuplicateOffer {
+  nm_id: number
+  name?: string | null
+  price?: number | null
+  seller?: string | null
+  is_anchor?: boolean | number | null
+  is_min_price?: boolean | number | null
+  price_gap_pct?: number | null
+}
+
+export interface CompetitorDuplicates {
+  match_id: number
+  anchor_nm?: number | null
+  anchor_title?: string
+  anchor_price?: number | null
+  my_price?: number | null
+  min_price?: number | null
+  min_price_nm?: number | null
+  min_price_title?: string
+  price_gap_pct?: number | null
+  offers_total?: number | null
+  snapshot_date?: string | null
+  offers: CompetitorDuplicateOffer[]
+}
+
+export interface CompetitorCompare {
+  nm_id: number
+  title?: string | null
+  price?: number | string | null
+  old_price?: number | string | null
+  rating?: number | null
+  feedbacks?: number | null
+  badges?: string[]
+  desc_len?: number
+  chars_cnt?: number
+  clips_cnt?: number
+  collected_at?: string | null
+}
+
+export interface CompetitorPosition {
+  phrase: string
+  source_nm_id: number
+  source_title?: string
+  last_position?: number | null
+  last_price?: number | null
+  at?: string | null
+  days?: number
+  positions: Array<{ position?: number | null; price?: number | null; at?: string | null }>
 }
 
 export interface CapturedHistoryItem {
