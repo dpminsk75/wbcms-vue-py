@@ -23,11 +23,12 @@
           <th class="margin-table__per-item">Цена</th>
           <th class="margin-table__per-item">Итог/шт</th>
           <th class="margin-table__per-item">Маржа/шт</th>
+          <th v-if="showStock" class="margin-table__stock-cell">Остаток</th>
         </tr>
       </thead>
       <tbody>
         <tr v-if="!rows.length">
-          <td colspan="20" class="text-center p-4 text-muted">Нет данных за выбранный период</td>
+          <td :colspan="showStock ? 21 : 20" class="text-center p-4 text-muted">Нет данных за выбранный период</td>
         </tr>
         <tr v-for="(r, i) in rows" :key="r.nm_id">
           <td class="text-center">{{ i + 1 }}</td>
@@ -58,6 +59,7 @@
           <td class="text-end margin-table__per-item">{{ fmt2(r.amount_per_item) }}</td>
           <td class="text-end margin-table__per-item fw-bold" :class="r.profit_per_item < 0 ? 'text-danger' : 'text-success'">{{ fmt2(r.profit_per_item) }}</td>
           <td class="text-end margin-table__per-item fw-bold" :class="r.clear_per_item < 0 ? 'text-danger' : 'text-success'">{{ fmt2(r.clear_per_item) }}</td>
+          <td v-if="showStock" class="text-end margin-table__stock-cell">{{ fmt0(r.stock || 0) }}</td>
         </tr>
       </tbody>
       <tfoot v-if="rows.length" class="margin-table__total-row">
@@ -79,6 +81,7 @@
           <td class="text-end">{{ fmt0(totals.tax_amount) }}</td>
           <td class="text-end" :class="totals.clean_margin < 0 ? 'text-danger' : 'text-success'">{{ fmt0(totals.clean_margin) }}</td>
           <td colspan="3"></td>
+          <td v-if="showStock"></td>
         </tr>
       </tfoot>
     </table>
@@ -90,7 +93,7 @@ import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useMoneyFmt } from '@/composables/useMoneyFmt'
 import { marginTotals } from '@/api/profit'
 
-const props = defineProps<{ rows: any[], footerLabel: string }>()
+const props = defineProps<{ rows: any[], footerLabel: string, showStock?: boolean }>()
 
 const { fmt0, fmt2, formatTitle } = useMoneyFmt()
 const totals = computed(() => marginTotals(props.rows))
@@ -170,4 +173,5 @@ watch(() => props.rows, () => {
 .margin-table__net-cell { background-color: #e8f8f5; }
 .margin-table__per-item { font-style: italic; background-color: #fafafa; }
 .margin-table__orange { color: #d35400; }
+.margin-table__stock-cell { background-color: #eef4fb; }
 </style>

@@ -32,7 +32,7 @@ export function marginTotals(rows: any[]): MarginTotals {
 }
 
 // Экспорт как Kartik ExportMenu: русские ключи + итоговая строка
-export async function exportMarginExcel(rows: any[], fileName: string, sheet: string) {
+export async function exportMarginExcel(rows: any[], fileName: string, sheet: string, showStock = false) {
   if (!rows.length) return
   const t = marginTotals(rows)
   const { default: XLSX } = await import('xlsx')
@@ -60,6 +60,7 @@ export async function exportMarginExcel(rows: any[], fileName: string, sheet: st
     'Цена/шт': r.amount_per_item,
     'Итог/шт': r.profit_per_item,
     'Маржа/шт': r.clear_per_item,
+    ...(showStock ? { 'Остаток': r.stock || 0 } : {}),
   }))
   data.push({
     '#': '', 'Арт WB': '', 'Артикул': '', 'Наименование': 'ИТОГО', 'Бренд': '',
@@ -68,6 +69,7 @@ export async function exportMarginExcel(rows: any[], fileName: string, sheet: st
     'Кэшбек': t.f_cashback, 'Итого': t.net_profit, 'НДС': t.total_nds, 'Себ-ть': t.total_cost,
     'Прибыль': t.profit_before_tax, 'Налог (7%)': t.tax_amount, 'Маржа': t.clean_margin,
     'Цена/шт': null, 'Итог/шт': null, 'Маржа/шт': null,
+    ...(showStock ? { 'Остаток': null } : {}),
   } as any)
   const ws = XLSX.utils.json_to_sheet(data)
   const wb = XLSX.utils.book_new()

@@ -44,6 +44,17 @@
           </button>
         </div>
       </div>
+
+      <!-- Чекбоксы и подписи -->
+      <div class="row g-3 align-items-center">
+        <div class="col-md-6 d-flex align-items-center gap-3">
+          <div class="form-check mb-0">
+            <input id="tp-with-stock" v-model="filters.with_stock" type="checkbox" class="form-check-input" />
+            <label class="form-check-label" for="tp-with-stock">Выводить остаток</label>
+          </div>
+          <span v-if="stockDate" class="text-muted small">Остатки на {{ stockDate }}</span>
+        </div>
+      </div>
     </div>
 
     <!-- Таблица результатов -->
@@ -66,7 +77,7 @@
           <div class="mt-2 text-muted">Загрузка данных...</div>
         </div>
 
-        <MarginTable v-else :rows="rows" footer-label="Итого по ТОПу:" />
+        <MarginTable v-else :rows="rows" footer-label="Итого по ТОПу:" :show-stock="filters.with_stock" />
       </div>
     </div>
   </div>
@@ -89,23 +100,32 @@ const filters = ref({
   date_from: defFrom,
   date_to: defTo,
   sort_by: 'qnt',
-  limit: 20
+  limit: 20,
+  with_stock: false
 })
 
 const { data: rowsRaw, isLoading, refetch } = useQuery({
-  queryKey: computed(() => ['top-products', filters.value.date_from, filters.value.date_to, filters.value.sort_by, filters.value.limit]),
-  queryFn: () => api.get('/api/wb-profit/top-products', { params: filters.value }).then(r => r.data),
+  queryKey: computed(() => ['top-products', filters.value.date_from, filters.value.date_to, filters.value.sort_by, filters.value.limit, filters.value.with_stock]),
+  queryFn: () => api.get('/api/wb-profit/top-products', { params: { ...filters.value, with_stock: filters.value.with_stock ? 1 : 0 } }).then(r => r.data),
   initialData: [] as any[]
 })
 
 const rows = computed(() => Array.isArray(rowsRaw.value) ? rowsRaw.value : [])
+
+// Фактическая дата снимка остатков (может быть < date_to — фолбэк)
+const stockDate = computed(() => {
+  if (!filters.value.with_stock) return ''
+  const d = rows.value[0]?.stock_date
+  return d ? String(d).slice(0, 10) : ''
+})
 
 const resetFilters = () => {
   filters.value = {
     date_from: defFrom,
     date_to: defTo,
     sort_by: 'qnt',
-    limit: 20
+    limit: 20,
+    with_stock: false
   }
 }
 
@@ -113,6 +133,7 @@ const exportExcel = () => exportMarginExcel(
   rows.value,
   `top-products_${filters.value.date_from}_${filters.value.date_to}.xlsx`,
   'ТОП товаров',
+  filters.value.with_stock,
 )
 
 onMounted(() => {
