@@ -1,9 +1,13 @@
 """Authorization dependencies for FastAPI."""
+import logging
+
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
 from backend.services import auth_service
+
+logger = logging.getLogger(__name__)
 
 
 async def get_optional_user(
@@ -170,4 +174,24 @@ async def require_ext_token(
             await _ext.touch_token(db, int(tok["id"]))
         except Exception:
             pass
+
+    # Контракт расширения (мягкий отказ): данные принимаем, но просим обновить.
+    got = ext_service.contract_from_request(request)
+    ok, need = ext_service.check_contract(request.url.path, got)
+    tok = dict(tok)
+    tok["contract"] = got
+    tok["contract_ok"] = ok
+    if not ok:
+        request.state.ext_contract_ok = False
+        request.state.ext_contract_need = need
+        logger.warning(
+            "расхождение контрактов расширения: ext=%s, сервер=%s, нужно=%s, путь=%s",
+            got, ext_service.CONTRACT, need, request.url.path,
+        )
+        if ext_service.is_strict(request.url.path):
+            # Критичное изменение логики — не пишем ничего (расширение положит в очередь).
+            raise HTTPException(
+                status_code=409,
+                detail=f"обновите расширение: контракт {got} < {need}",
+            )
     return tok

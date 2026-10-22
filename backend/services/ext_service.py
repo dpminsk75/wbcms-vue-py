@@ -12,6 +12,66 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 TOKEN_PREFIX = "ext_"
 
+# ---------------------------------------------------------------------------
+# Версия протокола /api/ext (контракт).
+#
+# Правило: контракт растёт ТОЛЬКО при несовместимом изменении существующего
+# эндпоинта (переименовано поле, изменён его смысл/единицы, эндпоинт перестал
+# принимать старый формат). Косметика расширения и добавление НОВЫХ эндпоинтов
+# контракт не меняют.
+#
+# Расширение шлёт X-Ext-Contract; сервер отвечает X-Ext-Contract и, если
+# расширение отстало, X-Ext-Update: 1 (мягкий отказ: данные принимаем, но
+# просим обновить расширение).
+# ---------------------------------------------------------------------------
+CONTRACT = 2
+
+# Минимальный контракт по эндпоинтам (None — совместимы со всеми версиями).
+ENDPOINT_MIN_CONTRACT: dict[str, int | None] = {
+    "search_raw": 2,
+}
+
+# Эндпоинты с ЖЁСТКОЙ блокировкой: при несовпадении контракта — 409 и данные
+# НЕ пишем (расширение кладёт их в очередь). Сюда попадает эндпоинт, когда его
+# логика меняется критично и запись по-старому испортила бы базу.
+STRICT_ENDPOINTS: set[str] = {
+    "search_raw",
+}
+
+
+def _int_header(value: str | None) -> int:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return 0
+
+
+def contract_from_request(request) -> int:
+    """Контракт расширения: из заголовка X-Ext-Contract; нет заголовка = 1 (старое расширение)."""
+    got = _int_header(request.headers.get("X-Ext-Contract"))
+    return got if got > 0 else 1
+
+
+def endpoint_key(path: str) -> str:
+    """Ключ эндпоинта для правил: /api/ext/search_raw → search_raw."""
+    p = str(path or "").rstrip("/")
+    if "/api/ext/" in p:
+        return p.rsplit("/api/ext/", 1)[1].split("/")[0]
+    return p.rsplit("/", 1)[-1]
+
+
+def check_contract(path: str, got: int) -> tuple[bool, int | None]:
+    """(совместимо ли, минимальный контракт) для эндпоинка."""
+    key = endpoint_key(path)
+    need = ENDPOINT_MIN_CONTRACT.get(key)
+    if need is None:
+        return True, None
+    return (got >= need), need
+
+
+def is_strict(path: str) -> bool:
+    return endpoint_key(path) in STRICT_ENDPOINTS
+
 
 def _sha(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()

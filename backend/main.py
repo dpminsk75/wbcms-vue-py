@@ -37,6 +37,21 @@ app.add_middleware(
     # Расширение ходит из chrome-extension:// — без regex его режет CORS (§10).
     allow_origin_regex=r"chrome-extension://.*",
 )
+
+
+@app.middleware("http")
+async def ext_contract_headers(request: Request, call_next):
+    """Сообщаем расширению версию протокола (/api/ext) и просим обновиться,
+    если сервер ждёт более новый контракт, чем умеет расширение."""
+    response = await call_next(request)
+    try:
+        from backend.services import ext_service
+        response.headers["X-Ext-Contract"] = str(ext_service.CONTRACT)
+        if getattr(request.state, "ext_contract_ok", True) is False:
+            response.headers["X-Ext-Update"] = "1"
+    except Exception:
+        pass
+    return response
 app.include_router(auth_router)
 app.include_router(companies_router)
 app.include_router(dashboard_router)

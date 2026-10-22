@@ -25,6 +25,7 @@ from .competitors_newcard import (
     pick_router as competitors_pick_router,
     refresh_router as competitors_refresh_router,
 )
+from .competitors_positions import router as competitors_positions_router
 from .ai_jobs import router as ai_jobs_router
 from .seo import router as seo_router
 from .seo_models import router as seo_models_router
