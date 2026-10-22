@@ -9,19 +9,7 @@
     <!-- карточка WB -->
     <div v-if="showCard" style="margin-bottom:12px">
       <label style="font-size:12px; font-weight:600">Карточка WB (артикул):</label>
-      <div style="position:relative" ref="cardWrapRef">
-        <input :value="cardQuery" @input="onCardInput($event)" placeholder="Выберите артикул..." class="form-control" style="width:100%" @focus="showCardList=true" @keydown.esc="showCardList=false" />
-        <div v-if="showCardList && filteredCards.length" style="position:absolute; top:100%; left:0; right:0; max-height:220px; overflow:auto; background:#fff; border:1px solid #e5e7eb; border-radius:6px; z-index:10; box-shadow:0 4px 12px rgba(0,0,0,.1)">
-          <div v-for="c in filteredCards.slice(0,20)" :key="c.nmID" @mousedown.prevent="selectCard(c)" style="padding:6px 10px; cursor:pointer; font-size:12px; border-bottom:1px solid #f1f5f9">
-            {{ c.nmID }} | {{ c.title }} | {{ c.vendorCode }}
-          </div>
-        </div>
-      </div>
-      <div style="display:flex; gap:8px; align-items:center; margin-top:4px">
-        <span v-if="nmId" style="font-size:11px; color:#7c1af8">Выбрано: {{ nmId }}</span>
-        <button v-if="nmId || cardQuery" class="btn btn-sm btn-light" style="font-size:11px; padding:2px 8px" @click="clearCard">× Сбросить</button>
-        <button v-if="showCardList" class="btn btn-sm btn-outline-secondary" style="font-size:11px; padding:2px 8px" @click="showCardList=false">Закрыть Esc</button>
-      </div>
+      <WbCardSelect v-model:nm-id="nmId" placeholder="Выберите артикул..." />
     </div>
     <!-- период: только выбор дат -->
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:nowrap">
@@ -42,16 +30,16 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { api } from '@/api/client'
 import WbDateInput from './WbDateInput.vue'
+import WbCardSelect from './WbCardSelect.vue'
 
 const props = withDefaults(defineProps<{
   showCard?: boolean
-  cards?: any[] // если переданы извне — используем их, иначе грузим сами
   quickButtonsProp?: any[] | null // если переданы явно — используем их, иначе грузим из /api/config/quick-buttons
   embedded?: boolean // для /wb-adv-report: без внешнего col-md-6/well, только даты+кнопки внутри карточки кампании
-}>(), { showCard: true, cards: undefined, quickButtonsProp: null, embedded: false })
+}>(), { showCard: true, quickButtonsProp: null, embedded: false })
 
 const nmId = defineModel<string>('nmId', { default: '' })
 const dateFrom = defineModel<string>('dateFrom', { default: '' })
@@ -65,10 +53,6 @@ const emit = defineEmits<{
   (e:'reset'): void
 }>()
 
-const cardWrapRef = ref<HTMLDivElement|null>(null)
-const cardQuery = ref(nmId.value || '')
-const showCardList = ref(false)
-const innerCards = ref<any[]>([])
 // fallback как в AdminQuickButtons.php:46 — если /api/config/quick-buttons пустой/500, кнопки всё равно покажутся (иконки bi как в site.css, FA не грузим)
 const defaultQuickButtons = [
   {icon: 'bi bi-journal-text', label: 'Дневник', nm_id: 526443466},
@@ -78,35 +62,11 @@ const defaultQuickButtons = [
 ]
 const quickButtonsStatic = ref<any[]>([...defaultQuickButtons])
 
-const cardsSource = computed(()=> props.cards ?? innerCards.value)
 const quickButtons = computed(()=> props.quickButtonsProp ?? quickButtonsStatic.value)
 
-const filteredCards = computed(()=>{
-  const q = cardQuery.value.toLowerCase().trim()
-  if(!q) return cardsSource.value
-  return cardsSource.value.filter((c:any)=> String(c.nmID).includes(q) || String(c.vendorCode||'').toLowerCase().includes(q) || String(c.title||'').toLowerCase().includes(q))
-})
-
-const onCardInput = (e: Event)=>{
-  cardQuery.value = (e.target as HTMLInputElement).value
-  showCardList.value = true
-  // если стирают — сбрасываем nmId
-  if(!cardQuery.value) nmId.value = ''
-}
-
-const selectCard = (c:any)=>{
-  nmId.value = String(c.nmID)
-  cardQuery.value = `${c.nmID} | ${c.title}`
-  showCardList.value=false
-}
-const clearCard = ()=>{
-  nmId.value=''; cardQuery.value=''; showCardList.value=false
-}
 const onQuickClick = (btn:any)=>{
-  nmId.value = String(btn.nm_id)
-  cardQuery.value = `${btn.nm_id} | ${btn.label}`
-  showCardList.value=false
   // как в dp-view.php:17 — быстрый выбор карточки, сразу применяем фильтр
+  nmId.value = String(btn.nm_id)
   emit('apply')
 }
 
@@ -124,43 +84,7 @@ const setRange = (p:string)=>{
   dateFrom.value = fmtD(from)
 }
 
-// синхронизация внешнего nmId -> cardQuery (выбор, URL, F5)
-const cardTitleCache = ref<Record<string,string>>({})
-const syncCardLabel=async()=>{
-  const id=String(nmId.value||'')
-  if(!id){ if(!showCardList.value) cardQuery.value=''; return }
-  const c=cardsSource.value.find((x:any)=> String(x.nmID)===id)
-  if(c){ cardQuery.value = c.title ? `${c.nmID} | ${c.title}` : String(c.nmID); return }
-  if(cardQuery.value && cardQuery.value!==id) return // пользователь что-то ввел — не трогаем
-  if(cardTitleCache.value[id]){ cardQuery.value=`${id} | ${cardTitleCache.value[id]}`; return }
-  try{
-    const { data:d } = await api.get(`/api/wb/card/${id}`)
-    if(d?.title){ cardTitleCache.value[id]=d.title; if(String(nmId.value)===id) cardQuery.value=`${id} | ${d.title}`; return }
-  }catch{}
-  if(!cardQuery.value) cardQuery.value=id
-}
-watch(()=> nmId.value, syncCardLabel)
-watch(cardsSource, ()=>{ if(nmId.value) syncCardLabel() })
-
-// клик вне — закрытие списка
-const onDocClick = (e: MouseEvent)=>{
-  if(!showCardList.value) return
-  const el = cardWrapRef.value
-  if(el && !el.contains(e.target as Node)) showCardList.value=false
-}
 onMounted(async()=>{
-  document.addEventListener('mousedown', onDocClick)
-  if(props.cards === undefined){
-    try{
-      // пробуем новый эндпоинт /api/wb/cards (все карточки, без ограничения 14д как new-cards), fallback на старый
-      let d:any=null
-      try{ const r=await api.get('/api/wb/cards?limit=200'); d=r.data }catch{}
-      if(!d || !Array.isArray(d) || d.length===0){
-        const r2=await api.get('/api/dashboard/new-cards?dateFrom=2025-01-01&dateTo=2026-12-31'); d=r2.data
-      }
-      innerCards.value = Array.isArray(d) ? d : (d?.items ?? [])
-    }catch{}
-  }
   if(props.quickButtonsProp === null){
     try{
       const { data:d } = await api.get('/api/config/quick-buttons')
@@ -169,5 +93,4 @@ onMounted(async()=>{
     }catch{}
   }
 })
-onBeforeUnmount(()=> document.removeEventListener('mousedown', onDocClick))
 </script>
