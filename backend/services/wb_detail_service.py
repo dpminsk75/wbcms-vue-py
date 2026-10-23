@@ -156,22 +156,24 @@ class WbDetailService:
         return [dict(r) for r in rows]
 
     async def get_weekly_finance(self, nm_id: int, date_from: str, date_to: str):
-        # как WbController.php:555 — реклама/отзывы из ff_adv/ff_otziv, net_profit с поправкой
+        # как WbController.php:555 — реклама/отзывы из ff_adv/ff_otziv, net_profit с поправкой.
+        # Хранение — ff_storage_fee (отчёт WB по позициям), как в отчётах по товарам.
         sql = text(f"""SELECT DATE_SUB(sdate, INTERVAL WEEKDAY(sdate) DAY) as sdate,
                              SUM(qnt) as qnt, SUM(amount) as amount, SUM(commission) as commission,
                              SUM(f_acquiring_fee) as f_acquiring_fee, SUM(f_delivery) as f_delivery,
                              SUM(f_penalty) as f_penalty,
-                             COALESCE(SUM(ff_otziv),0) as f_otziv, COALESCE(SUM(ff_adv),0) as f_adv, SUM(f_cashback) as f_cashback,
-                             SUM(net_profit)-COALESCE(SUM(ff_otziv),0)-COALESCE(SUM(ff_adv),0) as net_profit,
+                             COALESCE(SUM(ff_otziv),0) as f_otziv, COALESCE(SUM(ff_adv),0) as f_adv,
+                             COALESCE(SUM(ff_storage_fee),0) as f_storage_fee, SUM(f_cashback) as f_cashback,
+                             SUM(net_profit)-COALESCE(SUM(ff_otziv),0)-COALESCE(SUM(ff_adv),0)-COALESCE(SUM(ff_storage_fee),0) as net_profit,
                              COALESCE(SUM(f_nds),0) as total_nds, COALESCE(SUM(f_cost_price),0) as total_cost,
-                             SUM(net_profit)-COALESCE(SUM(f_nds),0)-COALESCE(SUM(f_cost_price),0)-COALESCE(SUM(ff_otziv),0)-COALESCE(SUM(ff_adv),0) as profit_before_tax,
-                             GREATEST(0, SUM(net_profit)-COALESCE(SUM(f_nds),0)-COALESCE(SUM(f_cost_price),0)-COALESCE(SUM(ff_otziv),0)-COALESCE(SUM(ff_adv),0))*0.07 as tax_amount,
-                             (SUM(net_profit)-COALESCE(SUM(f_nds),0)-COALESCE(SUM(f_cost_price),0)-COALESCE(SUM(ff_otziv),0)-COALESCE(SUM(ff_adv),0))
-                              - (GREATEST(0, SUM(net_profit)-COALESCE(SUM(f_nds),0)-COALESCE(SUM(f_cost_price),0)-COALESCE(SUM(ff_otziv),0)-COALESCE(SUM(ff_adv),0))*0.07) as clean_margin,
+                             SUM(net_profit)-COALESCE(SUM(f_nds),0)-COALESCE(SUM(f_cost_price),0)-COALESCE(SUM(ff_otziv),0)-COALESCE(SUM(ff_adv),0)-COALESCE(SUM(ff_storage_fee),0) as profit_before_tax,
+                             GREATEST(0, SUM(net_profit)-COALESCE(SUM(f_nds),0)-COALESCE(SUM(f_cost_price),0)-COALESCE(SUM(ff_otziv),0)-COALESCE(SUM(ff_adv),0)-COALESCE(SUM(ff_storage_fee),0))*0.07 as tax_amount,
+                             (SUM(net_profit)-COALESCE(SUM(f_nds),0)-COALESCE(SUM(f_cost_price),0)-COALESCE(SUM(ff_otziv),0)-COALESCE(SUM(ff_adv),0)-COALESCE(SUM(ff_storage_fee),0))
+                              - (GREATEST(0, SUM(net_profit)-COALESCE(SUM(f_nds),0)-COALESCE(SUM(f_cost_price),0)-COALESCE(SUM(ff_otziv),0)-COALESCE(SUM(ff_adv),0)-COALESCE(SUM(ff_storage_fee),0))*0.07) as clean_margin,
                              COALESCE(SUM(amount)/NULLIF(SUM(qnt),0),0) as amount_per_item,
                              COALESCE(SUM(net_profit)/NULLIF(SUM(qnt),0),0) as profit_per_item,
-                             COALESCE(((SUM(net_profit)-COALESCE(SUM(f_nds),0)-COALESCE(SUM(f_cost_price),0)-COALESCE(SUM(ff_otziv),0)-COALESCE(SUM(ff_adv),0))
-                              - (GREATEST(0, SUM(net_profit)-COALESCE(SUM(f_nds),0)-COALESCE(SUM(f_cost_price),0)-COALESCE(SUM(ff_otziv),0)-COALESCE(SUM(ff_adv),0))*0.07))/NULLIF(SUM(qnt),0),0) as clear_per_item
+                             COALESCE(((SUM(net_profit)-COALESCE(SUM(f_nds),0)-COALESCE(SUM(f_cost_price),0)-COALESCE(SUM(ff_otziv),0)-COALESCE(SUM(ff_adv),0)-COALESCE(SUM(ff_storage_fee),0))
+                              - (GREATEST(0, SUM(net_profit)-COALESCE(SUM(f_nds),0)-COALESCE(SUM(f_cost_price),0)-COALESCE(SUM(ff_otziv),0)-COALESCE(SUM(ff_adv),0)-COALESCE(SUM(ff_storage_fee),0))*0.07))/NULLIF(SUM(qnt),0),0) as clear_per_item
                       FROM agg_daily_summary WHERE nm_id=:nm_id AND sdate BETWEEN :d1 AND :d2{self._company_where()}
                       GROUP BY DATE_SUB(sdate, INTERVAL WEEKDAY(sdate) DAY) ORDER BY sdate DESC""")
         rows = (await self.db.execute(sql, {"nm_id": nm_id, "d1": date_from, "d2": date_to, **self._company_params()})).mappings().all()

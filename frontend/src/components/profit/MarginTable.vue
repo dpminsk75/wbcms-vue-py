@@ -31,7 +31,17 @@
           <td :colspan="showStock ? 21 : 20" class="text-center p-4 text-muted">Нет данных за выбранный период</td>
         </tr>
         <tr v-for="(r, i) in rows" :key="r.nm_id">
-          <td class="text-center">{{ i + 1 }}</td>
+          <td class="margin-table__pos">
+            <span class="margin-table__num">{{ i + 1 }}</span>
+            <button
+              v-if="showBreakdown"
+              class="margin-table__eye"
+              title="Структура затрат"
+              @click.stop="openBreakdown(r)"
+            >
+              <i class="bi bi-eye"></i>
+            </button>
+          </td>
           <td class="margin-table__cell-product">
             <div class="margin-table__order-text">
               <div class="margin-table__title" :title="r.title || ''">{{ formatTitle(r.title) }}</div>
@@ -86,20 +96,26 @@
       </tfoot>
     </table>
   </div>
+  <MarginBreakdownPopup v-if="breakdownRow" :open="true" :row="breakdownRow" @close="breakdownRow = null" />
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useMoneyFmt } from '@/composables/useMoneyFmt'
 import { marginTotals } from '@/api/profit'
+import MarginBreakdownPopup from './MarginBreakdownPopup.vue'
 
-const props = defineProps<{ rows: any[], footerLabel: string, showStock?: boolean }>()
+const props = defineProps<{ rows: any[], footerLabel: string, showStock?: boolean, showBreakdown?: boolean }>()
 
 const { fmt0, fmt2, formatTitle } = useMoneyFmt()
 const totals = computed(() => marginTotals(props.rows))
 
 const tableRef = ref<HTMLTableElement | null>(null)
 const wrapRef = ref<HTMLDivElement | null>(null)
+
+// Попап «Структура затрат» по строке (только при showBreakdown)
+const breakdownRow = ref<any>(null)
+const openBreakdown = (r: any) => { breakdownRow.value = r }
 
 const fit = () => {
   const table = tableRef.value
@@ -160,6 +176,11 @@ watch(() => props.rows, () => {
 .margin-table th { background-color: #f8f9fa; font-weight: 500; vertical-align: middle; text-align: center; padding: 8px 4px; font-size: 11px; white-space: normal; word-break: break-word; }
 .margin-table td { vertical-align: middle; padding: 4px 3px; font-size: 13px; }
 .margin-table__th--num { width: 25px; min-width: 25px; }
+/* Позиция+глазик: flex на <td> ломает высоту строки, поэтому глазик — absolute от низа ячейки */
+.margin-table td.margin-table__pos { position: relative; vertical-align: top; text-align: center; padding-top: 3px; padding-bottom: 15px; }
+.margin-table__num { display: block; line-height: 1.1; }
+.margin-table__eye { position: absolute; left: 0; right: 0; bottom: 2px; text-align: center; border: 0; background: transparent; color: #9aa0a8; padding: 0; font-size: 12px; line-height: 1; cursor: pointer; }
+.margin-table__eye:hover { color: #8a2be0; }
 .margin-table__th--product { width: 280px; min-width: 220px; }
 .margin-table__cell-product { max-width: 280px; white-space: normal; word-wrap: break-word; }
 .margin-table__order-text { display: flex; flex-direction: column; gap: 2px; }

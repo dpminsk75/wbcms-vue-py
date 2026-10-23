@@ -77,7 +77,7 @@
           <div class="mt-2 text-muted">Загрузка данных...</div>
         </div>
 
-        <MarginTable v-else :rows="rows" footer-label="Итого по ТОПу:" :show-stock="filters.with_stock" />
+        <MarginTable v-else :rows="rows" footer-label="Итого по ТОПу:" :show-stock="filters.with_stock" show-breakdown />
       </div>
     </div>
   </div>

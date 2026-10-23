@@ -62,9 +62,16 @@ SELECT p.company_id, DATE(p.sale_dt), p.nm_id,
         - SUM(p.storage_fee) - SUM(p.penalty) - SUM(p.deduction) - SUM(p.cashback_amount)
     ), 2),
     CASE WHEN MAX(DATE(p.sale_dt)) < '2026-01-01' THEN 0.00
-         ELSE ROUND((
-             SUM(CASE WHEN p.supplier_oper_name = 'Продажа' THEN p.retail_price_withdisc_rub ELSE 0 END) -
-             SUM(CASE WHEN p.supplier_oper_name = 'Возврат' THEN p.retail_price_withdisc_rub ELSE 0 END))
+         ELSE ROUND(
+             GREATEST(COALESCE(
+                 (SUM(CASE WHEN p.supplier_oper_name = 'Продажа' THEN p.retail_price_withdisc_rub ELSE 0 END) -
+                  SUM(CASE WHEN p.supplier_oper_name = 'Возврат' THEN p.retail_price_withdisc_rub ELSE 0 END))
+                 - ((SUM(CASE WHEN p.supplier_oper_name = 'Продажа' THEN 1 ELSE 0 END) -
+                     SUM(CASE WHEN p.supplier_oper_name = 'Возврат' THEN 1 ELSE 0 END))
+                    * COALESCE((SELECT c.price FROM wbcards_costs c
+                        WHERE c.nmID = p.nm_id AND c.load_date <= MAX(DATE(p.sale_dt))
+                        ORDER BY c.load_date DESC, c.id DESC LIMIT 1), 0))
+             , 0), 0)
              * COALESCE((SELECT n.nds FROM wbcards_nds n
                  WHERE n.nmID = p.nm_id AND n.load_date <= MAX(DATE(p.sale_dt))
                  ORDER BY n.load_date DESC, n.id DESC LIMIT 1), 0)
@@ -83,14 +90,34 @@ GROUP BY p.company_id, DATE(p.sale_dt), p.nm_id"""
 
 ADV_SQL = """
 INSERT INTO `agg_daily_summary` (company_id, sdate, nm_id, ff_adv)
-SELECT nms.`company_id`, s.`date`, nms.`nm_id`, SUM(nms.`sum`)
-FROM `wb_campaign_stats_nms` nms
-INNER JOIN `wb_campaign_stats` s
-  ON nms.`parent_id` = s.`id` AND nms.`company_id` = s.`company_id`
-WHERE s.`date` BETWEEN :fr AND :to
-GROUP BY nms.`company_id`, s.`date`, nms.`nm_id`
+SELECT * FROM (
+    SELECT nms.`company_id` AS company_id, s.`date` AS sdate,
+           nms.`nm_id` AS nm_id, SUM(nms.`sum`) AS ff_adv
+    FROM `wb_campaign_stats_nms` nms
+    INNER JOIN `wb_campaign_stats` s
+      ON nms.`parent_id` = s.`id` AND nms.`company_id` = s.`company_id`
+    WHERE s.`date` BETWEEN :fr AND :to
+    GROUP BY nms.`company_id`, s.`date`, nms.`nm_id`
+) AS dt
 ON DUPLICATE KEY UPDATE
-    ff_adv = VALUES(ff_adv)"""
+    ff_adv = dt.ff_adv"""
+
+# Платное хранение по позициям (отчёт WB «Платное хранение» → wb_paid_storage).
+# В отчётах по товарам хранение = ff_storage_fee; f_storage_fee (детализация продаж) —
+# для месячных отчётов, смешивать нельзя.
+# INSERT создаёт строки куба там, где по товару не было продаж (qnt=0),
+# иначе месячные начисления (1-го числа) терялись бы.
+STORAGE_SQL = """
+INSERT INTO `agg_daily_summary` (company_id, sdate, nm_id, ff_storage_fee)
+SELECT * FROM (
+    SELECT company_id AS company_id, `date` AS sdate, nmId AS nm_id,
+           SUM(warehousePrice) AS ff_storage_fee
+    FROM wb_paid_storage
+    WHERE `date` BETWEEN :fr AND :to AND nmId IS NOT NULL
+    GROUP BY company_id, `date`, nmId
+) AS dt
+ON DUPLICATE KEY UPDATE
+    ff_storage_fee = dt.ff_storage_fee"""
 
 class AggregateService:
     def __init__(self, db: AsyncSession):
@@ -140,6 +167,20 @@ class AggregateService:
         except Exception as e:
             await self.db.rollback()
             return {"adv": f"ERROR: {type(e).__name__}: {e}"[:300]}
+
+    async def update_storage_costs(self, df: str, dt: str) -> dict:
+        """ff_storage_fee — платное хранение по позициям из отчёта WB (wb_paid_storage).
+
+        Upsert: обновляет существующие строки куба и создаёт новые там, где по товару
+        не было продаж в этот день (начисления месячные — их нельзя терять).
+        """
+        try:
+            await self.db.execute(text(STORAGE_SQL), {"fr": df, "to": dt})
+            await self.db.commit()
+            return {"storage": "ok"}
+        except Exception as e:
+            await self.db.rollback()
+            return {"storage": f"ERROR: {type(e).__name__}: {e}"[:300]}
 
     async def update_feedbacks_cost(self, df: str, dt: str) -> dict:
         import re
