@@ -96,7 +96,7 @@
       </tfoot>
     </table>
   </div>
-  <MarginBreakdownPopup v-if="breakdownRow" :open="true" :row="breakdownRow" @close="breakdownRow = null" />
+  <MarginBreakdownPopup v-if="breakdownRow" :open="true" :row="breakdownRow" :period="period" @close="breakdownRow = null" />
 </template>
 
 <script setup lang="ts">
@@ -105,7 +105,7 @@ import { useMoneyFmt } from '@/composables/useMoneyFmt'
 import { marginTotals } from '@/api/profit'
 import MarginBreakdownPopup from './MarginBreakdownPopup.vue'
 
-const props = defineProps<{ rows: any[], footerLabel: string, showStock?: boolean, showBreakdown?: boolean }>()
+const props = defineProps<{ rows: any[], footerLabel: string, showStock?: boolean, showBreakdown?: boolean, period?: string }>()
 
 const { fmt0, fmt2, formatTitle } = useMoneyFmt()
 const totals = computed(() => marginTotals(props.rows))
