@@ -562,3 +562,23 @@ async def refresh_assign(
         raise HTTPException(status_code=403, detail=str(exc))
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@refresh_router.post("/restore")
+async def refresh_restore(
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """«Появилась снова»: ручная разблокировка карточек со статусом gone"""
+    raw = (payload or {}).get("nm_ids") or []
+    if not isinstance(raw, list):
+        raise HTTPException(status_code=400, detail="nm_ids должен быть массивом")
+    svc = CompetitorsNewcardService(db, company_id)
+    try:
+        return await svc.restore_gone(raw, user_id=user["id"])
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))

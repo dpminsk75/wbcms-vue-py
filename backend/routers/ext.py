@@ -174,28 +174,30 @@ async def ext_seed(
     if source:
         if not await _owns_card(db, cid, source):
             raise HTTPException(status_code=403, detail="foreign source_nm_id")
+        # Только карточки, которых ещё нет в очереди (то есть новые). Собранные
+        # раньше не возвращаем в pending автоматически: обновление назначается
+        # руками (режим «Обновление» / need_update), а ожившее — кнопкой
+        # «Сброс ошибок / зависших». Раньше тут стоял TTL 24 ч и перевод
+        # done->pending — из-за этого «Обработано» таяло, а очередь пухла.
         r = await db.execute(text(f"""
             INSERT INTO wb_enrich_queue (nm_id, company_id)
             SELECT DISTINCT nm_id, :cid FROM wb_competitor_cards
             WHERE source_nm_id=:s
               AND nm_id > 0
-              AND nm_id NOT IN (SELECT nm_id FROM wb_competitor_details
-                               WHERE full_collected_at > NOW() - INTERVAL 24 HOUR)
+              AND nm_id NOT IN (SELECT nm_id FROM wb_enrich_queue)
             ON DUPLICATE KEY UPDATE
-              company_id=IF(company_id IS NULL, :cid, company_id),
-              status=IF((company_id IS NULL OR company_id=:cid) AND status IN ('done', 'error'), 'pending', status)
+              company_id=IF(company_id IS NULL, :cid, company_id)
         """), {"s": source, "cid": cid})
     else:
+        # То же для всех наших карточек-источников (без TTL и без перевода статусов)
         r = await db.execute(text(f"""
             INSERT INTO wb_enrich_queue (nm_id, company_id)
             SELECT DISTINCT nm_id, :cid FROM wb_competitor_cards
             WHERE source_nm_id IN ({OWNED_CARDS.replace(':cid', ':cid2')})
               AND nm_id > 0
-              AND nm_id NOT IN (SELECT nm_id FROM wb_competitor_details
-                               WHERE full_collected_at > NOW() - INTERVAL 24 HOUR)
+              AND nm_id NOT IN (SELECT nm_id FROM wb_enrich_queue)
             ON DUPLICATE KEY UPDATE
-              company_id=IF(company_id IS NULL, :cid, company_id),
-              status=IF((company_id IS NULL OR company_id=:cid) AND status IN ('done', 'error'), 'pending', status)
+              company_id=IF(company_id IS NULL, :cid, company_id)
         """), {"cid": cid, "cid2": cid})
     await db.commit()
     return {"added": r.rowcount}
@@ -315,6 +317,7 @@ async def ext_result(
         "fb": capture_service._to_int(payload.get("feedbacks")),
         "q": capture_service._to_int(payload.get("questions")),
         "bg": new_badges, "full": is_full,
+        "so": 1 if (payload or {}).get("sold_out") else 0,
         "cid": cid, "uid": uid,
     }
     if existing:
@@ -338,6 +341,7 @@ async def ext_result(
                   feedbacks=IF(:fb IS NULL, feedbacks, :fb),
                   questions=IF(:q IS NULL, questions, :q),
                   badges=IF(:bg='[]', badges, :bg),
+                  sold_out=:so,
                   full_collected_at=IF(:full=1, NOW(), full_collected_at),
                   captured_company_id=COALESCE(captured_company_id, :cid),
                   captured_by=COALESCE(captured_by, :uid)
@@ -356,6 +360,7 @@ async def ext_result(
                   feedbacks=IF(:fb IS NULL, feedbacks, :fb),
                   questions=IF(:q IS NULL, questions, :q),
                   badges=IF(:bg='[]', badges, :bg),
+                  sold_out=:so,
                   full_collected_at=IF(:full=1, NOW(), full_collected_at),
                   captured_company_id=COALESCE(captured_company_id, :cid),
                   captured_by=COALESCE(captured_by, :uid)
@@ -365,9 +370,9 @@ async def ext_result(
         await db.execute(text("""
             INSERT INTO wb_competitor_details
               (nm_id, title, description, recommendations, url, brand, seller, price, old_price, images,
-               characteristics, subject_name, rating, feedbacks, questions, badges,
+               characteristics, subject_name, rating, feedbacks, questions, badges, sold_out,
                first_collected_at, full_collected_at, captured_company_id, captured_by)
-            VALUES (:n, :t, :d, :nr, :u, :b, :s, :p, :o, :img, :chars, :subj, :rate, :fb, :q, :bg,
+            VALUES (:n, :t, :d, :nr, :u, :b, :s, :p, :o, :img, :chars, :subj, :rate, :fb, :q, :bg, :so,
                     NOW(), IF(:full=1, NOW(), NULL), :cid, :uid)
         """), {**params, "nr": new_recs})
     # История: снимок при смене content_hash (source='enrich', как в capture_service).
@@ -438,6 +443,19 @@ async def ext_error(
         nm_id = int((payload or {}).get("nm_id") or 0)
     except (TypeError, ValueError):
         nm_id = 0
+    # «Карточки нет на WB»: WB отдаёт error404 / content404, обогащение такой сбор
+    # не пройдёт никогда. Ставим 'gone' вместо 'error': /next не выдаёт gone в
+    # обновление, reset_enrich не поднимает — пока человек не проверит кнопку
+    # «Появилась снова» (reset_enrich include_gone=1).
+    if str((payload or {}).get("reason") or "") == "not_found":
+        await db.execute(text("""
+            UPDATE wb_enrich_queue SET status='gone', not_found_at=NOW(),
+              error_msg=:m, company_id=COALESCE(company_id, :c)
+            WHERE nm_id=:n AND (company_id=:c OR company_id IS NULL)
+        """), {"m": str((payload or {}).get("error", "карточка не найдена на WB"))[:500],
+               "n": nm_id, "c": cid})
+        await db.commit()
+        return {"ok": True}
     await db.execute(text("""
         UPDATE wb_enrich_queue SET status='error', error_msg=:m,
           company_id=COALESCE(company_id, :c)
@@ -526,6 +544,8 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
         badges = p.get("badges") or []
         seller = str(p.get("seller") or "")[:255]
         promo_id = capture_service._to_int(p.get("promo_id", 0))
+        # «Нет в наличии» в выдаче: карточка без цены
+        sold_out = 1 if p.get("sold_out") else 0
         uid = ext.get("created_by")
         tok = ext.get("id")
 
@@ -534,9 +554,9 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
                 INSERT INTO wb_competitor_position
                   (company_id, source_nm_id, query_phrase, position, nm_id, title, brand, seller,
                    price, old_price, rating, feedbacks, reviews, badges, promo_id, image_url,
-              created_by, ext_token_id, collected_at, slice_stamp)
+                   sold_out, created_by, ext_token_id, collected_at, slice_stamp)
                 VALUES (:cid, :s, :ph, :pos, :pid, :t, :b, :seller, :price, :old_price, :rating,
-                    :fb, :rev, :bg, :promo, :img, :uid, :tok, CURDATE(), :slice_stamp)
+                    :fb, :rev, :bg, :promo, :img, :so, :uid, :tok, CURDATE(), :slice_stamp)
                 ON DUPLICATE KEY UPDATE
                   position=VALUES(position), title=VALUES(title), brand=VALUES(brand),
                   seller=IF(VALUES(seller)='', seller, VALUES(seller)),
@@ -547,6 +567,7 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
                   reviews=IF(VALUES(reviews)>0, VALUES(reviews), reviews),
                   badges=IF(VALUES(badges)='[]', badges, VALUES(badges)),
                   promo_id=VALUES(promo_id), image_url=VALUES(image_url),
+                  sold_out=VALUES(sold_out),
                   created_by=COALESCE(created_by, VALUES(created_by)),
                   ext_token_id=COALESCE(ext_token_id, VALUES(ext_token_id))
             """), {"cid": cid, "s": src, "ph": phrase, "pos": pos, "pid": pid,
@@ -554,7 +575,8 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
                    "price": price, "old_price": old_price, "rating": rating,
                    "fb": fb, "rev": reviews,
                    "bg": json.dumps(badges, ensure_ascii=False),
-                   "promo": promo_id, "img": img, "uid": uid, "tok": tok,
+                   "promo": promo_id, "img": img, "so": sold_out,
+                   "uid": uid, "tok": tok,
                    "slice_stamp": slice_stamp})
 
         # конкуренты нашей карточки — только топ-12
@@ -566,9 +588,9 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
                     INSERT INTO wb_competitor_cards
                       (source_nm_id, query_phrase, position, nm_id, title, brand, seller,
                        price, old_price, rating, feedbacks, badges, image_url, source, added_by,
-                       ext_token_id)
+                       ext_token_id, sold_out)
                     VALUES (:s, :ph, :pos, :pid, :t, :b, :seller, :price, :old_price, :rating,
-                            :fb, :bg, :img, 'search', :uid, :tok)
+                            :fb, :bg, :img, 'search', :uid, :tok, :so)
                     ON DUPLICATE KEY UPDATE
                       position=VALUES(position), title=VALUES(title), brand=VALUES(brand),
                       seller=IF(VALUES(seller)='', seller, VALUES(seller)),
@@ -576,23 +598,24 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
                       feedbacks=VALUES(feedbacks),
                       badges=IF(VALUES(badges)='[]', badges, VALUES(badges)),
                       image_url=VALUES(image_url),
+                      sold_out=VALUES(sold_out),
                       added_by=COALESCE(added_by, VALUES(added_by)),
                       ext_token_id=COALESCE(ext_token_id, VALUES(ext_token_id))
                 """), {"s": src, "ph": phrase, "pos": pos, "pid": pid,
                        "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
                        "price": price, "old_price": old_price, "rating": rating,
                        "fb": fb, "bg": json.dumps(badges, ensure_ascii=False),
-                       "img": img, "uid": uid, "tok": tok})
+                       "img": img, "uid": uid, "tok": tok, "so": sold_out})
         # Контент карточки из выдачи: цена/рейтинг/бейджи + превью.
         # Галерею (`images`) пишет только сбор с карточки (/result, /capture) —
         # наблюдение выдачи её не трогает, иначе одно превью затирает весь массив.
         await db.execute(text("""
             INSERT INTO wb_competitor_details
               (nm_id, title, brand, seller, price, old_price, rating, feedbacks, badges,
-               images, preview_image, url,
+               images, preview_image, url, sold_out,
                collected_at, first_collected_at, captured_company_id, captured_by)
             VALUES (:n, :t, :b, :seller, :p, :o, :r, :fb, :bg,
-                    JSON_ARRAY(), NULLIF(:prev, ''), :u,
+                    JSON_ARRAY(), NULLIF(:prev, ''), :u, :so,
                     NOW(), NOW(), :cid, :uid)
             ON DUPLICATE KEY UPDATE
               title=IF(:t='', title, :t),
@@ -604,9 +627,10 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
               feedbacks=IF(:fb IS NULL, feedbacks, :fb),
               badges=IF(:bg='[]', badges, :bg),
               preview_image=IF(:prev='', preview_image, :prev),
+              sold_out=:so,
               collected_at=NOW()
         """), {"n": pid, "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
-               "p": price, "o": old_price, "r": rating, "fb": fb,
+               "p": price, "o": old_price, "r": rating, "fb": fb, "so": sold_out,
                "bg": json.dumps(badges, ensure_ascii=False),
                "prev": str(img or "")[:1000],
                "u": f"https://www.wildberries.ru/catalog/{pid}/detail.aspx",
@@ -913,14 +937,16 @@ async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
         badges = p.get("badges") or []
         seller = str(p.get("seller") or "")[:255]
         promo_id = capture_service._to_int(p.get("promo_id", 0))
+        # «Нет в наличии» в выдаче: карточка без цены — флаг на строку
+        sold_out = 1 if p.get("sold_out") else 0
         # Позиции выдачи — дневные срезы (все позиции, хвост не теряем)
         await db.execute(text("""
             INSERT INTO wb_competitor_position
               (company_id, source_nm_id, query_phrase, position, nm_id, title, brand, seller,
                price, old_price, rating, feedbacks, reviews, badges, promo_id, image_url,
-              created_by, ext_token_id, collected_at, slice_stamp)
+               sold_out, created_by, ext_token_id, collected_at, slice_stamp)
             VALUES (:cid, :s, :ph, :pos, :pid, :t, :b, :seller, :price, :old_price, :rating,
-                    :fb, :rev, :bg, :promo, :img, :uid, :tok, CURDATE(), :slice_stamp)
+                    :fb, :rev, :bg, :promo, :img, :so, :uid, :tok, CURDATE(), :slice_stamp)
             ON DUPLICATE KEY UPDATE
               position=VALUES(position), title=VALUES(title), brand=VALUES(brand),
               seller=IF(VALUES(seller)='', seller, VALUES(seller)),
@@ -931,14 +957,15 @@ async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
               reviews=IF(VALUES(reviews)>0, VALUES(reviews), reviews),
               badges=IF(VALUES(badges)='[]', badges, VALUES(badges)),
               promo_id=VALUES(promo_id), image_url=VALUES(image_url),
+              sold_out=VALUES(sold_out),
               created_by=COALESCE(created_by, VALUES(created_by)),
               ext_token_id=COALESCE(ext_token_id, VALUES(ext_token_id))
         """), {"cid": cid, "s": nm_id, "ph": phrase, "pos": pos, "pid": pid,
                "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
                "price": price, "old_price": old_price, "rating": rating, "fb": fb, "rev": reviews,
                "bg": json.dumps(badges, ensure_ascii=False),
-               "promo": promo_id, "img": img, "uid": uid, "tok": tok,
-               "slice_stamp": slice_stamp})
+               "promo": promo_id, "img": img, "so": sold_out,
+               "uid": uid, "tok": tok, "slice_stamp": slice_stamp})
         # Конкуренты нашей карточки — только топ-12 (схема: «позиция в выдаче, 1-12»)
         if pos > 12:
             continue
@@ -949,9 +976,9 @@ async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
             INSERT INTO wb_competitor_cards
               (source_nm_id, query_phrase, position, nm_id, title, brand, seller,
                price, old_price, rating, feedbacks, badges, image_url, source, added_by,
-               ext_token_id)
+               ext_token_id, sold_out)
             VALUES (:s, :ph, :pos, :pid, :t, :b, :seller, :price, :old_price, :rating,
-                    :fb, :bg, :img, 'search', :uid, :tok)
+                    :fb, :bg, :img, 'search', :uid, :tok, :so)
             ON DUPLICATE KEY UPDATE
               position=VALUES(position), title=VALUES(title), brand=VALUES(brand),
               seller=IF(VALUES(seller)='', seller, VALUES(seller)),
@@ -959,13 +986,14 @@ async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
               feedbacks=VALUES(feedbacks),
               badges=IF(VALUES(badges)='[]', badges, VALUES(badges)),
               image_url=VALUES(image_url),
+              sold_out=VALUES(sold_out),
               added_by=COALESCE(added_by, VALUES(added_by)),
               ext_token_id=COALESCE(ext_token_id, VALUES(ext_token_id))
         """), {"s": nm_id, "ph": phrase, "pos": pos, "pid": pid,
                "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
                "price": price, "old_price": old_price, "rating": rating, "fb": fb,
                "bg": json.dumps(badges, ensure_ascii=False),
-               "img": img, "uid": uid, "tok": tok})
+               "img": img, "uid": uid, "tok": tok, "so": sold_out})
     if queue_id:
         if source == "phrases":
             await db.execute(text("""
@@ -1072,20 +1100,56 @@ async def ext_reset_enrich(
     db: AsyncSession = Depends(get_db),
     ext: dict = Depends(require_ext_token),
 ):
+    """Сброс зависших/ошибочных в pending.
+
+    'gone' (карточки нет на WB) по умолчанию НЕ сбрасывается: пока человек
+    не проверил, что карточка появилась, в обновление её не даём. Явным
+    include_gone=1 (кнопка «Появилась снова») строку gone поднимаем."""
     cid = int(ext["company_id"])
-    nm_id = (payload or {}).get("nm_id")
+    data = payload or {}
+    nm_id = data.get("nm_id")
+    include_gone = bool(data.get("include_gone"))
     try:
         nm_id = int(nm_id) if nm_id else None
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="bad nm_id")
+    if include_gone:
+        # «Появилась снова»: удаляем маркер gone вручную (человек проверил).
+        if nm_id:
+            if not await _owns_card(db, cid, nm_id):
+                raise HTTPException(status_code=403, detail="foreign nm_id")
+            r = await db.execute(text(f"""
+                UPDATE wb_enrich_queue
+                SET status='done', processed_at=NOW()
+                WHERE status='gone' AND nm_id=:n
+                  AND (company_id=:c OR company_id IS NULL)
+                  AND nm_id IN (
+                      SELECT nm_id FROM wb_competitor_cards
+                      WHERE source_nm_id=:n
+                  )
+            """), {"n": nm_id, "c": cid})
+        else:
+            r = await db.execute(text(f"""
+                UPDATE wb_enrich_queue
+                SET status='done', processed_at=NOW()
+                WHERE status='gone'
+                  AND (company_id=:c OR company_id IS NULL)
+                  AND nm_id IN (
+                      SELECT nm_id FROM wb_competitor_cards
+                      WHERE source_nm_id IN ({OWNED_CARDS.replace(':cid', ':c2')})
+                  )
+            """), {"c": cid, "c2": cid})
+        await db.commit()
+        return {"reset": r.rowcount}
+    statuses = "error, processing"
     if nm_id:
         if not await _owns_card(db, cid, nm_id):
             raise HTTPException(status_code=403, detail="foreign nm_id")
-        r = await db.execute(text("""
+        r = await db.execute(text(f"""
             UPDATE wb_enrich_queue q
             JOIN wb_competitor_cards c ON c.nm_id=q.nm_id
             SET q.status='pending'
-            WHERE q.status IN ('error', 'processing') AND c.source_nm_id=:n AND (q.company_id=:c OR q.company_id IS NULL)
+            WHERE q.status IN ({statuses}) AND c.source_nm_id=:n AND (q.company_id=:c OR q.company_id IS NULL)
         """), {"n": nm_id, "c": cid})
         if r.rowcount == 0:
             # fallback если join не нашёл (прямой фильтр по queue без join — как во Flask)

@@ -48,8 +48,18 @@
             </div>
 
             <div class="comp-details__price">
-              <span class="comp-details__price-now">{{ money(item.price) }}</span>
-              <span v-if="item.old_price" class="comp-details__price-old">{{ money(item.old_price) }}</span>
+              <template v-if="item.sold_out">
+                <span class="badge bg-dark comp-details__sold-out">Нет в наличии</span>
+                <span
+                  v-if="item.old_price"
+                  class="comp-details__price-old"
+                  :title="'Последняя собранная цена: ' + money(item.old_price)"
+                >{{ money(item.old_price) }}</span>
+              </template>
+              <template v-else>
+                <span class="comp-details__price-now">{{ money(item.price) }}</span>
+                <span v-if="item.old_price" class="comp-details__price-old">{{ money(item.old_price) }}</span>
+              </template>
             </div>
 
             <div v-if="badgesList.length" class="comp-details__badges">
@@ -320,7 +330,10 @@
                   <td class="text-center">{{ p.last_position ?? '—' }}</td>
                   <td class="text-center">{{ posBest(p) ?? '—' }}</td>
                   <td class="text-center" :class="posDelta(p).cls">{{ posDelta(p).text }}</td>
-                  <td class="text-center">{{ p.last_price ? p.last_price + ' ₽' : '—' }}</td>
+                  <td class="text-center">
+                    <template v-if="p.last_sold_out">Нет в наличии</template>
+                    <template v-else>{{ p.last_price ? p.last_price + ' ₽' : '—' }}</template>
+                  </td>
                   <td class="text-center">{{ p.days ?? '—' }}</td>
                   <td class="text-center">{{ fmt(p.at) }}</td>
                 </tr>
@@ -808,6 +821,7 @@ watch(
 .comp-details__name { font-size: 18px; font-weight: 600; line-height: 1.3; }
 .comp-details__meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; font-size: 13px; color: #555; }
 .comp-details__price { margin-top: 14px; display: flex; align-items: baseline; gap: 10px; }
+.comp-details__sold-out { font-size: 13px; align-self: center; letter-spacing: .02em; }
 .comp-details__price-now { font-size: 24px; font-weight: 700; color: #2c3e50; }
 .comp-details__price-old { font-size: 15px; color: #999; text-decoration: line-through; }
 .comp-details__links { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }

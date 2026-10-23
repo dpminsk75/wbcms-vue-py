@@ -173,6 +173,13 @@
               :disabled="assigning"
               @click="assignOne(r)"
             >{{ r.ui_status === 'error' ? 'Повторить' : 'Назначить' }}</button>
+            <button
+              v-if="r.ui_status === 'gone'"
+              class="btn btn-sm btn-outline-success"
+              :disabled="assigning"
+              title="Проверил на WB: карточка есть — снять блокировку «нет на WB»"
+              @click="restoreOne(r)"
+            >Появилась</button>
             <button class="btn btn-sm btn-outline-secondary" @click="openDetails(r)">Открыть</button>
           </td>
         </tr>
@@ -224,7 +231,7 @@ import '@/assets/css/pages/page-competitor-refresh.css'
 const rows = ref<RefreshRow[]>([])
 const total = ref(0)
 const counts = ref<Record<RefreshStatus, number>>({
-  stale: 0, assigned: 0, queued: 0, processing: 0, error: 0,
+  stale: 0, assigned: 0, queued: 0, processing: 0, error: 0, gone: 0,
 })
 const days = ref(30)
 const q = ref('')
@@ -250,6 +257,7 @@ const tabs = computed(() => [
   { key: 'queued' as const, label: 'В очереди', count: counts.value.queued },
   { key: 'processing' as const, label: 'Обновляется', count: counts.value.processing },
   { key: 'error' as const, label: 'Ошибка', count: counts.value.error },
+  { key: 'gone' as const, label: 'Нет на WB', count: counts.value.gone },
 ])
 
 const selectableRows = computed(() => rows.value.filter(canAssign))
@@ -349,6 +357,22 @@ function assignOne(r: RefreshRow) {
   doAssign([r.nm_id])
 }
 
+async function restoreOne(r: RefreshRow) {
+  if (assigning.value) return
+  assigning.value = true
+  error.value = ''
+  notice.value = ''
+  try {
+    const res = await competitorsNewcardApi.refreshRestore([r.nm_id])
+    notice.value = res.restored ? 'Разблокировано — можно назначить обновление' : 'Статус не изменён'
+    await load(true)
+  } catch (e: any) {
+    error.value = e?.response?.data?.detail || 'Не удалось разблокировать карточку'
+  } finally {
+    assigning.value = false
+  }
+}
+
 function assignSelected() {
   doAssign([...selected.value])
 }
@@ -379,6 +403,7 @@ function statusLabel(r: RefreshRow): string {
   if (r.ui_status === 'queued') return 'в очереди'
   if (r.ui_status === 'processing') return 'обновляется'
   if (r.ui_status === 'error') return 'ошибка'
+  if (r.ui_status === 'gone') return 'нет на WB'
   return 'пора обновить'
 }
 
@@ -387,11 +412,16 @@ function statusClass(r: RefreshRow): string {
   if (r.ui_status === 'queued') return 'bg-warning text-dark'
   if (r.ui_status === 'processing') return 'bg-info text-dark'
   if (r.ui_status === 'error') return 'bg-danger'
+  if (r.ui_status === 'gone') return 'bg-dark'
   return 'bg-secondary'
 }
 
 function statusTitle(r: RefreshRow): string {
   if (r.ui_status === 'error') return r.queue_error || 'ошибка сбора'
+  if (r.ui_status === 'gone') {
+    const when = r.queue_not_found_at ? fmtFull(r.queue_not_found_at) : ''
+    return `WB отдала «ничего не найдено»${when ? ` ${when}` : ''} · обновление заблокировано`
+  }
   if (r.requested_at) return `назначено: ${fmtFull(r.requested_at)}`
   if (r.queue_processed_at) return `обработано: ${fmtFull(r.queue_processed_at)}`
   return ''

@@ -240,6 +240,11 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
     seller = str(payload.get("seller") or "")[:255]
     url = str(payload.get("url") or "")[:500].split("?")[0]
     subject = str(payload.get("subject_name") or "")[:255]
+    # «Нет в наличии»: поле пришло — обновляем флаг, нет поля — не трогаем
+    if "sold_out" in (payload or {}):
+        sold_out = 1 if payload.get("sold_out") else 0
+    else:
+        sold_out = None
 
     # полный сбор = есть описание И характеристики
     is_full = bool(description.strip()) and bool(chars_raw)
@@ -248,7 +253,7 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
     row = (await db.execute(text("""
         SELECT id, title, description, characteristics, recommendations, images, badges,
                brand, seller, price, old_price, rating, feedbacks, questions,
-               subject_name, url, collected_at, full_collected_at
+               sold_out, subject_name, url, collected_at, full_collected_at
         FROM wb_competitor_details WHERE nm_id=:n LIMIT 1
     """), {"n": nm_id})).mappings().first()
 
@@ -300,6 +305,8 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
         m_seller = _pick(seller, row["seller"])
         m_subject = _pick(subject, row["subject_name"])
         m_url = _pick(url, row["url"])
+        # sold_out: None — поле не пришло, держим прошлое значение
+        m_sold = _pick(sold_out, 1 if row["sold_out"] else 0)
 
         changed = (
             m_title != (row["title"] or "") or m_desc != (row["description"] or "") or
@@ -312,7 +319,8 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
             m_rating != row["rating"] or m_fb != row["feedbacks"] or
             m_q != row["questions"] or m_brand != (row["brand"] or "") or
             m_seller != (row["seller"] or "") or m_subject != (row["subject_name"] or "") or
-            m_url != (row["url"] or "")
+            m_url != (row["url"] or "") or
+            (1 if m_sold else 0) != (1 if row["sold_out"] else 0)
         )
     else:
         row = None
@@ -331,6 +339,7 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
         m_seller = seller
         m_subject = subject
         m_url = url
+        m_sold = sold_out if sold_out is not None else 0
         changed = True
 
     # 6. Запись контента (только если что-то изменилось — иначе collected_at «ползёт»)
@@ -344,6 +353,7 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
                       images=:img, badges=:bg,
                       brand=:b, seller=:s, price=:p, old_price=:o,
                       rating=:r, feedbacks=:fb, questions=:q, subject_name=:subj, url=:u,
+                      sold_out=:so,
                       collected_at=NOW(),
                       full_collected_at=IF(:full=1, NOW(), full_collected_at)
                     WHERE id=:id
@@ -351,24 +361,26 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
                     "id": row["id"], "t": m_title, "d": m_desc, "ch": m_chars, "recs": m_recs,
                     "img": m_images, "bg": m_badges, "b": m_brand, "s": m_seller,
                     "p": m_price, "o": m_old, "r": m_rating, "fb": m_fb, "q": m_q,
-                    "subj": m_subject, "u": m_url, "full": 1 if is_full else 0,
+                    "subj": m_subject, "u": m_url, "so": 1 if m_sold else 0,
+                    "full": 1 if is_full else 0,
                 })
             else:
                 await db.execute(text("""
                     INSERT INTO wb_competitor_details
                       (nm_id, title, description, characteristics, recommendations, images, badges,
                        brand, seller, price, old_price, rating, feedbacks, questions, subject_name, url,
-                       collected_at, first_collected_at, full_collected_at,
+                       sold_out, collected_at, first_collected_at, full_collected_at,
                        captured_company_id, captured_by)
                     VALUES (:n, :t, :d, :ch, :recs, :img, :bg,
-                            :b, :s, :p, :o, :r, :fb, :q, :subj, :u,
+                            :b, :s, :p, :o, :r, :fb, :q, :subj, :u, :so,
                             NOW(), NOW(), IF(:full=1, NOW(), NULL),
                             :cid, :uid)
                 """), {
                     "n": nm_id, "t": m_title, "d": m_desc, "ch": m_chars, "recs": m_recs,
                     "img": m_images, "bg": m_badges, "b": m_brand, "s": m_seller,
                     "p": m_price, "o": m_old, "r": m_rating, "fb": m_fb, "q": m_q,
-                    "subj": m_subject, "u": m_url, "cid": company_id, "uid": user_id,
+                    "subj": m_subject, "u": m_url, "so": 1 if m_sold else 0,
+                    "cid": company_id, "uid": user_id,
                     "full": 1 if is_full else 0,
                 })
 

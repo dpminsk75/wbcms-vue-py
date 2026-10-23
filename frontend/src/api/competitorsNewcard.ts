@@ -106,7 +106,7 @@ export interface CompetitorQuerySuggest {
   phrase: string; orders: number; freq: number; cards: number; added: boolean
 }
 
-export type QueueStatus = 'pending' | 'processing' | 'done' | 'error' | 'need_update'
+export type QueueStatus = 'pending' | 'processing' | 'done' | 'error' | 'need_update' | 'gone'
 
 export interface CompetitorRow {
   nm_id: number
@@ -263,7 +263,7 @@ export interface PickAttachResult {
 
 // ---------- §17.2: повторный обход устаревших конкурентов ----------
 
-export type RefreshStatus = 'stale' | 'assigned' | 'queued' | 'processing' | 'error'
+export type RefreshStatus = 'stale' | 'assigned' | 'queued' | 'processing' | 'error' | 'gone'
 
 export interface RefreshRow {
   nm_id: number
@@ -280,6 +280,7 @@ export interface RefreshRow {
   queue_status?: QueueStatus | null
   queue_error?: string | null
   queue_processed_at?: string | null
+  queue_not_found_at?: string | null
   requested_at?: string | null
   ui_status: RefreshStatus
 }
@@ -344,6 +345,7 @@ export interface CompetitorDetail {
   price_history: Array<{ price?: string | null; old_price?: string | null; at?: string | null }>
   positions?: CompetitorPosition[]
   badges?: string[]
+  sold_out?: number | boolean
   rating?: number | null
   feedbacks?: number | null
   questions?: number | null
@@ -456,9 +458,10 @@ export interface CompetitorPosition {
   source_title?: string
   last_position?: number | null
   last_price?: number | null
+  last_sold_out?: number
   at?: string | null
   days?: number
-  positions: Array<{ position?: number | null; price?: number | null; at?: string | null }>
+  positions: Array<{ position?: number | null; price?: number | null; sold_out?: number; at?: string | null }>
 }
 
 export interface CapturedHistoryItem {
@@ -647,4 +650,14 @@ export const competitorsNewcardApi = {
   refreshAssign: (nm_ids: number[], days = 30) =>
     api.post('/api/competitors/refresh/assign', { nm_ids, days })
       .then((r) => r.data as RefreshAssignResult),
+
+  // «Появилась снова»: ручная разблокировка gone (карточки нет на WB)
+  refreshRestore: (nm_ids: number[]) =>
+    api.post('/api/competitors/refresh/restore', { nm_ids })
+      .then((r) => r.data as {
+        restored: number
+        not_gone: number
+        skipped: number
+        requested: number
+      }),
 }

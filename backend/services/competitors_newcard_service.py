@@ -1675,7 +1675,7 @@ class CompetitorsNewcardService:
         limit = max(1, min(int(limit or 300), 500))
         offset = max(0, int(offset or 0))
         status = (status or "").strip().lower()
-        if status not in ("", "all", "stale", "assigned", "queued", "processing", "error"):
+        if status not in ("", "all", "stale", "assigned", "queued", "processing", "error", "gone"):
             status = ""
 
         src = None
@@ -1731,7 +1731,7 @@ class CompetitorsNewcardService:
             SELECT r.nm_id, r.title, r.brand, r.seller, r.images, r.preview_image, r.last_at,
                    DATEDIFF(NOW(), r.last_at) AS days_old,
                    q.status AS queue_status, q.error_msg AS queue_error,
-                   q.processed_at AS queue_processed_at, q.requested_at,
+                   q.processed_at AS queue_processed_at, q.requested_at, q.not_found_at,
                    COALESCE(cap.is_hidden,0) AS is_hidden,
                    COALESCE(cap.capture_cnt,0) AS capture_cnt
             FROM ranked r
@@ -1746,7 +1746,7 @@ class CompetitorsNewcardService:
             ORDER BY r.last_at ASC, r.nm_id
         """), params)).mappings().all()
 
-        counts = {"stale": 0, "assigned": 0, "queued": 0, "processing": 0, "error": 0}
+        counts = {"stale": 0, "assigned": 0, "queued": 0, "processing": 0, "error": 0, "gone": 0}
         matched: list[tuple[dict, str]] = []
         for r in rows:
             qs = str(r["queue_status"] or "")
@@ -1758,6 +1758,10 @@ class CompetitorsNewcardService:
                 key = "processing"
             elif qs == "error":
                 key = "error"
+            elif qs == "gone":
+                # карточки нет на WB (error404): в обновление не отдаём,
+                # пока человек не проверит, что она появилась
+                key = "gone"
             else:
                 key = "stale"
             counts[key] += 1
@@ -1788,6 +1792,7 @@ class CompetitorsNewcardService:
                 "queue_status": r.get("queue_status"),
                 "queue_error": r.get("queue_error"),
                 "queue_processed_at": r.get("queue_processed_at"),
+                "queue_not_found_at": r.get("not_found_at"),
                 "requested_at": r.get("requested_at"),
                 "ui_status": key,
             })
@@ -1866,6 +1871,10 @@ class CompetitorsNewcardService:
             if qs == "processing":
                 in_progress += 1
                 continue
+            if qs == "gone":
+                # «карточки нет на WB»: назначаем только после «Появилась снова»
+                skipped_candidates.append({"nm_id": n, "reason": "gone"})
+                continue
             if qs in ("pending", "need_update"):
                 already += 1
                 continue
@@ -1901,6 +1910,68 @@ class CompetitorsNewcardService:
             "skipped": len(skipped_candidates),
             "requested": len(nm_ids),
             "days": days,
+            "skipped_candidates": skipped_candidates[:50],
+            "errors": [],
+        }
+
+    async def restore_gone(self, raw_nm_ids, user_id: int | None = None) -> dict:
+        """«Появилась снова»: человек проверил карточку на WB — снимаем «gone».
+
+        Было: WB отдавал error404 («По Вашему запросу ничего не найдено»), сбор
+        не удалён, статус очереди 'gone'. Человек открывал карточку и убедился,
+        что она вернулась → статус 'done' (обновление назначается отдельно).
+        Видимость проверяем как в assign_refresh: свою/чужую карточку не путаем.
+        """
+        nm_ids = _ints(raw_nm_ids, limit=200)
+        if not nm_ids:
+            raise ValueError("Выберите хотя бы одного конкурента")
+
+        own = await self._own_card_ids()
+        attached = await self._attached_map(nm_ids)
+        capture = await self._capture_map(nm_ids)
+        visible = set(attached) | set(capture)
+
+        skipped_candidates: list[dict] = []
+        restorable: list[int] = []
+        not_gone = 0
+        for n in nm_ids:
+            if n in own:
+                skipped_candidates.append({"nm_id": n, "reason": "own"})
+                continue
+            if n not in visible:
+                skipped_candidates.append({"nm_id": n, "reason": "not_visible"})
+                continue
+            restorable.append(n)
+
+        rows_seen: dict[int, str] = {}
+        for chunk in _chunks(restorable):
+            ph = ",".join(f":g{i}" for i in range(len(chunk)))
+            rows = (await self.db.execute(text(f"""
+                SELECT nm_id, status FROM wb_enrich_queue
+                WHERE nm_id IN ({ph}) AND status='gone'
+            """), {f"g{i}": v for i, v in enumerate(chunk)})).mappings().all()
+            for r in rows:
+                rows_seen[int(r["nm_id"])] = str(r["status"] or "")
+
+        restored = 0
+        if rows_seen:
+            await self.db.rollback()
+            async with self.db.begin():
+                for n in rows_seen:
+                    r = await self.db.execute(text("""
+                        UPDATE wb_enrich_queue
+                        SET status='done', processed_at=NOW(), error_msg=NULL,
+                            not_found_at=NULL
+                        WHERE nm_id=:n AND status='gone'
+                    """), {"n": n})
+                    restored += int(r.rowcount or 0)
+        not_gone = len(restorable) - len(rows_seen)
+
+        return {
+            "restored": restored,
+            "not_gone": not_gone,
+            "skipped": len(skipped_candidates),
+            "requested": len(nm_ids),
             "skipped_candidates": skipped_candidates[:50],
             "errors": [],
         }
@@ -2013,7 +2084,7 @@ class CompetitorsNewcardService:
         row = (await self.db.execute(text("""
             SELECT nm_id, title, description, brand, seller, subject_name, url,
                    price, old_price, images, preview_image, characteristics,
-                   rating, feedbacks, questions, badges,
+                   rating, feedbacks, questions, badges, sold_out,
                    COALESCE(collected_at, first_collected_at) AS collected_at,
                    first_collected_at, full_collected_at
             FROM wb_competitor_details
@@ -2021,6 +2092,7 @@ class CompetitorsNewcardService:
         """), {"n": nm_id})).mappings().first()
         if row:
             d = dict(row)
+            d["sold_out"] = 1 if row.get("sold_out") else 0
             images = _images(row.get("images"))
             d["images"] = images
             # Галерея — только с карточки; если её ещё нет, показываем превью из выдачи.
@@ -2056,6 +2128,7 @@ class CompetitorsNewcardService:
                 "feedbacks": None,
                 "questions": None,
                 "badges": [],
+                "sold_out": 0,
                 "collected_at": fb.get("collected_at"),
                 "first_collected_at": None,
                 "full_collected_at": None,
@@ -2367,7 +2440,7 @@ class CompetitorsNewcardService:
             scope = "AND p.company_id=:cid"
             params["cid"] = self.company_id
         rows = (await self.db.execute(text(f"""
-            SELECT p.query_phrase, p.source_nm_id, p.position, p.price, p.collected_at,
+            SELECT p.query_phrase, p.source_nm_id, p.position, p.price, p.collected_at, p.sold_out,
                    w.title AS source_title
             FROM wb_competitor_position p
             LEFT JOIN wbcards w ON w.nmID = p.source_nm_id
@@ -2386,6 +2459,7 @@ class CompetitorsNewcardService:
                     hist.append({
                         "position": it["position"],
                         "price": it["price"],
+                        "sold_out": 1 if it.get("sold_out") else 0,
                         "at": it["collected_at"],
                     })
                     prev = it["position"]
@@ -2396,6 +2470,7 @@ class CompetitorsNewcardService:
                 "source_title": items[0].get("source_title") or "",
                 "last_position": last.get("position"),
                 "last_price": last.get("price"),
+                "last_sold_out": last.get("sold_out") or 0,
                 "at": items[-1]["collected_at"],
                 "days": len(items),
                 "positions": hist,
