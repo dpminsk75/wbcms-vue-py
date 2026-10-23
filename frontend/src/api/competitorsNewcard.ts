@@ -97,7 +97,7 @@ export interface NewCardDetail {
 export interface CompetitorQuery {
   id: number; phrase: string; priority: number; is_active: number
   source: string; status: 'pending' | 'processing' | 'done' | 'error'
-  added_by?: number | null; created_at?: string
+  added_by?: number | null; created_at?: string; updated_at?: string
   found_cnt?: number
   best_position?: number | null
 }
@@ -498,6 +498,9 @@ export const competitorsNewcardApi = {
 
   addQuery: (nm: number, phrase: string) =>
     api.post(`/api/competitors/new-cards/${nm}/queries`, { phrase }).then((r) => r.data as { id: number }),
+
+  resetQueries: (nm: number) =>
+    api.post(`/api/competitors/new-cards/${nm}/queries/reset`).then((r) => r.data as { reset: number }),
 
   removeQuery: (nm: number, qid: number) =>
     api.delete(`/api/competitors/new-cards/${nm}/queries/${qid}`).then((r) => r.data),

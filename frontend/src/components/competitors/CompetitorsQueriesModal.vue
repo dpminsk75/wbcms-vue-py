@@ -6,15 +6,35 @@
           <i class="bi bi-search"></i> Поисковые запросы
           <span class="page-wb-detail__modal-count">{{ items.length }}</span>
         </h5>
-        <button type="button" class="btn-close" aria-label="Закрыть" @click="$emit('close')"></button>
+        <div class="d-flex align-items-center gap-1 flex-wrap">
+          <span v-if="counts.pending" class="badge bg-secondary" title="Ждут, пока расширение их заберёт">в очереди: {{ counts.pending }}</span>
+          <span v-if="counts.processing" class="badge bg-info text-dark" title="Собираются прямо сейчас">собираем: {{ counts.processing }}</span>
+          <span v-if="counts.done" class="badge bg-success" title="Собраны">готово: {{ counts.done }}</span>
+          <span v-if="counts.error" class="badge bg-danger" title="Ошибка — можно пересобрать">ошибка: {{ counts.error }}</span>
+          <button
+            class="btn btn-sm btn-outline-warning"
+            :disabled="busy || !items.length"
+            title="Вернуть запросы в очередь — расширение пересоберёт их заново"
+            @click="askReset"
+          >
+            <i class="bi bi-arrow-counterclockwise"></i> Сбросить очередь
+          </button>
+          <button type="button" class="btn-close" aria-label="Закрыть" @click="$emit('close')"></button>
+        </div>
       </div>
       <p class="page-wb-detail__modal-hint">
         Широкие запросы — нужны только для сбора конкурентов. В промпт описания они <b>не идут</b>
-        (там целевые фразы). Запуск — в попапе расширения, источник «Запросы конкурентов».
+        (там целевые фразы). Сбор запускает расширение: попап → источник «Запросы конкурентов» →
+        «Поиск» → Старт. «Сбросить очередь» возвращает запросы в очередь — расширение пересоберёт их заново.
       </p>
 
       <div class="page-wb-detail__chips">
-        <span v-for="q in items" :key="q.id" class="badge bg-light text-dark page-wb-detail__chip page-wb-detail__chip--query">
+        <span
+          v-for="q in items"
+          :key="q.id"
+          class="badge bg-light text-dark page-wb-detail__chip page-wb-detail__chip--query"
+          :title="q.updated_at ? 'Обновлён: ' + q.updated_at : ''"
+        >
           {{ q.phrase }}
           <span class="page-wb-detail__chip-status" :class="'is-' + q.status">{{ statusLabel(q.status) }}</span>
           <span v-if="q.status === 'done' || q.found_cnt" class="page-wb-detail__chip-found" title="Сколько конкурентов найдено по этому запросу">
@@ -69,12 +89,23 @@
       <div v-if="loading" class="text-muted small mt-2"><span class="spinner-border spinner-border-sm"></span> Загрузка...</div>
       <div v-if="error" class="text-danger small mt-2">{{ error }}</div>
       <div v-if="subject" class="page-wb-detail__modal-footnote">Подсказки фильтруются по предмету: {{ subject }}</div>
+
+      <WbConfirmDialog
+        :open="pendingReset"
+        text="Вернуть все поисковые запросы карточки в очередь?"
+        hint="Расширение пересоберёт их заново — данные по этим запросам будут перезаписаны. Сами запросы не удаляются."
+        confirm-text="Сбросить"
+        :busy="busy"
+        @confirm="doReset"
+        @cancel="pendingReset = false"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from 'vue'
+import { computed, ref, watch, onUnmounted } from 'vue'
+import WbConfirmDialog from '../common/WbConfirmDialog.vue'
 import { competitorsNewcardApi, type CompetitorQuery, type CompetitorQuerySuggest } from '@/api/competitorsNewcard'
 
 const props = defineProps<{ open: boolean; nmId: number | string | null | undefined }>()
@@ -86,6 +117,7 @@ const subject = ref('')
 const busy = ref(false)
 const loading = ref(false)
 const error = ref('')
+const pendingReset = ref(false)
 
 const suggest = ref<CompetitorQuerySuggest[]>([])
 const suggestVisible = ref(false)
@@ -101,6 +133,16 @@ const STATUS: Record<string, string> = {
   pending: 'в очереди', processing: 'собираем', done: 'готово', error: 'ошибка',
 }
 const statusLabel = (s: string) => STATUS[s] || s
+
+// сводка по статусам — в шапке модалки
+const counts = computed(() => {
+  const c = { pending: 0, processing: 0, done: 0, error: 0 }
+  for (const q of items.value) {
+    const s = q.status as keyof typeof c
+    if (s in c) c[s]++
+  }
+  return c
+})
 
 async function load(silent = false) {
   const id = nm()
@@ -191,6 +233,28 @@ async function add() {
     error.value = e?.response?.data?.detail || 'Не удалось добавить запрос'
   } finally {
     busy.value = false
+  }
+}
+
+function askReset() {
+  if (!items.value.length) return
+  pendingReset.value = true
+}
+
+async function doReset() {
+  const id = nm()
+  if (!id) return
+  busy.value = true
+  error.value = ''
+  try {
+    await competitorsNewcardApi.resetQueries(id)
+    await load()
+    emit('changed')
+  } catch (e: any) {
+    error.value = e?.response?.data?.detail || 'Не удалось сбросить очередь'
+  } finally {
+    busy.value = false
+    pendingReset.value = false
   }
 }
 
