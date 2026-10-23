@@ -77,7 +77,14 @@
           <div class="mt-2 text-muted">Загрузка данных...</div>
         </div>
 
-        <MarginTable v-else :rows="rows" footer-label="Итого по ТОПу:" :show-stock="filters.with_stock" show-breakdown />
+        <MarginTable
+          v-else
+          :rows="rows"
+          footer-label="Итого по ТОПу:"
+          :show-stock="filters.with_stock"
+          :period="`${filters.date_from} — ${filters.date_to}`"
+          show-breakdown
+        />
       </div>
     </div>
   </div>
@@ -85,23 +92,31 @@
 
 <script setup lang="ts">
 import '@/assets/css/pages/page-top-products.css'
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
 import { api } from '@/api/client'
 import MarginTable from '@/components/profit/MarginTable.vue'
 import { exportMarginExcel } from '@/api/profit'
 import WbDateInput from '../components/common/WbDateInput.vue'
 
+const route = useRoute()
+const router = useRouter()
+
 const today = new Date()
 const defTo = today.toISOString().slice(0, 10)
 const defFrom = new Date(today.getTime() - 30 * 864e5).toISOString().slice(0, 10)
 
+const SORTS = ['qnt', 'amount', 'net_profit', 'clean_margin']
+const LIMITS = [20, 50, 200, 500, 1000]
+
+// Фильтры живут в URL: F5 сохраняет отчёт, ссылку можно отправить.
 const filters = ref({
-  date_from: defFrom,
-  date_to: defTo,
-  sort_by: 'qnt',
-  limit: 20,
-  with_stock: false
+  date_from: String(route.query.date_from || defFrom),
+  date_to: String(route.query.date_to || defTo),
+  sort_by: SORTS.includes(String(route.query.sort_by)) ? String(route.query.sort_by) : 'qnt',
+  limit: LIMITS.includes(Number(route.query.limit)) ? Number(route.query.limit) : 20,
+  with_stock: route.query.with_stock === '1'
 })
 
 const { data: rowsRaw, isLoading, refetch } = useQuery({
@@ -117,6 +132,46 @@ const stockDate = computed(() => {
   if (!filters.value.with_stock) return ''
   const d = rows.value[0]?.stock_date
   return d ? String(d).slice(0, 10) : ''
+})
+
+// URL → фильтры (навигация назад/вперёд, чужая ссылка)
+function applyFromRoute(nq: any) {
+  const s = String(nq.sort_by || '')
+  const l = Number(nq.limit)
+  const next = {
+    date_from: String(nq.date_from || defFrom),
+    date_to: String(nq.date_to || defTo),
+    sort_by: SORTS.includes(s) ? s : 'qnt',
+    limit: LIMITS.includes(l) ? l : 20,
+    with_stock: nq.with_stock === '1'
+  }
+  const cur = filters.value
+  if (cur.date_from !== next.date_from || cur.date_to !== next.date_to ||
+      cur.sort_by !== next.sort_by || cur.limit !== next.limit ||
+      cur.with_stock !== next.with_stock) {
+    filters.value = next
+  }
+}
+
+// фильтры → URL (replace, чтобы не плодить историю)
+let syncing = false
+function syncRoute() {
+  const q: Record<string, string> = {
+    date_from: filters.value.date_from,
+    date_to: filters.value.date_to
+  }
+  if (filters.value.sort_by !== 'qnt') q.sort_by = filters.value.sort_by
+  if (filters.value.limit !== 20) q.limit = String(filters.value.limit)
+  if (filters.value.with_stock) q.with_stock = '1'
+  syncing = true
+  router.replace({ path: '/wb-profit/top-products', query: q })
+    .finally(() => setTimeout(() => (syncing = false), 50))
+}
+
+watch(filters, () => syncRoute(), { deep: true })
+watch(() => route.query, (nq) => {
+  if (syncing) return
+  applyFromRoute(nq)
 })
 
 const resetFilters = () => {
@@ -137,6 +192,6 @@ const exportExcel = () => exportMarginExcel(
 )
 
 onMounted(() => {
-  document.title = 'ТОП товаров за период — wbcms'
+  document.title = 'ТОП товаров за период — SelBI'
 })
 </script>

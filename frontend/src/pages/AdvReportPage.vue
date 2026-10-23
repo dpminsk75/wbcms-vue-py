@@ -68,8 +68,8 @@ const fetchDetail = async()=>{
   const { data:j } = await api.get(`/api/adv-report?${q}`)
   if(j.campaign){
     detail.value = j
-    document.title = `Компания: ${j.campaign.name} — wbcms`
-  } else { detail.value = null; document.title = 'Аналитика рекламы WB — wbcms' }
+    document.title = `Компания: ${j.campaign.name} — SelBI`
+  } else { detail.value = null; document.title = 'Аналитика рекламы WB — SelBI' }
   isLoading.value=false
 }
 const reset = ()=>{

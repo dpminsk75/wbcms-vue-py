@@ -1,5 +1,5 @@
 /* page-geo-sales-map.css — чанк GeoSalesMapPage (продажи на карте Leaflet+OSM).
- * Title: 'Продажи на карте — wbcms' (route.meta; h1.page-title).
+ * Title: 'Продажи на карте — SelBI' (route.meta; h1.page-title).
  * Карта 550px как php geo-map-report; пузыри кластеров — divIcon (динамика в JS);
  * таблица зеркалит вьюпорт карты (bbox). Итоги POS_TOP: .kv-totals > td.
  */

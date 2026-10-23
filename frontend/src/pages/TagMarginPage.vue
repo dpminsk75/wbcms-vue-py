@@ -112,7 +112,7 @@ async function fetchData() {
   error.value = ''
   try {
     rows.value = await tagsApi.margin(filters.value.tag_id, filters.value.date_from, filters.value.date_to, filters.value.sort_by)
-    document.title = `${pageTitle.value} — wbcms`
+    document.title = `${pageTitle.value} — SelBI`
   } catch {
     error.value = 'load'
     rows.value = []

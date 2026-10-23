@@ -96,7 +96,7 @@
                     :href="`/wb/detail?nm_id=${r.nmID}`"
                     target="_blank"
                     class="page-competitor__wb-link"
-                    title="Карточка WB в wbcms"
+                    title="Карточка WB в SelBI"
                   >WB: {{ r.nmID }}</a>
                   <span v-if="r.vendor_code"> · {{ r.vendor_code }}</span>
                 </div>

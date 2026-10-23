@@ -1,6 +1,9 @@
 <template>
   <div class="ext-tokens-block">
-    <h3 class="ext-tokens-block__title">Токены расширения</h3>
+    <h3 class="ext-tokens-block__title">
+      <img src="/img/icons/favicon-32x32.png" alt="" width="22" height="22" style="vertical-align:-4px; margin-right:6px" />
+      Токены расширения
+    </h3>
     <div class="text-muted small">Bearer для расширения-коллектора. Храним только sha256: сырьё видно один раз при выдаче, потерять — не беда, жмите «Выдать ещё». Отзыв — по одному.</div>
     <div v-if="error" class="wb-error">{{ error }}</div>
     <div v-if="loading" class="text-muted">Загрузка…</div>
@@ -37,7 +40,8 @@
         <i class="bi bi-key"></i> Выдать токен
       </button>
       <button type="button" @click="onDownload" :disabled="downloading" class="btn btn-outline-primary btn-sm" title="Zip с вшитым адресом сервера (токен вводится в popup руками)">
-        <i class="bi bi-download"></i> {{ downloading ? 'Готовлю…' : 'Скачать расширение' }}
+        <img src="/img/icons/favicon-16x16.png" alt="" width="14" height="14" style="vertical-align:-2px; margin-right:5px" />
+        {{ downloading ? 'Готовлю…' : 'Скачать расширение' }}
       </button>
       <button v-if="guideButton" type="button" @click="showGuide = true" class="btn btn-outline-secondary btn-sm" title="Side-load: установка и настройка по шагам">
         <i class="bi bi-question-circle"></i> Как установить

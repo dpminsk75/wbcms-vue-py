@@ -1,6 +1,10 @@
 <template>
   <div class="d-flex align-items-center justify-content-center page-login">
     <div class="card p-4 page-login__card">
+      <div class="text-center mb-3">
+        <img src="/img/icons/logo-40.png" alt="SelBI" width="40" height="40" style="display:inline-block; vertical-align:middle" />
+        <span style="font:700 24px/1 'Segoe UI',Roboto,Arial,sans-serif; color:#111827; vertical-align:middle; margin-left:8px">SelBI</span>
+      </div>
       <h5 class="mb-3">Вход — {{ appName }}</h5>
       <div class="mb-2">
         <label class="form-label" for="login-u">Логин</label>
@@ -30,7 +34,7 @@ const loading = ref(false)
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
-const appName = (import.meta as any).env?.VITE_APP_NAME || 'wbcms'
+const appName = (import.meta as any).env?.VITE_APP_NAME || 'SelBI'
 
 async function doLogin() {
   error.value = ''

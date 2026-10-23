@@ -189,9 +189,9 @@ const dimensions=computed(()=>{
   return `${len} × ${wid} × ${hei} см, вес: ${w} кг`
 })
 const updateDetailTitle = ()=>{
-  if(card.value?.title) document.title = `Карточка: ${card.value.title} — wbcms`
-  else if(filters.value.nm_id) document.title = `Карточка: ${filters.value.nm_id} — wbcms`
-  else document.title = 'Карточка: Выберите артикул — wbcms'
+  if(card.value?.title) document.title = `Карточка: ${card.value.title} — SelBI`
+  else if(filters.value.nm_id) document.title = `Карточка: ${filters.value.nm_id} — SelBI`
+  else document.title = 'Карточка: Выберите артикул — SelBI'
 }
 const fetchCard=async()=>{
   if(!filters.value.nm_id) { card.value=null; updateDetailTitle(); return }

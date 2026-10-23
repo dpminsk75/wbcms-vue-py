@@ -127,7 +127,7 @@ async function fetchData() {
     }))
     total.value = Number(data.total) || 0
     pageSize.value = Number(data.page_size) || 100
-    document.title = 'Нет себестоимости — wbcms'
+    document.title = 'Нет себестоимости — SelBI'
   } catch {
     rows.value = []
   } finally {

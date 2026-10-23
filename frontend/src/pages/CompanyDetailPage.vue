@@ -247,11 +247,11 @@
                 <div class="row g-2 mb-2" v-if="!isCustomLlm">
                   <div class="col-6">
                     <label class="form-label mb-1">Referer</label>
-                    <input v-model="companyForm.seo_openrouter_referer" placeholder="https://wbcms.local" class="form-control form-control-sm" />
+                    <input v-model="companyForm.seo_openrouter_referer" placeholder="https://selbi.local" class="form-control form-control-sm" />
                   </div>
                   <div class="col-6">
                     <label class="form-label mb-1">Title</label>
-                    <input v-model="companyForm.seo_openrouter_title" placeholder="wbcms SEO" class="form-control form-control-sm" />
+                    <input v-model="companyForm.seo_openrouter_title" placeholder="SelBI SEO" class="form-control form-control-sm" />
                   </div>
                 </div>
                 <div class="mb-2" v-if="!isCustomLlm">

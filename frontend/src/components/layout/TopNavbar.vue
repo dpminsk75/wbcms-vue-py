@@ -5,7 +5,10 @@
       <button type="button" class="mobile-menu-toggle" @click="mobileOpen=!mobileOpen" style="background:transparent; border:none; display:flex; flex-direction:column; gap:4px">
         <span style="display:block; width:20px; height:2px; background:#fff"></span><span style="display:block; width:20px; height:2px; background:#fff"></span><span style="display:block; width:20px; height:2px; background:#fff"></span>
       </button>
-      <span class="mobile-topbar-brand" style="color:#fff; font-weight:700">Аналитика WB</span>
+      <span class="mobile-topbar-brand" style="color:#fff; font-weight:700; font-family:'Segoe UI',Roboto,Arial,sans-serif; letter-spacing:.5px; display:inline-flex; align-items:center; gap:7px">
+        <img src="/img/icons/logo-40.png" alt="SelBI" width="26" height="26" style="display:block; border-radius:7px" />
+        SelBI
+      </span>
     </div>
     <div v-if="mobileOpen" class="mobile-menu-overlay d-md-none" @click="mobileOpen=false" style="position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:1040"></div>
     <div class="mobile-nav-drawer d-md-none" :style="{display: mobileOpen ? 'block' : 'none', position:'fixed', top:0, left:0, width:'260px', height:'100vh', background:'#fff', zIndex:1050, overflowY:'auto', padding:'16px'}" @click="mobileOpen=false">
@@ -26,8 +29,9 @@
     <!-- десктоп -->
     <div class="d-none d-md-block">
       <nav class="navbar navbar-expand-md bg-wb w-100" style="padding:10px 12px">
-        <a class="navbar-brand d-flex align-items-center" href="/" style="color:#fff; font-weight:700; font-size:26px">
-          <span style="height:50px; margin-right:10px; display:flex; align-items:center; font-size:32px">◈</span> Аналитика WB
+        <a class="navbar-brand wb-navbar__brand d-flex align-items-center justify-content-center" href="/" style="color:#fff; font-weight:700; font-size:26px; font-family:'Segoe UI',Roboto,Arial,sans-serif; letter-spacing:.5px; gap:9px">
+          <img src="/img/icons/logo-40.png" alt="SelBI" width="34" height="34" style="display:block; border-radius:9px" />
+          <span>SelBI</span>
         </a>
         <ul class="navbar-nav wb-menu__list w-100" style="flex-wrap:nowrap">
           <li v-for="section in menu" :key="section.label" class="nav-item wb-menu__item dropdown">
