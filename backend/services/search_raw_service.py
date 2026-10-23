@@ -381,7 +381,8 @@ async def _our_nms(db: AsyncSession, cid: int, ids: list) -> list:
 
 async def _enrich_positions(
     db: AsyncSession, cid: int, uid: int | None, tok: int | None,
-    phrase: str, products: list, day: str | None = None, offset: int = 0
+    phrase: str, products: list, day: str | None = None, offset: int = 0,
+    stamp: str = ""
 ) -> int:
     """Дополняем строки наблюдений полями из JSON-выдачи.
 
@@ -393,6 +394,9 @@ async def _enrich_positions(
     """
     if not products:
         return 0
+    # Срез не плодим: заход в течение часа перезаписывает последний срез по этой
+    # фразе (в отчёте останется одна строка на фразу в час).
+    stamp = await capture_service.resolve_slice_stamp(db, cid, phrase, stamp)
     ids = [int(p.get("id") or 0) for p in products if isinstance(p, dict) and p.get("id")]
     ours = await _our_nms(db, cid, ids)
     sources = ours if ours else [0]
@@ -462,7 +466,7 @@ async def _enrich_positions(
                    price, old_price, price_api, old_price_api, rating, review_rating, reviews, feedbacks, feedback_points, total_qty,
                    time1, time2, wh, dist, volume, weight, pics, is_new, promo_id, sale_conditions,
                    dtype_mask, semantic_id, option_id, mtype, supplier_flags, view_flags,
-                   created_by, ext_token_id, collected_at)
+                   created_by, ext_token_id, collected_at, slice_stamp)
                 VALUES (:cid, :src, :ph, :pos, :pos_api, :nm, :t, :b,
                         :brand_id, :subject_id, :root_id, :match_id, :seller, :seller_id, :seller_rating,
                         :price, :old_price, :price_api, :old_price_api,
@@ -471,7 +475,7 @@ async def _enrich_positions(
                         :time1, :time2, :wh, :dist, :volume, :weight, :pics, :is_new, :promo_id,
                         :sale_conditions, :dtype_mask, :semantic_id, :option_id,
                         :mtype, :supplier_flags, :view_flags,
-                        :uid, :tok, COALESCE(:day, CURDATE()))
+                        :uid, :tok, COALESCE(:day, CURDATE()), :slice_stamp)
                 ON DUPLICATE KEY UPDATE
                   position_api=VALUES(position_api),
                   brand_id=VALUES(brand_id), subject_id=VALUES(subject_id), root_id=VALUES(root_id),
@@ -513,7 +517,7 @@ async def _enrich_positions(
                 "is_new": r["is_new"], "promo_id": r["promo_id"], "sale_conditions": r["sale_conditions"],
                 "dtype_mask": r["dtype_mask"], "semantic_id": r["semantic_id"], "option_id": r["option_id"],
                 "mtype": r["mtype"], "supplier_flags": r["supplier_flags"], "view_flags": r["view_flags"],
-                "uid": uid, "tok": tok, "day": day,
+                "uid": uid, "tok": tok, "day": day, "slice_stamp": stamp[:20],
             })
             saved += 1
     return saved
@@ -642,7 +646,7 @@ async def save_search_raw(db: AsyncSession, ext: dict, payload: dict) -> dict:
             file_name = _write_file(cid, day, stamp, kind, slug, raw, meta)
             products = parsed.get("products") if isinstance(parsed, dict) else []
             positions = await _enrich_positions(db, cid, uid, tok, phrase, products or [], day,
-                                                offset=_page_offset(url))
+                                                offset=_page_offset(url), stamp=stamp)
         elif kind == "filters":
             f = _parse_filters(parsed if isinstance(parsed, dict) else {})
             meta.update({

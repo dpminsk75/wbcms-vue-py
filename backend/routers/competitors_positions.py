@@ -9,7 +9,7 @@
 Гейт — require_seo (viewSeo|admin), скоуп по компании.
 """
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
@@ -93,6 +93,39 @@ async def positions_ads(
     """Реклама и брендовые полки В ПОИСКЕ (разбор `banners/shelfs/search`)."""
     return await CompetitorsPositionsService(db, company_id).ads(
         date_from or None, date_to or None, limit
+    )
+
+
+@router.post("/requeue")
+async def positions_requeue(
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Отправить фразы на пересборку выдачи (расширение их обойдёт)."""
+    data = payload or {}
+    phrases = data.get("phrases") or []
+    if isinstance(phrases, str):
+        phrases = [phrases]
+    src_nm = int(data.get("source_nm_id") or 0)
+    src = str(data.get("source") or "report")[:20]
+    return await CompetitorsPositionsService(db, company_id).requeue(
+        [str(p) for p in phrases], src_nm, user["id"], src)
+
+
+@router.get("/our_card")
+async def positions_our_card(
+    nm_id: int = Query(..., ge=1),
+    date_from: str = Query(default=""),
+    date_to: str = Query(default=""),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Сводка нашей карточки: описание, характеристики и наши позиции в выдаче."""
+    return await CompetitorsPositionsService(db, company_id).our_card(
+        nm_id, date_from or None, date_to or None
     )
 
 

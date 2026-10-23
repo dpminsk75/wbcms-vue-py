@@ -105,6 +105,53 @@ def _norm_phrase(raw) -> str:
     return s[:500]
 
 
+def _stamp_dt(stamp: str):
+    """Метка среза 20261022_190412 -> datetime(2026-10-22 19:04:12).
+
+    Важно: без подчёркивания это не «секунды» (там ЧЧММСС), поэтому сравнивать
+    надо именно дату-время, а не числа.
+    """
+    s = str(stamp or "")
+    if len(s) == 15 and s[8] == "_":
+        try:
+            return datetime.strptime(s, "%Y%m%d_%H%M%S")
+        except ValueError:
+            return None
+    return None
+
+
+async def resolve_slice_stamp(db, cid: int, phrase: str, stamp: str,
+                               window_min: int = 60) -> str:
+    """Метка среза с «склейкой» по окну — чтобы не плодить срезы.
+
+    Если по этой фразе уже есть срез, отстоящий от текущего меньше чем на
+    window_min минут, переиспользуем ЕГО метку: данные перезапишутся, а в
+    отчёте останется одна строка на фразу в час вместо десяти.
+
+    Метки сравнимы между собой (YYYYMMDD_HHMMSS), поэтому «ближе часа» — это
+    просто разница чисел.
+    """
+    s = str(stamp or "")[:20]
+    cur = _stamp_dt(s)
+    if not cur:
+        return s
+    try:
+        row = (await db.execute(text("""
+            SELECT slice_stamp FROM wb_competitor_position
+            WHERE company_id=:cid AND query_phrase=:ph AND slice_stamp<>''
+            ORDER BY slice_stamp DESC LIMIT 1
+        """), {"cid": cid, "ph": _norm_phrase(phrase)})).mappings().first()
+    except Exception:
+        return s
+    if not row:
+        return s
+    prev_s = str(row["slice_stamp"] or "")
+    prev = _stamp_dt(prev_s)
+    if prev and 0 <= (cur - prev).total_seconds() < window_min * 60:
+        return prev_s
+    return s
+
+
 def _to_int(v):
     """«1 490 ₽» / 1490 / '1490' → 1490; пусто/мусор/0 → None (0 = «не знаем»)."""
     if v is None or v == "":

@@ -33,6 +33,43 @@ def _meta_files(base: pathlib.Path) -> list:
     return sorted(base.glob("*.meta.json"))
 
 
+def _slice_stamps(days: list) -> dict:
+    """Метка среза для каждого файла каталога: не плодим чаще, чем раз в час.
+
+    Файлов за сутки бывает много (пользователь открывает поиск часто) — если
+    писать каждый как отдельный срез, в отчёте будет десятки строк на фразу в
+    день. Поэтому заходы в пределах часа склеиваются в один срез (данные
+    перезаписывают друг друга, как и в живом сборе).
+    """
+    per_phrase: dict = {}
+    for day in days:
+        for meta_path in _meta_files(day):
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if meta.get("kind") != "catalog":
+                continue
+            ph = svc.capture_service._norm_phrase(meta.get("phrase"))
+            stamp = str(meta.get("search_stamp") or "")
+            if not ph or not stamp:
+                continue
+            per_phrase.setdefault(ph, []).append((stamp, str(meta_path)))
+
+    out: dict = {}
+    for items in per_phrase.values():
+        items.sort()
+        cur_stamp = ""
+        cur_dt = None
+        for stamp, path_key in items:
+            dt = svc.capture_service._stamp_dt(stamp)
+            if cur_dt is None or dt is None or (dt - cur_dt).total_seconds() >= 3600:
+                cur_dt = dt
+                cur_stamp = stamp
+            out[path_key] = cur_stamp
+    return out
+
+
 async def _run(company_id: int, date: str | None, dry_run: bool) -> None:
     base = RAW_ROOT / str(company_id)
     if not base.exists():
@@ -40,6 +77,7 @@ async def _run(company_id: int, date: str | None, dry_run: bool) -> None:
         return
     days = [base / date] if date else sorted([d for d in base.iterdir() if d.is_dir()])
     total = {"catalog": 0, "filters": 0, "shelfs": 0}
+    slice_stamps = _slice_stamps(days)
     async with SessionLocal() as db:
         for day in days:
             for meta_path in _meta_files(day):
@@ -81,7 +119,12 @@ async def _run(company_id: int, date: str | None, dry_run: bool) -> None:
                 try:
                     if kind == "catalog":
                         products = data.get("products") if isinstance(data, dict) else []
-                        n = await svc._enrich_positions(db, company_id, uid, tok, phrase, products or [], day.name)
+                        # метка захода — из meta (день_время): разные заходы в поиск
+                        # за один день не должны склеиваться
+                        slice_stamp = slice_stamps.get(str(meta_path)) or str(meta.get("search_stamp") or "")[:20]
+                        n = await svc._enrich_positions(
+                            db, company_id, uid, tok, phrase, products or [], day.name,
+                            stamp=slice_stamp)
                         total["catalog"] += 1
                         print(f"  {day.name} catalog «{phrase}»: позиций {n}")
                     elif kind == "filters":

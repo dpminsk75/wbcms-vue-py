@@ -664,7 +664,7 @@ class CompetitorsNewcardService:
     async def list_queries(self, nm_id: int) -> dict:
         rows = (await self.db.execute(text("""
             SELECT q.id, q.phrase, q.priority, q.is_active, q.source, q.status,
-                   q.added_by, q.created_at,
+                   q.added_by, q.created_at, q.updated_at,
                    (SELECT COUNT(DISTINCT c.nm_id) FROM wb_competitor_cards c
                     WHERE c.source_nm_id=q.source_nm_id AND c.query_phrase=q.phrase
                       AND c.nm_id>0) AS found_cnt,
@@ -706,6 +706,24 @@ class CompetitorsNewcardService:
                 DELETE FROM wb_competitor_query WHERE id=:i AND source_nm_id=:n
             """), {"i": qid, "n": nm_id})
         return bool(r.rowcount)
+
+    async def reset_queries(self, nm_id: int) -> int:
+        """Вернуть запросы карточки в очередь — расширение пересоберёт их заново.
+
+        Фразы и настройки не трогаем: статус снова становится 'pending', и poller
+        расширения (/api/ext/search_next?source=compquery) заберёт их по одной.
+        """
+        await self.db.rollback()
+        company = await self._company_for(nm_id)
+        if not company:
+            return 0
+        async with self.db.begin():
+            r = await self.db.execute(text("""
+                UPDATE wb_competitor_query
+                SET status='pending', updated_at=NOW()
+                WHERE source_nm_id=:n AND company_id=:c AND is_active=1
+            """), {"n": nm_id, "c": company})
+        return int(r.rowcount or 0)
 
     async def suggest_queries(self, nm_id: int, q: str, limit: int = 12) -> dict:
         """Подсказки из базы: wb_sr_report_item_phrases по ВСЕЙ базе, фильтр по subject_name

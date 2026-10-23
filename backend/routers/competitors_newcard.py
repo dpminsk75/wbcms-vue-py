@@ -99,6 +99,18 @@ async def competitors_queries_add(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+@router.post("/{nm_id}/queries/reset")
+async def competitors_queries_reset(
+    nm_id: int = Path(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Сбросить очередь запросов карточки — расширение пересоберёт их заново."""
+    svc = await _svc(db, company_id, nm_id)
+    return {"reset": await svc.reset_queries(nm_id)}
+
+
 @router.delete("/{nm_id}/queries/{qid}")
 async def competitors_queries_remove(
     nm_id: int = Path(..., ge=1),
@@ -138,7 +150,7 @@ async def competitors_details(
     svc = await _svc(db, company_id, nm_id)
     if not await svc.has_competitor(nm_id, cid):
         raise HTTPException(status_code=404, detail="competitor not found")
-    data = await svc.details(cid)
+    data = await svc.details(cid, our_nm=nm_id)
     if not data:
         raise HTTPException(status_code=404, detail="details not collected")
     return data

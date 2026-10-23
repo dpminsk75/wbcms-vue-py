@@ -35,9 +35,42 @@ def _norm_phrase(raw) -> str:
 # Переименовать старые строки нельзя: UNIQUE (company_id, source_nm_id, query_phrase, nm_id, collected_at).
 # Поэтому объединяем варианты прямо в отчёте.
 _NORM_SQL = (
-    "LOWER(TRIM(REGEXP_REPLACE(REGEXP_REPLACE("
+    "LOWER(TRIM(REGEXP_REPLACE("
     "REPLACE(REPLACE(p.query_phrase, '-', ' '), '_', ' '), ' +', ' ')))"
 )
+
+
+def _merge_by_phrase(items: list[dict]) -> list[dict]:
+    """Схлопывает варианты одной фразы в один срез дня.
+
+    WB отдаёт одну фразу двумя способами: «дневник садовода-огородника» (дефисы,
+    из `search=` в URL страницы) и «дневник садовода огородника» (пробелы, из
+    `query=` внутренних API). В БД это разные строки (UNIQUE по query_phrase),
+    в отчёте — одна и та же фраза.
+
+    Правило: группируем по (нормализованная фраза, день), внутри группы берём
+    самый свежий срез (max collected_at), остальные варианты написания
+    складываем в `phrase_variants` (чтобы было видно, что фраза приходила
+    по-разному).
+    """
+    groups: dict[tuple, list[dict]] = {}
+    for it in items:
+        key = (it.get("phrase") or "", it.get("date") or "")
+        groups.setdefault(key, []).append(it)
+
+    out: list[dict] = []
+    for rows in groups.values():
+        rows.sort(key=lambda r: r.get("collected_at") or "", reverse=True)
+        best = rows[0]
+        main_raw = (best.get("phrase_raw") or best.get("phrase") or "").strip()
+        variants: list[str] = []
+        for r in rows:
+            raw = (r.get("phrase_raw") or r.get("phrase") or "").strip()
+            if raw and raw != main_raw and raw not in variants:
+                variants.append(raw)
+        best["phrase_variants"] = variants
+        out.append(best)
+    return out
 
 
 def _json_list(v) -> list:
@@ -64,6 +97,14 @@ def _json_dict(v) -> dict:
             return {}
         return d if isinstance(d, dict) else {}
     return {}
+
+
+def _stamp_time(stamp: str) -> str:
+    """Метка захода 20261022_131023 -> «13:10»."""
+    s = str(stamp or "")
+    if len(s) >= 15 and s[8] == "_":
+        return s[9:11] + ":" + s[11:13]
+    return ""
 
 
 def _d(v) -> str:
@@ -126,6 +167,7 @@ class CompetitorsPositionsService:
                    GROUP_CONCAT(DISTINCT p.query_phrase) AS phrase_variants,
                    COUNT(*) AS rows_cnt,
                    COUNT(DISTINCT p.collected_at) AS days,
+                   COUNT(DISTINCT NULLIF(p.slice_stamp, '')) AS collections,
                    COUNT(DISTINCT p.nm_id) AS products,
                    MIN(p.collected_at) AS first_at,
                    MAX(p.collected_at) AS last_at,
@@ -155,6 +197,7 @@ class CompetitorsPositionsService:
                 "phrase_variants": [v for v in (r.get("phrase_variants") or "").split(",") if v],
                 "rows": int(r["rows_cnt"] or 0),
                 "days": int(r["days"] or 0),
+                "collections": int(r["collections"] or 0),
                 "products": int(r["products"] or 0),
                 "first_at": _d(r["first_at"]),
                 "last_at": _d(r["last_at"]),
@@ -163,6 +206,18 @@ class CompetitorsPositionsService:
                 "source_ids": [s for s in sids if s > 0],
                 "sources": [],
             })
+
+        # статус пересборки выдачи по фразе (очередь wb_search_phrase_queue)
+        qrows = (await self.db.execute(text("""
+            SELECT query_phrase, status, updated_at, last_error
+            FROM wb_search_phrase_queue WHERE company_id=:cid
+        """), {"cid": self.company_id or 0})).mappings().all()
+        qmap = {_norm_phrase(r["query_phrase"]): r for r in qrows}
+        for it in items:
+            q = qmap.get(it["phrase"])
+            it["requeue_status"] = (q["status"] if q else "") or ""
+            it["requeue_at"] = _d(q["updated_at"]) if q else ""
+            it["requeue_error"] = (q["last_error"] if q else "") or ""
 
         titles = await self._card_titles(all_sources)
         users = await self._users(all_users)
@@ -236,13 +291,14 @@ class CompetitorsPositionsService:
                    p.price, p.old_price, p.price_api, p.old_price_api,
                    p.rating, p.review_rating, p.feedbacks, p.reviews, p.badges,
                    p.promo_id, p.is_adv, p.match_id, p.seller_id, p.seller_rating,
-                   p.source_nm_id, p.created_by, p.ext_token_id, p.collected_at,
+                   p.image_url,
+                   p.source_nm_id, p.created_by, p.ext_token_id, p.collected_at, p.slice_stamp,
                    w.title AS source_title, w.vendorCode AS source_vendor
             FROM wb_competitor_position p
             LEFT JOIN wbcards w ON w.nmID = p.source_nm_id
-            WHERE {' AND '.join(where)} {scope} AND p.collected_at=:day
-            ORDER BY p.position, p.id
-        """), {**params, "day": chosen})).mappings().all()
+            WHERE {' AND '.join(where)} {scope}
+            ORDER BY p.collected_at DESC, p.position, p.id
+        """), params)).mappings().all()
 
         users = await self._users([r["created_by"] for r in rows])
         items = []
@@ -267,6 +323,7 @@ class CompetitorsPositionsService:
                 "badges": _json_list(r["badges"]),
                 "promo_id": r["promo_id"],
                 "is_adv": int(r["is_adv"] or 0),
+                "image_url": r["image_url"] or "",
                 "match_id": r["match_id"],
                 "source_nm_id": int(r["source_nm_id"] or 0),
                 "source_title": r["source_title"] or "",
@@ -275,35 +332,64 @@ class CompetitorsPositionsService:
                 "ext_token_id": r["ext_token_id"],
                 "username": users.get(int(r["created_by"] or 0), "") if r["created_by"] else "",
                 "at": _d(r["collected_at"]),
+                "slice_stamp": r["slice_stamp"] or "",
             })
 
         ours = sorted({i["source_nm_id"] for i in items if i["source_nm_id"]})
+        ours_set = set(ours)
         titles = await self._card_titles(ours)
         tokens = await self._tokens([i["ext_token_id"] for i in items])
         for i in items:
             i["token_name"] = tokens.get(int(i["ext_token_id"] or 0), "")
 
-        # Одна строка на товар: если наших карточек в выдаче несколько, конкурент
-        # записан по каждой (привязка ко всем) — в отчёте это дубли, склеиваем.
-        merged: dict[int, dict] = {}
-        order: list[int] = []
+        # Нарезка по ЗАХОДАМ: строка отчёта = один заход в поиск (метка slice_stamp),
+        # а не день: за сутки поиск открывают несколько раз, и товары из разных
+        # заходов — разные выдачи (склеивать их нельзя).
+        # Дедуп по nm_id — ВНУТРИ захода.
+        by_slice: dict[str, list] = {}
         for it in items:
-            nm = int(it["nm_id"] or 0)
-            if nm not in merged:
-                it = dict(it)
-                it["source_nm_ids"] = [it["source_nm_id"]] if it["source_nm_id"] else []
-                merged[nm] = it
-                order.append(nm)
-                continue
-            m = merged[nm]
-            if it["source_nm_id"] and it["source_nm_id"] not in m["source_nm_ids"]:
-                m["source_nm_ids"].append(it["source_nm_id"])
-            # оставляем вариант с более полными данными (position_api из JSON)
-            if m.get("position_api") is None and it.get("position_api") is not None:
-                keep = m["source_nm_ids"]
-                m.update(it)
-                m["source_nm_ids"] = keep
-        items = [merged[nm] for nm in order]
+            key = it["slice_stamp"] or ("date:" + it["at"])
+            by_slice.setdefault(key, []).append(it)
+
+        # Если по фразе есть заходы с меткой — показываем только их (старые суточные
+        # строки без метки — это те же заходы, склеенные вместе; показывать и то,
+        # и другое = дубли).
+        if any(not k.startswith("date:") for k in by_slice):
+            by_slice = {k: v for k, v in by_slice.items() if not k.startswith("date:")}
+
+        slices: list[dict] = []
+        for key in sorted(by_slice, reverse=True):
+            d = by_slice[key][0]["at"]
+            # Одна строка на товар: если наших карточек в выдаче несколько, конкурент
+            # записан по каждой (привязка ко всем) — в отчёте это дубли, склеиваем.
+            merged: dict[int, dict] = {}
+            order: list[int] = []
+            for it in by_slice[key]:
+                nm = int(it["nm_id"] or 0)
+                if nm not in merged:
+                    it = dict(it)
+                    it["source_nm_ids"] = [it["source_nm_id"]] if it["source_nm_id"] else []
+                    merged[nm] = it
+                    order.append(nm)
+                    continue
+                m = merged[nm]
+                if it["source_nm_id"] and it["source_nm_id"] not in m["source_nm_ids"]:
+                    m["source_nm_ids"].append(it["source_nm_id"])
+                # оставляем вариант с более полными данными (position_api из JSON)
+                if m.get("position_api") is None and it.get("position_api") is not None:
+                    keep = m["source_nm_ids"]
+                    m.update(it)
+                    m["source_nm_ids"] = keep
+            day_items = [merged[nm] for nm in order]
+            for i in day_items:
+                # наш товар — тот, кто сам был в выдаче (а не просто конкурент)
+                i["is_ours"] = int(i["nm_id"] or 0) in ours_set
+            slices.append({
+                "date": d,
+                "time": _stamp_time(by_slice[key][0].get("slice_stamp")),
+                "stamp": key if not key.startswith("date:") else "",
+                "items": day_items,
+            })
 
         saved_by = {}
         for it in items:
@@ -316,7 +402,8 @@ class CompetitorsPositionsService:
             "phrase": phrase,
             "date": chosen,
             "days": days,
-            "items": items,
+            "items": next((s["items"] for s in slices if s["date"] == chosen), []),
+            "slices": slices,
             "sources": [{"nm_id": s, "title": titles.get(s, "")} for s in ours],
             "saved_by": list(saved_by.values()),
         }
@@ -403,6 +490,7 @@ class CompetitorsPositionsService:
         for r in rows:
             items.append({
                 "phrase": _norm_phrase(r["query_phrase"]),
+                "phrase_raw": r["query_phrase"] or "",
                 "phrase_norm": r["phrase_norm"] or "",
                 "date": _d(r["snapshot_date"]),
                 "collected_at": _d(r["collected_at"]),
@@ -452,7 +540,8 @@ class CompetitorsPositionsService:
             banners = _json_list(r["banners"])
             shelfs = _json_list(r["shelfs"])
             items.append({
-                "phrase": r["query_phrase"] or "",
+                "phrase": _norm_phrase(r["query_phrase"]),
+                "phrase_raw": r["query_phrase"] or "",
                 "date": _d(r["snapshot_date"]),
                 "collected_at": _d(r["collected_at"]),
                 "file_name": r["file_name"] or "",
@@ -475,6 +564,153 @@ class CompetitorsPositionsService:
             })
         items = _merge_by_phrase(items)
         return {"items": items, "total": len(items)}
+
+    # ---------- 8. очередь пересборки выдачи ----------
+
+    # Не больше стольких фраз ждут одновременно: расширение обходит очередь по
+    # одной, и лить сотни запросов в WB — верный способ словить капчу.
+    REQUEUE_PENDING_LIMIT = 10
+
+    async def requeue(self, phrases: list[str], source_nm_id: int = 0,
+                      user_id: int | None = None, source: str = "report") -> dict:
+        """Отправить фразы на пересборку выдачи (очередь для расширения).
+
+        Одна фраза = одна строка очереди; повторная отправка возвращает её в
+        pending. Очередь ограничена REQUEUE_PENDING_LIMIT фразами.
+        """
+        cid = int(self.company_id or 0)
+        norm: list[str] = []
+        raws: dict[str, str] = {}
+        for raw in phrases or []:
+            ph = _norm_phrase(raw)
+            if not ph or ph in raws:
+                continue
+            norm.append(ph)
+            raws[ph] = str(raw or "")[:500]
+
+        if not norm:
+            return {"queued": 0, "phrases": [], "skipped": [], "limit": self.REQUEUE_PENDING_LIMIT}
+
+        pending = int((await self.db.execute(text("""
+            SELECT COUNT(*) c FROM wb_search_phrase_queue
+            WHERE company_id=:cid AND status IN ('pending','processing')
+        """), {"cid": cid})).scalar() or 0)
+        room = max(0, self.REQUEUE_PENDING_LIMIT - pending)
+
+        queued: list[str] = []
+        for ph in norm[:room]:
+            nm = int(source_nm_id or 0)
+            if not nm:
+                # наша карточка, которая была в этой выдаче (иначе — без привязки)
+                nm = int((await self.db.execute(text("""
+                    SELECT DISTINCT source_nm_id FROM wb_competitor_position
+                    WHERE company_id=:cid AND query_phrase=:ph AND source_nm_id>0
+                    LIMIT 1
+                """), {"cid": cid, "ph": ph})).scalar() or 0)
+            await self.db.execute(text("""
+                INSERT INTO wb_search_phrase_queue
+                  (company_id, source_nm_id, query_phrase, phrase_raw, status, priority, source, created_by)
+                VALUES (:cid, :nm, :ph, :raw, 'pending', 10, :src, :uid)
+                ON DUPLICATE KEY UPDATE
+                  status='pending', source_nm_id=VALUES(source_nm_id),
+                  source=VALUES(source), updated_at=NOW(), last_error=NULL
+            """), {"cid": cid, "nm": nm, "ph": ph,
+                     "raw": raws.get(ph, ""), "src": str(source or "report")[:20],
+                     "uid": user_id})
+            queued.append(ph)
+        await self.db.commit()
+
+        return {
+            "queued": len(queued),
+            "phrases": queued,
+            "skipped": norm[room:],
+            "limit": self.REQUEUE_PENDING_LIMIT,
+        }
+
+    # ---------- 7. сводка нашей карточки ----------
+
+    async def our_card(self, nm_id: int, date_from=None, date_to=None) -> dict:
+        """Сводка нашей карточки: описание, характеристики и наши позиции в выдаче.
+
+        Клик по своей карточке в отчёте «Выдача WB» → эта сводка.
+        """
+        card = (await self.db.execute(
+            text("SELECT nmID, title, brand, vendorCode, subjectName, description, "
+                 "characteristics, photos FROM wbcards WHERE nmID=:n LIMIT 1"),
+            {"n": nm_id},
+        )).mappings().first()
+
+        scope, sparams = self._scope()
+        where, params = self._period(date_from, date_to)
+        params.update(sparams)
+
+        rows = (await self.db.execute(text(f"""
+            SELECT p.query_phrase, p.collected_at, p.position, p.position_api,
+                   p.price, p.price_api, p.old_price, p.old_price_api,
+                   p.rating, p.review_rating, p.reviews, p.feedbacks, p.badges,
+                   p.image_url, p.seller, p.brand
+            FROM wb_competitor_position p
+            WHERE {' AND '.join(where)} {scope} AND p.nm_id=:n
+            ORDER BY p.query_phrase, p.collected_at DESC, p.position
+        """), {**params, "n": nm_id})).mappings().all()
+
+        by_phrase: dict[str, list] = {}
+        for r in rows:
+            by_phrase.setdefault(_norm_phrase(r["query_phrase"]), []).append(r)
+
+        phrases: list[dict] = []
+        for phrase, items in by_phrase.items():
+            days = sorted({_d(r["collected_at"]) for r in items})
+            last_day = days[-1] if days else ""
+            last_items = [r for r in items if _d(r["collected_at"]) == last_day]
+            best = None
+            for r in last_items:
+                pos = r["position_api"] or r["position"]
+                if pos and (best is None or int(pos) < int(best[0])):
+                    best = (pos, r)
+            history = []
+            for d in days:
+                for r in items:
+                    if _d(r["collected_at"]) != d:
+                        continue
+                    history.append({
+                        "date": d,
+                        "position": int(r["position"] or 0),
+                        "position_api": r["position_api"],
+                        "price": r["price"],
+                        "price_api": r["price_api"],
+                    })
+                    break
+            phrases.append({
+                "phrase": phrase,
+                "days": days,
+                "last_day": last_day,
+                "position": int(best[0]) if best else None,
+                "position_api": best[1]["position_api"] if best else None,
+                "price": best[1]["price"] if best else None,
+                "price_api": best[1]["price_api"] if best else None,
+                "old_price_api": best[1]["old_price_api"] if best else None,
+                "rating": best[1]["rating"] if best else None,
+                "reviews": best[1]["reviews"] if best else None,
+                "badges": _json_list(best[1]["badges"]) if best else [],
+                "image_url": best[1]["image_url"] if best else "",
+                "history": history,
+            })
+        phrases.sort(key=lambda x: (x["last_day"], x["position"] or 999), reverse=True)
+
+        return {
+            "card": {
+                "nm_id": int(nm_id),
+                "title": (card["title"] if card else "") or "",
+                "brand": (card["brand"] if card else "") or "",
+                "vendor": (card["vendorCode"] if card else "") or "",
+                "subject": (card["subjectName"] if card else "") or "",
+                "description": (card["description"] if card else "") or "",
+                "characteristics": _json_list(card["characteristics"]) if card else [],
+                "photos": _json_list(card["photos"]) if card else [],
+            },
+            "phrases": phrases,
+        }
 
     # ---------- 4. отчёт по одной нашей карточке ----------
 

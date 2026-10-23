@@ -119,6 +119,18 @@ async def ext_tokens_revoke(
 
 # ---------- enrich: статус/очередь/результат (порт server.py) ----------
 
+@router.get("/whoami")
+async def ext_whoami(
+    ext: dict = Depends(require_ext_token),
+):
+    """Кто мы: имя токена и компания — попап показывает, каким токеном работаем."""
+    return {
+        "id": ext.get("id"),
+        "name": ext.get("name") or "",
+        "company_id": ext.get("company_id"),
+    }
+
+
 @router.get("/status")
 async def ext_status(
     nm_id: int | None = Query(default=None, ge=1),
@@ -460,6 +472,23 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
     # запрос = две фразы в БД и в отчёте.
     phrase = capture_service._norm_phrase(data.get("phrase"))[:500]
     products = data.get("products") or []
+    # Метка захода в поиск: расширение присылает search_stamp (один на все каналы
+    # одного поиска). Если её нет — берём последний срез по этой фразе (заход был
+    # минуту назад, JSON-каталог уже записался).
+    slice_stamp = str(data.get("search_stamp") or "")[:20]
+    if not slice_stamp:
+        try:
+            row = (await db.execute(text(
+                "SELECT slice_stamp FROM wb_competitor_position "
+                "WHERE company_id=:cid AND query_phrase=:ph AND slice_stamp<>'' "
+                "ORDER BY id DESC LIMIT 1"
+            ), {"cid": cid, "ph": phrase})).mappings().first()
+            if row:
+                slice_stamp = str(row["slice_stamp"] or "")[:20]
+        except Exception:
+            slice_stamp = ""
+    # Не плодим срезы: заход в течение часа перезаписывает последний срез по фразе
+    slice_stamp = await capture_service.resolve_slice_stamp(db, cid, phrase, slice_stamp)
     if not phrase or not products:
         # 400 — чтобы в журнале сервера было видно, что расширение прислало пустую выдачу
         raise HTTPException(
@@ -505,9 +534,9 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
                 INSERT INTO wb_competitor_position
                   (company_id, source_nm_id, query_phrase, position, nm_id, title, brand, seller,
                    price, old_price, rating, feedbacks, reviews, badges, promo_id, image_url,
-                   created_by, ext_token_id, collected_at)
+              created_by, ext_token_id, collected_at, slice_stamp)
                 VALUES (:cid, :s, :ph, :pos, :pid, :t, :b, :seller, :price, :old_price, :rating,
-                        :fb, :rev, :bg, :promo, :img, :uid, :tok, CURDATE())
+                    :fb, :rev, :bg, :promo, :img, :uid, :tok, CURDATE(), :slice_stamp)
                 ON DUPLICATE KEY UPDATE
                   position=VALUES(position), title=VALUES(title), brand=VALUES(brand),
                   seller=IF(VALUES(seller)='', seller, VALUES(seller)),
@@ -525,7 +554,8 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
                    "price": price, "old_price": old_price, "rating": rating,
                    "fb": fb, "rev": reviews,
                    "bg": json.dumps(badges, ensure_ascii=False),
-                   "promo": promo_id, "img": img, "uid": uid, "tok": tok})
+                   "promo": promo_id, "img": img, "uid": uid, "tok": tok,
+                   "slice_stamp": slice_stamp})
 
         # конкуренты нашей карточки — только топ-12
         if pos > 12:
@@ -684,6 +714,12 @@ async def ext_search_status(
         return rep if "total" in rep else {"total": sum(rep.values()), **rep}
     elif source == "compquery":
         rows = await _compquery_counts()
+    elif source == "phrases":
+        rows = (await db.execute(text("""
+            SELECT status, COUNT(*) AS cnt FROM wb_search_phrase_queue
+            WHERE company_id=:c GROUP BY status
+        """), {"c": cid})).mappings().all()
+        rows = {r["status"]: r["cnt"] for r in rows}
     else:  # both
         rows = await _seo_counts()
         if nm_id:
@@ -750,6 +786,30 @@ async def ext_search_next(
             if upd.rowcount:
                 return {"queue_id": row["id"], "nm_id": row["source_nm_id"], "phrase": row["phrase"]}
         return {"nm_id": None}
+    if source == "phrases":
+        # Очередь фраз на пересборку выдачи (из отчёта «Выдача WB»).
+        await db.execute(text("""
+            UPDATE wb_search_phrase_queue SET status='pending', updated_at=NOW()
+            WHERE company_id=:c AND status='processing'
+              AND updated_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE)
+        """), {"c": cid})
+        await db.commit()
+        row = (await db.execute(text("""
+            SELECT id, source_nm_id, query_phrase FROM wb_search_phrase_queue
+            WHERE company_id=:c AND status='pending'
+            ORDER BY priority, id LIMIT 1
+        """), {"c": cid})).mappings().first()
+        if row:
+            upd = await db.execute(text("""
+                UPDATE wb_search_phrase_queue SET status='processing', updated_at=NOW()
+                WHERE id=:i AND status='pending'
+            """), {"i": row["id"]})
+            await db.commit()
+            if upd.rowcount:
+                return {"queue_id": int(row["id"]),
+                        "nm_id": int(row["source_nm_id"] or 0),
+                        "phrase": row["query_phrase"]}
+        return {"nm_id": None}
     if source in ("seo", "both"):
         # зависший processing: расширение могло закрыться посреди поиска —
         # снимаем в pending (тот же 30-минутный reset, что у compquery).
@@ -815,10 +875,26 @@ async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
         queue_id = int(queue_id) if queue_id else None
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="bad queue_id/nm_id")
-    if not nm_id:
+    # Для очереди «Поисковые фразы» карточка может быть не привязана (nm_id=0):
+    # тогда соберём сырьё по нише, а позиций «нас» не будет.
+    if not nm_id and source != "phrases":
         raise HTTPException(status_code=400, detail="nm_id required")
-    if not await _owns_card(db, cid, nm_id):
+    if nm_id and not await _owns_card(db, cid, nm_id):
         raise HTTPException(status_code=403, detail="foreign nm_id")
+    # Метка захода в поиск — как в /observe_search (с окном в час)
+    slice_stamp = str(data.get("search_stamp") or "")[:20]
+    slice_stamp = await capture_service.resolve_slice_stamp(db, cid, phrase, slice_stamp)
+    if not slice_stamp:
+        try:
+            row = (await db.execute(text(
+                "SELECT slice_stamp FROM wb_competitor_position "
+                "WHERE company_id=:cid AND query_phrase=:ph AND source_nm_id=:s AND slice_stamp<>'' "
+                "ORDER BY id DESC LIMIT 1"
+            ), {"cid": cid, "ph": phrase, "s": nm_id})).mappings().first()
+            if row:
+                slice_stamp = str(row["slice_stamp"] or "")[:20]
+        except Exception:
+            slice_stamp = ""
     uid = ext.get("created_by")
     tok = ext.get("id")
     for idx, p in enumerate(products, 1):
@@ -842,9 +918,9 @@ async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
             INSERT INTO wb_competitor_position
               (company_id, source_nm_id, query_phrase, position, nm_id, title, brand, seller,
                price, old_price, rating, feedbacks, reviews, badges, promo_id, image_url,
-               created_by, ext_token_id, collected_at)
+              created_by, ext_token_id, collected_at, slice_stamp)
             VALUES (:cid, :s, :ph, :pos, :pid, :t, :b, :seller, :price, :old_price, :rating,
-                    :fb, :rev, :bg, :promo, :img, :uid, :tok, CURDATE())
+                    :fb, :rev, :bg, :promo, :img, :uid, :tok, CURDATE(), :slice_stamp)
             ON DUPLICATE KEY UPDATE
               position=VALUES(position), title=VALUES(title), brand=VALUES(brand),
               seller=IF(VALUES(seller)='', seller, VALUES(seller)),
@@ -861,9 +937,13 @@ async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
                "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
                "price": price, "old_price": old_price, "rating": rating, "fb": fb, "rev": reviews,
                "bg": json.dumps(badges, ensure_ascii=False),
-               "promo": promo_id, "img": img, "uid": uid, "tok": tok})
+               "promo": promo_id, "img": img, "uid": uid, "tok": tok,
+               "slice_stamp": slice_stamp})
         # Конкуренты нашей карточки — только топ-12 (схема: «позиция в выдаче, 1-12»)
         if pos > 12:
+            continue
+        if not nm_id:
+            # фраза без привязки к нашей карточке: позиции пишем, конкурентов — некуда
             continue
         await db.execute(text("""
             INSERT INTO wb_competitor_cards
@@ -885,9 +965,14 @@ async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
                "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
                "price": price, "old_price": old_price, "rating": rating, "fb": fb,
                "bg": json.dumps(badges, ensure_ascii=False),
-               "img": img, "uid": uid})
+               "img": img, "uid": uid, "tok": tok})
     if queue_id:
-        if source == "compquery":
+        if source == "phrases":
+            await db.execute(text("""
+                UPDATE wb_search_phrase_queue SET status='done', updated_at=NOW()
+                WHERE id=:i AND company_id=:c
+            """), {"i": queue_id, "c": cid})
+        elif source == "compquery":
             q = (await db.execute(text("""
                 SELECT source_nm_id FROM wb_competitor_query
                 WHERE id=:i AND company_id=:c LIMIT 1
@@ -905,7 +990,7 @@ async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
                 await db.rollback()
                 raise HTTPException(status_code=403, detail="foreign queue_id")
             await db.execute(text("UPDATE wb_seo_target SET status='done' WHERE id=:i"), {"i": queue_id})
-    elif not products and source != "compquery":
+    elif not products and source != "compquery" and nm_id:
         # report-источник с пустым результатом («Не нашлось») — маркируем чтобы не зацикливаться
         await db.execute(text("""
             INSERT IGNORE INTO wb_competitor_cards
@@ -1059,6 +1144,12 @@ async def ext_reset_search(
             UPDATE wb_competitor_query SET status='pending', updated_at=NOW()
             WHERE {where} AND status IN ('error', 'processing')
         """), params)
+        changed = r.rowcount
+    elif source == "phrases":
+        r = await db.execute(text("""
+            UPDATE wb_search_phrase_queue SET status='pending', updated_at=NOW()
+            WHERE company_id=:c AND status IN ('error', 'processing')
+        """), {"c": cid})
         changed = r.rowcount
     await db.commit()
     return {"reset": changed}
