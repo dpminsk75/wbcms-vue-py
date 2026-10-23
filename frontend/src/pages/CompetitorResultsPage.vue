@@ -162,7 +162,7 @@ const jobActive = computed(() => job.polling.value && !job.finished.value)
 const shortDesc = (t: any) => String(t || '').slice(0, 800)
 import { useDateFmt } from '../composables/useDateFmt'
 const { fmtDT } = useDateFmt()
-const priceFmt = (p: any) => p ? `${Number(p / 100).toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽` : '—'
+const priceFmt = (p: any) => p ? `${Number(p).toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽` : '—'
 // Статус текущей задачи для карточки (лоадер/ошибка у самой записи)
 function jobItem(nm: number) {
   return job.job.value?.items.find((i) => i.label === `nm ${nm}`) || null
