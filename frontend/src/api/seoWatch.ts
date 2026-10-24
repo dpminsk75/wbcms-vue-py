@@ -22,6 +22,8 @@ export interface WatchOurPosition {
   nm_id: number
   position: number | null
   price: number | null
+  /** Артикул нашей карточки (wbcards.vendorCode) — для тултипа. */
+  vendor_code?: string
 }
 
 export interface WatchNewItem {
@@ -55,9 +57,13 @@ export interface WatchMatrixRow {
   /** Сбор свежее порога компании (`watch_stale_days`). */
   fresh: boolean
   stale_days: number
-  /** Товаров в последнем заходе / сколько наших среди них. */
+  /** Уникальных карточек в последнем заходе (COUNT DISTINCT по срезу). */
   cards_cnt: number
   ours_cnt: number
+  /** Позиций в окне анализа (ТОП-40). */
+  top_cnt?: number
+  /** Наших карточек внутри окна анализа */
+  top_ours_cnt?: number
   our_positions: WatchOurPosition[]
   best_position: number | null
   new_cnt: number

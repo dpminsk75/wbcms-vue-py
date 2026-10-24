@@ -129,6 +129,25 @@ function fmtPct(v: number | null | undefined): string {
   return `${v > 0 ? '+' : ''}${Number(v).toFixed(1).replace('.', ',')}%`
 }
 
+/** Метка захода «20261022_131023» → «22.10.2026 13:10».
+ * Псевдо-метка легаси (…_000000) — только дата: время того сбора неизвестно. */
+function sliceLabel(row: WatchMatrixRow): string {
+  const stamp = row.last_stamp || ''
+  if (stamp.length >= 15 && stamp[8] === '_') {
+    const dt = `${stamp.slice(6, 8)}.${stamp.slice(4, 6)}.${stamp.slice(0, 4)}`
+    const tm = `${stamp.slice(9, 11)}:${stamp.slice(11, 13)}`
+    return tm === '00:00' ? dt : `${dt} ${tm}`
+  }
+  return row.last_at ? row.last_at.split('-').reverse().join('.') : ''
+}
+
+function collectedTitle(row: WatchMatrixRow): string {
+  const lab = sliceLabel(row)
+  if (!lab) return 'Сбора выдачи по фразе ещё не было'
+  const age = row.days_old != null ? `, ${row.days_old} дн. назад` : ''
+  return `Последний заход в поиск WB: ${lab}${age}`
+}
+
 /** Наш товар из выдачи → карточка товара на WB (клик по позиции). */
 function openCard(card: PositionsItem) {
   if (card.is_ours) ourCardNm.value = card.nm_id
@@ -458,7 +477,7 @@ onMounted(load)
                 <th class="text-center" title="Заказы по фразе у наших карточек ТОП (Search Reports)">Заказы</th>
                 <th class="text-center" title="Наши позиции в выдаче (все наши карточки)">Наши позиции</th>
                 <th class="text-center" title="Лучшая наша позиция в выдаче">Лучшая</th>
-                <th class="text-center" title="Карточек в ТОП-40 выдачи / сколько из них наших">В ТОП-40</th>
+                <th class="text-center" title="Наших карточек в первых 40 позициях выдачи">В ТОП-40</th>
                 <th class="text-center" title="Свежесть сбора выдачи">Сбор</th>
                 <th class="text-center" title="Новые карточки в выдаче">Новые</th>
                 <th class="text-center" title="Изменения цен конкурентов между заходами">Цены</th>
@@ -480,8 +499,13 @@ onMounted(load)
                   </td>
                   <td>
                     <span class="page-seo-watch__phrase" :title="row.phrase">{{ row.phrase }}</span>
-                    <div class="page-seo-watch__note">
-                      наши карточки: {{ row.cards.map((c) => c.nm_id).join(', ') || '—' }}
+                    <div class="page-seo-watch__note page-seo-watch__cards-line">
+                      <span>наши карточки: {{ row.cards.map((c) => c.nm_id).join(', ') || '—' }}</span>
+                      <span
+                        v-if="sliceLabel(row)"
+                        class="page-seo-watch__collected"
+                        :title="collectedTitle(row)"
+                      >{{ sliceLabel(row) }}</span>
                     </div>
                   </td>
                   <td class="text-center">{{ row.orders_max }}</td>
@@ -491,14 +515,14 @@ onMounted(load)
                         v-for="o in row.our_positions"
                         :key="o.nm_id"
                         class="btn btn-sm btn-link p-0 page-seo-watch__ours-pos"
-                        :title="`Сводка нашей карточки ${o.nm_id}`"
+                        :title="`ID: ${o.nm_id} Арт: ${o.vendor_code || '—'}`"
                         @click.stop="ourCardNm = o.nm_id"
                       >{{ o.position ?? '—' }}</button>
                     </span>
-                    <span v-else class="page-seo-watch__note" title="Нас не было в выдаче на последнем сборе">нет</span>
+                    <span v-else class="page-seo-watch__note" title="Наших карточек в первых 40 позициях выдачи нет">нет в ТОП-40</span>
                   </td>
                   <td class="text-center">{{ row.best_position ?? '—' }}</td>
-                  <td class="text-center">{{ row.top_cnt ?? row.cards_cnt }} / {{ row.top_ours_cnt ?? row.ours_cnt }}</td>
+                  <td class="text-center">{{ row.top_ours_cnt ?? row.ours_cnt }}</td>
                   <td class="text-center">
                     <span
                       class="badge"
@@ -539,7 +563,8 @@ onMounted(load)
                         <div class="page-seo-watch__slice-head">
                           <span class="page-seo-watch__slice-day">{{ day.date }}</span>
                           <span v-if="day.time" class="page-seo-watch__slice-time">{{ day.time }}</span>
-                          <span class="page-seo-watch__note">показано {{ visibleItems(day).length }} из {{ day.items.length }}</span>                          <span class="page-seo-watch__filters">
+                          <span class="page-seo-watch__note">показано {{ visibleItems(day).length }} из {{ day.items.length }}</span>
+                          <span class="page-seo-watch__detail-filters">
                             <label class="page-seo-watch__check">
                               <input type="checkbox" v-model="onlyPriceChanged" />
                               <span>изменилась цена</span>

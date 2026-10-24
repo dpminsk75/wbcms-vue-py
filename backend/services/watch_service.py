@@ -250,7 +250,6 @@ class WatchService:
         return ph, {f"{prefix}{i}": v for i, v in enumerate(values)}
 
     async def _slice_items(self, phrases: list[str], stamps: list[str],
-                           our_ids: set[int] | None = None,
                            top: int | None = None) -> dict:
         """Строки заходов: (фраза, stamp) -> позиции карточек.
 
@@ -259,26 +258,19 @@ class WatchService:
         только нужные заходы. FORCE INDEX обязателен: без него планировщик на
         сервере 1 ГБ выбирал scan по компании, и страница висела десятки минут.
 
-        В Python приезжает только то, что показываем: ТОП-N позиций выдачи
-        (`top`) и наши карточки на любой позиции (по ним «наши» и позиции).
-        Остальное не выгружаем — срезы большие (замер 2026-10-24: среднее
-        689 строк на заход, максимум 8740). Строки без меток (`slice_stamp=''`)
-        не нужны: всё легаси перезалито псевдо-метками UPDATE'ом 2026-10-24.
+        В Python приезжает только ТОП-N позиций выдачи (`top`) — по ТЗ работаем
+        с видом покупателя, а в выдаче он видит первые 40. Что показываем, то и
+        выгружаем: срезы большие (замер 2026-10-24: среднее 689 строк на заход,
+        максимум 8740). Строки без меток (`slice_stamp=''`) не нужны: всё легаси
+        перезалито псевдо-метками UPDATE'ом 2026-10-24.
         """
         if not phrases:
             return {}
         rows: list = []
         stamps = [s for s in (stamps or []) if s and not s.startswith("date:")]
         if stamps:
-            # режем срез в SQL: ТОП-N позиций + наши карточки на любой позиции
+            # режем срез в SQL: ТОП-N позиций выдачи
             top = max(1, int(top or self.TOP_POSITIONS))
-            pos_filter = f"AND p.position BETWEEN 1 AND {top}"
-            extras: dict = {}
-            our = sorted({int(n) for n in (our_ids or set()) if int(n) > 0})
-            if our:
-                oph, op = self._inlist("o", our)
-                pos_filter += f" OR p.nm_id IN ({oph})"
-                extras = op
             sph, sp = self._inlist("s", stamps)
             pph, pp = self._inlist("p", phrases)
             rows += (await self.db.execute(text(f"""
@@ -290,8 +282,8 @@ class WatchService:
                 FROM wb_competitor_position p FORCE INDEX (idx_position_slice)
                 WHERE p.company_id = :cid AND p.slice_stamp IN ({sph})
                   AND p.query_phrase IN ({pph})
-                  {pos_filter}
-            """), {"cid": self.company_id or 0, **sp, **pp, **extras})).mappings().all()
+                  AND p.position BETWEEN 1 AND {top}
+            """), {"cid": self.company_id or 0, **sp, **pp})).mappings().all()
         # один товар в заходе — одна строка (привязка к нескольким нашим карточкам
         # даёт дубли; оставляем вариант с лучшей позицией)
         best: dict[tuple[str, str, int], dict] = {}
@@ -396,16 +388,17 @@ class WatchService:
                 lst.append(r["slice_stamp"])
         return out
 
-    async def _our_card_ids(self) -> set[int]:
-        """Наши карточки компании (nmID из `wbcards`).
+    async def _our_cards(self) -> dict[int, str]:
+        """Наши карточки компании: nmID → vendorCode (из `wbcards`).
 
         «Наш товар в выдаче» = строка `wb_competitor_position`, у которой nm_id
         есть в wbcards этой компании. Всё остальное — конкуренты.
+        vendorCode — артикул для показа на фронте (тултип позиции).
         """
         rows = (await self.db.execute(text("""
-            SELECT nmID FROM wbcards WHERE company_id = :cid AND nmID > 0
+            SELECT nmID, vendorCode FROM wbcards WHERE company_id = :cid AND nmID > 0
         """), {"cid": self.company_id or 0})).mappings().all()
-        return {int(r["nmID"]) for r in rows if r["nmID"]}
+        return {int(r["nmID"]): (r["vendorCode"] or "") for r in rows if r["nmID"]}
 
     async def matrix(self, date_from: str, date_to: str) -> dict:
         """Матрица мониторинга: строка = фраза watch set.
@@ -455,8 +448,10 @@ class WatchService:
             _cache_put(key, res)
             return res
 
-        # Наши карточки нужны ДО выборки строк: срез режем по ним прямо в SQL.
-        our_ids = await self._our_card_ids()
+        # Наши карточки (nmID → vendorCode) — для разметки «наше/конкурент»
+        # и артикулов в колонке «Наши позиции» (SQL-срез уже режется по ТОП-40).
+        our_cards = await self._our_cards()
+        our_ids = set(our_cards)
         _done("our_ids")
         # Два последних захода по фразе — из индекса (DISTINCT, index-only).
         # Заход = один заход в поиск: за сутки их бывает два, и это разные выдачи.
@@ -467,8 +462,8 @@ class WatchService:
         for ph, sl in stamps_map.items():
             last_pair[ph] = (sl[0], sl[1] if len(sl) > 1 else "")
             all_stamps.update(sl)
-        # ТОП-40 позиций + наши карточки — остальное из MySQL не выгружаем.
-        slices = await self._slice_items(list(last_pair.keys()), sorted(all_stamps), our_ids)
+        # ТОП-40 позиций выдачи — остальное из MySQL не выгружаем.
+        slices = await self._slice_items(list(last_pair.keys()), sorted(all_stamps))
         _done("slices")
         # Честное cards_cnt («сколько всего карточек в заходе») — без выгрузки строк.
         slice_counts = await self._slice_counts(list(last_pair.keys()), sorted(all_stamps))
@@ -495,7 +490,8 @@ class WatchService:
             # бывает №100 в каталоге. В одной колонке их мешать нельзя.
             ours = [{"nm_id": it["nm_id"],
                      "position": it["position"],
-                     "price": it["price"] or it["price_api"]}
+                     "price": it["price"] or it["price_api"],
+                     "vendor_code": our_cards.get(it["nm_id"], "")}
                     for it in last_slice if it["nm_id"] in our_ids]
             best_pos = min((o["position"] for o in ours if o["position"]), default=None)
             # Топ-часть выдачи: WB в сборе отдаёт ~100 карточек (весь лист),
@@ -640,9 +636,9 @@ class WatchService:
         stamps_map = await self._slice_stamps([ph], days)
         sl_list = stamps_map.get(ph, [])
         stamps = list(sl_list)
-        # наши карточки нужны ДО выборки: срез режем в SQL (ТОП-40 + наши)
-        our_ids = await self._our_card_ids()
-        slices = await self._slice_items([ph], stamps, our_ids)
+        # наши карточки — только для разметки is_ours (срез уже режется по ТОП-40)
+        our_ids = set(await self._our_cards())
+        slices = await self._slice_items([ph], stamps)
         st = await self.settings()
         # sl_list — от свежих к старым: показываем новые первыми, «предыдущий»
         # заход = следующий в списке (он старее).
