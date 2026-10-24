@@ -1,0 +1,327 @@
+/* SEO-мониторинг (/seo-watch) — план 2026-10-23. Своя статика страницы (AGENTS.md),
+   инлайн-стилей нет; динамика (цвета/ширины) — только :style в шаблоне. */
+
+/* ---------- шапка + табы ---------- */
+.page-seo-watch__head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.page-seo-watch__head .page-title {
+  margin-bottom: 0;
+}
+
+/* ---------- фильтр: пресеты + даты ---------- */
+.page-seo-watch__filters {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.page-seo-watch__presets {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.page-seo-watch__label {
+  font-size: 13px;
+  color: #6b7280;
+}
+.page-seo-watch__loading {
+  padding: 8px 2px;
+}
+
+/* ---------- KPI ---------- */
+.page-seo-watch__kpi {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.page-seo-watch__kpi-card {
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  background: #fff;
+  padding: 10px 12px;
+}
+.page-seo-watch__kpi-card--warn {
+  border-color: #f0c36d;
+  background: #fffdf5;
+}
+.page-seo-watch__kpi-label {
+  font-size: 12px;
+  color: #6b7280;
+}
+.page-seo-watch__kpi-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #4a3a8c;
+  line-height: 1.2;
+}
+.page-seo-watch__kpi-note {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+/* ---------- блоки ---------- */
+.page-seo-watch__block {
+  margin-bottom: 14px;
+}
+
+/* ---------- шапка матрицы: действия рядом с чекбоксами ---------- */
+.page-seo-watch__matrix-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  /* фон не задаём — шапка карточки остаётся градиентной (.wb-card-header) */
+}
+.page-seo-watch__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.page-seo-watch__head-note {
+  color: #ffffffcc;
+}
+
+/* ---------- матрица (резина, правило B: 10+ узких колонок) ---------- */
+.page-seo-watch__grid {
+  width: 100%;
+  table-layout: auto;
+  font-size: 12px;
+}
+.page-seo-watch__grid thead th {
+  white-space: normal;
+  overflow-wrap: break-word;
+  font-weight: 500;
+  font-size: 11px;
+  text-align: center;
+  vertical-align: middle;
+  padding: 4px !important;
+}
+.page-seo-watch__grid tbody td {
+  font-size: 12px;
+  vertical-align: middle;
+}
+.page-seo-watch__col-check {
+  width: 32px;
+}
+.page-seo-watch__row:hover {
+  background: #f6f8fc;
+}
+.page-seo-watch__row--stale {
+  background: #fff8f0;
+}
+.page-seo-watch__row--open {
+  background: #eef2ff;
+}
+.page-seo-watch__phrase {
+  font-weight: 600;
+  font-size: 13px;
+}
+.page-seo-watch__note {
+  color: #9ca3af;
+  font-size: 11px;
+}
+/* Строка «наши карточки», дата/время последнего захода прижаты к правому краю. */
+.page-seo-watch__cards-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.page-seo-watch__collected {
+  white-space: nowrap;
+}
+.page-seo-watch__ours {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.page-seo-watch__ours-pos {
+  font-weight: 700;
+  font-size: 12px;
+  color: #1f6fd0;
+  text-decoration: none;
+}
+/* Колонка «Цена vs ТОП-40»: цена нашей карточки-лидера + бейдж дельты к медиане
+   конкурентов в том же заходе. Пороги: зеленый < -5%, серый -5..10%, оранжевый
+   10..50%, пастельный красный 50..100%, красный > 100%. */
+.page-seo-watch__price-val {
+  font-weight: 600;
+  font-size: 13px;
+}
+.page-seo-watch__price-badge {
+  display: inline-block;
+  font-weight: 700;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.page-seo-watch__price--green { color: #16a34a; }
+.page-seo-watch__price--gray { color: #6b7280; }
+.page-seo-watch__price--orange { color: #d97706; }
+.page-seo-watch__price--pale { color: #f87171; }
+.page-seo-watch__price--red { color: #dc2626; }
+.page-seo-watch__ours-flag {
+  display: inline-block;
+  min-width: 26px;
+  padding: 0 5px;
+  margin-right: 4px;
+  border-radius: 10px;
+  background: #e8f0fe;
+  color: #1f6fd0;
+  font-size: 11px;
+  text-align: center;
+}
+.page-seo-watch__chev {
+  width: 28px;
+  text-align: right;
+}
+
+/* ---------- раскрытие строки: выдача по фразе (карточки, как в «Выдаче WB») ---------- */
+.page-seo-watch__detail-row > td {
+  background: #fafbfe;
+  padding: 10px 12px !important;
+}
+.page-seo-watch__detail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.page-seo-watch__slice {
+  border-top: 1px solid #eef0f3;
+  padding-top: 10px;
+}
+.page-seo-watch__slice:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.page-seo-watch__slice-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+/* фильтры среза в раскрытии: «изменилась цена» / «новые карточки» —
+   отдельный класс! имя page-seo-watch__filters занято блоком дат на шапке;
+   раньше был тот же класс и margin-left:auto сдвигал/сжимал блок фильтров */
+.page-seo-watch__detail-filters {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.page-seo-watch__slice-day {
+  font-weight: 700;
+  font-size: 13px;
+}
+.page-seo-watch__slice-time {
+  font-weight: 700;
+  font-size: 13px;
+  color: #1f6fd0;
+}
+/* карточки выдачи: 5 в ряд. Фиксированная ширина (как в «Выдаче WB») —
+   проценты внутри таблицы растягивают её. */
+.page-seo-watch__cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  /* ровно 5 карточек в ряд: 5*210 + 4*10 */
+  max-width: 1090px;
+}
+.page-seo-watch__cards .wb-scard.wb-scard {
+  width: 210px;
+  max-width: 210px;
+  min-width: 0;
+  flex: 0 0 210px;
+}
+.page-seo-watch__more {
+  text-align: center;
+  margin: 10px 0 20px;
+}
+/* Кнопка «Увидеть больше» — как на дашборде (LastOrders и др.) */
+.page-seo-watch__more-btn {
+  font-size: 12px;
+  padding: 4px 16px;
+  border-radius: 6px;
+}
+
+/* ---------- события ---------- */
+.page-seo-watch__events {
+  padding: 8px 12px;
+}
+.page-seo-watch__event {
+  border-bottom: 1px solid #eef0f3;
+  padding: 6px 0;
+}
+.page-seo-watch__event:last-child {
+  border-bottom: none;
+}
+.page-seo-watch__event-phrase {
+  font-weight: 600;
+  font-size: 13px;
+}
+.page-seo-watch__event-line {
+  font-size: 12px;
+  color: #374151;
+  margin-top: 3px;
+}
+.page-seo-watch__event-item {
+  margin-right: 10px;
+}
+.page-seo-watch__event-link {
+  font-size: 12px;
+  padding: 0;
+  vertical-align: baseline;
+}
+
+/* ---------- действия менеджера ---------- */
+.page-seo-watch__actions-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+}
+.page-seo-watch__check {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+  color: #4b5563;
+}
+.page-seo-watch__notice {
+  font-size: 12px;
+  color: #1e9e7c;
+}
+.page-seo-watch__matrix-head .page-seo-watch__notice {
+  color: #fff;
+}
+
+/* Глубина захода для «Собрать устаревшие» (ТОП-10/20/40). */
+.page-seo-watch__depth {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #4b5563;
+  white-space: nowrap;
+}
+.page-seo-watch__depth select {
+  width: auto;
+  min-width: 92px;
+  font-size: 12px;
+  padding: 3px 8px;
+}

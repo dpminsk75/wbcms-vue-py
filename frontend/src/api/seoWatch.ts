@@ -8,6 +8,10 @@ export interface WatchSettings {
   top_phrases_n: number
   stale_days: number
   price_delta_pct: number
+  /** Сколько фраз набора анализируем за раз. */
+  phrases_limit?: number
+  /** Старше стольких дней карточка считается «устаревшей» для сбора контента. */
+  card_stale_days?: number
 }
 
 export interface WatchCard {
@@ -24,6 +28,10 @@ export interface WatchOurPosition {
   price: number | null
   /** Артикул нашей карточки (wbcards.vendorCode) — для тултипа. */
   vendor_code?: string
+  /** Насколько наша цена дороже медианы конкурентов ТОП-40, %. */
+  price_delta_pct?: number | null
+  /** Сколько конкурентов в ТОП-40 дешевле нас. */
+  cheaper_cnt?: number | null
 }
 
 export interface WatchNewItem {
@@ -64,6 +72,11 @@ export interface WatchMatrixRow {
   top_cnt?: number
   /** Наших карточек внутри окна анализа */
   top_ours_cnt?: number
+  /** Цены против медианы конкурентов в ТОП-40 (наши исключены). */
+  price_median?: number | null
+  price_min?: number | null
+  /** Сколько конкурентских цен учтено в медиане. */
+  price_cnt?: number
   our_positions: WatchOurPosition[]
   best_position: number | null
   new_cnt: number
@@ -170,6 +183,18 @@ export interface WatchRefreshResult {
   stale_days: number
 }
 
+/** Результат сбора карточек в очередь enrich (source='watch'). */
+export interface WatchCollectResult {
+  mode: 'changed' | 'stale'
+  requested: number
+  assigned: number
+  skipped: number
+  candidates: number
+  top: number
+  phrases_cnt: number
+  stale_days: number
+}
+
 export const seoWatchApi = {
   /** Тяжёлый расчёт матрицы может думать десятки секунд — не ждём вечно («Загрузка…»). */
   TIMEOUT: 120000,
@@ -197,4 +222,10 @@ export const seoWatchApi = {
   refresh: (phrases: string[], top = 10) =>
     api.post('/api/seo-watch/refresh', { phrases, top }, { timeout: seoWatchApi.TIMEOUT })
       .then((r) => r.data as WatchRefreshResult),
+
+  /** Сбор карточек SEO-мониторинга: 'changed' — новые/изменённые, 'stale' — устаревшие. */
+  collect: (mode: 'changed' | 'stale', phrases: string[] = [], top = 40, dateFrom?: string) =>
+    api.post('/api/seo-watch/collect', { mode, phrases, top },
+      { params: { date_from: dateFrom || undefined }, timeout: seoWatchApi.TIMEOUT })
+      .then((r) => r.data as WatchCollectResult),
 }

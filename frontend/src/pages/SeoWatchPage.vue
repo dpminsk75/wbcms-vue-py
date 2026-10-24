@@ -148,6 +148,45 @@ function collectedTitle(row: WatchMatrixRow): string {
   return `Последний заход в поиск WB: ${lab}${age}`
 }
 
+/* ---------- Цена vs ТОП-40 ---------- */
+
+/** Тон бейджа: насколько наша цена дороже медианы конкурентов в ТОП-40, %.
+ * Зелёный — дешевле более чем на 5%, серый — от −5% до 10%, дальше
+ * оранжевый / пастельный красный / красный по нарастанию перевеса. */
+function priceTone(delta: number | null | undefined): string {
+  if (delta == null) return 'gray'
+  if (delta < -5) return 'green'
+  if (delta <= 10) return 'gray'
+  if (delta <= 50) return 'orange'
+  if (delta <= 100) return 'pale'
+  return 'red'
+}
+
+function priceDeltaLabel(delta: number | null | undefined): string {
+  if (delta == null) return '—'
+  return `${delta > 0 ? '+' : ''}${delta.toFixed(1).replace('.', ',')}%`
+}
+
+/** Карточка для показа — лидер по позиции среди наших в ТОП-40 (обсудили 2026-10-24 п.3). */
+function priceLeader(row: WatchMatrixRow): WatchOurPosition | null {
+  const ours = row.our_positions || []
+  return ours.find((o) => o.position != null) ?? ours[0] ?? null
+}
+
+const PRICE_COL_TITLE =
+  'Наша цена против медианы конкурентов в ТОП-40 того же захода. ' +
+  'Зелёный: дешевле медианы на 5%+, серый: от −5% до +10%, ' +
+  'оранжевый: +10–50%, светло-красный: +50–100%, красный: дороже медианы более чем на 100%'
+
+function priceTitle(row: WatchMatrixRow, o: WatchOurPosition | null): string {
+  if (!o) return 'Наших карточек в первых 40 позициях нет'
+  const parts = [`Наша ${fmtMoney(o.price)}`]
+  if (row.price_median != null) parts.push(`медиана ТОП-40 ${fmtMoney(row.price_median)} (${row.price_cnt ?? 0} цен конкурентов)`)
+  if (o.cheaper_cnt != null) parts.push(`дешевле нас ${o.cheaper_cnt} из ${row.price_cnt ?? 0}`)
+  if (row.price_min != null) parts.push(`минимум у конкурентов ${fmtMoney(row.price_min)}`)
+  return parts.join(' · ')
+}
+
 /** Наш товар из выдачи → карточка товара на WB (клик по позиции). */
 function openCard(card: PositionsItem) {
   if (card.is_ours) ourCardNm.value = card.nm_id
@@ -317,6 +356,14 @@ const allChecked = computed({
 /** Фразы с устаревшим сбором выдачи (последний заход старше порога компании). */
 const stalePhrases = computed(() => items.value.filter((i) => !i.fresh).map((i) => i.phrase))
 
+/** Глубина захода для «Собрать устаревшие»: ТОП-10/20/40 позиций выдачи. */
+const cardTop = ref(20)
+const CARD_TOP_OPTIONS = [
+  { v: 10, label: 'ТОП-10' },
+  { v: 20, label: 'ТОП-20' },
+  { v: 40, label: 'ТОП-40' },
+]
+
 /**
  * Пересборка выдачи: фразы -> `wb_search_phrase_queue` -> расширение
  * («Поисковые фразы» в попапе). Без отметок — все фразы с устаревшим сбором.
@@ -328,9 +375,9 @@ async function doRequeue() {
   actionBusy.value = 'requeue'
   try {
     const r = await seoWatchApi.requeue(target, dateFrom.value)
-    actionNotice.value = `в очереди на пересборку: ${r.queued}`
     selected.value = []
     await load()
+    actionNotice.value = `в очереди на пересборку: ${r.queued}`
   } catch (e: any) {
     error.value = e?.response?.data?.detail || e?.message || 'Ошибка постановки в очередь'
   } finally {
@@ -351,9 +398,35 @@ async function doRefresh() {
   try {
     const r = await seoWatchApi.refresh(target, 10)
     const over = r.overflow ? `, сверх лимита не взято: ${r.overflow}` : ''
-    actionNotice.value = `в очередь enrich: ${r.assigned} (кандидатов ${r.candidates}, пропущено ${r.skipped}${over})`
     selected.value = []
     await load()
+    actionNotice.value = `в очередь enrich: ${r.assigned} (кандидатов ${r.candidates}, пропущено ${r.skipped}${over})`
+  } catch (e: any) {
+    error.value = e?.response?.data?.detail || e?.message || 'Ошибка постановки в очередь'
+  } finally {
+    actionBusy.value = ''
+  }
+}
+
+/**
+ * Сбор карточек SEO-мониторинга в очередь enrich (source='watch') — расширение
+ * забирает её отдельным режимом «SEO-мониторинг», отдельно от общей кучи.
+ * - `changed` — новые в выдаче и сдвиги цены (по всей матрице);
+ * - `stale`   — карточки старше порога компании; если отмечены фразы — только
+ *               по ним (как «Пересобрать выдачу»).
+ */
+async function doCollect(mode: 'changed' | 'stale') {
+  if (actionBusy.value) return
+  actionBusy.value = mode
+  try {
+    const phrases = mode === 'stale' ? selected.value : []
+    const r = await seoWatchApi.collect(mode, phrases, cardTop.value, dateFrom.value)
+    const notice = mode === 'stale'
+      ? `в очередь enrich: ${r.assigned} (устаревших ${r.candidates}, пропущено ${r.skipped}, порог ${r.stale_days} дн.)`
+      : `в очередь enrich: ${r.assigned} (новых и изменённых ${r.candidates}, пропущено ${r.skipped})`
+    selected.value = []
+    await load()
+    actionNotice.value = notice
   } catch (e: any) {
     error.value = e?.response?.data?.detail || e?.message || 'Ошибка постановки в очередь'
   } finally {
@@ -441,26 +514,79 @@ onMounted(load)
         </div>
       </div>
 
+      <div class="wb-grid-card page-seo-watch__block page-seo-watch__actions">
+        <div class="card-header text-white wb-card-header wb-card-header--sm">Действия</div>
+        <div class="page-seo-watch__actions-body">
+          <label class="page-seo-watch__check">
+            <input type="checkbox" v-model="allChecked" />
+            <span>выбрать все ({{ selected.length }} отмечено)</span>
+          </label>
+          <button
+            class="btn btn-sm btn-primary"
+            :disabled="!!actionBusy || (!selected.length && !stalePhrases.length)"
+            :title="selected.length
+              ? 'Отправить выбранные фразы в расширение — оно пересоберёт выдачу по ним'
+              : 'Отправить в расширение все фразы с устаревшим сбором выдачи'"
+            @click="doRequeue"
+          >
+            <i class="bi bi-arrow-repeat"></i>
+            Пересобрать выдачу (фразы)
+            <span v-if="selected.length">({{ selected.length }})</span>
+            <span v-else-if="stalePhrases.length">({{ stalePhrases.length }})</span>
+          </button>
+          <label
+            class="page-seo-watch__depth"
+            title="Какие первые позиции последнего захода каждой фразы попадут в пул «устаревших». На «новые и изменённые» не влияет"
+          >
+            устаревшие из:
+            <select v-model.number="cardTop" class="form-select form-select-sm">
+              <option v-for="o in CARD_TOP_OPTIONS" :key="o.v" :value="o.v">{{ o.label }}</option>
+            </select>
+          </label>
+          <button
+            class="btn btn-sm btn-outline-primary"
+            :disabled="!!actionBusy"
+            title="Карточки из событий «новые в выдаче» и «сдвиг цены» по всем фразам матрицы → в очередь enrich (расширение соберёт)"
+            @click="doCollect('changed')"
+          >
+            <i class="bi bi-stars"></i>
+            Собрать новые и изменённые
+          </button>
+          <button
+            class="btn btn-sm btn-outline-primary"
+            :disabled="!!actionBusy || !hasRows"
+            :title="selected.length
+              ? `Устаревшие карточки только по отмеченным фразам (${selected.length}), порог компании`
+              : 'Устаревшие карточки по всем фразам мониторинга, порог компании'"
+            @click="doCollect('stale')"
+          >
+            <i class="bi bi-archive"></i>
+            Собрать устаревшие
+            <span v-if="selected.length">({{ selected.length }})</span>
+          </button>
+          <button
+            class="btn btn-sm btn-outline-primary"
+            :disabled="!!actionBusy || (!selected.length && !stalePhrases.length)"
+            title="Взять ТОП-10 карточек последнего среза по фразам и поставить их контент в очередь enrich (расширение соберёт)"
+            @click="doRefresh"
+          >
+            <i class="bi bi-box-arrow-in-down"></i>
+            Обновить ТОП-10<span v-if="selected.length"> ({{ selected.length }})</span>
+            <span v-else-if="stalePhrases.length"> ({{ stalePhrases.length }})</span>
+          </button>
+          <span class="page-seo-watch__note">
+            Фразы → расширение «Поисковые фразы»; карточки → «Получить список», режим «SEO-мониторинг».
+          </span>
+          <span v-if="actionNotice" class="page-seo-watch__notice">{{ actionNotice }}</span>
+        </div>
+      </div>
+
       <div class="wb-grid-card page-seo-watch__block">
         <div class="card-header text-white d-flex justify-content-between align-items-center wb-card-header wb-card-header--sm page-seo-watch__matrix-head">
           <span>Матрица мониторинга</span>
           <span class="page-seo-watch__head-actions">
             <span v-if="timingsNote" class="page-seo-watch__head-note">расчёт: {{ timingsNote }}</span>
             <span class="page-seo-watch__head-note">отмечено: {{ selected.length }}</span>
-            <span v-if="actionNotice" class="page-seo-watch__notice">{{ actionNotice }}</span>
-            <button
-              class="btn btn-sm btn-primary"
-              :disabled="!!actionBusy || (!selected.length && !stalePhrases.length)"
-              :title="selected.length
-                ? 'Отправить выбранные фразы в расширение — оно пересоберёт выдачу по ним'
-                : 'Отправить в расширение все фразы с устаревшим сбором выдачи'"
-              @click="doRequeue"
-            >
-              <i class="bi bi-arrow-repeat"></i>
-              {{ selected.length ? 'Обновить выбранные' : 'Обновить устаревшие' }}
-              <span v-if="selected.length">({{ selected.length }})</span>
-              <span v-else-if="stalePhrases.length">({{ stalePhrases.length }})</span>
-            </button>
           </span>
         </div>
         <div v-if="!hasRows" class="alert alert-info m-3 mb-0">
@@ -476,6 +602,7 @@ onMounted(load)
                 <th>Фраза</th>
                 <th class="text-center" title="Заказы по фразе у наших карточек ТОП (Search Reports)">Заказы</th>
                 <th class="text-center" title="Наши позиции в выдаче (все наши карточки)">Наши позиции</th>
+                <th class="text-center" :title="PRICE_COL_TITLE">Цена vs ТОП-40</th>
                 <th class="text-center" title="Лучшая наша позиция в выдаче">Лучшая</th>
                 <th class="text-center" title="Наших карточек в первых 40 позициях выдачи">В ТОП-40</th>
                 <th class="text-center" title="Свежесть сбора выдачи">Сбор</th>
@@ -520,6 +647,26 @@ onMounted(load)
                       >{{ o.position ?? '—' }}</button>
                     </span>
                     <span v-else class="page-seo-watch__note" title="Наших карточек в первых 40 позициях выдачи нет">нет в ТОП-40</span>
+                  </td>
+                  <td class="text-center">
+                    <template v-if="priceLeader(row)">
+                      <div
+                        class="page-seo-watch__price-val"
+                        :title="priceTitle(row, priceLeader(row))"
+                      >{{ fmtMoney(priceLeader(row)!.price) }}</div>
+                      <div
+                        v-if="priceLeader(row)!.price_delta_pct != null"
+                        class="page-seo-watch__price-badge"
+                        :class="`page-seo-watch__price--${priceTone(priceLeader(row)!.price_delta_pct)}`"
+                        :title="priceTitle(row, priceLeader(row))"
+                      >{{ priceDeltaLabel(priceLeader(row)!.price_delta_pct) }}</div>
+                      <div
+                        v-if="priceLeader(row)!.cheaper_cnt != null && row.price_cnt"
+                        class="page-seo-watch__note"
+                        :title="priceTitle(row, priceLeader(row))"
+                      >{{ priceLeader(row)!.cheaper_cnt }}/{{ row.price_cnt }}</div>
+                    </template>
+                    <span v-else class="page-seo-watch__note" :title="priceTitle(row, null)">—</span>
                   </td>
                   <td class="text-center">{{ row.best_position ?? '—' }}</td>
                   <td class="text-center">{{ row.top_ours_cnt ?? row.ours_cnt }}</td>
@@ -632,31 +779,7 @@ onMounted(load)
         </div>
       </div>
 
-      <!-- Действия менеджера (внизу страницы) -->
-      <div class="wb-grid-card page-seo-watch__block page-seo-watch__actions">
-        <div class="card-header text-white wb-card-header wb-card-header--sm">Обновить содержимое ТОП-10 карточек конкурентов</div>
-        <div class="page-seo-watch__actions-body">
-          <label class="page-seo-watch__check">
-            <input type="checkbox" v-model="allChecked" />
-            <span>выбрать все ({{ selected.length }} отмечено)</span>
-          </label>
-          <button
-            class="btn btn-sm btn-outline-primary"
-            :disabled="!!actionBusy || (!selected.length && !stalePhrases.length)"
-            title="Взять ТОП-10 карточек последнего среза по фразам и поставить их контент в очередь enrich (расширение соберёт)"
-            @click="doRefresh"
-          >
-            <i class="bi bi-box-arrow-in-down"></i>
-            Обновить ТОП-10<span v-if="selected.length"> ({{ selected.length }})</span>
-            <span v-else-if="stalePhrases.length"> ({{ stalePhrases.length }})</span>
-          </button>
-          <span class="page-seo-watch__note">
-            Выдачу пересобирает расширение: заход в поиск по фразе (кнопка в шапке матрицы).
-            Здесь — обновление содержимого карточек: «Получить список» → сбор карточек.
-          </span>
-          <span v-if="actionNotice" class="page-seo-watch__notice">{{ actionNotice }}</span>
-        </div>
-      </div>
+      <!-- Действия менеджера — панелью над матрицей (page-seo-watch__actions) -->
     </template>
 
     <CompetitorDetailsModal :open="competitorNm !== null" :nm-id="competitorNm" @close="competitorNm = null" />

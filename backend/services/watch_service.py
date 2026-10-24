@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+import statistics
 import time
 from datetime import date, timedelta
 
@@ -39,6 +40,7 @@ DEFAULT_SETTINGS = {
     "stale_days": 7,
     "price_delta_pct": 5,
     "phrases_limit": 40,
+    "card_stale_days": 30,
 }
 
 SETTINGS_SQL = """
@@ -49,6 +51,11 @@ SETTINGS_SQL = """
 # Лимит числа анализируемых фраз — отдельной колонкой (может отсутствовать).
 SETTINGS_LIMIT_SQL = """
     SELECT watch_phrases_limit FROM companies WHERE id=:c LIMIT 1
+"""
+
+# Порог «устаревшей» карточки — отдельной колонкой (может отсутствовать).
+SETTINGS_CARD_SQL = """
+    SELECT watch_card_stale_days FROM companies WHERE id=:c LIMIT 1
 """
 
 
@@ -127,6 +134,17 @@ class WatchService:
             v = row2.get("watch_phrases_limit")
             if isinstance(v, int) and v > 0:
                 d["phrases_limit"] = v
+        # порог «устаревшей» карточки — тоже отдельная колонка (миграция может не быть применена)
+        try:
+            row3 = (await self.db.execute(
+                text(SETTINGS_CARD_SQL), {"c": self.company_id})).mappings().first()
+        except Exception:
+            await self.db.rollback()
+            row3 = None
+        if row3:
+            v = row3.get("watch_card_stale_days")
+            if isinstance(v, int) and v > 0:
+                d["card_stale_days"] = v
         return d
 
     # ---------------------------------------------------------------- watch set
@@ -482,22 +500,55 @@ class WatchService:
             last_d = last_slice[0]["at"] if last_slice else ""
             prev_d = prev_slice[0]["at"] if prev_slice else ""
 
+            # Топ-часть выдачи — окно анализа: вид покупателя (первые 40 позиций).
+            top_items = [it for it in last_slice
+                         if int(it["position"] or 999) <= self.TOP_POSITIONS]
+
+            # Цены против медианы ТОП-40: конкуренты того же захода, наши исключены.
+            comp_prices: list[float] = []
+            for it in top_items:
+                if it["nm_id"] in our_ids:
+                    continue
+                try:
+                    p = float(it["price"] or it["price_api"])
+                except (TypeError, ValueError):
+                    continue
+                if p > 0:
+                    comp_prices.append(p)
+            comp_prices.sort()
+            price_median = round(statistics.median(comp_prices), 2) if comp_prices else None
+            price_min = comp_prices[0] if comp_prices else None
+
             # «Наш товар» — строка выдачи, у которой nm_id есть в wbcards компании.
             # source_nm_id — контекст захода (наша карточка, чей запрос собирали),
             # по нему «наше» НЕ определяется.
             # Позиция — DOM (что видит покупатель в выдаче). position_api — это
             # номер в JSON-каталоге WB, он другой: наша карточка №1 в списке
             # бывает №100 в каталоге. В одной колонке их мешать нельзя.
-            ours = [{"nm_id": it["nm_id"],
-                     "position": it["position"],
-                     "price": it["price"] or it["price_api"],
-                     "vendor_code": our_cards.get(it["nm_id"], "")}
-                    for it in last_slice if it["nm_id"] in our_ids]
+            # Для каждой нашей карточки — дельта к медиане и сколько конкурентов
+            # дешевле (основа колонки «Цена vs ТОП-40»).
+            ours = []
+            for it in last_slice:
+                if it["nm_id"] not in our_ids:
+                    continue
+                o_price = it["price"] or it["price_api"]
+                delta = None
+                cheaper = None
+                if price_median is not None:
+                    try:
+                        of = float(o_price)
+                    except (TypeError, ValueError):
+                        of = None
+                    if of is not None and of > 0:
+                        delta = round((of - price_median) / price_median * 100, 1)
+                        cheaper = sum(1 for p in comp_prices if p < of)
+                ours.append({"nm_id": it["nm_id"],
+                             "position": it["position"],
+                             "price": o_price,
+                             "vendor_code": our_cards.get(it["nm_id"], ""),
+                             "price_delta_pct": delta,
+                             "cheaper_cnt": cheaper})
             best_pos = min((o["position"] for o in ours if o["position"]), default=None)
-            # Топ-часть выдачи: WB в сборе отдаёт ~100 карточек (весь лист),
-            # для мониторинга важны первые позиции.
-            top_items = [it for it in last_slice
-                         if int(it["position"] or 999) <= self.TOP_POSITIONS]
             top_ours = [it for it in top_items if it["nm_id"] in our_ids]
 
             # «Новые» = есть в последнем заходе, но не было в предыдущем
@@ -546,6 +597,9 @@ class WatchService:
                 "ours_cnt": len(ours),
                 "top_cnt": len(top_items),
                 "top_ours_cnt": len(top_ours),
+                "price_median": price_median,
+                "price_min": price_min,
+                "price_cnt": len(comp_prices),
                 "our_positions": ours,
                 "best_position": best_pos,
                 "new_cnt": len(new_items),
@@ -827,6 +881,131 @@ class WatchService:
         return {"requested": len(norm), "assigned": assigned, "skipped": skipped,
                 "candidates": len(cand), "top": top, "overflow": len(overflow),
                 "stale_days": st["stale_days"]}
+
+    # ------------------------------------------------- сбор карточек (enrich)
+
+    async def collect_cards(self, date_from: str, date_to: str, mode: str,
+                            phrases: list[str] | None = None, top: int = 40) -> dict:
+        """Карточки SEO-мониторинга → очередь enrich (`wb_enrich_queue`, source='watch').
+
+        mode:
+        - `changed` — карточки из событий матрицы: новые в выдаче и сдвиги цены;
+        - `stale`   — карточки, чей контент старше `watch_card_stale_days` (или его нет):
+                      пул = ТОП-`top` последнего захода каждой фразы.
+
+        `phrases` — отмеченные в матрице фразы: если заданы, пул «устаревших»
+        собирается только по ним (как «Пересобрать выдачу»).
+
+        Свои карточки не трогаем — их контент ведёт другой контур. Очередь
+        помечается `source='watch'`, чтобы расширение брало её отдельным
+        режимом («SEO-мониторинг»), а не в общей куче конкурентов.
+        """
+        st = await self.settings()
+        mode = (mode or "").strip().lower()
+        if mode not in ("changed", "stale"):
+            raise ValueError("mode must be 'changed' or 'stale'")
+        top = max(1, min(int(top or 40), 100))
+        our_ids = set(await self._our_cards())
+        cand: set[int] = set()
+        phrases_used: list[str] = []
+
+        if mode == "changed":
+            # события матрицы: «новые в выдаче» + «сдвиги цены» по всем фразам
+            m = await self.matrix(date_from, date_to)
+            for it in m["items"]:
+                for n in it["new_items"]:
+                    cand.add(int(n["nm_id"] or 0))
+                for mv in it["price_moves"]:
+                    cand.add(int(mv["nm_id"] or 0))
+        else:
+            # «устаревшие»: ТОП-top карточек последнего захода каждой фразы
+            sel = [p for p in dict.fromkeys(
+                _norm_phrase(x) for x in (phrases or []) if _norm_phrase(x))]
+            if sel:
+                phrases_used = sel
+            else:
+                ws = await self.watch_set(date_from)
+                limit_phrases = max(1, int(st.get("phrases_limit") or 40))
+                phrases_used = [p["phrase"] for p in ws["phrases"]][:limit_phrases]
+            if not phrases_used:
+                return {"mode": mode, "requested": 0, "assigned": 0, "skipped": 0,
+                        "candidates": 0, "top": top, "phrases_cnt": 0,
+                        "stale_days": st["card_stale_days"]}
+            stamps_map = await self._slice_stamps(phrases_used, 1)
+            # top режем прямо в SQL (p.position BETWEEN 1 AND top) — не выгружаем лишнее
+            slices = await self._slice_items(
+                phrases_used, sorted({sl[0] for sl in stamps_map.values() if sl}), top)
+            for ph in phrases_used:
+                sl = stamps_map.get(ph, [])
+                if not sl:
+                    continue
+                for it in slices.get((ph, sl[0]), []):
+                    if int(it["position"] or 999) <= top:
+                        cand.add(int(it["nm_id"] or 0))
+
+        cand = {n for n in cand if n > 0 and n not in our_ids}
+        skipped = 0
+        if mode == "stale" and cand:
+            # контент старше порога (или его нет) — только такие и берём
+            cutoff = (date.today() - timedelta(days=int(st["card_stale_days"]))).isoformat()
+            last_at: dict[int, str] = {}
+            cl = sorted(cand)
+            for i in range(0, len(cl), 400):
+                ch = cl[i:i + 400]
+                cph, cp = self._inlist("c", ch)
+                rows = (await self.db.execute(text(f"""
+                    SELECT nm_id, MAX(COALESCE(collected_at, first_collected_at)) AS last_at
+                    FROM wb_competitor_details WHERE nm_id IN ({cph}) GROUP BY nm_id
+                """), cp)).mappings().all()
+                for r in rows:
+                    last_at[int(r["nm_id"] or 0)] = _d(r["last_at"])
+            fresh = {n for n, at in last_at.items() if at and at >= cutoff}
+            skipped += len(fresh)
+            cand -= fresh
+
+        assigned = 0
+        if cand:
+            cl = sorted(cand)
+            # что уже есть в очереди: статус и источник
+            cur: dict[int, str] = {}
+            for i in range(0, len(cl), 400):
+                ch = cl[i:i + 400]
+                cph, cp = self._inlist("q", ch)
+                rows = (await self.db.execute(text(f"""
+                    SELECT nm_id, status FROM wb_enrich_queue WHERE nm_id IN ({cph})
+                """), cp)).mappings().all()
+                for r in rows:
+                    cur[int(r["nm_id"] or 0)] = str(r["status"] or "")
+            for n in cl:
+                stt = cur.get(n, "")
+                if stt == "processing":
+                    skipped += 1
+                    continue
+                if stt:
+                    # своя строка уже есть: возвращаем её в pending и помечаем
+                    # источником watch (в общей куче она больше не числится)
+                    await self.db.execute(text("""
+                        UPDATE wb_enrich_queue
+                        SET status='pending', source='watch', requested_at=NOW(),
+                            claimed_at=NULL, company_id=COALESCE(company_id, :cid)
+                        WHERE nm_id=:n
+                    """), {"n": n, "cid": self.company_id})
+                else:
+                    await self.db.execute(text("""
+                        INSERT INTO wb_enrich_queue
+                          (nm_id, company_id, status, source, requested_at)
+                        VALUES (:n, :cid, 'pending', 'watch', NOW())
+                        ON DUPLICATE KEY UPDATE
+                          status='pending', source='watch', requested_at=NOW(),
+                          claimed_at=NULL, company_id=COALESCE(company_id, :cid)
+                    """), {"n": n, "cid": self.company_id})
+                assigned += 1
+        _cache_drop_company(self.company_id)
+        await self.db.commit()
+        return {"mode": mode, "requested": len(cand) + skipped, "assigned": assigned,
+                "skipped": skipped, "candidates": len(cand), "top": top,
+                "phrases_cnt": len(phrases_used),
+                "stale_days": st["card_stale_days"]}
 
 
 def _is_watch_phrase(phrase: str) -> bool:
