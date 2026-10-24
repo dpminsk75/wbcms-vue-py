@@ -98,7 +98,13 @@
       <DailyTables :nm-id="filters.nm_id" :date-from="filters.date_from" :date-to="filters.date_to" />
       <DetailCharts :nm-id="filters.nm_id" :date-from="filters.date_from" :date-to="filters.date_to" />
       <div class="mt-3">
-        <WeeklyFinanceTable :rows="weeklyRows" :is-loading="weeklyLoading" title="Аналитика продаж по неделям" />
+        <WeeklyFinanceTable
+          :rows="weeklyRows"
+          :is-loading="weeklyLoading"
+          :card="card"
+          :nm-id="filters.nm_id"
+          title="Аналитика продаж по неделям"
+        />
       </div>
       <div class="mt-3">
         <PhrasesMatrix :rows="phraseModels" :dates="phraseDates" :is-loading="phraseLoading" />

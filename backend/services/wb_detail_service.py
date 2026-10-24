@@ -159,8 +159,10 @@ class WbDetailService:
         # как WbController.php:555 — реклама/отзывы из ff_adv/ff_otziv, net_profit с поправкой.
         # Хранение — ff_storage_fee (отчёт WB по позициям), как в отчётах по товарам.
         sql = text(f"""SELECT DATE_SUB(sdate, INTERVAL WEEKDAY(sdate) DAY) as sdate,
-                             SUM(qnt) as qnt, SUM(amount) as amount, SUM(commission) as commission,
-                             SUM(f_acquiring_fee) as f_acquiring_fee, SUM(f_delivery) as f_delivery,
+                             SUM(qnt) as qnt, SUM(amount) as amount, SUM(`return`) as return_sum,
+                             SUM(commission) as commission,
+                             SUM(f_acquiring_fee) as f_acquiring_fee, SUM(f_acceptance) as f_acceptance,
+                             SUM(f_delivery) as f_delivery,
                              SUM(f_penalty) as f_penalty,
                              COALESCE(SUM(ff_otziv),0) as f_otziv, COALESCE(SUM(ff_adv),0) as f_adv,
                              COALESCE(SUM(ff_storage_fee),0) as f_storage_fee, SUM(f_cashback) as f_cashback,

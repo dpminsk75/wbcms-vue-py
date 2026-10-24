@@ -33,7 +33,11 @@
         <tbody>
           <tr v-if="!rows.length"><td colspan="19" class="text-center text-muted">Нет данных</td></tr>
           <tr v-for="r in rows" :key="r.sdate">
-            <td style="text-align:center; font-weight:bold; color:#2c3e50">{{ r.sdate }}</td>
+            <td class="week-pos">
+              <button class="week-eye" title="Структура затрат за неделю" @click.stop="openBreakdown(r)">
+                <i class="bi bi-eye"></i>
+              </button>&nbsp;&nbsp;{{ r.sdate }}
+            </td>
             <td style="text-align:right">{{ fmt0(r.qnt) }}</td>
             <td style="text-align:right; font-weight:bold">{{ fmt0(r.amount) }}</td>
             <td style="text-align:right; color:#c0392b">{{ fmt0(r.commission) }}</td>
@@ -77,21 +81,41 @@
         </tfoot>
       </table>
     </div>
+    <MarginBreakdownPopup v-if="breakdownRow" :open="true" :row="breakdownRow" :period="weekPeriod(breakdownRow.sdate)" @close="breakdownRow = null" />
   </div>
 </template>
 <script setup lang="ts">
-import { ref, nextTick, watch, onMounted } from 'vue'
-import { api } from '@/api/client'
+import { ref, computed, nextTick, watch, onMounted } from 'vue'
+import MarginBreakdownPopup from '../profit/MarginBreakdownPopup.vue'
 const props = withDefaults(defineProps<{
   rows: any[]
   isLoading?: boolean
   title?: string
+  card?: any
+  nmId?: string | number
 }>(), { isLoading:false, title:'Аналитика продаж по неделям' })
 const tbl = ref<HTMLTableElement|null>(null)
 const wrapRef = ref<HTMLDivElement|null>(null)
 const fmt0 = (v:any)=> new Intl.NumberFormat('ru-RU').format(Math.round(Number(v)||0))
 const fmt2 = (v:any)=> new Intl.NumberFormat('ru-RU',{minimumFractionDigits:2, maximumFractionDigits:2}).format(Number(v)||0)
 const sum = (k:string)=> props.rows.reduce((a:number,r:any)=> a+(Number(r[k])||0),0)
+
+// Попап «Структура затрат» по неделе (данные карточки — из card, nm_id — из строки отчёта)
+const breakdownRow = ref<any>(null)
+const card = computed(() => props.card || {})
+const weekPeriod = (sdate: string) => {
+  if (!sdate) return ''
+  const end = new Date(new Date(sdate + 'T00:00:00Z').getTime() + 6 * 864e5).toISOString().slice(0, 10)
+  return `${sdate} — ${end}`
+}
+const openBreakdown = (r: any) => {
+  breakdownRow.value = {
+    ...r,
+    title: card.value.title || '',
+    nm_id: card.value.nmID || props.nmId || '',
+    vendor_code: card.value.vendorCode || '',
+  }
+}
 const enableResize = ()=>{
   const t=tbl.value; if(!t) return
   t.querySelectorAll('th').forEach((th: Element)=>{
@@ -112,15 +136,6 @@ const enableResize = ()=>{
 }
 onMounted(()=> nextTick(enableResize))
 watch(()=>props.rows, ()=> nextTick(enableResize))
-const fetchWeekly = async () => {
-  if(!props.nmId || !props.dateFrom || !props.dateTo) return
-  isLoading.value = true
-  try{
-    const { data:d } = await api.get(`/api/wb/detail/weekly?nm_id=${props.nmId}&date_from=${props.dateFrom}&date_to=${props.dateTo}`)
-    weeklyRows.value=d
-  }catch{ weeklyRows.value=[] } finally{ isLoading.value=false }
-}
-onMounted(fetchWeekly)
 const exportExcel = async()=>{
   if(!props.rows.length) return
   const XLSX=await import('xlsx')
@@ -141,4 +156,8 @@ const exportExcel = async()=>{
 /* Bootstrap 5 table-striped красит ячейки inset box-shadow поверх фона tr — гасим его, фон задаем самим td */
 .kv-totals > td{background-color:#f2e7c3 !important; box-shadow:none !important}
 .col-resizer:hover{background:#4A3A8C; opacity:.2}
+/* Глазик структуры затрат в первой колонке (слева от недели), абсолютом — не ломает высоту строки */
+.week-pos{position:relative; text-align:center; font-weight:bold; color:#2c3e50; white-space:nowrap}
+.week-eye{position:absolute; left:4px; top:50%; transform:translateY(-50%); border:0; background:transparent; color:#9aa0a8; padding:0; font-size:11px; line-height:1; cursor:pointer}
+.week-eye:hover{color:#8a2be0}
 </style>
