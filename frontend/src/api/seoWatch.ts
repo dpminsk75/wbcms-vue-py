@@ -39,6 +39,11 @@ export interface WatchNewItem {
   title: string
   position: number
   price: number | null
+  /**
+   * Контент карточки уже собран не раньше старого захода — событие в неё уже
+   * «вошло», повторный сбор не нужен (в очереди такая карточка пропускается).
+   */
+  fresh?: boolean
 }
 
 export interface WatchPriceMove {
@@ -47,6 +52,8 @@ export interface WatchPriceMove {
   from: number
   to: number
   pct: number
+  /** См. WatchNewItem.fresh — то же правило для сдвига цены. */
+  fresh?: boolean
 }
 
 export interface WatchMatrixRow {
@@ -72,12 +79,27 @@ export interface WatchMatrixRow {
   stale_days: number
   /** Уникальных карточек в последнем заходе (COUNT DISTINCT по срезу). */
   cards_cnt: number
-  /** Актуальных карточек ТОП-40 (контент свежее watch_card_stale_days). */
+  /**
+   * Актуальных карточек ТОП-40: описание есть и полный сбор не старше порога
+   * компании (watch_card_stale_days).
+   */
   cards_fresh?: number
-  /** Устаревших карточек ТОП-40 (контент старше порога или его нет). */
+  /** Устаревших карточек ТОП-40: описание есть, но старше порога. */
   cards_stale?: number
-  /** Из них вообще без записи в wb_competitor_details (контент не собирали). */
+  /** Карточек ТОП-40 без описания — контент не собирали ни разу. */
   cards_missing?: number
+  /**
+   * Корзины по глубине захода (ключ «10»/«20»/«40») — счётчик кнопки сбора
+   * должен совпадать с тем, что реально соберётся при выбранной глубине.
+   */
+  cards_by_depth?: Record<string, { fresh: number; stale: number; missing: number }>
+  /**
+   * Карточки окна последнего захода (ТОП-40) для точных счётчиков кнопок:
+   * [nmId, позиция, статус контента] — статус 0 актуальный / 1 устаревший /
+   * 2 без описания. Фронт дедупит по nmId: суммы по фразам завышали кнопки
+   * (числили карточку в нескольких фразах, а в очередь она встаёт один раз).
+   */
+  pool?: Array<[number, number, number]>
   ours_cnt: number
   /** Позиций в окне анализа (ТОП-40). */
   top_cnt?: number
@@ -200,6 +222,10 @@ export interface WatchRefreshResult {
   top: number
   /** Фраз сверх лимита за раз (не взяты в очередь). */
   overflow?: number
+  /** Фраз, взятых в работу (целевых). */
+  phrases_cnt?: number
+  /** Пропущено карточек, собранных сегодня. */
+  skipped_today?: number
   stale_days: number
 }
 
@@ -251,13 +277,14 @@ export const seoWatchApi = {
       { params: { date_from: dateFrom || undefined }, timeout: seoWatchApi.TIMEOUT })
       .then((r) => r.data as WatchRequeueResult),
 
-  refresh: (phrases: string[], top = 10) =>
-    api.post('/api/seo-watch/refresh', { phrases, top }, { timeout: seoWatchApi.TIMEOUT })
+  refresh: (phrases: string[], top = 10, dateFrom?: string, dateTo?: string, f?: Partial<WatchFilterParams>) =>
+    api.post('/api/seo-watch/refresh', { phrases, top, ...f },
+      { params: { date_from: dateFrom || undefined, date_to: dateTo || undefined }, timeout: seoWatchApi.TIMEOUT })
       .then((r) => r.data as WatchRefreshResult),
 
   /** Сбор карточек SEO-мониторинга: 'changed' — новые/изменённые, 'stale' — устаревшие. */
-  collect: (mode: 'changed' | 'stale' | 'missing', phrases: string[] = [], top = 40, dateFrom?: string, f?: Partial<WatchFilterParams>) =>
+  collect: (mode: 'changed' | 'stale' | 'missing', phrases: string[] = [], top = 40, dateFrom?: string, dateTo?: string, f?: Partial<WatchFilterParams>) =>
     api.post('/api/seo-watch/collect', { mode, phrases, top, ...f },
-      { params: { date_from: dateFrom || undefined }, timeout: seoWatchApi.TIMEOUT })
+      { params: { date_from: dateFrom || undefined, date_to: dateTo || undefined }, timeout: seoWatchApi.TIMEOUT })
       .then((r) => r.data as WatchCollectResult),
 }

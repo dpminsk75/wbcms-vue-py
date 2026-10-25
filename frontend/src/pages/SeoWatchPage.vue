@@ -5,7 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import WbDateInput from '@/components/common/WbDateInput.vue'
 import WbCardSelect from '@/components/common/WbCardSelect.vue'
 import WbWorkspaceTabs from '@/components/common/WbWorkspaceTabs.vue'
-import type { WorkspaceTab } from '@/components/common/workspaceTabs'
+import { WORKSPACE_TABS, type WorkspaceTab } from '@/components/common/workspaceTabs'
 import CompetitorDetailsModal from '@/components/competitors/CompetitorDetailsModal.vue'
 import OurCardModal from '@/components/positions/OurCardModal.vue'
 import WbSearchCard from '@/components/positions/WbSearchCard.vue'
@@ -20,14 +20,8 @@ import {
   type WatchSummary,
 } from '@/api/seoWatch'
 
-/** Табы рабочего места — общий каркас (FBS-модель, §Шаг 4 плана 2026-10-23). */
-const tabs: WorkspaceTab[] = [
-  { id: 'summary', label: 'Сводка', to: '/seo-watch' },
-  { id: 'positions', label: 'Выдача WB', to: '/competitor/positions' },
-  { id: 'seo', label: 'SEO рекомендации', to: '/seo/index' },
-  { id: 'competitors', label: 'Конкуренты', to: '/competitor/new-cards' },
-  { id: 'ai', label: 'Затраты ИИ', to: '/seo/ai-usage' },
-]
+/** Табы рабочего места — общий список (FBS-модель, §Шаг 4 плана 2026-10-23). */
+const tabs: WorkspaceTab[] = WORKSPACE_TABS
 
 const PRESETS = [
   { id: '7', label: '7 дней' },
@@ -170,7 +164,7 @@ const detailLoading = ref(false)
 const shownByDay = ref<Record<string, number>>({})
 const SLICE_STEP = 10
 
-/** Показываем только свежий заход (остальные — в отчёте «Выдача WB»). */
+/** Показываем только свежий заход (остальные — в отчёте «Поисковые запросы»). */
 const visibleDays = computed(() => (detail.value?.days || []).slice(0, 1))
 
 function sliceKey(day: { date: string; time?: string }): string {
@@ -495,39 +489,61 @@ const CARD_TOP_OPTIONS = [
   { v: 40, label: 'ТОП-40' },
 ]
 
+/**
+ * Целевые фразы для действий: отмеченные в матрице, иначе — все фразы набора.
+ * Так же считает и бэкенд (пустой список фраз → весь watch set), поэтому
+ * цифра в кнопке совпадает с тем, что реально соберётся.
+ */
+const targetPhrases = computed<Set<string>>(
+  () =>
+    selected.value.length
+      ? new Set(selected.value)
+      : new Set(items.value.map((i) => i.phrase)),
+)
+
 /** Пул «Собрать новые и изменённые»: уникальные карточки событий матрицы
- * (new_items + price_moves) — те же наборы, что бэкенд кладёт в очередь. */
+ * (new_items + price_moves), ещё не собранные свежее события. Карточки с
+ * fresh=true бэкенд пропускает — их в счётчик не берём. */
 const newPoolCnt = computed(() => {
   const ids = new Set<number>()
   for (const row of items.value) {
-    for (const n of row.new_items || []) ids.add(n.nm_id)
-    for (const mv of row.price_moves || []) ids.add(mv.nm_id)
+    for (const n of row.new_items || []) {
+      if (!n.fresh) ids.add(n.nm_id)
+    }
+    for (const mv of row.price_moves || []) {
+      if (!mv.fresh) ids.add(mv.nm_id)
+    }
   }
   return ids.size
 })
 
-/** Пул «Обновить устаревшие»: сумма cards_stale по фразам-цели (отмеченные, иначе
- * протухшие по сбору). Одна карточка может быть в ТОП-40 нескольких фраз —
- * на фронте это сумма, дедуп делает бэкенд при постановке в очередь. */
-const staleCardsCnt = computed(() => {
-  const target = new Set(selected.value.length ? selected.value : stalePhrases.value)
-  let cnt = 0
+/**
+ * Уникальные карточки окна ТОП-`depth` последнего захода по целевым фразам со
+ * статусом контента из `kinds` (0 актуальный / 1 устаревший / 2 без описания).
+ * Данные — `row.pool` из матрицы: одна карточка в ТОП-40 нескольких фраз
+ * считается здесь один раз, поэтому цифра кнопки ровно совпадает с тем, что
+ * бэкенд поставит в очередь (старая «сумма по фразам» с 22 фактических
+ * показывала 953).
+ */
+function poolUnique(depth: number, kinds: number[]): number {
+  const ids = new Set<number>()
   for (const row of items.value) {
-    if (target.has(row.phrase)) cnt += row.cards_stale ?? 0
+    if (!targetPhrases.value.has(row.phrase)) continue
+    for (const [nm, pos, st] of row.pool || []) {
+      if (pos <= depth && kinds.includes(st)) ids.add(nm)
+    }
   }
-  return cnt
-})
+  return ids.size
+}
 
-/** Пул «Собрать отсутствующие»: только карточки без записи в wb_competitor_details
- *  вовсе (контент не собирали ни разу), по фразам-целям (отмеченные, иначе все). */
-const missingCardsCnt = computed(() => {
-  const target = new Set(selected.value.length ? selected.value : stalePhrases.value)
-  let cnt = 0
-  for (const row of items.value) {
-    if (target.has(row.phrase)) cnt += row.cards_missing ?? 0
-  }
-  return cnt
-})
+/**
+ * Пул «Собрать отсутствующие»: карточки ТОП-40 без описания — контент по ним
+ * не собирали ни разу (в т.ч. наши карточки из выдачи).
+ */
+const missingCardsCnt = computed(() => poolUnique(40, [2]))
+
+/** Пул «Обновить устаревшие»: устаревший или отсутствующий контент на глубине «из:». */
+const staleCardsCnt = computed(() => poolUnique(cardTop.value, [1, 2]))
 
 /**
  * Пересборка выдачи: фразы -> `wb_search_phrase_queue` -> расширение
@@ -551,21 +567,22 @@ async function doRequeue() {
 }
 
 /**
- * Обновление контента ТОП-10 карточек конкурентов: `wb_enrich_queue` ->
- * расширение («Получить список» / сбор карточек). Без отметок — по фразам
- * с устаревшим сбором.
+ * Обновление содержимого ТОП-10 карточек выдачи: `wb_enrich_queue`
+ * (source='watch') — расширение забирает в режиме «SEO-мониторинг».
+ * Целевые фразы: отмеченные, иначе все (бэкенд сам подставит watch set).
+ * Пропускаются только карточки, собранные сегодня.
  */
 async function doRefresh() {
   if (actionBusy.value) return
-  const target = selected.value.length ? selected.value : stalePhrases.value
-  if (!target.length) return
   actionBusy.value = 'refresh'
   try {
-    const r = await seoWatchApi.refresh(target, 10)
+    const r = await seoWatchApi.refresh(selected.value, 10, dateFrom.value, dateTo.value, filterParams.value)
     const over = r.overflow ? `, сверх лимита не взято: ${r.overflow}` : ''
+    const today = r.skipped_today ? `, собрано сегодня — пропущено ${r.skipped_today}` : ''
     selected.value = []
     await load()
-    actionNotice.value = `в очередь enrich: ${r.assigned} (кандидатов ${r.candidates}, пропущено ${r.skipped}${over})`
+    actionNotice.value =
+      `в очередь enrich: ${r.assigned} (в пуле ${r.candidates}${today}, пропущено ${r.skipped}${over})`
   } catch (e: any) {
     error.value = e?.response?.data?.detail || e?.message || 'Ошибка постановки в очередь'
   } finally {
@@ -579,17 +596,21 @@ async function doRefresh() {
  * - `changed` — новые в выдаче и сдвиги цены (по всей матрице);
  * - `stale`   — карточки старше порога компании; если отмечены фразы — только
  *               по ним (как «Пересобрать выдачу»).
+ * - `missing` — карточки, у которых описания нет вовсе (контент не собирали).
  */
 async function doCollect(mode: 'changed' | 'stale' | 'missing') {
   if (actionBusy.value) return
   actionBusy.value = mode
   try {
     const phrases = mode === 'changed' ? [] : selected.value
-    const r = await seoWatchApi.collect(mode, phrases, cardTop.value, dateFrom.value, filterParams.value)
+    // «Собрать отсутствующие» — окно анализа (ТОП-40), ровно то, что в колонке
+    // «А|У|Н»; «Обновить устаревшие» — выбранная глубина «из:».
+    const top = mode === 'missing' ? 40 : cardTop.value
+    const r = await seoWatchApi.collect(mode, phrases, top, dateFrom.value, dateTo.value, filterParams.value)
     const notice = mode === 'stale'
       ? `в очередь enrich: ${r.assigned} (устаревших ${r.candidates}, пропущено ${r.skipped}, порог ${r.stale_days} дн.)`
       : mode === 'missing'
-        ? `в очередь enrich: ${r.assigned} (без контента ${r.candidates}, пропущено ${r.skipped} — контент уже есть)`
+        ? `в очередь enrich: ${r.assigned} (без описания ${r.candidates}, пропущено ${r.skipped} — описание уже есть)`
         : `в очередь enrich: ${r.assigned} (новых и изменённых ${r.candidates}, пропущено ${r.skipped})`
     selected.value = []
     await load()
@@ -609,7 +630,7 @@ onMounted(() => {
 
 <template>
   <div class="container-xxl page-seo-watch">
-    <div class="page-seo-watch__head">
+    <div class="wb-workspace-head">
       <h1 class="page-title">SEO-мониторинг</h1>
       <WbWorkspaceTabs active="summary" :tabs="tabs" />
     </div>
@@ -695,8 +716,13 @@ onMounted(() => {
         </div>
         <div class="page-seo-watch__kpi-card">
           <div class="page-seo-watch__kpi-label">Фраз на наблюдении</div>
-          <div class="page-seo-watch__kpi-value">{{ summary.phrases_cnt }}</div>
-          <div class="page-seo-watch__kpi-note">{{ phrasesKpiNote }}</div>
+          <div class="page-seo-watch__kpi-value">{{ summary.phrases_total ?? summary.phrases_cnt }}</div>
+          <div class="page-seo-watch__kpi-note">
+            <template v-if="(summary.phrases_total ?? summary.phrases_cnt) > summary.phrases_cnt">
+              анализируется {{ summary.phrases_cnt }} (лимит компании) · {{ phrasesKpiNote }}
+            </template>
+            <template v-else>{{ phrasesKpiNote }}</template>
+          </div>
         </div>
         <div class="page-seo-watch__kpi-card" :class="{ 'page-seo-watch__kpi-card--warn': summary.stale_cnt > 0 }">
           <div class="page-seo-watch__kpi-label">Сбор выдачи</div>
@@ -725,10 +751,10 @@ onMounted(() => {
 
       <div class="wb-grid-card page-seo-watch__block page-seo-watch__actions">
         <div class="page-seo-watch__actions-title">Действия</div>
-        <div class="page-seo-watch__actions-groups">
+        <div class="page-seo-watch__actions-groups row d-flex flex-nowrap">
           <!-- фразы → пересборка выдачи (расширение «Поисковые фразы») -->
-          <div class="page-seo-watch__actions-group">
-            <label class="page-seo-watch__check">
+          <div class="page-seo-watch__actions-phrases col-md-4">
+            <label class="page-seo-watch__check ms-2">
               <input type="checkbox" v-model="allChecked" />
               <span>выбрать все</span>
             </label>
@@ -742,75 +768,92 @@ onMounted(() => {
             >
               <i class="bi bi-arrow-repeat"></i>
               Пересобрать выдачу
-              <span v-if="selected.length">({{ selected.length }})</span>
-              <span v-else-if="stalePhrases.length">({{ stalePhrases.length }})</span>
+              <span class="page-seo-watch__cnt">({{ selected.length || stalePhrases.length }})</span>
             </button>
           </div>
-          <!-- карточки: отсутствующие (нет контента вовсе) и устаревшие (старше порога);
-               глубина «из:» общая для обеих кнопок -->
-          <div class="page-seo-watch__actions-group page-seo-watch__actions-group--push">
+          <!-- карточки: раскладка предопределена grid-областями — всегда 2 строки
+               («собрать» над «обновить»), колонки выровнены, счётчики в
+               фикс-слоте: ширина кнопок не зависит от цифр, панели нечему
+               переверстываться и прыгать при каждом клике -->
+          <div class="page-seo-watch__actions-cards col d-block">
+            <div class="row">
+              <div class="col-md-6">
+                
             <button
-              class="btn btn-sm btn-outline-primary"
-              :disabled="!!actionBusy || !missingCardsCnt"
-              :title="`${selected.length
-                ? `Карточки без контента вовсе (нет в базе), только по отмеченным фразам (${selected.length})`
-                : 'Карточки без контента вовсе (нет в базе) по всем фразам мониторинга'}. В скобках: карточек к сбору ${missingCardsCnt}. Не учитывает карточки со старым контентом — для них «Обновить устаревшие»`"
-              @click="doCollect('missing')"
-            >
-              <i class="bi bi-inboxes"></i>
-              Собрать отсутствующие
-              <span v-if="missingCardsCnt">({{ missingCardsCnt }})</span>
-            </button>
-            <button
-              class="btn btn-sm btn-outline-primary"
+              class="btn btn-sm btn-outline-primary page-seo-watch__act--stale"
               :disabled="!!actionBusy || !staleCardsCnt"
               :title="`${selected.length
-                ? `Карточки с устаревшим контентом только по отмеченным фразам (${selected.length}), порог компании`
-                : 'Карточки с устаревшим контентом по всем фразам мониторинга, порог компании'}. В скобках: карточек к обновлению (суммарно по фразам, дедуп при постановке) ${staleCardsCnt}`"
+                ? `Карточки с устаревшим или отсутствующим описанием только по отмеченным фразам (${selected.length}), порог компании`
+                : 'Карточки с устаревшим или отсутствующим описанием по всем фразам мониторинга, порог компании'}. Глубина захода — «из:» рядом (колонка А|У|Н считает по ТОП-40, кнопка — по своей глубине). В скобках: УНИКАЛЬНЫХ карточек к обновлению — ровно столько встанет в очередь ${staleCardsCnt}`"
               @click="doCollect('stale')"
             >
               <i class="bi bi-archive"></i>
               Обновить устаревшие
-              <span v-if="staleCardsCnt">({{ staleCardsCnt }})</span>
+              <span class="page-seo-watch__cnt">({{ staleCardsCnt }})</span>
             </button>
             <label
-              class="page-seo-watch__depth"
-              title="Какие первые позиции последнего захода каждой фразы попадут в пул обеих кнопок (устаревшие / отсутствующие). На «новые и изменённые» не влияет"
+              class="page-seo-watch__depth page-seo-watch__act--depth"
+              title="Какие первые позиции последнего захода каждой фразы попадут в пул «Обновить устаревшие». На остальные кнопки не влияет"
             >
-              из:
+              <span class="ms-3">из:</span> 
               <select v-model.number="cardTop" class="form-select form-select-sm">
                 <option v-for="o in CARD_TOP_OPTIONS" :key="o.v" :value="o.v">{{ o.label }}</option>
               </select>
             </label>
-          </div>
-          <!-- карточки: по событиям матрицы -->
-          <div class="page-seo-watch__actions-group">
+
+
+              </div>
+              <div class="col-md-6 text-end">
             <button
-              class="btn btn-sm btn-outline-primary"
+              class="btn btn-sm btn-outline-primary page-seo-watch__act--refresh"
+              :disabled="!!actionBusy || !items.length"
+              :title="`ТОП-10 позиций последнего среза ${selected.length
+                ? `по отмеченным фразам (${selected.length})`
+                : 'по всем фразам мониторинга'} → в очередь enrich (режим «SEO-мониторинг»). Пропускаем только карточки, собранные сегодня; наши карточки тоже обновляем — нужны их бэджи и цены`"
+              @click="doRefresh"
+            >
+              <i class="bi bi-box-arrow-in-down"></i>
+              Обновить ТОП-10
+            </button>
+
+              </div>
+
+            </div>
+            <div class="row">
+              <div class="col-md-6">
+            <button
+              class="btn btn-sm btn-outline-primary page-seo-watch__act--missing"
+              :disabled="!!actionBusy || !missingCardsCnt"
+              :title="`${selected.length
+                ? `Карточки ТОП-40, у которых описания нет вовсе (контент не собирали ни разу), только по отмеченным фразам (${selected.length})`
+                : 'Карточки ТОП-40, у которых описания нет вовсе (контент не собирали ни разу), по всем фразам мониторинга'}. В скобках: УНИКАЛЬНЫХ карточек к сбору — ровно столько встанет в очередь (дубль в нескольких фразах считается один раз). Описание есть, но старое — для них «Обновить устаревшие»`"
+              @click="doCollect('missing')"
+            >
+              <i class="bi bi-inboxes"></i>
+              Собрать отсутствующие
+              <span class="page-seo-watch__cnt">({{ missingCardsCnt }})</span>
+            </button>
+
+              </div>
+              <div class="col-md-6 text-end"> 
+            <button
+              class="btn btn-sm btn-outline-primary page-seo-watch__act--changed"
               :disabled="!!actionBusy || !newPoolCnt"
-              :title="`Карточки из событий «новые в выдаче» и «сдвиг цены» по всем фразам матрицы → в очередь enrich (расширение соберёт). В скобках: карточек к сбору сейчас ${newPoolCnt}`"
+              :title="`Карточки из событий «новые в выдаче» и «сдвиг цены» по всем фразам матрицы → в очередь enrich (расширение соберёт). Контент, собранный не раньше старого захода фразы, уже отражает событие — такие карточки пропускаем (повторный клик не ставит их в очередь заново). В скобках: карточек к сбору сейчас ${newPoolCnt}`"
               @click="doCollect('changed')"
             >
               <i class="bi bi-stars"></i>
               Собрать новые и изм.
-              <span v-if="newPoolCnt">({{ newPoolCnt }})</span>
+              <span class="page-seo-watch__cnt">({{ newPoolCnt }})</span>
             </button>
-            <button
-              class="btn btn-sm btn-outline-primary"
-              :disabled="!!actionBusy || (!selected.length && !stalePhrases.length)"
-              title="Взять ТОП-10 карточек последнего среза по фразам и поставить их контент в очередь enrich (расширение соберёт)"
-              @click="doRefresh"
-            >
-              <i class="bi bi-box-arrow-in-down"></i>
-              Обновить ТОП-10<span v-if="selected.length"> ({{ selected.length }})</span>
-              <span v-else-if="stalePhrases.length"> ({{ stalePhrases.length }})</span>
-            </button>
+              </div>
+            </div>
+
+
+
           </div>
         </div>
-        <div class="page-seo-watch__actions-foot">
-          <span class="page-seo-watch__note">
-            Фразы → расширение «Поисковые фразы»; карточки → «Получить список», режим «SEO-мониторинг».
-          </span>
+        <div class="page-seo-watch__actions-foot"> 
           <span v-if="actionNotice" class="page-seo-watch__notice">{{ actionNotice }}</span>
         </div>
       </div>
@@ -846,13 +889,13 @@ onMounted(() => {
                   class="text-center"
                   title="«Запросов» за период — как /wb-search/analytics: MAX(week_frequency) по nmID за день → AVG по дням присутствия × дней периода"
                 >Запросов</th>
-                <th class="text-center page-seo-watch__col-ours" title="Наши позиции в выдаче (все наши карточки)">Наши позиции</th>
+                <th class="text-center page-seo-watch__col-ours" title="Наши позиции в выдаче (все наши карточки)" style="min-width: 300px;">Наши позиции</th>
                 <th class="text-center" :title="PRICE_COL_TITLE">Цена vs ТОП-40</th>
                 <th class="text-center" title="Лучшая наша позиция в выдаче">Лучшая</th>
-                <th class="text-center" title="Наших карточек в первых 40 позициях выдачи">В ТОП-40</th>
+                <th class="text-center" title="Наших карточек в первых 40 позициях выдачи">В ТОП-40</th> 
                 <th
                   class="text-center page-seo-watch__col-cards"
-                  :title="`А|У|Н — карточек ТОП-40 последнего захода: Актуальных / Устаревших / Нет содержимого (нет в базе вовсе).\nУстаревшая — контент старше ${summary?.settings.card_stale_days ?? 30} дн. (порог — в настройках компании). «Обновить устаревшие» берёт У+Н, «Собрать отсутствующие» — только Н`"
+                  :title="`А|У|Н — карточек окна позиций 1..40 последнего захода: Актуальных / Устаревших / Нет описания.\nА — описание собрано и полный сбор не старше ${summary?.settings.card_stale_days ?? 30} дн. (порог — в настройках компании).\nУ — описание есть, но старше порога.\nН — описания нет вовсе (контент не собирали ни разу; лёгкая строка из наблюдения выдачи описанием не считается).\nЭто окно ПОЗИЦИЙ, а не 40 карточек: если фраза собрана по нескольким нашим карточкам, разные конкуренты занимают одни и те же позиции — карточек может быть и 41.\n«Обновить устаревшие» берёт У+Н на своей глубине («из:»), «Собрать отсутствующие» — только Н по ТОП-40; в скобках кнопок — уникальные карточки, одна в нескольких фразах считается один раз`"
                 >А|У|Н</th>
                 <th class="text-center" title="Свежесть сбора выдачи">Сбор</th>
                 <th class="text-center" title="Новые карточки в выдаче">Новые</th>
@@ -925,8 +968,8 @@ onMounted(() => {
                       v-if="row.last_stamp"
                       class="page-seo-watch__cards-state"
                       :class="{ 'page-seo-watch__cards-state--warn': (row.cards_stale ?? 0) > 0, 'page-seo-watch__cards-state--missing': (row.cards_missing ?? 0) > 0 }"
-                      :title="`${row.cards_fresh ?? 0} актуальных / ${(row.cards_stale ?? 0) - (row.cards_missing ?? 0)} устаревших / ${row.cards_missing ?? 0} без контента — из ${row.cards_stale != null ? (row.cards_fresh ?? 0) + (row.cards_stale ?? 0) : '—'} карточек ТОП-40.\nУстаревшая — контент старше ${summary?.settings.card_stale_days ?? 30} дн. (порог компании)`"
-                    >{{ row.cards_fresh ?? 0 }} / {{ (row.cards_stale ?? 0) - (row.cards_missing ?? 0) }} / {{ row.cards_missing ?? 0 }}</span>
+                      :title="`${row.cards_fresh ?? 0} актуальных / ${row.cards_stale ?? 0} устаревших / ${row.cards_missing ?? 0} без описания — из ${row.cards_cnt ?? '—'} карточек ТОП-40.\nУстаревшая — описание есть, но полный сбор старше ${summary?.settings.card_stale_days ?? 30} дн. (порог компании)`"
+                    >{{ row.cards_fresh ?? 0 }} / {{ row.cards_stale ?? 0 }} / {{ row.cards_missing ?? 0 }}</span>
                     <span v-else class="page-seo-watch__note" title="Сборов выдачи по фразе не было">—</span>
                   </td>
                   <td class="text-center">

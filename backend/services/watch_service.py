@@ -146,6 +146,14 @@ class WatchService:
     # Сколько верхних позиций выдачи берём в анализ (в сборе WB лист ~100
     # карточек — работаем с ТОП-40, решение менеджера 2026-10-23).
     TOP_POSITIONS = 40
+    # Порог «контент есть»: длина описания. Тот же, что DESC_MIN_LEN в
+    # competitors_newcard_service.py:28 и MIN_DESC_LEN в phrase_miner_service.py:51.
+    DESC_MIN_LEN = 50
+    # Глубины, для которых матрица считает корзины карточек (селектор «из:»).
+    DEPTH_BUCKETS = (10, 20, 40)
+    # Код состояния контента в `pool` строки матрицы (лерды карточек окна фронт
+    # дедупит сам — счётчик кнопки должен быть ровно тем, что уйдёт в очередь).
+    POOL_CODE = {"fresh": 0, "stale": 1, "missing": 2}
 
     def __init__(self, db: AsyncSession, company_id: int | None = None):
         self.db = db
@@ -583,25 +591,39 @@ class WatchService:
                 out[nm] = str(u) if str(u).startswith("http") else ("https:" + str(u))
         return out
 
-    async def _content_fresh(self, nm_ids: list[int], cutoff: str) -> dict[int, bool]:
-        """nm → True, если последний сбор контента не старше cutoff.
+    async def _content_state(self, nm_ids: list[int]) -> dict[int, tuple[bool, str, str]]:
+        """nm → (есть описание, дата полного сбора, дата первого сбора).
 
-        «Устаревшая карточка» = контент старше `watch_card_stale_days` (или его
-        нет вовсе). Тот же критерий, что у кнопки «Собрать устаревшие».
+        «Контент есть» = описание не короче `DESC_MIN_LEN` символов. Лёгкие строки,
+        которые создаёт наблюдение выдачи (`ext.py:634-662`: цена/рейтинг/превью),
+        описания не содержат — значит контента по карточке ещё нет.
+
+        Дата контента — `full_collected_at` (полный сбор: описание + характеристики),
+        иначе `first_collected_at` (строки, собранные до миграции 20261021).
+
+        НЕ `collected_at`: его двигает пассивное наблюдение выдачи (`ext.py:653`) —
+        карточка, у которой описание никто не собирал, выглядела бы «свежей», и
+        кнопки сбора не видели бы кандидатов.
+
         Чанки по 400 — больших IN не делаем (сервер 1 ГБ).
         """
         ids = sorted({int(n) for n in nm_ids if n})
-        out: dict[int, bool] = {}
+        out: dict[int, tuple[bool, str, str]] = {}
         for i in range(0, len(ids), 400):
             ch = ids[i:i + 400]
             cph, cp = self._inlist("c", ch)
             rows = (await self.db.execute(text(f"""
-                SELECT nm_id, MAX(COALESCE(collected_at, first_collected_at)) AS last_at
+                SELECT nm_id,
+                       MAX(full_collected_at) AS full_at,
+                       MAX(first_collected_at) AS first_at,
+                       MAX(CHAR_LENGTH(COALESCE(description, ''))) AS dlen
                 FROM wb_competitor_details WHERE nm_id IN ({cph}) GROUP BY nm_id
             """), cp)).mappings().all()
             for r in rows:
-                last = _d(r["last_at"]) if r["last_at"] else ""
-                out[int(r["nm_id"] or 0)] = bool(last and last >= cutoff)
+                full_at = _d(r["full_at"]) if r["full_at"] else ""
+                first_at = _d(r["first_at"]) if r["first_at"] else ""
+                has = int(r["dlen"] or 0) >= self.DESC_MIN_LEN
+                out[int(r["nm_id"] or 0)] = (has, full_at, first_at)
         return out
 
     async def matrix(self, date_from: str, date_to: str,
@@ -652,9 +674,10 @@ class WatchService:
                                   rank_by=f["rank"], queries_n=f["queries"],
                                   date_to=date_to)
         _done("watch_set")
-        # Сколько фраз анализируем: полный набор (91+) тяжело для сервера 1 ГБ —
-        # каждый анализ это скан срезов выдачи по всем фразам. Лимит берём из
-        # настроек компании (watch_top_phrases_limit), по умолчанию 40.
+        # Сколько фраз анализируем: каждый анализ это скан срезов выдачи по всем
+        # фразам. Лимит берём из настроек компании (watch_phrases_limit), по
+        # умолчанию 40; ради «до 100 фраз» лимит поднимают в самой компании
+        # (2026-10-23: индексы срезов оптимизированы, полный набор ~1.5 с).
         limit_phrases = max(1, int(st.get("phrases_limit") or 40))
         phrases_all = [p["phrase"] for p in ws["phrases"]]
         phrases = phrases_all[:limit_phrases]
@@ -689,12 +712,12 @@ class WatchService:
         # Честное cards_cnt («сколько всего карточек в заходе») — без выгрузки строк.
         slice_counts = await self._slice_counts(list(last_pair.keys()), sorted(all_stamps))
         _done("counts")
-        # Возраст контента карточек («Актуальные / устаревшие»): последний сбор
-        # контента по nm. Точечно — чанки по 400, только nm из выгруженных
-        # срезов; критерий тот же, что у кнопки «Собрать устаревшие».
+        # Состояние контента карточек («Актуальные / Устаревшие / Нет содержимого»):
+        # есть ли описание и когда был полный сбор. Точечно — чанки по 400, только
+        # nm из выгруженных срезов; критерий тот же, что у кнопок сбора.
         cutoff = (date.today() - timedelta(days=int(st["card_stale_days"]))).isoformat()
-        content_fresh = await self._content_fresh(
-            [it["nm_id"] for lst in slices.values() for it in lst], cutoff)
+        content_state = await self._content_state(
+            [it["nm_id"] for lst in slices.values() for it in lst])
         _done("fresh")
         queue = await self._queue_status(list(last_pair.keys()))
         _done("queue")
@@ -709,6 +732,19 @@ class WatchService:
             # дата захода — из самих строк среза
             last_d = last_slice[0]["at"] if last_slice else ""
             prev_d = prev_slice[0]["at"] if prev_slice else ""
+
+            def _evt_fresh(nm: int) -> bool:
+                """Событие уже отражено в контенте карточки? — тогда не собираем.
+
+                «Свежее» = описание есть и контент собрали НЕ РАНЬШЕ старого
+                захода (prev_at) — т.е. позже события «новая в выдаче»/«сдвиг
+                цены». Повторный сбор по такой карточке не добавит ничего
+                (решение менеджера 2026-10-25: «кнопку "Собрать новые и изм."
+                жмёшь, а там снова те же 21»).
+                """
+                has, full_at, first_at = content_state.get(int(nm), (False, "", ""))
+                at = full_at or first_at
+                return bool(has and at and prev_d and at >= prev_d)
 
             # Топ-часть выдачи — окно анализа: вид покупателя (первые 40 позиций).
             top_items = [it for it in last_slice
@@ -788,20 +824,55 @@ class WatchService:
                     if abs(pct) >= st["price_delta_pct"]:
                         moves.append({"nm_id": it["nm_id"], "title": it["title"],
                                       "from": p_old_f, "to": p_now_f,
-                                      "pct": round(pct, 1)})
+                                      "pct": round(pct, 1),
+                                      "fresh": _evt_fresh(it["nm_id"])})
 
             days_old = (today - date.fromisoformat(last_d)).days if last_d else None
             fresh = bool(days_old is not None and days_old <= st["stale_days"])
-            # «Актуальные / устаревшие» — по возрасту КОНТЕНТА карточек ТОП-40
-            # последнего захода: что колонка покажет устаревшим, то соберёт и
-            # кнопка «Собрать устаревшие» (порог watch_card_stale_days).
-            cards_fresh = sum(1 for it in top_items
-                              if content_fresh.get(int(it["nm_id"] or 0), False))
-            # «Отсутствующие» = вообще без записи в wb_competitor_details (контент
-            # не собирали ни разу). Отдельно от «старых» — для колонки «А|У|Н»
-            # и кнопки «Собрать отсутствующие».
-            cards_missing = sum(1 for it in top_items
-                                if int(it["nm_id"] or 0) and int(it["nm_id"]) not in content_fresh)
+            # «Актуальные / Устаревшие / Нет содержимого» — по КОНТЕНТУ карточек
+            # ТОП-40 последнего захода:
+            #   А — описание есть и полный сбор не старше порога компании;
+            #   У — описание есть, но старше порога (watch_card_stale_days);
+            #   Н — описания нет (контент не собирали ни разу).
+            # Те же цифры, что и у кнопок сбора: «Собрать отсутствующие» берёт Н,
+            # «Обновить устаревшие» — У+Н.
+            cards_fresh = 0
+            cards_stale = 0
+            cards_missing = 0
+            # Корзины по глубине (селектор «из: ТОП-10/20/40») — счётчик кнопки
+            # должен совпадать с тем, что реально соберётся.
+            depth_buckets: dict[str, dict[str, int]] = {
+                str(d): {"fresh": 0, "stale": 0, "missing": 0}
+                for d in self.DEPTH_BUCKETS
+            }
+            # Пул окна для фронта: список карточек [nm, позиция, статус контента],
+            # статус — POOL_CODE (0 актуальный / 1 устаревший / 2 без описания).
+            # Фронт считает по нему УНИКАЛЬНЫЕ карточки любых выбранных фраз и
+            # любой глубины — суммы по фразам завышали кнопки (953 реального 22).
+            pool_cards: list[list[int]] = []
+            for it in top_items:
+                nm = int(it["nm_id"] or 0)
+                if not nm:
+                    continue
+                has, full_at, first_at = content_state.get(nm, (False, "", ""))
+                at = full_at or first_at
+                if not has:
+                    kind = "missing"
+                elif at and at >= cutoff:
+                    kind = "fresh"
+                else:
+                    kind = "stale"
+                if kind == "fresh":
+                    cards_fresh += 1
+                elif kind == "stale":
+                    cards_stale += 1
+                else:
+                    cards_missing += 1
+                pos = int(it["position"] or 0)
+                pool_cards.append([nm, pos, self.POOL_CODE[kind]])
+                for d in self.DEPTH_BUCKETS:
+                    if pos <= d:
+                        depth_buckets[str(d)][kind] += 1
             items.append({
                 "phrase": ph,
                 "orders_max": meta.get("orders_max", 0),
@@ -818,8 +889,10 @@ class WatchService:
                 "stale_days": st["stale_days"],
                 "cards_cnt": slice_counts.get((ph, last_stamp), 0),
                 "cards_fresh": cards_fresh,
-                "cards_stale": len(top_items) - cards_fresh,
+                "cards_stale": cards_stale,
                 "cards_missing": cards_missing,
+                "cards_by_depth": depth_buckets,
+                "pool": pool_cards,
                 "ours_cnt": len(ours),
                 "top_cnt": len(top_items),
                 "top_ours_cnt": len(top_ours),
@@ -830,7 +903,10 @@ class WatchService:
                 "best_position": best_pos,
                 "new_cnt": len(new_items),
                 "new_items": [{"nm_id": it["nm_id"], "title": it["title"],
-                               "position": it["position"], "price": it["price"] or it["price_api"]}
+                               "position": it["position"],
+                               "price": it["price"] or it["price_api"],
+                               # «свежее события» — пересбор не нужен, см. _evt_fresh
+                               "fresh": _evt_fresh(it["nm_id"])}
                               for it in new_items[:50]],
                 "price_moves": moves[:50],
                 "price_moves_cnt": len(moves),
@@ -1037,12 +1113,28 @@ class WatchService:
 
         return {"queued": len(wanted), "phrases": wanted, "skipped": []}
 
-    async def refresh_top(self, phrases: list[str], top: int = 10) -> dict:
-        """«Обновить ТОП-N»: ставим конкурентов из последнего среза в очередь enrich.
+    async def refresh_top(self, phrases: list[str], top: int = 10,
+                          date_from: str = "", date_to: str = "",
+                          card_nm: int = 0,
+                          rank_by: str = "orders", queries_n: int = 0) -> dict:
+        """«Обновить ТОП-N»: карточки ТОП-N последнего среза → очередь enrich.
 
-        Карточки ТОП-N последнего среза по каждой фразе → `wb_enrich_queue`
-        (`need_update`). Свои карточки и уже стоящие в работе не трогаем;
-        контент свежее `watch_stale_days` — тоже (обновлять нечего).
+        Пул — первые `top` позиций выдачи (по умолчанию ТОП-10) последнего захода
+        по целевым фразам. Пропускаем только то, что полным сбором взяли СЕГОДНЯ
+        (решение менеджера 2026-10-25: «не пропускать наши и свежие карточки,
+        если они не были собраны сегодня ранее») — то есть обновляем и вчерашние.
+
+        Свои карточки НЕ пропускаем: менеджеру нужны их бэджи и цены из выдачи,
+        а контент нашей карточки в `wb_competitor_details` — тоже (общий кэш по nm).
+
+        Целевые фразы: отмеченные в матрице, а если не отмечено ни одной — весь
+        watch set (как у «Собрать отсутствующие»/«Обновить устаревшие»).
+
+        Очередь помечается `source='watch'` — расширение берёт её отдельным
+        режимом («SEO-мониторинг»), как и остальные кнопки блока «Действия».
+        Статус `need_update` здесь не годится: `ext.py:259-261` отдаёт такие
+        строки только в общем режиме «Обновление» (source=''/NULL), а строки
+        `need_update` + `source='watch'` не берёт ни один режим.
 
         Фраз за раз — не больше REFRESH_PHRASES_LIMIT: расширение обходит очередь
         по одной, сотня карточек в очереди = надолго и капча.
@@ -1051,80 +1143,96 @@ class WatchService:
         top = max(1, min(int(top or 10), 50))
         norm = [p for p in dict.fromkeys(_norm_phrase(x) for x in (phrases or []) if _norm_phrase(x))]
         if not norm:
-            return {"requested": 0, "assigned": 0, "skipped": 0, "candidates": 0}
+            ws = await self.watch_set(date_from, card_nm=card_nm,
+                                      rank_by=rank_by, queries_n=queries_n,
+                                      date_to=date_to)
+            limit_phrases = max(1, int(st.get("phrases_limit") or 40))
+            norm = [p["phrase"] for p in ws["phrases"]][:limit_phrases]
         overflow = norm[self.REFRESH_PHRASES_LIMIT:]
         norm = norm[:self.REFRESH_PHRASES_LIMIT]
+        if not norm:
+            return {"requested": 0, "assigned": 0, "skipped": 0, "candidates": 0,
+                    "top": top, "overflow": 0, "phrases_cnt": 0,
+                    "skipped_today": 0, "stale_days": st["stale_days"]}
         # последний заход каждой фразы — из индекса (index-only), позиции — точечно
         stamps_map = await self._slice_stamps(norm, 1)
         last_stamps = [sl[0] for sl in stamps_map.values() if sl]
-        slices = await self._slice_items(norm, sorted(set(last_stamps)))
-        cand: list[int] = []
+        slices = await self._slice_items(norm, sorted(set(last_stamps)), top)
+        cand: set[int] = set()
         for ph in norm:
             sl = stamps_map.get(ph, [])
             if not sl:
                 continue
-            for it in slices.get((ph, sl[0]), [])[:top]:
-                cand.append(it["nm_id"])
-        cand = sorted({n for n in cand if n > 0})
+            for it in slices.get((ph, sl[0]), []):
+                if int(it["position"] or 999) <= top:
+                    cand.add(int(it["nm_id"] or 0))
+        cand = {n for n in cand if n > 0}
         if not cand:
             return {"requested": len(norm), "assigned": 0, "skipped": 0,
-                    "candidates": 0, "overflow": len(overflow)}
+                    "candidates": 0, "top": top, "overflow": len(overflow),
+                    "phrases_cnt": len(norm), "skipped_today": 0,
+                    "stale_days": st["stale_days"]}
 
-        own: set[int] = set()
-        oph, op = self._inlist("o", cand)
-        own_rows = (await self.db.execute(text(f"""
-            SELECT nmID FROM wbcards WHERE company_id = :cid AND nmID IN ({oph})
-        """), {"cid": self.company_id or 0, **op})).mappings().all()
-        own = {int(r["nmID"]) for r in own_rows}
+        # «Собрано сегодня» (полный сбор) — такие не трогаем.
+        today_iso = date.today().isoformat()
+        state = await self._content_state(sorted(cand))
+        skipped_today = {n for n in cand
+                          if (state.get(n) or (False, "", ""))[1] == today_iso}
+        cand -= skipped_today
 
-        cutoff = date.today() - timedelta(days=st["stale_days"])
-        queue: dict[int, str] = {}
-        fresh_content: set[int] = set()
-        chunks = [cand[i:i + 400] for i in range(0, len(cand), 400)]
-        for ch in chunks:
-            qph, qp = self._inlist("q", ch)
-            rows = (await self.db.execute(text(f"""
-                SELECT nm_id, status FROM wb_enrich_queue WHERE nm_id IN ({qph})
-            """), qp)).mappings().all()
-            for r in rows:
-                queue[int(r["nm_id"])] = str(r["status"] or "")
-            cph, cp = self._inlist("c", ch)
-            dts = (await self.db.execute(text(f"""
-                SELECT nm_id, MAX(COALESCE(collected_at, first_collected_at)) AS last_at
-                FROM wb_competitor_details WHERE nm_id IN ({cph}) GROUP BY nm_id
-            """), cp)).mappings().all()
-            for r in dts:
-                if r["last_at"] and _d(r["last_at"]) >= cutoff.isoformat():
-                    fresh_content.add(int(r["nm_id"]))
-
-        assigned = 0
-        skipped = 0
-        for n in cand:
-            if n in own or n in fresh_content:
-                skipped += 1
-                continue
-            qs = queue.get(n, "")
-            if qs in ("processing", "pending", "need_update", "gone"):
-                skipped += 1
-                continue
-            if qs in ("done", "error"):
-                await self.db.execute(text("""
-                    UPDATE wb_enrich_queue
-                    SET status='need_update', requested_at=NOW(), error_msg=NULL,
-                        processed_at=NULL, company_id=COALESCE(company_id, :cid)
-                    WHERE nm_id=:n AND status IN ('done','error')
-                """), {"n": n, "cid": self.company_id})
-            else:
-                await self.db.execute(text("""
-                    INSERT IGNORE INTO wb_enrich_queue (nm_id, company_id, status, requested_at)
-                    VALUES (:n, :cid, 'need_update', NOW())
-                """), {"n": n, "cid": self.company_id})
-            assigned += 1
+        assigned, skipped = await self._enqueue_watch(cand)
         _cache_drop_company(self.company_id)
         await self.db.commit()
         return {"requested": len(norm), "assigned": assigned, "skipped": skipped,
                 "candidates": len(cand), "top": top, "overflow": len(overflow),
+                "phrases_cnt": len(norm), "skipped_today": len(skipped_today),
                 "stale_days": st["stale_days"]}
+
+    async def _enqueue_watch(self, cand: set[int]) -> tuple[int, int]:
+        """Карточки → `wb_enrich_queue` (pending, source='watch').
+
+        Возвращает (assigned, skipped). Карточки в работе (`processing`) не
+        трогаем — их уже собрало расширение; остальные возвращаем в pending.
+        """
+        assigned = 0
+        skipped = 0
+        if not cand:
+            return 0, 0
+        cl = sorted(cand)
+        # что уже есть в очереди: статус
+        cur: dict[int, str] = {}
+        for i in range(0, len(cl), 400):
+            ch = cl[i:i + 400]
+            cph, cp = self._inlist("q", ch)
+            rows = (await self.db.execute(text(f"""
+                SELECT nm_id, status FROM wb_enrich_queue WHERE nm_id IN ({cph})
+            """), cp)).mappings().all()
+            for r in rows:
+                cur[int(r["nm_id"] or 0)] = str(r["status"] or "")
+        for n in cl:
+            if cur.get(n, "") == "processing":
+                skipped += 1
+                continue
+            if cur.get(n):
+                # своя строка уже есть: возвращаем её в pending и помечаем
+                # источником watch (в общей куче она больше не числится)
+                await self.db.execute(text("""
+                    UPDATE wb_enrich_queue
+                    SET status='pending', source='watch', requested_at=NOW(),
+                        claimed_at=NULL, company_id=COALESCE(company_id, :cid)
+                    WHERE nm_id=:n
+                """), {"n": n, "cid": self.company_id})
+            else:
+                await self.db.execute(text("""
+                    INSERT INTO wb_enrich_queue
+                      (nm_id, company_id, status, source, requested_at)
+                    VALUES (:n, :cid, 'pending', 'watch', NOW())
+                    ON DUPLICATE KEY UPDATE
+                      status='pending', source='watch', requested_at=NOW(),
+                      claimed_at=NULL, company_id=COALESCE(company_id, :cid)
+                """), {"n": n, "cid": self.company_id})
+            assigned += 1
+        return assigned, skipped
 
     # ------------------------------------------------- сбор карточек (enrich)
 
@@ -1135,17 +1243,25 @@ class WatchService:
         """Карточки SEO-мониторинга → очередь enrich (`wb_enrich_queue`, source='watch').
 
         mode:
-        - `changed` — карточки из событий матрицы: новые в выдаче и сдвиги цены;
-        - `stale`   — карточки, чей контент старше `watch_card_stale_days` (или его нет):
-                      пул = ТОП-`top` последнего захода каждой фразы;
-        - `missing` — только карточки БЕЗ записи в `wb_competitor_details` вовсе
-                      (контент не собирали ни разу); пул тот же ТОП-`top`.
+        - `changed` — карточки из событий матрицы: новые в выдаче и сдвиги цены.
+                      Карточки, чей контент собран не раньше старого захода
+                      (флаг `fresh` события), пропускаются — пересбор ничего
+                      не даст;
+        - `stale`   — карточки, чей контент старше `watch_card_stale_days` ИЛИ его
+                      нет: пул = ТОП-`top` последнего захода каждой фразы;
+        - `missing` — только карточки БЕЗ описания (контент не собирали ни разу);
+                      пул тот же ТОП-`top`.
 
-        `phrases` — отмеченные в матрице фразы: если заданы, пул «устаревших»
-        собирается только по ним (как «Пересобрать выдачу»).
+        «Контент есть» = описание не короче 50 символов (см. `DESC_MIN_LEN`).
+        Лёгкая строка из наблюдения выдачи (цена/рейтинг/превью, без описания)
+        контентом не считается.
 
-        Свои карточки не трогаем — их контент ведёт другой контур. Очередь
-        помечается `source='watch'`, чтобы расширение брало её отдельным
+        `phrases` — отмеченные в матрице фразы: если заданы, пул собирается только
+        по ним; иначе — весь watch set (как у «Пересобрать выдачу»).
+
+        Свои карточки тоже собираем: менеджеру нужны их бэджи и цены из выдачи,
+        а контент нашей карточки в `wb_competitor_details` — общий кэш по nm_id.
+        Очередь помечается `source='watch'`, чтобы расширение брало её отдельным
         режимом («SEO-мониторинг»), а не в общей куче конкурентов.
         """
         st = await self.settings()
@@ -1153,18 +1269,23 @@ class WatchService:
         if mode not in ("changed", "stale", "missing"):
             raise ValueError("mode must be 'changed', 'stale' or 'missing'")
         top = max(1, min(int(top or 40), 100))
-        our_ids = set(await self._our_cards())
         cand: set[int] = set()
         phrases_used: list[str] = []
 
         if mode == "changed":
-            # события матрицы: «новые в выдаче» + «сдвиги цены» по всем фразам
+            # события матрицы: «новые в выдаче» + «сдвиги цены». Карточки, чей
+            # контент собрали не раньше старого захода (fresh=true — флаг
+            # считает матрица), уже отражают текущее состояние выдачи — их не
+            # трогаем, иначе одна и та же карточка вставала в очередь на каждый
+            # клик (2026-10-25: «собрал, и снова там 21»).
             m = await self.matrix(date_from, date_to, card_nm, rank_by, queries_n)
             for it in m["items"]:
                 for n in it["new_items"]:
-                    cand.add(int(n["nm_id"] or 0))
+                    if not n.get("fresh"):
+                        cand.add(int(n["nm_id"] or 0))
                 for mv in it["price_moves"]:
-                    cand.add(int(mv["nm_id"] or 0))
+                    if not mv.get("fresh"):
+                        cand.add(int(mv["nm_id"] or 0))
         else:
             # «устаревшие»/«отсутствующие»: ТОП-top карточек последнего захода каждой фразы
             sel = [p for p in dict.fromkeys(
@@ -1173,7 +1294,8 @@ class WatchService:
                 phrases_used = sel
             else:
                 ws = await self.watch_set(date_from, card_nm=card_nm,
-                                          rank_by=rank_by, queries_n=queries_n)
+                                          rank_by=rank_by, queries_n=queries_n,
+                                          date_to=date_to)
                 limit_phrases = max(1, int(st.get("phrases_limit") or 40))
                 phrases_used = [p["phrase"] for p in ws["phrases"]][:limit_phrases]
             if not phrases_used:
@@ -1192,70 +1314,29 @@ class WatchService:
                     if int(it["position"] or 999) <= top:
                         cand.add(int(it["nm_id"] or 0))
 
-        cand = {n for n in cand if n > 0 and n not in our_ids}
+        cand = {n for n in cand if n > 0}
         skipped = 0
         if mode in ("stale", "missing") and cand:
-            # контент старше порога (или его нет) — только такие и берём
+            # «контента нет» = описание не собрано (пустая лёгкая строка из
+            # наблюдения выдачи описания не содержит — это не контент).
+            # «устарел» = описание есть, но полный сбор старше порога компании.
             cutoff = (date.today() - timedelta(days=int(st["card_stale_days"]))).isoformat()
-            last_at: dict[int, str] = {}
-            cl = sorted(cand)
-            for i in range(0, len(cl), 400):
-                ch = cl[i:i + 400]
-                cph, cp = self._inlist("c", ch)
-                rows = (await self.db.execute(text(f"""
-                    SELECT nm_id, MAX(COALESCE(collected_at, first_collected_at)) AS last_at
-                    FROM wb_competitor_details WHERE nm_id IN ({cph}) GROUP BY nm_id
-                """), cp)).mappings().all()
-                for r in rows:
-                    last_at[int(r["nm_id"] or 0)] = _d(r["last_at"])
+            state = await self._content_state(sorted(cand))
             if mode == "stale":
-                # контент старше порога (или его нет) — только такие и берём
-                fresh = {n for n, at in last_at.items() if at and at >= cutoff}
+                # берём тех, у кого контента нет ИЛИ он старше порога
+                fresh = {n for n in cand
+                         if (state.get(n) or (False, "", ""))[0]
+                         and _content_at(state.get(n)) >= cutoff}
                 skipped += len(fresh)
                 cand -= fresh
             else:
-                # missing: нужны только nm вообще БЕЗ записи в details
-                # (есть запись, даже старая — не наша забота в этом режиме)
-                skipped += len(cand & set(last_at))
-                cand -= set(last_at)
+                # missing: только те, у кого описания нет вовсе
+                have = {n for n in cand if (state.get(n) or (False, "", ""))[0]}
+                skipped += len(have)
+                cand -= have
 
-        assigned = 0
-        if cand:
-            cl = sorted(cand)
-            # что уже есть в очереди: статус и источник
-            cur: dict[int, str] = {}
-            for i in range(0, len(cl), 400):
-                ch = cl[i:i + 400]
-                cph, cp = self._inlist("q", ch)
-                rows = (await self.db.execute(text(f"""
-                    SELECT nm_id, status FROM wb_enrich_queue WHERE nm_id IN ({cph})
-                """), cp)).mappings().all()
-                for r in rows:
-                    cur[int(r["nm_id"] or 0)] = str(r["status"] or "")
-            for n in cl:
-                stt = cur.get(n, "")
-                if stt == "processing":
-                    skipped += 1
-                    continue
-                if stt:
-                    # своя строка уже есть: возвращаем её в pending и помечаем
-                    # источником watch (в общей куче она больше не числится)
-                    await self.db.execute(text("""
-                        UPDATE wb_enrich_queue
-                        SET status='pending', source='watch', requested_at=NOW(),
-                            claimed_at=NULL, company_id=COALESCE(company_id, :cid)
-                        WHERE nm_id=:n
-                    """), {"n": n, "cid": self.company_id})
-                else:
-                    await self.db.execute(text("""
-                        INSERT INTO wb_enrich_queue
-                          (nm_id, company_id, status, source, requested_at)
-                        VALUES (:n, :cid, 'pending', 'watch', NOW())
-                        ON DUPLICATE KEY UPDATE
-                          status='pending', source='watch', requested_at=NOW(),
-                          claimed_at=NULL, company_id=COALESCE(company_id, :cid)
-                    """), {"n": n, "cid": self.company_id})
-                assigned += 1
+        assigned, skipped_q = await self._enqueue_watch(cand)
+        skipped += skipped_q
         _cache_drop_company(self.company_id)
         await self.db.commit()
         return {"mode": mode, "requested": len(cand) + skipped, "assigned": assigned,
@@ -1301,6 +1382,20 @@ def _d(v) -> str:
     if hasattr(v, "isoformat"):
         return v.isoformat()[:10]
     return str(v)[:10]
+
+
+def _content_at(state) -> str:
+    """Состояние контента (`_content_state`) -> дата контента 'YYYY-MM-DD'.
+
+    Полный сбор (`full_collected_at`), иначе первый сбор (`first_collected_at`) —
+    для строк, собранных до миграции 20261021. `collected_at` не берём: его
+    двигает пассивное наблюдение выдачи.
+    """
+    if not state:
+        return ""
+    full_at = state[1] if len(state) > 1 else ""
+    first_at = state[2] if len(state) > 2 else ""
+    return full_at or first_at
 
 
 def _stamp_time(stamp: str) -> str:

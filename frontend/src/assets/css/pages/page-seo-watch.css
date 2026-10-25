@@ -2,16 +2,7 @@
    инлайн-стилей нет; динамика (цвета/ширины) — только :style в шаблоне. */
 
 /* ---------- шапка + табы ---------- */
-.page-seo-watch__head {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-.page-seo-watch__head .page-title {
-  margin-bottom: 0;
-}
+/* Шапка — общая .wb-workspace-head (wb-ui.css): меню рабочего места справа. */
 
 /* ---------- фильтр: пресеты + даты ---------- */
 .page-seo-watch__filters {
@@ -176,22 +167,26 @@
   gap: 6px;
   font-size: 10px;
 }
-/* Колонка «Актуальн. / устар.»: «5 / 35» — карточки ТОП-40 последнего захода
-   по возрасту контента (порог watch_card_stale_days компании). */
+/* Колонка «А|У|Н»: ширина «14 / 4 / 22» на одной строке; колонку нельзя
+   ужать — иначе числа рвались в столбик (когда «Наши позиции» разрастались). */
 .page-seo-watch__col-cards {
-  width: 64px;
+  width: 68px;
+  min-width: 68px;
 }
-/* Колонка «Наши позиции» — строго по содержимому (позиции в одну строку). */
+/* Колонка «Наши позиции» — по содержимому, но с потолком: при «много наших»
+   (30+ позиций) nowrap растягивал колонку на пол-таблицы и ломал «А|У|Н».
+   Позиции переносятся на несколько строк внутри ~220px. */
 .page-seo-watch__col-ours {
   width: 1%;
 }
 .page-seo-watch__col-ours .page-seo-watch__ours {
-  flex-wrap: nowrap;
+  max-width: 220px;
 }
 .page-seo-watch__cards-state {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   font-size: 12px;
+  white-space: nowrap;
 }
 .page-seo-watch__cards-state--warn {
   color: #d07a1f;
@@ -375,32 +370,63 @@
   color: #8a90a0;
   padding: 8px 0 2px;
 }
+/* Сетка действий: раскладка предопределена, переносов «влезает/не влезает»
+   нет. Слева — «фразы», справа — кнопки карточек (всегда 2 строки).
+   Раньше был flex с переносом: ширина блока менялась вслед за цифрами
+   счётчиков («(1366)» против «(4)» или скрытый при нуле), подгруппы то
+   складывались в одну строку, то в две — кнопки прыгали по вертикали. */
 .page-seo-watch__actions-groups {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  align-items: center;
+  gap: 10px 16px;
+  overflow-x: auto; /* на узком экране — горизонтальный скролл без переверстки */
+}
+/* «Фразы»: растягиваем на высоту карточного блока (2 строки), чтобы
+   вертикальный разделитель шёл на всю высоту, а не обрывался у чекбокса. */
+.page-seo-watch__actions-phrases {
+  align-self: stretch;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 8px;
+  padding-left: 2px;
+  padding-right: 16px;
+  border-right: 1px solid #e5e7eb;
 }
-.page-seo-watch__actions-group {
-  display: flex;
+/* Карточные кнопки: три колонки, именованные области — каждая кнопка всегда
+   в своём месте: строка 1 «собрать», строка 2 «обновить». Пустая ячейка в
+   правом верхнем углу — по ширине колонки «Обновить ТОП-10». */
+.page-seo-watch__actions-cards {
+  display: grid;
+  grid-template-columns: max-content max-content max-content;
+  grid-template-areas:
+    'missing changed .'
+    'stale   depth   refresh';
   align-items: center;
   gap: 8px;
-  flex-wrap: nowrap;
-  padding: 8px 14px;
-  border-left: 1px solid #e5e7eb;
 }
-.page-seo-watch__actions-group:first-child {
-  border-left: 0;
-  padding-left: 0;
-}
-/* карточный блок прижат вправо: левые группы «фразы», правые — «карточки» */
-.page-seo-watch__actions-group--push {
-  margin-left: auto;
-  border-left: 1px solid #e5e7eb;
-  padding-left: 14px;
-}
-.page-seo-watch__actions-group .btn {
+.page-seo-watch__act--missing { grid-area: missing; }
+.page-seo-watch__act--changed { grid-area: changed; }
+.page-seo-watch__act--stale   { grid-area: stale; }
+.page-seo-watch__act--depth   { grid-area: depth; }
+.page-seo-watch__act--refresh { grid-area: refresh; }
+.page-seo-watch__actions-groups .btn {
   white-space: nowrap;
+}
+/* Кнопки в колонках одинаковой ширины: тянем на всю ячейку — колонки
+   выровнены и не зависят от того, какая из двух кнопок строки шире. */
+.page-seo-watch__actions-cards > .btn,
+.page-seo-watch__actions-cards > .page-seo-watch__depth {
+  align-self: stretch;
+}
+/* Счётчик кнопки — фиксированный слот: ширина кнопки не зависит от числа,
+   цифры выравниваются по правому краю и встают в колонку. */
+.page-seo-watch__cnt {
+  display: inline-block;
+  min-width: 6ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  opacity: .85;
 }
 .page-seo-watch__actions-foot {
   display: flex;
@@ -431,7 +457,7 @@
   color: #fff;
 }
 
-/* Глубина захода для «Собрать устаревшие» (ТОП-10/20/40). */
+/* Глубина захода для «Обновить устаревшие» (ТОП-10/20/40). */
 .page-seo-watch__depth {
   display: inline-flex;
   align-items: center;
@@ -445,4 +471,8 @@
   min-width: 92px;
   font-size: 12px;
   padding: 3px 8px;
+}
+
+.wb-admin-table td {
+  padding: 7px;
 }

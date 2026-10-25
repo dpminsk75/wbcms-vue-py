@@ -167,16 +167,29 @@ async def watch_requeue(
 @router.post("/refresh")
 async def watch_refresh(
     payload: dict = Body(...),
+    date_from: str = Query(default=""),
+    date_to: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(require_seo),
     company_id: int | None = Depends(get_current_company),
 ):
-    """«Обновить ТОП-N»: карточки последнего среза фраз → очередь enrich (`need_update`)."""
+    """«Обновить ТОП-N»: карточки ТОП-N последнего среза фраз → очередь enrich.
+
+    Пропускаем только то, что полным сбором взяли сегодня; свои карточки не
+    пропускаем (менеджеру нужны их бэджи/цены). Очередь — `source='watch'`,
+    её забирает расширение в режиме «SEO-мониторинг».
+
+    `phrases` — отмеченные в матрице фразы; пусто → весь watch set.
+    """
     phrases = payload.get("phrases") or []
     top = int(payload.get("top") or 10)
     svc = WatchService(db, company_id)
     try:
-        return await svc.refresh_top(phrases, top)
+        return await svc.refresh_top(phrases, top, date_from=date_from or _d1(),
+                                     date_to=date_to or _d0(),
+                                     card_nm=int(payload.get("card_nm") or 0),
+                                     rank_by=str(payload.get("rank") or "orders"),
+                                     queries_n=int(payload.get("queries") or 0))
     except Exception as exc:
         raise _fail("refresh", exc)
 
