@@ -1,5 +1,13 @@
 <template>
-  <div class="wb-scard" :class="{ 'wb-scard--ours': card.is_ours }" @click="$emit('open', card)">
+  <div
+    class="wb-scard"
+    :class="{
+      'wb-scard--ours': card.is_ours,
+      'wb-scard--new': isNew,
+      'wb-scard--price': priceChanged,
+    }"
+    @click="$emit('open', card)"
+  >
     <!-- фото во всю ширину блока; бейджи — поверх фото, снизу слева (как на WB) -->
     <div class="wb-scard__img">
       <img v-if="img" :src="img" :alt="card.title || ''" loading="lazy" />
@@ -7,6 +15,7 @@
 
       <span class="wb-scard__pos">{{ card.position_api || card.position }}</span>
       <span v-if="card.is_ours" class="wb-scard__ours">наша</span>
+      <span v-if="isNew" class="wb-scard__new-badge">новинка</span>
 
       <div v-if="card.badges && card.badges.length" class="wb-scard__badges">
         <span
@@ -25,9 +34,13 @@
 
       <div class="wb-scard__price">
         <b>{{ money(card.price) }}</b>
-        <s v-if="card.old_price">{{ money(card.old_price) }}</s>
+        <s v-if="card.old_price && !priceChanged">{{ money(card.old_price) }}</s>
         <span v-if="!card.price && card.price_api" class="wb-scard__note">
           без кошелька: {{ money(card.price_api) }}
+        </span>
+        <!-- цена изменилась против прошлого захода: было → стало -->
+        <span v-if="priceChanged" class="wb-scard__price-change" :title="priceHint">
+          было {{ money(pricePrev) }} → {{ money(card.price) }} ({{ pricePctText }})
         </span>
       </div>
 
@@ -47,7 +60,16 @@ import { computed } from 'vue'
 import { useMoneyFmt } from '@/composables/useMoneyFmt'
 import type { PositionsItem } from '@/api/competitorsPositions'
 
-const props = defineProps<{ card: PositionsItem }>()
+const props = defineProps<{
+  card: PositionsItem
+  /** Карточка впервые появилась в выдаче (светло-голубой фон). */
+  isNew?: boolean
+  /** Цена изменилась против прошлого захода (оранжевая подпись). */
+  priceChanged?: boolean
+  /** Прежняя цена и процент изменения. */
+  pricePrev?: number | null
+  pricePct?: number | null
+}>()
 defineEmits<{ (e: 'open', card: PositionsItem): void }>()
 
 const { fmt0 } = useMoneyFmt()
@@ -56,6 +78,16 @@ function money(v: any): string {
   if (v == null || v === '' || Number(v) === 0) return '—'
   return `${fmt0(v)} ₽`
 }
+
+const pricePctText = computed(() => {
+  const p = props.pricePct
+  if (p == null) return ''
+  return `${p > 0 ? '+' : ''}${Number(p).toFixed(1).replace('.', ',')}%`
+})
+const priceHint = computed(() => {
+  if (props.pricePrev == null) return 'Цена изменилась'
+  return `Было ${money(props.pricePrev)}, стало ${money(props.card.price)}`
+})
 
 /* Фото WB: в выдаче мы берём мелкий размер (c246x328) — для карточки enlarge'им
    до c516x688, иначе картинка мыльная. */
@@ -99,9 +131,19 @@ const reviews = computed(() => props.card.reviews ?? props.card.feedbacks ?? 0)
   flex-direction: column;
 }
 .wb-scard:hover { border-color: #9db8e8; box-shadow: 0 3px 12px rgba(30, 64, 175, .1); }
+/* «Наша» — постоянный ориентир: авточная синяя рамка БЕЗ заливки, чтобы не
+   спорить с «новой» за внимание (у той свой цвет). */
 .wb-scard--ours {
   border: 2px solid #1f6fd0;
-  background: #f3f7ff;
+}
+/* Новая карточка в выдаче: ЗЕЛЁНАЯ рамка 2px (влетело в выдачу = рост), чтобы
+   не сливалась с синей «нашей» и розовыми скидочными бейджами на фото */
+.wb-scard--new {
+  border: 2px solid #16a34a;
+}
+/* и наша, и новенькая: зелёная рамка побеждает, «наша» видна бейджем */
+.wb-scard--new.wb-scard--ours {
+  border: 2px solid #16a34a;
 }
 
 .wb-scard__img {
@@ -139,6 +181,19 @@ const reviews = computed(() => props.card.reviews ?? props.card.feedbacks ?? 0)
   color: #fff;
   font-size: 12px;
 }
+/* «новинка» в выдаче — зелёная, в тон рамки «новой» карточки */
+.wb-scard__new-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: #16a34a;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+.wb-scard--ours .wb-scard__new-badge { right: 58px; }
 
 /* бейджи — поверх фото, снизу слева */
 .wb-scard__badges {
@@ -179,6 +234,14 @@ const reviews = computed(() => props.card.reviews ?? props.card.feedbacks ?? 0)
 .wb-scard__price { font-size: 17px; color: #111827; font-weight: 700; }
 .wb-scard__price s { color: #9ca3af; font-size: 13px; font-weight: 400; margin-left: 6px; }
 .wb-scard__note { display: block; font-size: 12px; color: #9ca3af; font-weight: 400; }
+/* изменилась цена — оранжевым */
+.wb-scard--price .wb-scard__price b { color: #ea580c; }
+.wb-scard__price-change {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ea580c;
+}
 .wb-scard__rating { font-size: 13px; color: #9ca3af; }
 .wb-scard__star { color: #f59e0b; }
 .wb-scard__rating-num { color: #374151; font-weight: 600; }

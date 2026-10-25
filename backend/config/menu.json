@@ -28,7 +28,7 @@
     ]
   },
   {
-    "label": "По фразам",
+    "label": "Поиск",
     "icon": "by_search",
     "iconClass": "bi bi-search",
     "url": "#",
@@ -40,6 +40,7 @@
       {"label": "Анализ фраз", "url": "/wb-search/trend", "visibleIn": ["top", "side"]},
       {"label": "Частотность запросов", "url": "/wb-search/analytics", "visibleIn": ["top", "side"]},
       {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "SEO-мониторинг", "url": "/seo-watch", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
       {"label": "SEO рекомендации", "url": "/seo/index", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
       {"label": "SEO просмотренные", "url": "/seo/index?status=viewed", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
       {"divider": true, "visibleIn": ["top", "side"]},

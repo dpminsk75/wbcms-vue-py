@@ -317,6 +317,46 @@
                 <div class="mb-1 page-company-detail__llm-hint">
                   Модель для новых карточек: OpenRouter — из поля «Модель сводки», другой сервис — из поля «Модель (другой сервис)».
                 </div>
+
+                <hr class="my-3" />
+                <div class="page-company-detail__watch">
+                  <div class="page-company-detail__watch-title">SEO-мониторинг (watch)</div>
+                  <div class="page-company-detail__watch-note">
+                    Пороги рабочего места «SEO-мониторинг» (<code>/seo-watch</code>). Пусто = дефолт из кода.
+                  </div>
+                  <div class="row g-2">
+                    <div class="col-6 col-md-4">
+                      <label class="form-label mb-1">Карточек в ТОП</label>
+                      <input v-model="companyForm.watch_top_cards_n" type="number" min="1" max="200" placeholder="20" class="form-control form-control-sm" />
+                      <div class="form-text">watch_top_cards_n — свои карточки, по которым ищем фразы</div>
+                    </div>
+                    <div class="col-6 col-md-4">
+                      <label class="form-label mb-1">Фраз на карточку</label>
+                      <input v-model="companyForm.watch_top_phrases_n" type="number" min="1" max="50" placeholder="5" class="form-control form-control-sm" />
+                      <div class="form-text">watch_top_phrases_n — ТОП-M фраз с заказами на карточку</div>
+                    </div>
+                    <div class="col-6 col-md-4">
+                      <label class="form-label mb-1">Сбор выдачи протухает, дн.</label>
+                      <input v-model="companyForm.watch_stale_days" type="number" min="1" max="365" placeholder="7" class="form-control form-control-sm" />
+                      <div class="form-text">watch_stale_days — старше этого сбор считается устаревшим</div>
+                    </div>
+                    <div class="col-6 col-md-4">
+                      <label class="form-label mb-1">Порог сдвига цены, %</label>
+                      <input v-model="companyForm.watch_price_delta_pct" type="number" min="0" max="100" placeholder="5" class="form-control form-control-sm" />
+                      <div class="form-text">watch_price_delta_pct — оранжевая подсветка и «сдвиги цен»</div>
+                    </div>
+                    <div class="col-6 col-md-4">
+                      <label class="form-label mb-1">Лимит фраз анализа</label>
+                      <input v-model="companyForm.watch_phrases_limit" type="number" min="1" max="500" placeholder="40" class="form-control form-control-sm" />
+                      <div class="form-text">watch_phrases_limit — сколько фраз матрицы грузим за раз</div>
+                    </div>
+                    <div class="col-6 col-md-4">
+                      <label class="form-label mb-1">Устаревшие карточки, дн.</label>
+                      <input v-model="companyForm.watch_card_stale_days" type="number" min="1" max="365" placeholder="30" class="form-control form-control-sm" />
+                      <div class="form-text">watch_card_stale_days — порог для кнопки «Собрать устаревшие»</div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -488,6 +528,9 @@ const companyForm = reactive({
   seo_llm_folder_id: '', seo_llm_auth_header: '', seo_llm_auth_prefix: '',
   seo_llm_extra_headers: '', seo_llm_extra_body: '', seo_llm_timeout: '',
   seo_llm_model: '', seo_llm_summary_model: '',
+  // SEO-мониторинг (/seo-watch) — пороги companies.watch_*
+  watch_top_cards_n: '', watch_top_phrases_n: '', watch_stale_days: '',
+  watch_price_delta_pct: '', watch_phrases_limit: '', watch_card_stale_days: '',
 })
 // Форматы API другого сервиса: дефолты подставляются при выборе формата
 const LLM_FORMATS: Array<{ key: string; label: string; url: string; auth_header: string; auth_prefix: string; folder: boolean }> = [
@@ -725,6 +768,13 @@ async function load() {
       companyForm.seo_llm_timeout = c.seo_llm_timeout ?? ''
       companyForm.seo_llm_model = c.seo_llm_model || ''
       companyForm.seo_llm_summary_model = c.seo_llm_summary_model || ''
+      // SEO-мониторинг (/seo-watch): пороги companies.watch_*
+      companyForm.watch_top_cards_n = c.watch_top_cards_n ?? ''
+      companyForm.watch_top_phrases_n = c.watch_top_phrases_n ?? ''
+      companyForm.watch_stale_days = c.watch_stale_days ?? ''
+      companyForm.watch_price_delta_pct = c.watch_price_delta_pct ?? ''
+      companyForm.watch_phrases_limit = c.watch_phrases_limit ?? ''
+      companyForm.watch_card_stale_days = c.watch_card_stale_days ?? ''
     } catch { /* нет прав на полную запись — только члены */ }
   } catch (e: any) {
     error.value = e?.response?.data?.detail || String(e)
@@ -792,6 +842,13 @@ async function onSaveCompany() {
         seo_phrases_prompt: t(companyForm.seo_phrases_prompt),
         // ИИ-провайдер: выбор всегда; настройки «другого сервиса» — только в режиме custom
         seo_llm_provider: companyForm.seo_llm_provider,
+        // SEO-мониторинг (/seo-watch): пороги companies.watch_*
+        watch_top_cards_n: numOrUndef(companyForm.watch_top_cards_n),
+        watch_top_phrases_n: numOrUndef(companyForm.watch_top_phrases_n),
+        watch_stale_days: numOrUndef(companyForm.watch_stale_days),
+        watch_price_delta_pct: numOrUndef(companyForm.watch_price_delta_pct),
+        watch_phrases_limit: numOrUndef(companyForm.watch_phrases_limit),
+        watch_card_stale_days: numOrUndef(companyForm.watch_card_stale_days),
       })
       if (companyForm.seo_llm_provider === 'custom') {
         payload.seo_llm_format = companyForm.seo_llm_format

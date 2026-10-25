@@ -53,3 +53,6 @@
 .page-company-detail__llm-result.is-ok { color: #1E9E7C; }
 .page-company-detail__llm-result.is-err { color: #E0525C; }
 .page-company-detail__llm-preview { margin-top: 4px; font-size: 12px; color: #555; background: #f8f9fa; border: 1px solid #e3e6ea; border-radius: 6px; padding: 4px 8px; word-break: break-word; }
+/* SEO-мониторинг (watch): пороги рабочего места /seo-watch */
+.page-company-detail__watch-title { font-size: 14px; font-weight: 600; color: #33415c; margin-bottom: 2px; }
+.page-company-detail__watch-note { font-size: 12px; color: #666; margin-bottom: 10px; }

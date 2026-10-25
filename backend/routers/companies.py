@@ -83,6 +83,13 @@ class CompanyUpdateIn(BaseModel):
     seo_llm_timeout: int | None = None
     seo_llm_model: str | None = None
     seo_llm_summary_model: str | None = None
+    # SEO-мониторинг (/seo-watch) — пороги companies.watch_*
+    watch_top_cards_n: int | None = None
+    watch_top_phrases_n: int | None = None
+    watch_stale_days: int | None = None
+    watch_price_delta_pct: int | None = None
+    watch_phrases_limit: int | None = None
+    watch_card_stale_days: int | None = None
 
 
 class MemberUpdateIn(BaseModel):

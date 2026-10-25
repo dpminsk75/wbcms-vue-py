@@ -31,6 +31,37 @@
   font-size: 13px;
   color: #6b7280;
 }
+/* новые фильтры панели (карточка / запросы / ранг) — правый блок строки дат */
+.page-seo-watch__fcol {
+  display: flex;
+  flex-direction: column;
+}
+/* поле поиска карточки — фиксированная ширина (min() по контенту схлопывается) */
+.page-seo-watch__fcol-card {
+  width: min(420px, 100%);
+  flex: 0 1 420px;
+}
+.page-seo-watch__fcol-card .wb-card-select,
+.page-seo-watch__fcol-card .wb-card-select__input {
+  width: 100%;
+}
+.page-seo-watch__fsel {
+  min-width: 200px;
+}
+.page-seo-watch__filter-note {
+  font-size: 12px;
+  color: #15835e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 480px;
+}
+/* колонка «Запросов» — компактно под «Заказы» */
+.page-seo-watch__col-freq {
+  font-variant-numeric: tabular-nums;
+  color: #4b5563;
+  white-space: nowrap;
+}
 .page-seo-watch__loading {
   padding: 8px 2px;
 }
@@ -114,8 +145,60 @@
   font-size: 12px;
   vertical-align: middle;
 }
+/* бейджи значений «Сбор / Новые / Цены / Очередь» — дефолт bootstrap 0.75em
+   съедается; поднимаем до размера текста ячейки */
+.page-seo-watch__grid tbody td .badge {
+  font-size: 12px;
+  padding: 3px 8px;
+}
 .page-seo-watch__col-check {
   width: 32px;
+}
+/* Первая колонка («Фраза») — растянутая: главная колонка строки, контент не
+   меняли — сюда уходит место, высвобожденное из «Наших позиций». */
+.page-seo-watch__col-phrase {
+  width: 30%;
+}
+.page-seo-watch__phrase {
+  display: block;
+  max-width: 420px;
+  font-weight: 600;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Строка «наши карточки + дата захода»: мельче, чтобы колонка дышала. */
+.page-seo-watch__cards-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 10px;
+}
+/* Колонка «Актуальн. / устар.»: «5 / 35» — карточки ТОП-40 последнего захода
+   по возрасту контента (порог watch_card_stale_days компании). */
+.page-seo-watch__col-cards {
+  width: 64px;
+}
+/* Колонка «Наши позиции» — строго по содержимому (позиции в одну строку). */
+.page-seo-watch__col-ours {
+  width: 1%;
+}
+.page-seo-watch__col-ours .page-seo-watch__ours {
+  flex-wrap: nowrap;
+}
+.page-seo-watch__cards-state {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 12px;
+}
+.page-seo-watch__cards-state--warn {
+  color: #d07a1f;
+}
+/* есть карточки без контента вовсе (Н > 0) — красноватый оттенок числа */
+.page-seo-watch__cards-state--missing {
+  color: #c0392b;
 }
 .page-seo-watch__row:hover {
   background: #f6f8fc;
@@ -126,21 +209,11 @@
 .page-seo-watch__row--open {
   background: #eef2ff;
 }
-.page-seo-watch__phrase {
-  font-weight: 600;
-  font-size: 13px;
-}
 .page-seo-watch__note {
   color: #9ca3af;
   font-size: 11px;
 }
-/* Строка «наши карточки», дата/время последнего захода прижаты к правому краю. */
-.page-seo-watch__cards-line {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
-}
+/* Дата/время последнего захода прижаты к правому краю строки «наши карточки». */
 .page-seo-watch__collected {
   white-space: nowrap;
 }
@@ -238,8 +311,9 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  /* ровно 5 карточек в ряд: 5*210 + 4*10 */
+  /* ровно 5 карточек в ряд: 5*210 + 4*10; блок по центру раскрытой строки */
   max-width: 1090px;
+  margin: 0 auto;
 }
 .page-seo-watch__cards .wb-scard.wb-scard {
   width: 210px;
@@ -288,6 +362,53 @@
 }
 
 /* ---------- действия менеджера ---------- */
+/* Панель без яркой заливки: светлый фон блока + мини-заголовок. */
+.page-seo-watch__actions {
+  background: #f8f9fb;
+  padding: 0 12px 8px;
+}
+.page-seo-watch__actions-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: #8a90a0;
+  padding: 8px 0 2px;
+}
+.page-seo-watch__actions-groups {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.page-seo-watch__actions-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  padding: 8px 14px;
+  border-left: 1px solid #e5e7eb;
+}
+.page-seo-watch__actions-group:first-child {
+  border-left: 0;
+  padding-left: 0;
+}
+/* карточный блок прижат вправо: левые группы «фразы», правые — «карточки» */
+.page-seo-watch__actions-group--push {
+  margin-left: auto;
+  border-left: 1px solid #e5e7eb;
+  padding-left: 14px;
+}
+.page-seo-watch__actions-group .btn {
+  white-space: nowrap;
+}
+.page-seo-watch__actions-foot {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  padding: 2px 0 0;
+}
 .page-seo-watch__actions-body {
   display: flex;
   align-items: center;

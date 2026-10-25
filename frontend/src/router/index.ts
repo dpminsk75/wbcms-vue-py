@@ -84,6 +84,7 @@ const router = createRouter({
     { path: '/competitor/new-cards/:nm', name: 'competitor-card-workspace', component: () => import('../pages/CompetitorCardWorkspacePage.vue'), meta: { title: 'Карточка: конкуренты и описание — SelBI' } },
     { path: '/competitor/captured', name: 'competitor-captured', component: () => import('../pages/CompetitorCapturedPage.vue'), meta: { title: 'Собранные карточки — SelBI' } },
     { path: '/competitor/positions', name: 'competitor-positions', component: () => import('../pages/CompetitorPositionsPage.vue'), meta: { title: 'Выдача WB — SelBI' } },
+    { path: '/seo-watch', name: 'seo-watch', component: () => import('../pages/SeoWatchPage.vue'), meta: { title: 'SEO-мониторинг — SelBI' } },
     { path: '/competitor/pick', name: 'competitor-pick', component: () => import('../pages/CompetitorPickPage.vue'), meta: { title: 'Подбор конкурентов — SelBI' } },
     { path: '/competitor/refresh', name: 'competitor-refresh', component: () => import('../pages/CompetitorRefreshPage.vue'), meta: { title: 'Обновление конкурентов — SelBI' } },
     { path: '/competitor/index', name: 'competitor-index', component: () => import('../pages/CompetitorIndexPage.vue'), alias: ['/competitor/', '/competitor'], meta: { title: 'Конкуренты — анализ — SelBI' } },

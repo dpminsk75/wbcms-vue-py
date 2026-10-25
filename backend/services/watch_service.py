@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import statistics
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,8 +30,14 @@ from backend.services.competitors_positions_service import _norm_phrase
 
 # Кэш матрицы в процессе: /summary и /matrix считают одно и то же, а фронт зовёт их
 # параллельно. Без кэша тяжёлый расчёт выполняется дважды.
-_CACHE: dict[tuple, tuple[float, dict]] = {}
+# Значение: (monotonic, wall_time, dict) — wall_time нужен ревалидации против БД:
+# вместо слепого TTL перед отдачей снапшота проверяем, не изменились ли очередь/срезы.
+_CACHE: dict[tuple, tuple[float, datetime, dict]] = {}
 _CACHE_TTL = 60.0
+
+# Запас на время расчёта снапшота: изменения, уложившиеся в последние 2 с перед
+# записью кэша, могли не попасть в прочитанные данные — ревалидация ловит и их.
+_CACHE_MARGIN = 2.0
 
 # Дефолты, пока не применена миграция 20261033 (или company_id=None).
 DEFAULT_SETTINGS = {
@@ -63,9 +69,40 @@ def _cache_put(key: tuple, value: dict) -> None:
     """Положить матрицу в кэш; попутно чистим просроченное (ключей мало, но пусть не растёт)."""
     now = time.monotonic()
     if len(_CACHE) > 20:
-        for k in [k for k, (ts, _v) in _CACHE.items() if now - ts > _CACHE_TTL]:
+        for k in [k for k, v in _CACHE.items() if now - v[0] > _CACHE_TTL]:
             _CACHE.pop(k, None)
-    _CACHE[key] = (now, value)
+    _CACHE[key] = (now, datetime.now(), value)
+
+
+async def _cache_outdated(db: AsyncSession, company_id: int | None,
+                          wall: datetime) -> bool:
+    """Снапшот кэша разошёлся с БД? Две быстрые проверки (только на hit-пути):
+
+    1) очередь фраз менялась после записи кэша — covers «в очереди» гаснет сразу
+       после сбора (все переходы обновляют updated_at);
+    2) появился срез выдачи свежее кэша — метки вида 20261025_083705 сравнимы
+       строкой, достаточно LIMIT 1 (индекс idx_position_slice).
+
+    «Обновилось» — сигналом назад: ошибку запроса тоже считаем признаком
+    устаревания — честный пересчёт надёжнее прокисшего кэша.
+    """
+    ts = wall - timedelta(seconds=_CACHE_MARGIN)
+    stamp = ts.strftime("%Y%m%d_%H%M%S")
+    try:
+        q = (await db.execute(text("""
+            SELECT COUNT(*) AS c FROM wb_search_phrase_queue
+            WHERE company_id=:cid AND updated_at > :ts
+        """), {"cid": company_id, "ts": ts})).mappings().first() or {}
+        if int(q.get("c") or 0) > 0:
+            return True
+        s = (await db.execute(text("""
+            SELECT 1 FROM wb_competitor_position FORCE INDEX (idx_position_slice)
+            WHERE company_id=:cid AND slice_stamp<>'' AND slice_stamp > :s LIMIT 1
+        """), {"cid": company_id, "s": stamp})).first()
+        return s is not None
+    except Exception as exc:  # noqa: BLE001 — любой сбой проверки = пересчёт
+        _warn("cache_revalidate", company_id, exc)
+        return True
 
 
 def _cache_drop_company(company_id: int | None) -> None:
@@ -84,6 +121,22 @@ def _warn(tag: str, company_id: int | None, exc: Exception) -> None:
             ensure_ascii=False), flush=True)
     except Exception:
         pass
+
+
+def _norm_rank(rank_by: str) -> str:
+    """Ранг фраз: 'freq' (по частотности) или 'orders' (по заказам, по умолчанию)."""
+    r = (rank_by or "").strip().lower()
+    return "freq" if r in ("freq", "frequency", "частотность") else "orders"
+
+
+def _period_days(date_from: str, date_to: str) -> int:
+    """Дней в периоде — для метрики «запросов» (как в /wb-search/analytics)."""
+    try:
+        d1 = date.fromisoformat(date_from)
+        d2 = date.fromisoformat(date_to) if date_to else date.today()
+        return max(1, (d2 - d1).days + 1)
+    except ValueError:
+        return 30
 
 
 class WatchService:
@@ -177,48 +230,86 @@ class WatchService:
         ]
 
     async def top_phrases(self, card_nms: list[int], date_from: str,
-                          per_card: int) -> dict:
-        """ТОП-M фраз «приносящих заказы» для каждой карточки + словарь уникальных.
+                          per_card: int, rank_by: str = "orders",
+                          date_to: str = "") -> dict:
+        """ТОП-M фраз для каждой карточки + словарь уникальных.
 
         Источник — Search Reports (`wb_sr_report_item_phrases.company_id` — колонка
-        есть, инсерт `search_report_service.py:281`). Ранжируем по SUM(orders),
-        ничья — SUM(clicks). pair (карточка, фраза) — единица мониторинга;
-        одна фраза может приносить заказы нескольким карточкам → в `unique`
-        она собирается в один элемент со списком `cards`.
+        есть, инсерт `search_report_service.py:281`). Ранжирование `rank_by`:
+        - 'orders' — SUM(orders), ничья — SUM(clicks) (как раньше);
+        - 'freq'   — «запросов» ровно как в /wb-search/analytics: по (фраза, день)
+          MAX(week_frequency), AVG по дням присутствия × N дней периода.
+        Дедуп nmID обязателен для фразы: она приходит по нескольким артикулам.
+        pair (карточка, фраза) — единица мониторинга; одна фраза может приносить
+        заказы нескольким карточкам → в `unique` она собирается в один элемент
+        со списком `cards`.
 
         Returns:
-            {"per_card": [{nm_id, phrases: [...]}], "unique": [{phrase, cards, ...}]}
+            {"per_card": [{nm_id, phrases: [...]}], "unique": [{phrase, cards, freq, ...}]}
         """
+        rank = _norm_rank(rank_by)
+        n_days = _period_days(date_from, date_to)
         nms = sorted({int(n) for n in (card_nms or []) if int(n) > 0})
         if not nms:
             return {"per_card": [], "unique": []}
         ph = ",".join(f":n{j}" for j in range(len(nms)))
         params = {"cid": self.company_id or 0, "d1": date_from,
                   **{f"n{j}": n for j, n in enumerate(nms)}}
+        # Гранулярность день: «запросов» считается по дням (MAX week_frequency),
+        # заказы/клики складываются в Python. Тот же FORCE INDEX, что и раньше
+        # (без него планировщик на сервере 1 ГБ берёт scan по компании).
         stmt = text(f"""
-            SELECT p.nmID, p.phrase, SUM(p.orders) AS orders, SUM(p.clicks) AS clicks
+            SELECT p.nmID, p.phrase, p.`date`,
+                   SUM(p.orders) AS orders, SUM(p.clicks) AS clicks,
+                   MAX(p.week_frequency) AS wfreq
             FROM wb_sr_report_item_phrases p FORCE INDEX (idx_company_date_phrase)
             WHERE p.company_id = :cid AND p.nmID IN ({ph}) AND p.`date` >= :d1
-            GROUP BY p.nmID, p.phrase
-            ORDER BY p.nmID, orders DESC, clicks DESC
-        """)  # ONLY_FULL_GROUP_BY: nmID+phrase в GROUP BY; orders/clicks — агрегаты.
-        # FORCE INDEX: без него планировщик на сервере 1 ГБ берёт scan по компании.
+            GROUP BY p.nmID, p.phrase, p.`date`
+        """)  # ONLY_FULL_GROUP_BY: nmID+phrase+date в GROUP BY; остальное — агрегаты.
         rows = (await self.db.execute(stmt, params)).mappings().all()
 
-        # ранжирование внутри карточки (в Python — LIMIT M на группу, как в actionCard)
-        by_nm: dict[int, list[dict]] = {}
+        # агрегаты в Python: per (карточка, фраза) — заказы/клики+дни частотности;
+        #     per (фраза, день)      — MAX по nmID (дедуп, как в analytics)
+        agg: dict[tuple[int, str], dict] = {}
+        ph_days: dict[str, dict[str, int]] = {}
         for r in rows:
+            nm = int(r["nmID"])
+            d = str(r["date"])
             # фразу нормализуем сразу: в wb_competitor_position она уже лежит
             # нормализованной (дефисы -> пробелы), иначе наши фразы не совпадут со срезами
             phrase = _norm_phrase(r["phrase"])
             if not _is_watch_phrase(phrase):
                 continue
-            by_nm.setdefault(int(r["nmID"]), []).append({
+            wf = int(r["wfreq"] or 0)
+            a = agg.setdefault(
+                (nm, phrase), {"orders": 0, "clicks": 0, "days": {}})
+            a["orders"] += int(r["orders"] or 0)
+            a["clicks"] += int(r["clicks"] or 0)
+            a["days"][d] = max(a["days"].get(d, 0), wf)
+            pd = ph_days.setdefault(phrase, {})
+            pd[d] = max(pd.get(d, 0), wf)
+
+        def _total(days: dict[str, int]) -> int:
+            """AVG по дням присутствия × N дней периода (формула analytics)."""
+            return int(round(sum(days.values()) / len(days) * n_days)) if days else 0
+
+        phrase_freq = {p: _total(days) for p, days in ph_days.items()}
+        by_nm: dict[int, list[dict]] = {}
+        for (nm, phrase), a in agg.items():
+            by_nm.setdefault(nm, []).append({
                 "phrase": phrase,
-                "orders": int(r["orders"] or 0),
-                "clicks": int(r["clicks"] or 0),
+                "orders": a["orders"],
+                "clicks": a["clicks"],
+                # «запросов» по конкретной карточке — её собственные строки
+                # (вот фильтр по одной карточке это и есть искомая метрика)
+                "freq": _total(a["days"]),
             })
         limit_per_card = max(1, int(per_card))
+        for lst in by_nm.values():
+            if rank == "freq":
+                lst.sort(key=lambda x: (-x["freq"], -x["orders"]))
+            else:
+                lst.sort(key=lambda x: (-x["orders"], -x["clicks"]))
         rows_per_card: list[dict] = []
         merged: dict[str, dict] = {}
         for nm, lst in by_nm.items():
@@ -227,27 +318,70 @@ class WatchService:
             for p in top:
                 merged.setdefault(p["phrase"], {
                     "phrase": p["phrase"], "cards": [], "orders_max": 0,
+                    "freq": 0,
                 })
                 card = merged[p["phrase"]]
                 card["cards"].append(
                     {"nm_id": nm, "orders": p["orders"], "clicks": p["clicks"]})
                 card["orders_max"] = max(card["orders_max"], p["orders"])
+                # по фразе — метрика analytics (дедуп MAX по nmID за день)
+                card["freq"] = max(card["freq"], phrase_freq.get(p["phrase"], 0))
         rows_per_card.sort(key=lambda c: next(
             (i for i, x in enumerate(card_nms or []) if int(x or 0) == c["nm_id"]), 10**9))
-        unique = sorted(merged.values(), key=lambda x: -x["orders_max"])
+        if rank == "freq":
+            unique = sorted(merged.values(), key=lambda x: (-x["freq"], -x["orders_max"]))
+        else:
+            unique = sorted(merged.values(), key=lambda x: -x["orders_max"])
         return {"per_card": rows_per_card, "unique": unique}
 
-    async def watch_set(self, date_from: str) -> dict:
-        """Watch set целиком: настройки + карточки + фразы (по карточкам и уникальные)."""
+    async def _is_company_card(self, nm_id: int) -> bool:
+        """nmID принадлежит карточкам компании (`wbcards`) — валидация фильтра."""
+        if int(nm_id or 0) <= 0:
+            return False
+        row = (await self.db.execute(text("""
+            SELECT nmID FROM wbcards WHERE company_id = :cid AND nmID = :nm LIMIT 1
+        """), {"cid": self.company_id or 0, "nm": int(nm_id)})).first()
+        return bool(row)
+
+    def _parse_filter(self, card_nm: int, rank_by: str,
+                      queries_n: int) -> dict:
+        """Разбор фильтров панели в ключи watch set / кэша матрицы.
+
+        card_nm  — фильтр «наша карточка» (0 = все наши);
+        rank     — ранг фраз: 'orders' | 'freq';
+        queries  — сколько верхних запросов карточки берём (0 = порог компании).
+        """
+        return {"card_nm": int(card_nm or 0),
+                "rank": _norm_rank(rank_by),
+                "queries": max(0, min(int(queries_n or 0), 50))}
+
+    async def watch_set(self, date_from: str, card_nm: int = 0,
+                        rank_by: str = "orders", queries_n: int = 0,
+                        date_to: str = "") -> dict:
+        """Watch set целиком: настройки + карточки + фразы (по карточкам и уникальные).
+
+        Фильтры панели (card_nm/rank_by/queries_n) меняют НАБОР фраз, но не
+        список карточек: `cards` всегда полный (селект фильтра на фронте), а
+        `cards_cnt` уже показывает срез (1 в карточном фильтре — как в KPI).
+        """
         st = await self.settings()
+        f = self._parse_filter(card_nm, rank_by, queries_n)
         cards = await self.top_cards(date_from, st["top_cards_n"])
-        ph = await self.top_phrases([c["nm_id"] for c in cards],
-                                    date_from, st["top_phrases_n"])
+        if f["card_nm"] and not await self._is_company_card(f["card_nm"]):
+            raise ValueError(f"card {f['card_nm']} не входит в карточки компании")
+        watch_nms = [c["nm_id"] for c in cards]
+        per = st["top_phrases_n"]
+        if f["card_nm"]:
+            watch_nms = [f["card_nm"]]
+            per = f["queries"] or per
+        ph = await self.top_phrases(watch_nms, date_from, per,
+                                    rank_by=f["rank"], date_to=date_to)
         return {
             "settings": st,
+            "filter": {**f, "queries_n": per},
             "date_from": date_from,
             "cards": cards,
-            "cards_cnt": len(cards),
+            "cards_cnt": 1 if f["card_nm"] else len(cards),
             "per_card": ph["per_card"],
             "phrases": ph["unique"],
             "phrases_cnt": len(ph["unique"]),
@@ -296,8 +430,12 @@ class WatchService:
                        p.title, p.brand, p.seller, p.position, p.position_api,
                        p.price, p.price_api, p.old_price, p.old_price_api,
                        p.rating, p.review_rating, p.reviews, p.feedbacks, p.badges,
-                       p.image_url, p.source_nm_id
+                       -- срез хранит превью из DOM выдачи не всегда (лейзи-лоад
+                       -- в момент захода) → дубль из сборов контента
+                       COALESCE(NULLIF(p.image_url, ''), d.preview_image) AS image_url,
+                       p.source_nm_id
                 FROM wb_competitor_position p FORCE INDEX (idx_position_slice)
+                LEFT JOIN wb_competitor_details d ON d.nm_id = p.nm_id
                 WHERE p.company_id = :cid AND p.slice_stamp IN ({sph})
                   AND p.query_phrase IN ({pph})
                   AND p.position BETWEEN 1 AND {top}
@@ -418,22 +556,84 @@ class WatchService:
         """), {"cid": self.company_id or 0})).mappings().all()
         return {int(r["nmID"]): (r["vendorCode"] or "") for r in rows if r["nmID"]}
 
-    async def matrix(self, date_from: str, date_to: str) -> dict:
+    async def _our_photos(self) -> dict[int, str]:
+        """Наши карточки: nmID → фото[0] из `wbcards.photos` (синк карточек).
+
+        Фолбэк для позиций наших карточек, у которых превью в срезе не
+        уцелело: шаблоны photo пишет синк, и ссылка на WB-CDN всегда живая
+        (модалку «Наша карточка» этот же источник и рисует).
+        """
+        rows = (await self.db.execute(text("""
+            SELECT nmID, photos FROM wbcards
+            WHERE company_id = :cid AND nmID > 0 AND photos <> '' AND photos <> '[]'
+        """), {"cid": self.company_id or 0})).mappings().all()
+        out: dict[int, str] = {}
+        for r in rows:
+            nm = int(r["nmID"] or 0)
+            if not nm:
+                continue
+            lst = _json_list(r["photos"])
+            if isinstance(lst, str):
+                # двойное кодирование — разбираем ещё раз
+                lst = _json_list(lst)
+            u = lst[0] if isinstance(lst, list) and lst else ""
+            if isinstance(u, dict):
+                u = u.get("big") or u.get("c246x328") or u.get("url") or ""
+            if u:
+                out[nm] = str(u) if str(u).startswith("http") else ("https:" + str(u))
+        return out
+
+    async def _content_fresh(self, nm_ids: list[int], cutoff: str) -> dict[int, bool]:
+        """nm → True, если последний сбор контента не старше cutoff.
+
+        «Устаревшая карточка» = контент старше `watch_card_stale_days` (или его
+        нет вовсе). Тот же критерий, что у кнопки «Собрать устаревшие».
+        Чанки по 400 — больших IN не делаем (сервер 1 ГБ).
+        """
+        ids = sorted({int(n) for n in nm_ids if n})
+        out: dict[int, bool] = {}
+        for i in range(0, len(ids), 400):
+            ch = ids[i:i + 400]
+            cph, cp = self._inlist("c", ch)
+            rows = (await self.db.execute(text(f"""
+                SELECT nm_id, MAX(COALESCE(collected_at, first_collected_at)) AS last_at
+                FROM wb_competitor_details WHERE nm_id IN ({cph}) GROUP BY nm_id
+            """), cp)).mappings().all()
+            for r in rows:
+                last = _d(r["last_at"]) if r["last_at"] else ""
+                out[int(r["nm_id"] or 0)] = bool(last and last >= cutoff)
+        return out
+
+    async def matrix(self, date_from: str, date_to: str,
+                     card_nm: int = 0, rank_by: str = "orders",
+                     queries_n: int = 0) -> dict:
         """Матрица мониторинга: строка = фраза watch set.
 
         По каждой фразе — последний срез выдачи и предыдущий: наши позиции, новые
         карточки (последний минус предыдущий), сдвиги цен (порог компании),
         свежесть сбора (порог `watch_stale_days`) и статус очереди пересборки.
 
+        Фильтры панели (card_nm/rank_by/queries_n) — параметрами вызова (не
+        настройки компании): меняют набор фраз и порядок строк, все три входят
+        в ключ кэша.
+
         Результат кэшируется на минуту (`/summary` и `/events` — производные от
         той же матрицы). Фронт запрашивает только `/matrix`: параллельные
         Promise.all кэшу не подчинялись (обе проверки до первого await) и расчёт
         выполнялся дважды.
         """
-        key = (self.company_id, date_from, date_to)
+        f = self._parse_filter(card_nm, rank_by, queries_n)
+        key = (self.company_id, date_from, date_to, f["card_nm"], f["rank"],
+               f["queries"])
         hit = _CACHE.get(key)
         if hit and (time.monotonic() - hit[0]) < _CACHE_TTL:
-            return hit[1]
+            # Ревалидация против БД: очередь обновилась или лёг новый срез —
+            # пересчитываем сразу (после сбора F5 должен показывать свежее,
+            # а не доклевать 60-секундный снапшот).
+            if await _cache_outdated(self.db, self.company_id, hit[1]):
+                _CACHE.pop(key, None)
+            else:
+                return hit[2]
 
         # Тайминги по фазам — в stdout (journalctl) и в поле timings ответа:
         # на сервере 1 ГБ сразу видно, какая фаза встала.
@@ -448,7 +648,9 @@ class WatchService:
 
         st = await self.settings()
         _done("settings")
-        ws = await self.watch_set(date_from)
+        ws = await self.watch_set(date_from, card_nm=f["card_nm"],
+                                  rank_by=f["rank"], queries_n=f["queries"],
+                                  date_to=date_to)
         _done("watch_set")
         # Сколько фраз анализируем: полный набор (91+) тяжело для сервера 1 ГБ —
         # каждый анализ это скан срезов выдачи по всем фразам. Лимит берём из
@@ -458,7 +660,8 @@ class WatchService:
         phrases = phrases_all[:limit_phrases]
         cards_by_phrase = {p["phrase"]: p for p in ws["phrases"]}
         if not phrases:
-            res = {"settings": st, "date_from": date_from, "date_to": date_to,
+            res = {"settings": st, "filter": ws["filter"],
+                   "date_from": date_from, "date_to": date_to,
                    "cards": ws["cards"], "items": [], "total": 0,
                    "cards_cnt": ws["cards_cnt"], "phrases_cnt": 0,
                    "phrases_total": len(phrases_all),
@@ -486,6 +689,13 @@ class WatchService:
         # Честное cards_cnt («сколько всего карточек в заходе») — без выгрузки строк.
         slice_counts = await self._slice_counts(list(last_pair.keys()), sorted(all_stamps))
         _done("counts")
+        # Возраст контента карточек («Актуальные / устаревшие»): последний сбор
+        # контента по nm. Точечно — чанки по 400, только nm из выгруженных
+        # срезов; критерий тот же, что у кнопки «Собрать устаревшие».
+        cutoff = (date.today() - timedelta(days=int(st["card_stale_days"]))).isoformat()
+        content_fresh = await self._content_fresh(
+            [it["nm_id"] for lst in slices.values() for it in lst], cutoff)
+        _done("fresh")
         queue = await self._queue_status(list(last_pair.keys()))
         _done("queue")
 
@@ -582,9 +792,22 @@ class WatchService:
 
             days_old = (today - date.fromisoformat(last_d)).days if last_d else None
             fresh = bool(days_old is not None and days_old <= st["stale_days"])
+            # «Актуальные / устаревшие» — по возрасту КОНТЕНТА карточек ТОП-40
+            # последнего захода: что колонка покажет устаревшим, то соберёт и
+            # кнопка «Собрать устаревшие» (порог watch_card_stale_days).
+            cards_fresh = sum(1 for it in top_items
+                              if content_fresh.get(int(it["nm_id"] or 0), False))
+            # «Отсутствующие» = вообще без записи в wb_competitor_details (контент
+            # не собирали ни разу). Отдельно от «старых» — для колонки «А|У|Н»
+            # и кнопки «Собрать отсутствующие».
+            cards_missing = sum(1 for it in top_items
+                                if int(it["nm_id"] or 0) and int(it["nm_id"]) not in content_fresh)
             items.append({
                 "phrase": ph,
                 "orders_max": meta.get("orders_max", 0),
+                # «Запросов» за период — метрика /wb-search/analytics (MAX по
+                # nmID за день → AVG × дней периода); ранг 'freq' идёт по ней
+                "freq": int(meta.get("freq") or 0),
                 "cards": meta.get("cards", []),
                 "last_at": last_d,
                 "prev_at": prev_d,
@@ -594,6 +817,9 @@ class WatchService:
                 "fresh": fresh,
                 "stale_days": st["stale_days"],
                 "cards_cnt": slice_counts.get((ph, last_stamp), 0),
+                "cards_fresh": cards_fresh,
+                "cards_stale": len(top_items) - cards_fresh,
+                "cards_missing": cards_missing,
                 "ours_cnt": len(ours),
                 "top_cnt": len(top_items),
                 "top_ours_cnt": len(top_ours),
@@ -611,16 +837,21 @@ class WatchService:
                 "requeue_status": (queue.get(ph) or {}).get("status", ""),
                 "requeue_at": (queue.get(ph) or {}).get("updated_at", ""),
             })
-        items.sort(key=lambda x: -x["orders_max"])
+        if f["rank"] == "freq":
+            items.sort(key=lambda x: (-x["freq"], -x["orders_max"]))
+        else:
+            items.sort(key=lambda x: -x["orders_max"])
         _done("build")
         timings["total"] = round(time.monotonic() - t_start, 3)
         # Тайминги в stdout — их видно в journalctl сразу, без открытия страницы.
         print(json.dumps({"watch_matrix": True, "company_id": self.company_id,
                           "total_s": timings["total"], "phases": timings,
                           "phrases": len(phrases),
+                          "filter": ws["filter"],
                           "rows": sum(len(v) for v in slices.values())},
                          ensure_ascii=False), flush=True)
-        res = {"settings": st, "date_from": date_from, "date_to": date_to,
+        res = {"settings": st, "filter": ws["filter"],
+               "date_from": date_from, "date_to": date_to,
                "cards": ws["cards"], "cards_cnt": ws["cards_cnt"],
                "items": items, "total": len(items),
                "phrases_cnt": len(phrases),
@@ -629,9 +860,11 @@ class WatchService:
         _cache_put(key, res)
         return res
 
-    async def summary(self, date_from: str, date_to: str) -> dict:
+    async def summary(self, date_from: str, date_to: str,
+                      card_nm: int = 0, rank_by: str = "orders",
+                      queries_n: int = 0) -> dict:
         """KPI сводки — производная от матрицы."""
-        m = await self.matrix(date_from, date_to)
+        m = await self.matrix(date_from, date_to, card_nm, rank_by, queries_n)
         items = m["items"]
         fresh = [i for i in items if i["fresh"]]
         positions = [i["best_position"] for i in items if i["best_position"]]
@@ -654,12 +887,15 @@ class WatchService:
             "avg_position": round(sum(positions) / len(positions), 1) if positions else None,
             "new_cnt": sum(i["new_cnt"] for i in items),
             "price_moves_cnt": sum(i["price_moves_cnt"] for i in items),
+            "filter": m.get("filter", {}),
         }
 
     async def events(self, date_from: str, date_to: str,
-                     type: str = "", limit: int = 200) -> dict:
+                     type: str = "", limit: int = 200,
+                     card_nm: int = 0, rank_by: str = "orders",
+                     queries_n: int = 0) -> dict:
         """Лента событий по фразам мониторинга: новые карточки и сдвиги цен."""
-        m = await self.matrix(date_from, date_to)
+        m = await self.matrix(date_from, date_to, card_nm, rank_by, queries_n)
         new_rows: list[dict] = []
         price_rows: list[dict] = []
         for it in m["items"]:
@@ -692,6 +928,7 @@ class WatchService:
         stamps = list(sl_list)
         # наши карточки — только для разметки is_ours (срез уже режется по ТОП-40)
         our_ids = set(await self._our_cards())
+        our_photos = await self._our_photos()
         slices = await self._slice_items([ph], stamps)
         st = await self.settings()
         # sl_list — от свежих к старым: показываем новые первыми, «предыдущий»
@@ -726,8 +963,13 @@ class WatchService:
                         pct = None
                 # «новая» — есть в этом заходе, но не было в предыдущем
                 is_new = 1 if (prev_stamp and not was) else 0
+                # фото: срез нередко приходит без превью (лейзи-лоад в момент
+                # захода) → для наших подставляем фото из wbcards (синк);
+                # превью конкурентов уже подставлено в _slice_items из деталей
+                img = it["image_url"] or our_photos.get(int(it["nm_id"] or 0), "")
                 out.append({
                     **it,
+                    "image_url": img,
                     "is_ours": 1 if it["nm_id"] in our_ids else 0,
                     "is_new": is_new,
                     "price_prev": price_old,
@@ -743,7 +985,8 @@ class WatchService:
         return {"phrase": ph, "days": out_days, "days_cnt": len(out_days)}
 
     async def requeue(self, phrases: list[str], user_id: int | None = None,
-                      date_from: str = "") -> dict:
+                      date_from: str = "", card_nm: int = 0,
+                      rank_by: str = "orders", queries_n: int = 0) -> dict:
         """Фразы на пересборку выдачи — очередь `wb_search_phrase_queue`.
 
         Её читает расширение («Поисковые фразы» в попапе): фраза → заход в поиск
@@ -763,7 +1006,8 @@ class WatchService:
         # фраза -> наша карточка (фраза приносит заказы конкретной карточке ТОП)
         src_of: dict[str, int] = {}
         if date_from:
-            ws = await self.watch_set(date_from)
+            ws = await self.watch_set(date_from, card_nm=card_nm,
+                                      rank_by=rank_by, queries_n=queries_n)
             for card in ws["per_card"]:
                 for p in card["phrases"]:
                     src_of.setdefault(p["phrase"], card["nm_id"])
@@ -885,13 +1129,17 @@ class WatchService:
     # ------------------------------------------------- сбор карточек (enrich)
 
     async def collect_cards(self, date_from: str, date_to: str, mode: str,
-                            phrases: list[str] | None = None, top: int = 40) -> dict:
+                            phrases: list[str] | None = None, top: int = 40,
+                            card_nm: int = 0, rank_by: str = "orders",
+                            queries_n: int = 0) -> dict:
         """Карточки SEO-мониторинга → очередь enrich (`wb_enrich_queue`, source='watch').
 
         mode:
         - `changed` — карточки из событий матрицы: новые в выдаче и сдвиги цены;
         - `stale`   — карточки, чей контент старше `watch_card_stale_days` (или его нет):
-                      пул = ТОП-`top` последнего захода каждой фразы.
+                      пул = ТОП-`top` последнего захода каждой фразы;
+        - `missing` — только карточки БЕЗ записи в `wb_competitor_details` вовсе
+                      (контент не собирали ни разу); пул тот же ТОП-`top`.
 
         `phrases` — отмеченные в матрице фразы: если заданы, пул «устаревших»
         собирается только по ним (как «Пересобрать выдачу»).
@@ -902,8 +1150,8 @@ class WatchService:
         """
         st = await self.settings()
         mode = (mode or "").strip().lower()
-        if mode not in ("changed", "stale"):
-            raise ValueError("mode must be 'changed' or 'stale'")
+        if mode not in ("changed", "stale", "missing"):
+            raise ValueError("mode must be 'changed', 'stale' or 'missing'")
         top = max(1, min(int(top or 40), 100))
         our_ids = set(await self._our_cards())
         cand: set[int] = set()
@@ -911,20 +1159,21 @@ class WatchService:
 
         if mode == "changed":
             # события матрицы: «новые в выдаче» + «сдвиги цены» по всем фразам
-            m = await self.matrix(date_from, date_to)
+            m = await self.matrix(date_from, date_to, card_nm, rank_by, queries_n)
             for it in m["items"]:
                 for n in it["new_items"]:
                     cand.add(int(n["nm_id"] or 0))
                 for mv in it["price_moves"]:
                     cand.add(int(mv["nm_id"] or 0))
         else:
-            # «устаревшие»: ТОП-top карточек последнего захода каждой фразы
+            # «устаревшие»/«отсутствующие»: ТОП-top карточек последнего захода каждой фразы
             sel = [p for p in dict.fromkeys(
                 _norm_phrase(x) for x in (phrases or []) if _norm_phrase(x))]
             if sel:
                 phrases_used = sel
             else:
-                ws = await self.watch_set(date_from)
+                ws = await self.watch_set(date_from, card_nm=card_nm,
+                                          rank_by=rank_by, queries_n=queries_n)
                 limit_phrases = max(1, int(st.get("phrases_limit") or 40))
                 phrases_used = [p["phrase"] for p in ws["phrases"]][:limit_phrases]
             if not phrases_used:
@@ -945,7 +1194,7 @@ class WatchService:
 
         cand = {n for n in cand if n > 0 and n not in our_ids}
         skipped = 0
-        if mode == "stale" and cand:
+        if mode in ("stale", "missing") and cand:
             # контент старше порога (или его нет) — только такие и берём
             cutoff = (date.today() - timedelta(days=int(st["card_stale_days"]))).isoformat()
             last_at: dict[int, str] = {}
@@ -959,9 +1208,16 @@ class WatchService:
                 """), cp)).mappings().all()
                 for r in rows:
                     last_at[int(r["nm_id"] or 0)] = _d(r["last_at"])
-            fresh = {n for n, at in last_at.items() if at and at >= cutoff}
-            skipped += len(fresh)
-            cand -= fresh
+            if mode == "stale":
+                # контент старше порога (или его нет) — только такие и берём
+                fresh = {n for n, at in last_at.items() if at and at >= cutoff}
+                skipped += len(fresh)
+                cand -= fresh
+            else:
+                # missing: нужны только nm вообще БЕЗ записи в details
+                # (есть запись, даже старая — не наша забота в этом режиме)
+                skipped += len(cand & set(last_at))
+                cand -= set(last_at)
 
         assigned = 0
         if cand:

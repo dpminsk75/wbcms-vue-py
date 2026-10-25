@@ -51,8 +51,13 @@ export interface WatchPriceMove {
 
 export interface WatchMatrixRow {
   phrase: string
-  /** Максимальные заказы по фразе среди наших карточек ТОП (из Search Reports). */
+  /** Максимальные заказы по фразе у наших карточек ТОП (из Search Reports). */
   orders_max: number
+  /**
+   * «Запросов» за период — метрика /wb-search/analytics: MAX(week_frequency)
+   * по nmID за день → AVG по дням × дней периода. Ранг 'freq' идёт по ней.
+   */
+  freq?: number
   cards: Array<{ nm_id: number; orders: number; clicks: number }>
   /** Дата последнего захода в поиск по фразе. */
   last_at: string
@@ -67,6 +72,12 @@ export interface WatchMatrixRow {
   stale_days: number
   /** Уникальных карточек в последнем заходе (COUNT DISTINCT по срезу). */
   cards_cnt: number
+  /** Актуальных карточек ТОП-40 (контент свежее watch_card_stale_days). */
+  cards_fresh?: number
+  /** Устаревших карточек ТОП-40 (контент старше порога или его нет). */
+  cards_stale?: number
+  /** Из них вообще без записи в wb_competitor_details (контент не собирали). */
+  cards_missing?: number
   ours_cnt: number
   /** Позиций в окне анализа (ТОП-40). */
   top_cnt?: number
@@ -87,8 +98,16 @@ export interface WatchMatrixRow {
   requeue_at: string
 }
 
+/** Активные фильтры панели (рассчитаны бекендом; попадают в ключ кэша матрицы). */
+export interface WatchFilter {
+  card_nm: number
+  rank: 'orders' | 'freq'
+  queries: number
+}
+
 export interface WatchMatrix {
   settings: WatchSettings
+  filter?: WatchFilter
   date_from: string
   date_to: string
   cards: WatchCard[]
@@ -104,6 +123,7 @@ export interface WatchMatrix {
 
 export interface WatchSummary {
   settings: WatchSettings
+  filter?: WatchFilter
   date_from: string
   date_to: string
   cards_cnt: number
@@ -185,7 +205,7 @@ export interface WatchRefreshResult {
 
 /** Результат сбора карточек в очередь enrich (source='watch'). */
 export interface WatchCollectResult {
-  mode: 'changed' | 'stale'
+  mode: 'changed' | 'stale' | 'missing'
   requested: number
   assigned: number
   skipped: number
@@ -195,15 +215,26 @@ export interface WatchCollectResult {
   stale_days: number
 }
 
+export interface WatchFilterParams {
+  date_from?: string
+  date_to?: string
+  /** Фильтр «наша карточка»: nmID (0/пусто = все наши). */
+  card_nm?: number
+  /** Ранг фраз: 'orders' — по заказам (по умолчанию), 'freq' — по частотности. */
+  rank?: string
+  /** ТОП-N запросов карточки (0 = порог компании top_phrases_n). */
+  queries?: number
+}
+
 export const seoWatchApi = {
   /** Тяжёлый расчёт матрицы может думать десятки секунд — не ждём вечно («Загрузка…»). */
   TIMEOUT: 120000,
 
-  summary: (params: { date_from?: string; date_to?: string }) =>
+  summary: (params: WatchFilterParams) =>
     api.get('/api/seo-watch/summary', { params, timeout: seoWatchApi.TIMEOUT })
       .then((r) => r.data as WatchSummary),
 
-  matrix: (params: { date_from?: string; date_to?: string }) =>
+  matrix: (params: WatchFilterParams) =>
     api.get('/api/seo-watch/matrix', { params, timeout: seoWatchApi.TIMEOUT })
       .then((r) => r.data as WatchMatrix),
 
@@ -211,12 +242,13 @@ export const seoWatchApi = {
     api.get('/api/seo-watch/phrase', { params, timeout: seoWatchApi.TIMEOUT })
       .then((r) => r.data as WatchPhraseDetail),
 
-  events: (params: { date_from?: string; date_to?: string; type?: string; limit?: number }) =>
+  events: (params: WatchFilterParams & { type?: string; limit?: number }) =>
     api.get('/api/seo-watch/events', { params, timeout: seoWatchApi.TIMEOUT })
       .then((r) => r.data as { new?: any[]; price?: any[] }),
 
-  requeue: (phrases: string[], dateFrom?: string) =>
-    api.post('/api/seo-watch/requeue', { phrases }, { params: { date_from: dateFrom || undefined }, timeout: seoWatchApi.TIMEOUT })
+  requeue: (phrases: string[], dateFrom?: string, f?: Partial<WatchFilterParams>) =>
+    api.post('/api/seo-watch/requeue', { phrases, ...f },
+      { params: { date_from: dateFrom || undefined }, timeout: seoWatchApi.TIMEOUT })
       .then((r) => r.data as WatchRequeueResult),
 
   refresh: (phrases: string[], top = 10) =>
@@ -224,8 +256,8 @@ export const seoWatchApi = {
       .then((r) => r.data as WatchRefreshResult),
 
   /** Сбор карточек SEO-мониторинга: 'changed' — новые/изменённые, 'stale' — устаревшие. */
-  collect: (mode: 'changed' | 'stale', phrases: string[] = [], top = 40, dateFrom?: string) =>
-    api.post('/api/seo-watch/collect', { mode, phrases, top },
+  collect: (mode: 'changed' | 'stale' | 'missing', phrases: string[] = [], top = 40, dateFrom?: string, f?: Partial<WatchFilterParams>) =>
+    api.post('/api/seo-watch/collect', { mode, phrases, top, ...f },
       { params: { date_from: dateFrom || undefined }, timeout: seoWatchApi.TIMEOUT })
       .then((r) => r.data as WatchCollectResult),
 }

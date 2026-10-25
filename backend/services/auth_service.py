@@ -529,6 +529,9 @@ COMPANY_UPDATE_FIELDS = (
     "seo_llm_folder_id", "seo_llm_auth_header", "seo_llm_auth_prefix",
     "seo_llm_extra_headers", "seo_llm_extra_body", "seo_llm_timeout",
     "seo_llm_model", "seo_llm_summary_model",
+    # SEO-мониторинг (/seo-watch) — пороги companies.watch_*
+    "watch_top_cards_n", "watch_top_phrases_n", "watch_stale_days",
+    "watch_price_delta_pct", "watch_phrases_limit", "watch_card_stale_days",
 )
 
 # Поля yii2 company/_form.php с ограниченным доступом (п.4 пользователя):
@@ -543,6 +546,9 @@ SEO_FIELDS = (
     "seo_llm_folder_id", "seo_llm_auth_header", "seo_llm_auth_prefix",
     "seo_llm_extra_headers", "seo_llm_extra_body", "seo_llm_timeout",
     "seo_llm_model", "seo_llm_summary_model",
+    # SEO-мониторинг — пороги мониторинга (viewSeo)
+    "watch_top_cards_n", "watch_top_phrases_n", "watch_stale_days",
+    "watch_price_delta_pct", "watch_phrases_limit", "watch_card_stale_days",
 )
 
 LLM_PROVIDERS = ("openrouter", "custom")
@@ -575,6 +581,27 @@ def _validate_llm_fields(sets: dict) -> None:
 
 
 
+def _validate_watch_fields(sets: dict) -> None:
+    """Пороги SEO-мониторинга: целые числа в разумных пределах."""
+    for k, (lo, hi) in (
+        ("watch_top_cards_n", (1, 200)),
+        ("watch_top_phrases_n", (1, 50)),
+        ("watch_stale_days", (1, 365)),
+        ("watch_price_delta_pct", (0, 100)),
+        ("watch_phrases_limit", (1, 500)),
+        ("watch_card_stale_days", (1, 365)),
+    ):
+        if k not in sets or sets[k] is None:
+            continue
+        try:
+            v = int(sets[k])
+        except (TypeError, ValueError):
+            raise ValueError(f"{k} must be a number")
+        if v < lo or v > hi:
+            raise ValueError(f"{k} must be {lo}..{hi}")
+        sets[k] = v
+
+
 async def update_company(db: AsyncSession, company_id: int, fields: dict) -> dict:
     # Белый список полей (как yii2 CompanyController update, но api_key/seo правят
     # только через этот метод — в public_company наружу они не отдаются).
@@ -594,6 +621,7 @@ async def update_company(db: AsyncSession, company_id: int, fields: dict) -> dic
         if not _re.match(r"^\d{10,12}$", str(sets["inn"])):
             raise ValueError("inn must be 10 or 12 digits")
     _validate_llm_fields(sets)
+    _validate_watch_fields(sets)
     if not sets:
         raise ValueError("nothing to update")
     cols = ", ".join(f"{k}=:{k}" for k in sets)
