@@ -5,6 +5,12 @@
         <h5 class="comp-details__title">
           <i class="bi bi-card-text"></i> Карточка конкурента
           <span class="badge bg-dark">{{ nmId }}</span>
+          <button type="button" class="comp-details__copy-btn" title="Скопировать nmID" @click="copyNm">
+            <i class="bi" :class="copiedNm ? 'bi-check2' : 'bi-clipboard'"></i>
+          </button>
+          <button type="button" class="comp-details__copy-btn" title="Скопировать ссылку на карточку (WB)" @click="copyUrl">
+            <i class="bi" :class="copiedUrl ? 'bi-check2' : 'bi-box-arrow-up-right'"></i>
+          </button>
         </h5>
         <button type="button" class="btn-close" aria-label="Закрыть" @click="$emit('close')"></button>
       </div>
@@ -15,6 +21,25 @@
       <div v-else-if="error" class="wb-error">{{ error }}</div>
 
       <template v-else-if="item">
+        <div v-if="isPartial" class="comp-details__partial">
+          <div class="comp-details__partial-note">
+            <i class="bi bi-info-circle"></i>
+            Полный сбор карточки ещё не выполнялся — показаны данные из выдачи.<span
+              v-if="item.phrase" class="comp-details__partial-phrase">Фраза: «{{ item.phrase }}»</span>
+          </div>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-primary"
+            :disabled="collectBusy || !props.ourNmId || !props.phrase"
+            :title="!props.ourNmId || !props.phrase ? 'Нет контекста (карточка/фраза) для очереди мониторинга' : 'Добавить фразу в очередь «SEO мониторинг» — сбор идёт фоном'"
+            @click="collectInExtension"
+          >
+            <i class="bi" :class="collectDone ? 'bi-check2' : collectErr ? 'bi-arrow-repeat' : 'bi-search'"></i>
+            {{ collectDone ? 'В мониторинге' : 'Собрать в расширении' }}
+          </button>
+          <span v-if="collectErr" class="text-danger small">{{ collectErr }}</span>
+        </div>
+
         <div class="comp-details__top">
           <div class="comp-details__gallery">
             <img
@@ -507,6 +532,7 @@ import {
   type CompetitorDetail,
   type CompetitorPosition,
 } from '../../api/competitorsNewcard'
+import { seoApi } from '../../api/seo'
 import { copyText } from '../../utils/clipboard'
 
 const props = defineProps<{
@@ -516,6 +542,9 @@ const props = defineProps<{
   sourceNmId?: number | string | null
   /** Откуда грузить: captured (по умолчанию) или pick (пул §16). */
   scope?: 'captured' | 'pick'
+  /** Для «Собрать в расширении»: наша карточка + фраза выдачи (контекст страницы). */
+  ourNmId?: number | string | null
+  phrase?: string | null
 }>()
 defineEmits<{ (e: 'close'): void }>()
 
@@ -547,6 +576,53 @@ const duplicates = computed(() => item.value?.duplicates || null)
 const top3Count = computed(() => positionsList.value.filter((p) => (p.last_position ?? 99) <= 3).length)
 const top10Count = computed(() => positionsList.value.filter((p) => (p.last_position ?? 99) <= 10).length)
 const wbUrl = computed(() => item.value?.url || `https://www.wildberries.ru/catalog/${props.nmId}/detail.aspx`)
+
+/** Частичные данные (нет полного сбор): найдено в wb_competitor_cards/position. */
+const isPartial = computed(() => item.value?.found === 'cards' || item.value?.found === 'position')
+
+const collectBusy = ref(false)
+const collectDone = ref(false)
+const collectErr = ref('')
+
+/** Фразу в очередь «SEO мониторинг»: сбор фоном расширением обновит выдачу и карточку. */
+async function collectInExtension() {
+  const ours = Number(props.ourNmId || 0)
+  const ph = String(props.phrase || '').trim()
+  if (!ours || !ph) return
+  collectBusy.value = true
+  collectErr.value = ''
+  try {
+    await seoApi.addTarget(ours, ph)
+    collectDone.value = true
+  } catch (e: any) {
+    const msg = String(e?.response?.data?.detail || e?.response?.data?.error || '')
+    collectErr.value = msg.includes('Уже добавлена') ? 'Эта фраза уже в мониторинге' : (msg || 'Не удалось добавить в мониторинг')
+  } finally {
+    collectBusy.value = false
+  }
+}
+
+const copiedNm = ref(false)
+const copiedUrl = ref(false)
+
+async function copyNm() {
+  if (!props.nmId) return
+  if (await copyText(String(props.nmId))) {
+    copiedNm.value = true
+    setTimeout(() => { copiedNm.value = false }, 1500)
+  } else {
+    copyError.value = 'Не удалось скопировать nmID'
+  }
+}
+
+async function copyUrl() {
+  if (await copyText(wbUrl.value)) {
+    copiedUrl.value = true
+    setTimeout(() => { copiedUrl.value = false }, 1500)
+  } else {
+    copyError.value = 'Не удалось скопировать ссылку'
+  }
+}
 
 const lastActivity = computed(() => {
   const stamps = [
@@ -771,6 +847,11 @@ async function load() {
   item.value = null
   imageIdx.value = 0
   copied.value = false
+  copiedNm.value = false
+  copiedUrl.value = false
+  collectBusy.value = false
+  collectDone.value = false
+  collectErr.value = ''
   tab.value = 'card'
   try {
     if (props.scope === 'pick') {
@@ -803,6 +884,18 @@ watch(
 .comp-details-backdrop { z-index: 1090; }
 .comp-details { width: 980px; max-width: 96vw; max-height: 92vh; overflow: auto; }
 .comp-details__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.comp-details__copy-btn {
+  border: none; background: none; padding: 0 3px; color: #6c757d;
+  font-size: 13px; cursor: pointer; line-height: 1;
+}
+.comp-details__copy-btn:hover { color: #0d6efd; }
+.comp-details__partial {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  border: 1px solid #fff3cd; background: #fffdf5; border-radius: 8px;
+  padding: 8px 12px; margin-bottom: 14px;
+}
+.comp-details__partial-note { flex: 1; min-width: 240px; font-size: 13px; color: #664d03; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.comp-details__partial-phrase { color: #8a6d3b; }
 .comp-details__title { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 8px; }
 .comp-details__top { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
 .comp-details__gallery { flex: 0 0 260px; width: 260px; }

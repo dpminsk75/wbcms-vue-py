@@ -412,6 +412,8 @@
     <CompetitorDetailsModal
       :open="competitorNm !== null"
       :nm-id="competitorNm"
+      :our-nm-id="competitorOurs"
+      :phrase="competitorPhrase"
       @close="competitorNm = null"
     />
     <OurCardModal
@@ -536,6 +538,8 @@ async function sendRequeue() {
 }
 
 const competitorNm = ref<number | null>(null)
+const competitorOurs = ref<number>(0)
+const competitorPhrase = ref<string>('')
 const ourCardNm = ref<number | null>(null)
 
 function money(v: any): string {
@@ -694,6 +698,9 @@ function openCard(c: PositionsItem) {
     ourCardNm.value = c.nm_id
   } else {
     competitorNm.value = c.nm_id
+    // Контекст для «Собрать в расширении»: наша карточка среза + открытая фраза.
+    competitorOurs.value = (c.source_nm_ids || [])[0] || c.source_nm_id || 0
+    competitorPhrase.value = selectedPhrase.value || ''
   }
 }
 

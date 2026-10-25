@@ -326,6 +326,13 @@ export interface CompetitorPhrase {
 
 export interface CompetitorDetail {
   nm_id: number
+  /** Источник данных попапа: details (полный сбор) | cards | position (частичные из выдачи). */
+  found?: 'details' | 'cards' | 'position'
+  phrase?: string | null
+  position?: number | null
+  position_api?: number | null
+  source_nm_id?: number | null
+  slice_stamp?: string | null
   title?: string | null
   description?: string | null
   brand?: string | null
