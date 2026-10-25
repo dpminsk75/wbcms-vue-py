@@ -65,19 +65,13 @@ class SeoService:
             return {}
         return await llm_provider.company_row(self.db, company_id) or {}
 
-    async def counts(self) -> dict:
-        scope, p = self._scope("wb_seo_recommendation")
-        rows = (await self.db.execute(text(f"""
-            SELECT status, COUNT(*) AS c FROM wb_seo_recommendation
-            WHERE status IN ('new','viewed') {scope} GROUP BY status
-        """), p)).mappings().all()
-        out = {"new": 0, "viewed": 0}
-        for r in rows:
-            out[r["status"]] = r["c"]
-        return out
-
     async def search(self, status: str, q: str, page: int) -> dict:
-        status = status if status in ("new", "viewed") else "new"
+        """Лента рекомендаций.
+
+        status: 'new' — к просмотру (непросмотренные), 'viewed' — просмотренные,
+        'all' — все (в БД статусов всего два, так что это new+viewed).
+        """
+        status = status if status in ("new", "viewed", "all") else "all"
         scope, p = self._scope("r")
         join = ""
         cond = ""
@@ -89,16 +83,27 @@ class SeoService:
             else:
                 cond = "AND (w.title LIKE :ql OR w.vendorCode LIKE :ql OR w.subjectName LIKE :ql)"
                 p["ql"] = f"%{q}%"
+        # 'all' — тот же индекс по status (idx_seo_rec_status), не «без фильтра»:
+        # фильтр по статсу обязателен, иначе ORDER BY created_at без подходящего плана
+        if status in ("new", "viewed"):
+            stat = "AND r.status=:s"
+            p["s"] = status
+        else:
+            stat = "AND r.status IN ('new','viewed')"
         total = (await self.db.execute(text(f"""
             SELECT COUNT(*) FROM wb_seo_recommendation r {join}
-            WHERE r.status=:s {scope} {cond}
-        """), {**p, "s": status})).scalar()
+            WHERE 1=1 {stat} {scope} {cond}
+        """), p)).scalar()
+        total = int(total or 0)
         offset = (max(page, 1) - 1) * PAGE_SIZE
+        # Страница за пределами диапазона — не делаем SELECT с огромным OFFSET
+        if total and offset >= total:
+            return {"items": [], "total": total, "page": max(page, 1), "page_size": PAGE_SIZE}
         rows = (await self.db.execute(text(f"""
             SELECT r.* FROM wb_seo_recommendation r {join}
-            WHERE r.status=:s {scope} {cond}
+            WHERE 1=1 {stat} {scope} {cond}
             ORDER BY r.created_at DESC LIMIT :lim OFFSET :off
-        """), {**p, "s": status, "lim": PAGE_SIZE, "off": offset})).mappings().all()
+        """), {**p, "lim": PAGE_SIZE, "off": offset})).mappings().all()
         items = [await self._enrich(dict(r)) for r in rows]
         return {"items": items, "total": total, "page": max(page, 1), "page_size": PAGE_SIZE}
 

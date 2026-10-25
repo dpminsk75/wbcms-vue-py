@@ -26,10 +26,10 @@ export interface SeoPhrases {
 }
 
 export const seoApi = {
-  list: (status = 'new', q = '', page = 1) =>
+  list: (status: 'all' | 'new' | 'viewed' = 'all', q = '', page = 1) =>
     api.get('/api/seo/recommendations', { params: { status, q, page } }).then((r) => r.data as {
       items: SeoRec[]; total: number; page: number; page_size: number;
-      counts: { new: number; viewed: number }; status: string; q: string;
+      status: string; q: string;
     }),
   unprocessed: (q = '') =>
     api.get('/api/seo/unprocessed', { params: { q } }).then((r) => r.data as {

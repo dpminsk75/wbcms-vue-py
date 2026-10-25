@@ -12,16 +12,22 @@ router = APIRouter(prefix="/api/seo", tags=["seo"])
 
 @router.get("/recommendations")
 async def seo_list(
-    status: str = Query(default="new"),
+    status: str = Query(default="all"),
     q: str = Query(default=""),
     page: int = Query(default=1, ge=1),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(require_seo),
     company_id: int | None = Depends(get_current_company),
 ):
+    """Лента рекомендаций. status: new (к просмотру) | viewed | all (по умолчанию).
+
+    Постранично: page_size = seo_service.PAGE_SIZE (20). Счётчики не считаем —
+    лента отдаётся одним SELECT'ом (важно для сервера на 1 ГБ RAM).
+    """
+    status = status if status in ("new", "viewed", "all") else "all"
     svc = SeoService(db, company_id)
     return {**await svc.search(status, q.strip(), page),
-            "counts": await svc.counts(), "status": status, "q": q.strip()}
+            "status": status, "q": q.strip()}
 
 
 @router.get("/unprocessed")
