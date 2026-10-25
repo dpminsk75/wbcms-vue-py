@@ -4,7 +4,7 @@
       <router-link to="/news" class="page-news-min__title">Новости ({{ rows.length }})</router-link>
     </div>
     <div ref="trackRef" class="page-news-min__track"
-      @pointerdown="dragStart" @pointermove="dragMove" @pointerup="dragEnd" @pointerleave="dragEnd">
+      @pointerdown="dragStart" @pointermove="dragMove" @pointerup="dragEnd" @pointercancel="dragEnd" @pointerleave="dragEnd">
       <div v-for="r in rows" :key="r.id" class="page-news-min__item" :class="{ 'page-news-min__item--read': r.is_read }" @click="open(r)" title="Нажмите, чтобы открыть новость">
         <div class="page-news-min__date">{{ newsDate(r.date) }}</div>
         <div class="page-news-min__name" :title="r.header">{{ r.header }}</div>
@@ -46,6 +46,7 @@ function close() {
 
 const dragging = ref(false)
 const dragged = ref(false)
+const DRAG_THRESHOLD = 6
 let dragX = 0
 let dragScroll = 0
 function dragStart(e: PointerEvent) {
@@ -55,13 +56,19 @@ function dragStart(e: PointerEvent) {
   dragged.value = false
   dragX = e.clientX
   dragScroll = el.scrollLeft
-  el.setPointerCapture?.(e.pointerId)
+  // БЕЗ setPointerCapture здесь: захват указателя ретретачит click на трек,
+  // и клик по карточке (open) не срабатывает. Захват ставим в dragMove,
+  // когда жест точно стал перетаскиванием.
 }
 function dragMove(e: PointerEvent) {
   const el = trackRef.value
   if (!dragging.value || !el) return
   const dx = e.clientX - dragX
-  if (Math.abs(dx) > 5) dragged.value = true
+  if (!dragged.value) {
+    if (Math.abs(dx) <= DRAG_THRESHOLD) return
+    dragged.value = true
+    el.setPointerCapture?.(e.pointerId)
+  }
   el.scrollLeft = dragScroll - dx
 }
 function dragEnd() {
@@ -80,7 +87,7 @@ onMounted(async () => {
 .page-news-min__head { margin-bottom: 8px; }
 .page-news-min__title { font-size: 20px; font-weight: 700; color: #111827; text-decoration: none; }
 .page-news-min__title:hover { color: #8A2BE0; }
-.page-news-min__track { display: flex; gap: 24px; overflow-x: auto; scrollbar-width: none; cursor: grab; padding-bottom: 4px; }
+.page-news-min__track { display: flex; gap: 24px; overflow-x: auto; scrollbar-width: none; cursor: grab; padding-bottom: 4px; user-select: none; }
 .page-news-min__track::-webkit-scrollbar { display: none; }
 .page-news-min__item { flex: 0 0 300px; cursor: pointer; background: #fff; border: 1px solid #d3d9e0; border-radius: 12px; padding: 12px 14px; box-shadow: 0 1px 4px rgba(16,24,40,.08); }
 .page-news-min__item:hover { border-color: #8A2BE0; }

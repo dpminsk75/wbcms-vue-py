@@ -6,7 +6,7 @@
     <div style="text-align:center; font-size:12px; padding:20px" v-if="isLoading">Загрузка...</div>
     <div v-else-if="rows.length===0" style="text-align:center; font-size:12px; color:#6b7280; padding:20px">Новинок нет</div>
     <div v-else ref="trackRef" class="page-new-cards__track"
-      @pointerdown="dragStart" @pointermove="dragMove" @pointerup="dragEnd" @pointerleave="dragEnd">
+      @pointerdown="dragStart" @pointermove="dragMove" @pointerup="dragEnd" @pointercancel="dragEnd" @pointerleave="dragEnd">
       <div v-for="c in rows" :key="c.nmID" class="page-new-cards__item">
         <div class="d-flex p-2 h-100" style="background:#fff; border:1px solid #d3d9e0; border-radius:12px; align-items:center; box-shadow:0 1px 4px rgba(16,24,40,0.08)">
               <div class="flex-shrink-0 me-3" style="width:80px; height:110px; border-radius:6px; overflow:hidden; background:#f1f1f1; display:flex; align-items:center; justify-content:center; border:1px solid #e2e8f0">
@@ -52,21 +52,29 @@ const imgSrc = (c:any)=>{  if(!c.photos) return null
 import { useDateFmt } from '../../composables/useDateFmt'
 const { fmtDate } = useDateFmt()
 const trackRef = ref<HTMLElement | null>(null)
+const DRAG_THRESHOLD = 6
 let dragOn = false
+let dragged = false
 let dragX = 0
 let dragScroll = 0
 function dragStart(e: PointerEvent) {
   const el = trackRef.value
   if (!el) return
   dragOn = true
+  dragged = false
   dragX = e.clientX
   dragScroll = el.scrollLeft
-  el.setPointerCapture?.(e.pointerId)
 }
 function dragMove(e: PointerEvent) {
   const el = trackRef.value
   if (!dragOn || !el) return
-  el.scrollLeft = dragScroll - (e.clientX - dragX)
+  const dx = e.clientX - dragX
+  if (!dragged) {
+    if (Math.abs(dx) <= DRAG_THRESHOLD) return
+    dragged = true
+    el.setPointerCapture?.(e.pointerId)
+  }
+  el.scrollLeft = dragScroll - dx
 }
 function dragEnd() {
   dragOn = false
@@ -81,7 +89,7 @@ watchEffect(() => { if (!busy.value) report('new-cards', hasData.value || !!isEr
 .page-new-cards__head { margin-bottom: 8px; }
 .page-new-cards__title { font-size: 20px; font-weight: 700; color: #111827; text-decoration: none; }
 .page-new-cards__title:hover { color: #8A2BE0; }
-.page-new-cards__track { display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, auto); gap: 12px; overflow-x: auto; scrollbar-width: none; cursor: grab; padding-bottom: 4px; }
+.page-new-cards__track { display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, auto); gap: 12px; overflow-x: auto; scrollbar-width: none; cursor: grab; padding-bottom: 4px; user-select: none; }
 .page-new-cards__track::-webkit-scrollbar { display: none; }
 .page-new-cards__item { width: 340px; }
 </style>
