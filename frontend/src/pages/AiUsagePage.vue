@@ -223,6 +223,7 @@ const SCENARIO_OPTIONS: Record<string, string> = {
   competitor: 'Анализ конкурента',
   summary: 'Сводка по конкурентам',
   newcard_phrases: 'Фразы (новый товар)',
+  newcard_phrases_miner: 'Фразы (фон-разбор)',
   newcard_generate: 'Title+Description (новый товар)',
   test: 'Проба подключения',
   other: 'Прочее',
