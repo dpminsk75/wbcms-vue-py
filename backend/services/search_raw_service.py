@@ -379,10 +379,29 @@ async def _our_nms(db: AsyncSession, cid: int, ids: list) -> list:
     return sorted({int(x) for x in rows})
 
 
+async def position_sources(db: AsyncSession, cid: int, ids: list,
+                           extra_nm: int = 0) -> list[int]:
+    """Источники выдачи (source_nm_id): наши карточки среди товаров + карточка очереди.
+
+    ВАЖНО: оба писателя выдачи (DOM через /observe_search и /search_result,
+    JSON через /search_raw) обязаны вести ОДИН и тот же список источников —
+    тогда их upsert'ы попадают в одни строки (uq_position_company_date) и
+    DOM/JSON-поля сливаются, а не распадаются на два набора записей.
+    """
+    sources: set[int] = set(await _our_nms(db, cid, ids))
+    if extra_nm:
+        row = (await db.execute(text(
+            "SELECT 1 FROM wbcards WHERE nmID=:n AND company_id=:c LIMIT 1"
+        ), {"n": int(extra_nm), "c": cid})).first()
+        if row:
+            sources.add(int(extra_nm))
+    return sorted(sources) if sources else [0]
+
+
 async def _enrich_positions(
     db: AsyncSession, cid: int, uid: int | None, tok: int | None,
     phrase: str, products: list, day: str | None = None, offset: int = 0,
-    stamp: str = ""
+    stamp: str = "", source_nm_id: int = 0
 ) -> int:
     """Дополняем строки наблюдений полями из JSON-выдачи.
 
@@ -391,6 +410,12 @@ async def _enrich_positions(
 
     `offset` — поправка постраничности: (page-1)*limit из URL ответа, чтобы
     position_api был рангом в выдаче, а не индексом внутри страницы.
+
+    `source_nm_id` — карточка очереди (от background, свой поток): добавляем её
+    к источникам, чтобы JSON-поля легли в те же строки, что и DOM-поля
+    /search_result (иначе при non-ranked карточке очереди выдача распадалась
+    на два набора записей: DOM под карточкой очереди, JSON под карточкой
+    из выдачи).
     """
     if not products:
         return 0
@@ -398,8 +423,21 @@ async def _enrich_positions(
     # фразе (в отчёте останется одна строка на фразу в час).
     stamp = await capture_service.resolve_slice_stamp(db, cid, phrase, stamp)
     ids = [int(p.get("id") or 0) for p in products if isinstance(p, dict) and p.get("id")]
-    ours = await _our_nms(db, cid, ids)
-    sources = ours if ours else [0]
+    sources = await position_sources(db, cid, ids, extra_nm=source_nm_id)
+    # Страховка расщепления: если DOM-записи (/search_result, /observe_search)
+    # уже легли в этот срез, JSON обязан попасть в ТЕ ЖЕ source_nm_id — иначе
+    # DOM- и JSON-поля разъезжаются по двум записям. Порядок прихода каналов
+    # (DOM-запись раньше/позже сырого каталога) не должен влиять.
+    if stamp:
+        try:
+            ex_rows = (await db.execute(text(
+                "SELECT DISTINCT source_nm_id FROM wb_competitor_position "
+                "WHERE company_id=:cid AND slice_stamp=:st "
+                "AND LEFT(query_phrase,200)=LEFT(:ph,200)"
+            ), {"cid": cid, "st": stamp, "ph": _norm_phrase(phrase)})).scalars().all()
+            sources = sorted(set(sources) | {int(x) for x in ex_rows if x})
+        except Exception:
+            pass
 
     rows: list[dict] = []
     for idx, p in enumerate(products, 1):
@@ -608,6 +646,12 @@ async def save_search_raw(db: AsyncSession, ext: dict, payload: dict) -> dict:
     data = payload or {}
     phrase = str(data.get("phrase") or "").strip()[:500]
     stamp = re.sub(r"[^0-9_]", "", str(data.get("search_stamp") or ""))[:15] or _now_stamp()
+    # Карточка очереди фонового потока (background проставляет её своим вкладкам):
+    # объединяем источники JSON-записи с DOM-записью /search_result — см. position_sources.
+    try:
+        source_nm_id = int(data.get("source_nm_id") or 0)
+    except (TypeError, ValueError):
+        source_nm_id = 0
     raw_parts = data.get("raw") if isinstance(data.get("raw"), dict) else {}
     if not raw_parts:
         return {"ok": True, "saved": 0, "files": [], "note": "пусто"}
@@ -646,7 +690,8 @@ async def save_search_raw(db: AsyncSession, ext: dict, payload: dict) -> dict:
             file_name = _write_file(cid, day, stamp, kind, slug, raw, meta)
             products = parsed.get("products") if isinstance(parsed, dict) else []
             positions = await _enrich_positions(db, cid, uid, tok, phrase, products or [], day,
-                                                offset=_page_offset(url), stamp=stamp)
+                                                offset=_page_offset(url), stamp=stamp,
+                                                source_nm_id=source_nm_id)
         elif kind == "filters":
             f = _parse_filters(parsed if isinstance(parsed, dict) else {})
             meta.update({
