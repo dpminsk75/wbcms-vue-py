@@ -134,10 +134,23 @@ async def ext_whoami(
 @router.get("/status")
 async def ext_status(
     nm_id: int | None = Query(default=None, ge=1),
+    source: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
     ext: dict = Depends(require_ext_token),
 ):
+    """Счётчики очереди enrich.
+
+    `source`:
+    - `''` (по умолчанию) — общая куча конкурентов (`source=''`), карточки
+      SEO-мониторинга (`source='watch'`) в неё не входят;
+    - `watch` — только карточки SEO-мониторинга.
+    """
     cid = int(ext["company_id"])
+    src = (source or "").strip().lower()
+    if src == "watch":
+        src_cond = "q.source='watch'"
+    else:
+        src_cond = "(q.source='' OR q.source IS NULL)"
     if nm_id:
         if not await _owns_card(db, cid, nm_id):
             raise HTTPException(status_code=403, detail="foreign source_nm_id")
@@ -145,13 +158,15 @@ async def ext_status(
             SELECT q.status, COUNT(DISTINCT q.id) as cnt FROM wb_enrich_queue q
             JOIN wb_competitor_cards c ON c.nm_id=q.nm_id AND c.source_nm_id=:nm
             WHERE (q.company_id=:cid OR q.company_id IS NULL OR q.status='need_update')
+              AND {src_cond}
               AND c.source_nm_id IN ({OWNED_CARDS.replace(':cid', ':cid2')})
             GROUP BY q.status
         """), {"nm": nm_id, "cid": cid, "cid2": cid})).mappings().all()
     else:
-        rows = (await db.execute(text("""
-            SELECT status, COUNT(*) as cnt FROM wb_enrich_queue
-            WHERE company_id=:cid OR company_id IS NULL OR status='need_update'
+        rows = (await db.execute(text(f"""
+            SELECT status, COUNT(*) as cnt FROM wb_enrich_queue q
+            WHERE (q.company_id=:cid OR q.company_id IS NULL OR q.status='need_update')
+              AND {src_cond}
             GROUP BY status
         """), {"cid": cid})).mappings().all()
     counts = {r["status"]: r["cnt"] for r in rows}
@@ -215,11 +230,15 @@ async def ext_next(
     `mode`:
     - `new` (по умолчанию) — только pending, как раньше;
     - `refresh` — только need_update;
-    - `all` — pending, затем need_update.
+    - `all` — pending, затем need_update;
+    - `watch` — только pending с `source='watch'` (карточки SEO-мониторинга).
+
+    Во всех режимах, кроме `watch`, карточки SEO-мониторинга не выдаются:
+    у них отдельный режим в попапе.
     """
     cid = int(ext["company_id"])
     mode = (mode or "new").strip().lower()
-    if mode not in ("new", "refresh", "all"):
+    if mode not in ("new", "refresh", "all", "watch"):
         mode = "new"
     # зависший processing: расширение могли закрыть посреди сбора — снимаем в
     # pending (тот же 30-минутный reset, что у wb_competitor_query и wb_seo_target).
@@ -234,14 +253,21 @@ async def ext_next(
     """), {"cid": cid})
     await db.commit()
     if mode == "new":
-        cond = "q.status='pending' AND (q.company_id=:cid OR q.company_id IS NULL)"
+        cond = ("q.status='pending' AND (q.company_id=:cid OR q.company_id IS NULL)"
+                " AND (q.source='' OR q.source IS NULL)")
         order = "q.id"
     elif mode == "refresh":
-        cond = "q.status='need_update'"
+        cond = ("q.status='need_update' AND (q.source='' OR q.source IS NULL)")
+        order = "q.id"
+    elif mode == "watch":
+        cond = ("q.status='pending' AND q.source='watch'"
+                " AND (q.company_id=:cid OR q.company_id IS NULL)")
         order = "q.id"
     else:
+        # скобки обязательны: без них AND перехватил бы только ветку need_update
         cond = ("((q.status='pending' AND (q.company_id=:cid OR q.company_id IS NULL))"
-                " OR q.status='need_update')")
+                " OR q.status='need_update')"
+                " AND (q.source='' OR q.source IS NULL)")
         order = "CASE WHEN q.status='pending' THEN 0 ELSE 1 END, q.id"
     if nm_id:
         if not await _owns_card(db, cid, nm_id):
@@ -309,8 +335,8 @@ async def ext_result(
     params = {
         "n": nm_id, "t": payload.get("title", ""), "d": payload.get("description", ""),
         "u": payload.get("url", ""), "b": payload.get("brand", ""), "s": payload.get("seller", ""),
-        "p": capture_service._to_int(payload.get("price")),
-        "o": capture_service._to_int(payload.get("old_price")),
+        "p": 0 if (payload or {}).get("sold_out") else capture_service._to_int(payload.get("price")),
+        "o": 0 if (payload or {}).get("sold_out") else capture_service._to_int(payload.get("old_price")),
         "img": json.dumps(payload.get("images") or [], ensure_ascii=False),
         "chars": new_chars, "subj": str(payload.get("subject_name") or "")[:255],
         "rate": capture_service._to_float(payload.get("rating")),
@@ -516,16 +542,7 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
 
     # наши карточки среди выдачи (определяем на сервере — расширение о компании не знает)
     ids = [int(p.get("id")) for p in products[:200] if p.get("id")]
-    our: set[int] = set()
-    if ids:
-        ph = ",".join(f":i{i}" for i in range(len(ids)))
-        rows = (await db.execute(
-            text(f"SELECT nmID FROM wbcards WHERE company_id=:cid AND nmID IN ({ph})"),
-            {**{"cid": cid}, **{f"i{i}": v for i, v in enumerate(ids)}},
-        )).scalars().all()
-        our = {int(x) for x in rows}
-    # если наших в выдаче нет — привязываем к «нашей карточке» нельзя, пишем наблюдение без привязки
-    sources = sorted(our) if our else [0]
+    sources = await search_raw_service.position_sources(db, cid, ids)
 
     saved = 0
     for idx, p in enumerate(products[:200], 1):
@@ -546,6 +563,10 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
         promo_id = capture_service._to_int(p.get("promo_id", 0))
         # «Нет в наличии» в выдаче: карточка без цены
         sold_out = 1 if p.get("sold_out") else 0
+        # sold-out — факт «цены нет», а не «не нашли»: 0 перезаписывает цену среза
+        if sold_out:
+            price = 0
+            old_price = 0
         uid = ext.get("created_by")
         tok = ext.get("id")
 
@@ -560,13 +581,14 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
                 ON DUPLICATE KEY UPDATE
                   position=VALUES(position), title=VALUES(title), brand=VALUES(brand),
                   seller=IF(VALUES(seller)='', seller, VALUES(seller)),
-                  price=IF(VALUES(price)>0, VALUES(price), price),
-                  old_price=IF(VALUES(old_price)>0, VALUES(old_price), old_price),
+                  price=IF(:so=1, 0, IF(VALUES(price)>0, VALUES(price), price)),
+                  old_price=IF(:so=1, 0, IF(VALUES(old_price)>0, VALUES(old_price), old_price)),
                   rating=IF(VALUES(rating)>0, VALUES(rating), rating),
                   feedbacks=IF(VALUES(feedbacks)>0, VALUES(feedbacks), feedbacks),
                   reviews=IF(VALUES(reviews)>0, VALUES(reviews), reviews),
                   badges=IF(VALUES(badges)='[]', badges, VALUES(badges)),
-                  promo_id=VALUES(promo_id), image_url=VALUES(image_url),
+                  promo_id=VALUES(promo_id),
+                  image_url=IF(:img='', image_url, VALUES(image_url)),
                   sold_out=VALUES(sold_out),
                   created_by=COALESCE(created_by, VALUES(created_by)),
                   ext_token_id=COALESCE(ext_token_id, VALUES(ext_token_id))
@@ -597,7 +619,7 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
                       price=VALUES(price), old_price=VALUES(old_price), rating=VALUES(rating),
                       feedbacks=VALUES(feedbacks),
                       badges=IF(VALUES(badges)='[]', badges, VALUES(badges)),
-                      image_url=VALUES(image_url),
+                      image_url=IF(:img='', image_url, VALUES(image_url)),
                       sold_out=VALUES(sold_out),
                       added_by=COALESCE(added_by, VALUES(added_by)),
                       ext_token_id=COALESCE(ext_token_id, VALUES(ext_token_id))
@@ -628,7 +650,10 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
               badges=IF(:bg='[]', badges, :bg),
               preview_image=IF(:prev='', preview_image, :prev),
               sold_out=:so,
-              collected_at=NOW()
+              collected_at=NOW(),
+              first_collected_at=COALESCE(first_collected_at, NOW()),
+              captured_company_id=COALESCE(captured_company_id, :cid),
+              captured_by=COALESCE(captured_by, :uid)
         """), {"n": pid, "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
                "p": price, "o": old_price, "r": rating, "fb": fb, "so": sold_out,
                "bg": json.dumps(badges, ensure_ascii=False),
@@ -921,6 +946,13 @@ async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
             slice_stamp = ""
     uid = ext.get("created_by")
     tok = ext.get("id")
+    # Источники записи: карточка очереди + наши карточки, найденные в выдаче.
+    # Оба писателя (/search_result DOM и /search_raw JSON) пишут по ОДНОМУ
+    # набору источников (search_raw_service.position_sources) — иначе при
+    # карточке очереди, которая не ранжируется в своей выдаче, поля DOM и JSON
+    # распадались на два набора записей с разными source_nm_id.
+    pids = [int(p.get("id") or 0) for p in products if p.get("id")]
+    sources = await search_raw_service.position_sources(db, cid, pids, extra_nm=nm_id)
     for idx, p in enumerate(products, 1):
         pid = p.get("id")
         if not pid:
@@ -939,33 +971,40 @@ async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
         promo_id = capture_service._to_int(p.get("promo_id", 0))
         # «Нет в наличии» в выдаче: карточка без цены — флаг на строку
         sold_out = 1 if p.get("sold_out") else 0
-        # Позиции выдачи — дневные срезы (все позиции, хвост не теряем)
-        await db.execute(text("""
-            INSERT INTO wb_competitor_position
-              (company_id, source_nm_id, query_phrase, position, nm_id, title, brand, seller,
-               price, old_price, rating, feedbacks, reviews, badges, promo_id, image_url,
-               sold_out, created_by, ext_token_id, collected_at, slice_stamp)
-            VALUES (:cid, :s, :ph, :pos, :pid, :t, :b, :seller, :price, :old_price, :rating,
-                    :fb, :rev, :bg, :promo, :img, :so, :uid, :tok, CURDATE(), :slice_stamp)
-            ON DUPLICATE KEY UPDATE
-              position=VALUES(position), title=VALUES(title), brand=VALUES(brand),
-              seller=IF(VALUES(seller)='', seller, VALUES(seller)),
-              price=IF(VALUES(price)>0, VALUES(price), price),
-              old_price=IF(VALUES(old_price)>0, VALUES(old_price), old_price),
-              rating=IF(VALUES(rating)>0, VALUES(rating), rating),
-              feedbacks=IF(VALUES(feedbacks)>0, VALUES(feedbacks), feedbacks),
-              reviews=IF(VALUES(reviews)>0, VALUES(reviews), reviews),
-              badges=IF(VALUES(badges)='[]', badges, VALUES(badges)),
-              promo_id=VALUES(promo_id), image_url=VALUES(image_url),
-              sold_out=VALUES(sold_out),
-              created_by=COALESCE(created_by, VALUES(created_by)),
-              ext_token_id=COALESCE(ext_token_id, VALUES(ext_token_id))
-        """), {"cid": cid, "s": nm_id, "ph": phrase, "pos": pos, "pid": pid,
-               "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
-               "price": price, "old_price": old_price, "rating": rating, "fb": fb, "rev": reviews,
-               "bg": json.dumps(badges, ensure_ascii=False),
-               "promo": promo_id, "img": img, "so": sold_out,
-               "uid": uid, "tok": tok, "slice_stamp": slice_stamp})
+        # sold-out — факт «цены нет», а не «не нашли»: 0 перезаписывает цену среза
+        if sold_out:
+            price = 0
+            old_price = 0
+        # Позиции выдачи — дневные срезы (все позиции, хвост не теряем).
+        # По каждому источнику — своя строка (uq_position_company_date).
+        for src in sources:
+            await db.execute(text("""
+                INSERT INTO wb_competitor_position
+                  (company_id, source_nm_id, query_phrase, position, nm_id, title, brand, seller,
+                   price, old_price, rating, feedbacks, reviews, badges, promo_id, image_url,
+                   sold_out, created_by, ext_token_id, collected_at, slice_stamp)
+                VALUES (:cid, :s, :ph, :pos, :pid, :t, :b, :seller, :price, :old_price, :rating,
+                        :fb, :rev, :bg, :promo, :img, :so, :uid, :tok, CURDATE(), :slice_stamp)
+                ON DUPLICATE KEY UPDATE
+                  position=VALUES(position), title=VALUES(title), brand=VALUES(brand),
+                  seller=IF(VALUES(seller)='', seller, VALUES(seller)),
+                  price=IF(:so=1, 0, IF(VALUES(price)>0, VALUES(price), price)),
+                  old_price=IF(:so=1, 0, IF(VALUES(old_price)>0, VALUES(old_price), old_price)),
+                  rating=IF(VALUES(rating)>0, VALUES(rating), rating),
+                  feedbacks=IF(VALUES(feedbacks)>0, VALUES(feedbacks), feedbacks),
+                  reviews=IF(VALUES(reviews)>0, VALUES(reviews), reviews),
+                  badges=IF(VALUES(badges)='[]', badges, VALUES(badges)),
+                  promo_id=VALUES(promo_id),
+                  image_url=IF(:img='', image_url, VALUES(image_url)),
+                  sold_out=VALUES(sold_out),
+                  created_by=COALESCE(created_by, VALUES(created_by)),
+                  ext_token_id=COALESCE(ext_token_id, VALUES(ext_token_id))
+            """), {"cid": cid, "s": src, "ph": phrase, "pos": pos, "pid": pid,
+                   "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
+                   "price": price, "old_price": old_price, "rating": rating, "fb": fb, "rev": reviews,
+                   "bg": json.dumps(badges, ensure_ascii=False),
+                   "promo": promo_id, "img": img, "so": sold_out,
+                   "uid": uid, "tok": tok, "slice_stamp": slice_stamp})
         # Конкуренты нашей карточки — только топ-12 (схема: «позиция в выдаче, 1-12»)
         if pos > 12:
             continue
@@ -985,7 +1024,7 @@ async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
               price=VALUES(price), old_price=VALUES(old_price), rating=VALUES(rating),
               feedbacks=VALUES(feedbacks),
               badges=IF(VALUES(badges)='[]', badges, VALUES(badges)),
-              image_url=VALUES(image_url),
+              image_url=IF(:img='', image_url, VALUES(image_url)),
               sold_out=VALUES(sold_out),
               added_by=COALESCE(added_by, VALUES(added_by)),
               ext_token_id=COALESCE(ext_token_id, VALUES(ext_token_id))
@@ -994,6 +1033,41 @@ async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
                "price": price, "old_price": old_price, "rating": rating, "fb": fb,
                "bg": json.dumps(badges, ensure_ascii=False),
                "img": img, "uid": uid, "tok": tok, "so": sold_out})
+    # JSON-досыпка из строки-сиблинга. Ситуация: сырой каталог (/search_raw)
+    # пришёл позже DOM-записи или без метки карточки очереди — тогда JSON-поля
+    # легли не во все source_nm_id этого среза. Копируем из сиблинга (та же
+    # фраза/товар/штамп, другой source_nm_id) только то, чего у строки ещё нет.
+    # И обратно: DOM-поля (картинка, бейджи…), которых нет в enrich-строках —
+    # их DOM-писатель не видел, если наши карточки не в топ-40 DOM-выдачи.
+    # position НЕ копируем: DOM-позиция и API-ранг — разные вещи.
+    _jcols = ("position_api", "brand_id", "subject_id", "root_id", "match_id",
+              "seller_id", "seller_rating", "price_api", "old_price_api",
+              "review_rating", "feedback_points", "total_qty", "time1", "time2",
+              "wh", "dist", "volume", "weight", "pics", "is_new",
+              "sale_conditions", "dtype_mask", "semantic_id", "option_id",
+              "mtype", "supplier_flags", "view_flags")
+    # Поле отсутствует = NULL/пусто/0 (числовые) — тогда берём из сиблинга.
+    _dcols_null = ("title", "brand", "seller")            # ''/NULL — пусто
+    _dcols_num = ("price", "old_price", "rating", "feedbacks", "reviews",
+                  "promo_id")                             # 0/NULL — пусто
+    _sets = [f"dst.{c}=COALESCE(dst.{c}, src.{c})" for c in _jcols]
+    _sets += [f"dst.{c}=IF(dst.{c} IS NULL OR dst.{c}='', src.{c}, dst.{c})"
+              for c in _dcols_null]
+    _sets += [f"dst.{c}=IF(dst.{c} IS NULL OR dst.{c}=0, src.{c}, dst.{c})"
+              for c in _dcols_num]
+    _sets += ["dst.badges=IF(dst.badges IS NULL OR dst.badges IN ('', '[]'), src.badges, dst.badges)",
+              "dst.image_url=IF(dst.image_url IS NULL OR dst.image_url='', src.image_url, dst.image_url)",
+              "dst.sold_out=IF(dst.sold_out=0 AND src.sold_out=1, 1, dst.sold_out)"]
+    await db.execute(text(
+        "UPDATE wb_competitor_position dst "
+        "JOIN wb_competitor_position src "
+        "  ON src.company_id=dst.company_id AND src.nm_id=dst.nm_id "
+        " AND LEFT(src.query_phrase,200)=LEFT(dst.query_phrase,200) "
+        " AND src.slice_stamp=dst.slice_stamp AND src.source_nm_id<>dst.source_nm_id "
+        "SET " + ", ".join(_sets) +
+        " WHERE dst.company_id=:cid AND dst.slice_stamp=:st "
+        "AND LEFT(dst.query_phrase,200)=LEFT(:ph,200)"
+    ), {"cid": cid, "st": slice_stamp, "ph": phrase})
     if queue_id:
         if source == "phrases":
             await db.execute(text("""

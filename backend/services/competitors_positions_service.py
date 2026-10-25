@@ -261,6 +261,60 @@ class CompetitorsPositionsService:
         )).mappings().all()
         return {int(r["id"]): (r["name"] or r["token_prefix"] or "") for r in rows}
 
+    async def _fill_image_fallback(self, items: list[dict]) -> None:
+        """Пустые image_url в срезах → фото из сборов контента (на месте).
+
+        Срез пишет превью, распарсенное из DOM выдачи в момент захода, и WB
+        подгружает картинки лениво — в строке остаётся пустота, и в отчёте
+        «без фото», хотя контент карточки собран. Подставляем:
+        1) `wb_competitor_details.preview_image` — превью из последних сборов;
+        2) для наших карточек — `wbcards.photos[0]` (синк карточек).
+        """
+        need: list[int] = []
+        seen: set[int] = set()
+        for i in items:
+            nm = int(i.get("nm_id") or 0)
+            if nm and not i.get("image_url") and nm not in seen:
+                seen.add(nm)
+                need.append(nm)
+        if not need:
+            return
+        imgs: dict[int, str] = {}
+        for k in range(0, len(need), 400):
+            ch = need[k:k + 400]
+            ph = ",".join(f":n{i}" for i in range(len(ch)))
+            rows = (await self.db.execute(text(f"""
+                SELECT nm_id, preview_image FROM wb_competitor_details
+                WHERE nm_id IN ({ph})
+            """), {f"n{i}": v for i, v in enumerate(ch)})).mappings().all()
+            for r in rows:
+                v = (r["preview_image"] or "").strip()
+                if v:
+                    imgs[int(r["nm_id"] or 0)] = v if v.startswith("http") else ("https:" + v)
+        # у карточек вне топ-12 деталей может не быть — для наших берём wbcards
+        empty = [nm for nm in need if nm not in imgs]
+        if empty:
+            for k in range(0, len(empty), 400):
+                ch = empty[k:k + 400]
+                ph = ",".join(f":w{i}" for i in range(len(ch)))
+                rows = (await self.db.execute(text(f"""
+                    SELECT nmID, photos FROM wbcards WHERE nmID IN ({ph})
+                """), {f"w{i}": v for i, v in enumerate(ch)})).mappings().all()
+                for r in rows:
+                    lst = _json_list(r["photos"])
+                    if isinstance(lst, str):
+                        lst = _json_list(lst)
+                    u = lst[0] if isinstance(lst, list) and lst else ""
+                    if isinstance(u, dict):
+                        u = u.get("big") or u.get("c246x328") or u.get("url") or ""
+                    if u:
+                        imgs[int(r["nmID"] or 0)] = u if u.startswith("http") else ("https:" + str(u))
+        if imgs:
+            for i in items:
+                nm = int(i.get("nm_id") or 0)
+                if not i.get("image_url") and nm in imgs:
+                    i["image_url"] = imgs[nm]
+
     # ---------- 2. выдача по фразе ----------
 
     async def phrase(self, phrase: str, date_from=None, date_to=None, day: str | None = None) -> dict:
@@ -362,6 +416,14 @@ class CompetitorsPositionsService:
             d = by_slice[key][0]["at"]
             # Одна строка на товар: если наших карточек в выдаче несколько, конкурент
             # записан по каждой (привязка ко всем) — в отчёте это дубли, склеиваем.
+            # Склейка полей: НЕ «первая строка целиком», а «непустое значение
+            # побеждает пустое» — иначе при расщеплении DOM/JSON по source_nm_id
+            # в отчёт могла уйти строка без фото/бейджей, хотя у сиблинга они есть.
+            _fill = ("title", "brand", "seller", "image_url", "badges",
+                     "position", "position_api", "price", "old_price",
+                     "price_api", "old_price_api", "rating", "review_rating",
+                     "feedbacks", "reviews", "promo_id", "is_adv", "match_id",
+                     "seller_id", "seller_rating")
             merged: dict[int, dict] = {}
             order: list[int] = []
             for it in by_slice[key]:
@@ -375,11 +437,9 @@ class CompetitorsPositionsService:
                 m = merged[nm]
                 if it["source_nm_id"] and it["source_nm_id"] not in m["source_nm_ids"]:
                     m["source_nm_ids"].append(it["source_nm_id"])
-                # оставляем вариант с более полными данными (position_api из JSON)
-                if m.get("position_api") is None and it.get("position_api") is not None:
-                    keep = m["source_nm_ids"]
-                    m.update(it)
-                    m["source_nm_ids"] = keep
+                for k in _fill:
+                    if not m.get(k) and it.get(k):
+                        m[k] = it[k]
             day_items = [merged[nm] for nm in order]
             for i in day_items:
                 # наш товар — тот, кто сам был в выдаче (а не просто конкурент)
@@ -397,6 +457,10 @@ class CompetitorsPositionsService:
                 saved_by.setdefault(int(it["created_by"]), {"id": int(it["created_by"]),
                                                             "username": it["username"],
                                                             "token_name": it["token_name"]})
+
+        # «без фото» в отчёте: подставляем превью из сборов контента
+        await self._fill_image_fallback(
+            [i for s in slices for i in s["items"]])
 
         return {
             "phrase": phrase,

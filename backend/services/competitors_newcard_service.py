@@ -2482,6 +2482,39 @@ class CompetitorsNewcardService:
         """Есть ли карточка в собранных у этой компании (для доступа к попапу)."""
         return bool(await self._capture_row(nm_id))
 
+    async def cards_fallback(self, nm_id: int) -> dict | None:
+        """Последняя строка конкурента в wb_competitor_cards (наши карточки компании)."""
+        scope, params = "", {"n": nm_id}
+        if self.company_id is not None:
+            scope = "AND w.company_id=:cid"
+            params["cid"] = self.company_id
+        r = (await self.db.execute(text(f"""
+            SELECT c.source_nm_id, c.query_phrase, c.position, c.title, c.brand, c.seller,
+                   c.price, c.old_price, c.rating, c.feedbacks, c.badges, c.image_url,
+                   c.sold_out, c.collected_at
+            FROM wb_competitor_cards c
+            JOIN wbcards w ON w.nmID=c.source_nm_id
+            WHERE c.nm_id=:n {scope}
+            ORDER BY c.id DESC LIMIT 1
+        """), params)).mappings().first()
+        return dict(r) if r else None
+
+    async def positions_fallback(self, nm_id: int) -> dict | None:
+        """Последняя строка конкурента в выдаче (wb_competitor_position)."""
+        scope, params = "", {"n": nm_id}
+        if self.company_id is not None:
+            scope = "AND company_id=:cid"
+            params["cid"] = self.company_id
+        r = (await self.db.execute(text(f"""
+            SELECT source_nm_id, query_phrase, position, position_api, title, brand, seller,
+                   price, old_price, rating, feedbacks, badges, image_url, sold_out,
+                   collected_at, slice_stamp
+            FROM wb_competitor_position
+            WHERE nm_id=:n {scope}
+            ORDER BY id DESC LIMIT 1
+        """), params)).mappings().first()
+        return dict(r) if r else None
+
     async def has_competitor(self, source_nm_id: int, nm_id: int) -> bool:
         """Привязан ли конкурент к нашей карточке (для доступа к попапу)."""
         r = (await self.db.execute(text("""

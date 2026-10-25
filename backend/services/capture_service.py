@@ -298,6 +298,11 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
         m_badges = _pick(_json_list(badges_raw) if badges_raw else None, _json_list(row["badges"]))
         m_price = _pick(price, row["price"])
         m_old = _pick(old_price, row["old_price"])
+        # sold-out — факт «цены нет», а не «не нашли»: иначе _pick(None, ...) держит
+        # старую цену распроданной карточки (0 трактуется как «не знаем»)
+        if sold_out:
+            m_price = 0
+            m_old = 0
         m_rating = _pick(rating, row["rating"])
         m_fb = _pick(feedbacks, row["feedbacks"])
         m_q = _pick(questions, row["questions"])
@@ -330,8 +335,8 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
         m_recs = _json_list(recs_raw)
         m_images = _json_list(images_raw)
         m_badges = _json_list(badges_raw)
-        m_price = price
-        m_old = old_price
+        m_price = 0 if sold_out else price
+        m_old = 0 if sold_out else old_price
         m_rating = rating
         m_fb = feedbacks
         m_q = questions
@@ -355,7 +360,12 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
                       rating=:r, feedbacks=:fb, questions=:q, subject_name=:subj, url=:u,
                       sold_out=:so,
                       collected_at=NOW(),
-                      full_collected_at=IF(:full=1, NOW(), full_collected_at)
+                      full_collected_at=IF(:full=1, NOW(), full_collected_at),
+                      # строка могла быть создана путём без captured_* (пассив/выдача):
+                      # «кто первым собрал» дозаполняем, не перебивая прежнего
+                      first_collected_at=COALESCE(first_collected_at, NOW()),
+                      captured_company_id=COALESCE(captured_company_id, :cid),
+                      captured_by=COALESCE(captured_by, :uid)
                     WHERE id=:id
                 """), {
                     "id": row["id"], "t": m_title, "d": m_desc, "ch": m_chars, "recs": m_recs,
@@ -363,6 +373,7 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
                     "p": m_price, "o": m_old, "r": m_rating, "fb": m_fb, "q": m_q,
                     "subj": m_subject, "u": m_url, "so": 1 if m_sold else 0,
                     "full": 1 if is_full else 0,
+                    "cid": company_id, "uid": user_id,
                 })
             else:
                 await db.execute(text("""

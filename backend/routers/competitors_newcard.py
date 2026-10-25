@@ -8,6 +8,8 @@
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import json
+
 from backend.database import get_db
 from backend.deps import get_current_company, require_seo
 from backend.services.competitors_newcard_service import CompetitorsNewcardService
@@ -455,14 +457,62 @@ async def captured_details(
     _user: dict = Depends(require_seo),
     company_id: int | None = Depends(get_current_company),
 ):
-    """Полная карточка собранного конкурента для попапа."""
+    """Полная карточка собранного конкурента для попапа.
+
+    Лестница источников (все company-scoped): контент (wb_competitor_details,
+    видимый через wb_competitor_capture) → запись выдачи (wb_competitor_cards) →
+    строка выдачи (wb_competitor_position). Нет полного сбора — отдаём частичные
+    данные с флагом found != "details": фронт показывает кнопку «Собрать в
+    расширении» вместо 404.
+    """
     svc = CompetitorsNewcardService(db, company_id)
-    if not await svc.capture_visible(nm_id):
-        raise HTTPException(status_code=404, detail="card not found")
-    data = await svc.details(nm_id)
-    if not data:
-        raise HTTPException(status_code=404, detail="details not collected")
-    return data
+    data = await svc.details(nm_id) if await svc.capture_visible(nm_id) else None
+    if data:
+        data["found"] = "details"
+        return data
+    for found, row, extra in (
+        ("cards", await svc.cards_fallback(nm_id), ("phrase",)),
+        ("position", await svc.positions_fallback(nm_id), ("phrase", "position", "position_api")),
+    ):
+        if not row:
+            continue
+        bad = row.get("badges")
+        if isinstance(bad, str):
+            try:
+                bad = json.loads(bad)
+            except Exception:
+                bad = []
+        img = row.get("image_url") or None
+        out = {
+            "found": found,
+            "nm_id": nm_id,
+            "title": row.get("title") or "",
+            "description": "",
+            "brand": row.get("brand") or "",
+            "seller": row.get("seller") or "",
+            "subject_name": None,
+            "photo": img,
+            "preview_image": img,
+            "images": [img] if img else [],
+            "characteristics": [],
+            "badges": bad if isinstance(bad, list) else [],
+            "price": row.get("price"),
+            "old_price": row.get("old_price"),
+            "rating": row.get("rating"),
+            "feedbacks": row.get("feedbacks"),
+            "questions": None,
+            "sold_out": 1 if row.get("sold_out") else 0,
+            "url": f"https://www.wildberries.ru/catalog/{nm_id}/detail.aspx",
+            "collected_at": row.get("collected_at"),
+            "first_collected_at": None,
+            "full_collected_at": None,
+            "source_nm_id": row.get("source_nm_id"),
+            "slice_stamp": row.get("slice_stamp") or "",
+        }
+        for k in extra:
+            out[k] = row.get(k)
+        return out
+    raise HTTPException(status_code=404, detail="card not found")
 
 
 @captured_router.post("/{nm_id}/attach")
