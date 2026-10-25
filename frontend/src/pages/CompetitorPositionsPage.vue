@@ -1,18 +1,19 @@
 <template>
   <div class="container-xxl page-competitor page-positions">
-    <!-- Шапка: название + варианты отчёта (как в FBS — варианты справа) -->
-    <div class="page-positions__head">
-      <h2 class="page-competitor__title">Выдача WB</h2>
-      <ul class="nav nav-pills page-positions__variants">
-        <li v-for="v in variants" :key="v.id" class="nav-item">
-          <button
-            class="nav-link"
-            :class="{ active: tab === v.id }"
-            @click="setTab(v.id)"
-          >{{ v.label }}</button>
-        </li>
-      </ul>
+    <!-- Шапка: название слева, меню рабочего места справа; локальное меню — рядом ниже -->
+    <div class="wb-workspace-head">
+      <h2 class="page-competitor__title">Поисковые запросы</h2>
+      <WbWorkspaceTabs active="positions" :tabs="WORKSPACE_TABS" />
     </div>
+    <ul class="nav nav-pills page-positions__variants mb-3">
+      <li v-for="v in variants" :key="v.id" class="nav-item">
+        <button
+          class="nav-link"
+          :class="{ active: tab === v.id }"
+          @click="setTab(v.id)"
+        >{{ v.label }}</button>
+      </li>
+    </ul>
 
     <!-- Фильтры: компактно, как на рабочем месте FBS -->
     <div class="page-positions__filter-card mb-3">
@@ -429,6 +430,8 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import WbDateInput from '@/components/common/WbDateInput.vue'
+import WbWorkspaceTabs from '@/components/common/WbWorkspaceTabs.vue'
+import { WORKSPACE_TABS } from '@/components/common/workspaceTabs'
 import WbSearchCard from '@/components/positions/WbSearchCard.vue'
 import OurCardModal from '@/components/positions/OurCardModal.vue'
 import CompetitorDetailsModal from '@/components/competitors/CompetitorDetailsModal.vue'
@@ -732,14 +735,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.page-positions__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
-}
 .page-positions__variants { margin: 0; }
 .page-positions__variants .nav-link { font-size: 13px; }
 

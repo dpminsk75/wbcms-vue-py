@@ -1,16 +1,6 @@
 <template>
   <div class="container-xxl page-competitor page-refresh">
-    <div class="page-competitor__head">
-      <h2 class="page-competitor__title">Обновление конкурентов</h2>
-      <div class="page-competitor__head-actions">
-        <router-link to="/competitor/captured" class="btn btn-sm btn-outline-secondary">
-          <i class="bi bi-collection"></i> Собранные карточки
-        </router-link>
-        <router-link to="/competitor/pick" class="btn btn-sm btn-outline-secondary">
-          <i class="bi bi-diagram-3"></i> Подбор конкурентов
-        </router-link>
-      </div>
-    </div>
+    <WbWorkspaceHead title="Конкуренты: Обновление" :subtabs="COMPETITOR_SUB_TABS" workspace-active="competitors" />
     <p class="text-muted">
       Конкуренты, контент которых собирали давно. Назначьте обновление — расширение
       обойдёт карточки в режиме «Обновление старых» и обновит описание, характеристики,
@@ -224,6 +214,8 @@ import {
   type RefreshStatus,
 } from '../api/competitorsNewcard'
 import CompetitorDetailsModal from '../components/competitors/CompetitorDetailsModal.vue'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import { COMPETITOR_SUB_TABS } from '@/components/common/workspaceTabs'
 import '@/assets/css/pages/page-competitor.css'
 import '@/assets/css/pages/page-competitor-pick.css'
 import '@/assets/css/pages/page-competitor-refresh.css'

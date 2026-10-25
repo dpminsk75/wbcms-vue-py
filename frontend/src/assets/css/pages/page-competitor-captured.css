@@ -2,7 +2,7 @@
  * + модалки CompetitorAttachModal / CompetitorHistoryModal.
  * Базовые стили таблицы/товара — page-competitor.css, модалки — .wb-modal-* (wb-ui.css).
  */
-.page-captured__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+/* Шапка — общая .wb-workspace-head (wb-ui.css): меню рабочего места справа. */
 .page-captured__head .page-competitor__head-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .page-captured__bulk-bar { margin-top: 12px; }
 .page-captured__toolbar {

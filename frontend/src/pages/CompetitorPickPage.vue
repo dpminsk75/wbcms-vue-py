@@ -1,16 +1,6 @@
 <template>
   <div class="container-xxl page-competitor page-pick">
-    <div class="page-competitor__head">
-      <h2 class="page-competitor__title">Подбор конкурентов</h2>
-      <div class="page-competitor__head-actions">
-        <router-link to="/competitor/new-cards" class="btn btn-sm btn-outline-secondary">
-          <i class="bi bi-box"></i> Новые карточки
-        </router-link>
-        <router-link to="/competitor/captured" class="btn btn-sm btn-outline-secondary">
-          <i class="bi bi-collection"></i> Собранные карточки
-        </router-link>
-      </div>
-    </div>
+    <WbWorkspaceHead title="Конкуренты: Подбор" :subtabs="COMPETITOR_SUB_TABS" workspace-active="competitors" />
     <p class="text-muted">
       Выберите наши карточки, соберите пул конкурентов и привяжите выбранных сразу к нескольким
       нашим карточкам. Пул можно строить из конкурентов выбранных карточек и их рекомендаций
@@ -544,6 +534,8 @@ import {
   type PickSort,
 } from '../api/competitorsNewcard'
 import CompetitorDetailsModal from '../components/competitors/CompetitorDetailsModal.vue'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import { COMPETITOR_SUB_TABS } from '@/components/common/workspaceTabs'
 
 const route = useRoute()
 const router = useRouter()
@@ -746,6 +738,9 @@ function setMode(m: PickMode) {
   pool.value = []
   poolTotal.value = 0
   selectedIds.value = []
+  // Новый режим — сразу показываем пул (как при заходе по URL с ?mode=...):
+  // без источников пул недоступен — тогда таблица просто пустая, без ошибки.
+  if (canLoadPool.value) loadPool()
 }
 
 function queueLabel(s: string): string {

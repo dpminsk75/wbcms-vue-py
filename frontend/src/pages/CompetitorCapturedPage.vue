@@ -1,15 +1,8 @@
 <template>
   <div class="container-xxl page-competitor page-captured">
-    <div class="page-captured__head">
+    <div class="wb-workspace-head">
       <h2 class="page-competitor__title">Собранные карточки</h2>
-      <div class="page-competitor__head-actions">
-        <router-link to="/competitor/pick?mode=captured" class="btn btn-sm btn-outline-primary">
-          <i class="bi bi-diagram-3"></i> Подбор конкурентов
-        </router-link>
-        <router-link to="/competitor/new-cards" class="btn btn-sm btn-outline-secondary">
-          <i class="bi bi-box"></i> Новые карточки
-        </router-link>
-      </div>
+      <WbWorkspaceTabs active="captured" :tabs="WORKSPACE_TABS" />
     </div>
     <p class="text-muted">
       Контент конкурентов, который расширение собрало в общую базу. Авто-сбор ничего не привязывает:
@@ -210,6 +203,8 @@ import { competitorsNewcardApi, type CapturedRow, type PickAttachResult } from '
 import { copyText } from '../utils/clipboard'
 import CompetitorAttachModal from '../components/competitors/CompetitorAttachModal.vue'
 import CompetitorBulkAttachModal from '../components/competitors/CompetitorBulkAttachModal.vue'
+import WbWorkspaceTabs from '@/components/common/WbWorkspaceTabs.vue'
+import { WORKSPACE_TABS } from '@/components/common/workspaceTabs'
 import CompetitorDetailsModal from '../components/competitors/CompetitorDetailsModal.vue'
 import CompetitorHistoryModal from '../components/competitors/CompetitorHistoryModal.vue'
 

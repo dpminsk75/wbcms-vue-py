@@ -48,6 +48,8 @@ const current = computed(() => {
   flex-wrap: wrap;
   gap: 4px;
   margin-bottom: 0;
+  /* меню рабочего места — прижато к правому верхнему углу шапки */
+  margin-left: auto;
 }
 .wb-workspace-tabs__tab {
   font-size: 12px;

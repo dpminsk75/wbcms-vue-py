@@ -69,6 +69,62 @@
 .page-fbs__head .page-title { margin-bottom: 0; }
 .page-fbs__head .page-fbs__tabs { margin-bottom: 0 !important; margin-left: auto; }
 
+/* Единая шапка рабочих мест: заголовок + локальные переключатели слева,
+   меню рабочего места (WbWorkspaceTabs) — прижато к правому верхнему углу. */
+.wb-workspace-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.wb-workspace-head .page-title { margin-bottom: 0; }
+.wb-workspace-head .page-competitor__title,
+.wb-workspace-head .page-seo__title,
+.wb-workspace-head .page-ai-usage__title { margin-bottom: 0; }
+.wb-workspace-head__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* Подменю раздела — рядом пилюли под заголовком (раздел «Конкуренты» и т.п.) */
+.wb-sub-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 0 14px;
+}
+.wb-sub-tabs .nav-link {
+  font-size: 13px;
+  border-radius: 6px;
+  padding: 6px 14px;
+  color: #1f6fd0; /* явный цвет — не зависим от бутстраповского link-color */
+  background: transparent;
+}
+.wb-sub-tabs .nav-link:hover { color: #14509b; }
+.wb-sub-tabs .nav-link.active,
+.wb-sub-tabs .nav-link.active:hover,
+.wb-sub-tabs .nav-link.active:focus {
+  background: #1f6fd0 !important;
+  color: #fff !important;
+  font-weight: 600;
+}
+.wb-sub-tabs__count {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: rgba(31, 111, 208, .12);
+  color: #1f6fd0;
+  font-size: 12px;
+  font-weight: 600;
+}
+.wb-sub-tabs .nav-link.active .wb-sub-tabs__count {
+  background: rgba(255, 255, 255, .25);
+  color: #fff !important;
+}
+
 /* Админ-таблицы (дедуп: Companies/CompanyDetail/AdminCompanies/AdminInvites/AdminUsers) */
 .wb-admin-table { width: 100%; border-collapse: collapse; }
 .wb-admin-table thead tr { background: #f4f4f8; }

@@ -1,8 +1,9 @@
 <template>
   <div class="container-xxl page-seo">
-    <div class="page-seo__head">
+    <div class="wb-workspace-head">
       <h2 class="page-seo__title">SEO рекомендация #{{ id }}</h2>
       <router-link :to="{ path: '/seo/index', query: { status: rec?.status || 'new' } }" class="btn btn-sm btn-outline-secondary">← К списку</router-link>
+      <WbWorkspaceTabs active="seo" :tabs="WORKSPACE_TABS" />
     </div>
     <div v-if="error" class="wb-error">{{ error }}</div>
     <div v-if="loading" class="text-muted">Загрузка…</div>
@@ -141,6 +142,8 @@ import { seoApi, type SeoRec, type SeoPhrases } from '../api/seo'
 import { useAuthStore } from '../stores/auth'
 import SeoBatchModal from '../components/seo/SeoBatchModal.vue'
 import WbConfirmDialog from '../components/common/WbConfirmDialog.vue'
+import WbWorkspaceTabs from '@/components/common/WbWorkspaceTabs.vue'
+import { WORKSPACE_TABS } from '@/components/common/workspaceTabs'
 
 const route = useRoute()
 const router = useRouter()

@@ -1,13 +1,6 @@
 <template>
   <div class="container-xxl page-competitor page-competitor-new-cards">
-    <div class="page-competitor__head">
-      <h2 class="page-competitor__title">Конкуренты (новый товар)</h2>
-      <div class="page-competitor__head-actions">
-        <router-link to="/competitor/captured" class="btn btn-sm btn-outline-secondary" title="Что расширение собрало в общую базу">
-          <i class="bi bi-collection"></i> Собранные карточки
-        </router-link>
-      </div>
-    </div>
+    <WbWorkspaceHead title="Конкуренты: Ручная привязка" :subtabs="COMPETITOR_SUB_TABS" workspace-active="competitors" />
     <p class="text-muted">
       Карточки в работе: у них есть поисковые запросы или привязанные конкуренты. Откройте карточку,
       чтобы разобрать описания конкурентов, выбрать фразы и сгенерировать title и description.
@@ -142,6 +135,8 @@ import '@/assets/css/pages/page-competitor.css'
 import '@/assets/css/pages/page-competitor-new-cards.css'
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import { COMPETITOR_SUB_TABS } from '@/components/common/workspaceTabs'
 import { api } from '../api/client'
 import { competitorsNewcardApi, type NewCardRow } from '../api/competitorsNewcard'
 

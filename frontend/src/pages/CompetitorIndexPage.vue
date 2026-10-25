@@ -1,6 +1,6 @@
 <template>
   <div class="container-xxl page-competitor">
-    <h2 class="page-competitor__title">Конкуренты — анализ</h2>
+    <WbWorkspaceHead title="Конкуренты: Анализ" :subtabs="COMPETITOR_SUB_TABS" workspace-active="competitors" />
     <p class="text-muted">Товары, по которым собраны данные конкурентов. Выберите товар для анализа.</p>
 
     <div v-if="error" class="wb-error">{{ error }}</div>
@@ -57,6 +57,8 @@
 import '@/assets/css/pages/page-competitor.css'
 import { ref, onMounted } from 'vue'
 import { competitorApi, type CompetitorSourceRow } from '../api/competitor'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import { COMPETITOR_SUB_TABS } from '@/components/common/workspaceTabs'
 
 const rows = ref<CompetitorSourceRow[]>([])
 const loading = ref(false)
