@@ -20,6 +20,7 @@ export const WORKSPACE_TABS: WorkspaceTab[] = [
   { id: 'captured', label: 'Собранные карточки', to: '/competitor/captured' },
   { id: 'seo', label: 'SEO рекомендации', to: '/seo/index' },
   { id: 'competitors', label: 'Конкуренты', to: '/competitor/new-cards' },
+  { id: 'queue', label: 'Очередь', to: '/queue' },
 ]
 
 /** Подменю раздела (строка пилюль под заголовком рабочего места). */

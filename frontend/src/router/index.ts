@@ -85,6 +85,7 @@ const router = createRouter({
     { path: '/competitor/captured', name: 'competitor-captured', component: () => import('../pages/CompetitorCapturedPage.vue'), meta: { title: 'Собранные карточки — SelBI' } },
     { path: '/competitor/positions', name: 'competitor-positions', component: () => import('../pages/CompetitorPositionsPage.vue'), meta: { title: 'Поисковые запросы — SelBI' } },
     { path: '/seo-watch', name: 'seo-watch', component: () => import('../pages/SeoWatchPage.vue'), meta: { title: 'SEO-мониторинг — SelBI' } },
+    { path: '/queue', name: 'queue', component: () => import('../pages/QueuePage.vue'), meta: { title: 'Очередь — SelBI' } },
     { path: '/competitor/pick', name: 'competitor-pick', component: () => import('../pages/CompetitorPickPage.vue'), meta: { title: 'Конкуренты: подбор — SelBI' } },
     { path: '/competitor/refresh', name: 'competitor-refresh', component: () => import('../pages/CompetitorRefreshPage.vue'), meta: { title: 'Конкуренты: обновление — SelBI' } },
     { path: '/competitor/phrase-miner', name: 'competitor-phrase-miner', component: () => import('../pages/PhraseMinerPage.vue'), meta: { title: 'Разбор фраз (фон) — SelBI' } },
