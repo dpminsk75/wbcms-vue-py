@@ -43,11 +43,11 @@ async def list_tags(db: AsyncSession = Depends(get_db), company_id: int | None =
 
 @router.get("/{tag_id}")
 async def get_tag(tag_id: int, db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
-    tag = (await db.execute(text(
-        "SELECT * FROM tags WHERE id=:id"
-        + ("" if company_id is None else " AND company_id=:cid"),
-        {"id": tag_id, "cid": company_id} if company_id is not None else {"id": tag_id},
-    ))).mappings().first()
+    sql = "SELECT * FROM tags WHERE id=:id" + ("" if company_id is None else " AND company_id=:cid")
+    params: dict = {"id": tag_id}
+    if company_id is not None:
+        params["cid"] = company_id
+    tag = (await db.execute(text(sql), params)).mappings().first()
     if not tag:
         raise HTTPException(status_code=404, detail="tag not found")
     links = (await db.execute(text("SELECT nmID FROM tag_card_links WHERE tag_id=:id"), {"id": tag_id})).scalars().all()
@@ -58,10 +58,10 @@ async def get_tag(tag_id: int, db: AsyncSession = Depends(get_db), company_id: i
                     + ("" if company_id is None else " AND (company_id = :cid OR company_id IS NULL)")).bindparams(
             bindparam("ids", expanding=True)
         )
-        params: dict = {"ids": ids}
+        card_params: dict = {"ids": ids}
         if company_id is not None:
-            params["cid"] = company_id
-        cards = [dict(c) for c in (await db.execute(stmt, params)).mappings().all()]
+            card_params["cid"] = company_id
+        cards = [dict(c) for c in (await db.execute(stmt, card_params)).mappings().all()]
     d = dict(tag)
     d["wbCardIds"] = ids
     d["cards"] = cards
@@ -86,11 +86,11 @@ async def create_tag(payload: TagIn, db: AsyncSession = Depends(get_db), company
 
 @router.put("/{tag_id}")
 async def update_tag(tag_id: int, payload: TagIn, db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
-    ok = (await db.execute(text(
-        "SELECT id FROM tags WHERE id=:id"
-        + ("" if company_id is None else " AND company_id=:cid"),
-        {"id": tag_id, "cid": company_id} if company_id is not None else {"id": tag_id},
-    ))).scalar()
+    sql = "SELECT id FROM tags WHERE id=:id" + ("" if company_id is None else " AND company_id=:cid")
+    params: dict = {"id": tag_id}
+    if company_id is not None:
+        params["cid"] = company_id
+    ok = (await db.execute(text(sql), params)).scalar()
     if not ok:
         raise HTTPException(status_code=404, detail="tag not found")
     await db.execute(text("UPDATE tags SET name=:n, tag_group=:g, color=:c, priority=:p WHERE id=:id"),
@@ -131,11 +131,11 @@ async def tag_margin(
 ):
     """Маржа товаров тега — математика TopProductsService (profit_columns), фильтр по связям тега."""
     from backend.services.tag_margin_service import TagMarginService
-    exists = (await db.execute(text(
-        "SELECT id FROM tags WHERE id=:id"
-        + ("" if company_id is None else " AND company_id=:cid"),
-        {"id": tag_id, "cid": company_id} if company_id is not None else {"id": tag_id},
-    ))).scalar()
+    sql = "SELECT id FROM tags WHERE id=:id" + ("" if company_id is None else " AND company_id=:cid")
+    params: dict = {"id": tag_id}
+    if company_id is not None:
+        params["cid"] = company_id
+    exists = (await db.execute(text(sql), params)).scalar()
     if not exists:
         raise HTTPException(status_code=404, detail="tag not found")
     svc = TagMarginService(db, company_id=company_id)
