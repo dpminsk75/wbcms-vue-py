@@ -20,7 +20,11 @@
 Правила:
 - своя карточка (`wbcards.company_id` = наша или NULL-легаси) → skip `own_card`, если нет `allow_own`;
 - `recommendations` / `characteristics` / `description` пустыми не затираем;
-- `first_collected_at` / `captured_company_id` / `captured_by` — только при первой вставке.
+- `first_collected_at` / `captured_company_id` / `captured_by` — только при первой вставке;
+- единственная точка записи в `wb_competitor_capture` — хелпер `register_capture()`
+  (писателей `details` было три в двух файлах — инвариант «собрал → есть в реестре» разъезжался);
+- `is_hidden=1` — карточка ИСКЛЮЧЕНА ИЗ СБОРА для этой компании: контент не обновляем,
+  в реестр не пишем, расширению не отдаём. Вернуть — только явная кнопка «Вернуть» на сайте.
 """
 
 import hashlib
@@ -199,6 +203,92 @@ def _json_len(raw) -> int:
     return len(val) if isinstance(val, list) else 0
 
 
+async def is_excluded(db: AsyncSession, company_id: int, nm_id: int) -> bool:
+    """Карточка исключена из сбора для этой компании? (`is_hidden=1`)
+
+    Исключение per-company: другая компания ту же карточку собирать может.
+    Снимается только явной кнопкой «Вернуть» на сайте (`is_hidden=0`).
+    """
+    row = (await db.execute(text("""
+        SELECT is_hidden FROM wb_competitor_capture
+        WHERE nm_id=:n AND company_id=:c LIMIT 1
+    """), {"n": nm_id, "c": company_id})).first()
+    return bool(row and row[0])
+
+
+async def excluded_nms(db: AsyncSession, company_id: int, nm_ids: list[int]) -> set[int]:
+    """Множество nm, исключённых из сбора (пакетно — один запрос)."""
+    ids = [int(x) for x in (nm_ids or []) if x]
+    if not ids:
+        return set()
+    ph = ",".join(f":n{i}" for i in range(len(ids)))
+    params: dict = {f"n{i}": v for i, v in enumerate(ids)}
+    params["c"] = company_id
+    rows = (await db.execute(text(
+        f"SELECT nm_id FROM wb_competitor_capture "
+        f"WHERE company_id=:c AND is_hidden=1 AND nm_id IN ({ph})"
+    ), params)).all()
+    return {int(r[0]) for r in rows}
+
+
+async def set_hidden(db: AsyncSession, company_id: int, nm_id: int,
+                     hidden: bool, user_id: int | None = None) -> dict:
+    """Исключить карточку из сбора / вернуть: upsert `wb_competitor_capture.is_hidden`.
+
+    В отличие от `CompetitorsNewcardService.hide()` работает и для карточек,
+    которых компания ещё не собирала (строки реестра нет) — блокировка из
+    очереди или из совсем свежих конкурентов. Исключение per-company: другую
+    компанию это не касается.
+    """
+    n = int(nm_id)
+    if n <= 0:
+        raise ValueError("bad nm_id")
+    own = (await db.execute(text(
+        "SELECT company_id FROM wbcards WHERE nmID=:n LIMIT 1"
+    ), {"n": n})).first()
+    is_own = 1 if (own and (own[0] is None or int(own[0]) == int(company_id))) else 0
+    await db.execute(text("""
+        INSERT INTO wb_competitor_capture
+          (nm_id, company_id, is_own, is_hidden, first_seen_by, last_seen_by)
+        VALUES (:n, :c, :own, :h, :uid, :uid)
+        ON DUPLICATE KEY UPDATE
+          is_hidden=:h,
+          is_own=GREATEST(is_own, :own),
+          last_seen_by=IF(:uid IS NOT NULL, :uid, last_seen_by)
+    """), {"n": n, "c": int(company_id), "own": is_own, "h": 1 if hidden else 0,
+           "uid": user_id})
+    return {"nm_id": n, "is_hidden": bool(hidden)}
+
+
+async def register_capture(db: AsyncSession, company_id: int, nm_id: int,
+                           user_id: int | None = None) -> None:
+    """ЕДИНСТВЕННАЯ точка записи в `wb_competitor_capture` (инвариант §19.2).
+
+    Каждая карточка, контент которой мы собрали, обязана быть в реестре:
+    строка `capture(nm_id, company_id)` = «компания C собрала карточку X».
+
+    - «наша» считаем сами по `wbcards` (легаси `company_id IS NULL` тоже своя) —
+      `is_own` в реестре протухал: `observe_search` писал 0 константой;
+    - `is_hidden` НЕ трогаем: исключение снимает только явная кнопка «Вернуть».
+
+    Вызывающий обязан заранее проверить `is_excluded()` — исключённые карточки
+    не пишем вообще (ни контент, ни реестр).
+    """
+    own = (await db.execute(text("""
+        SELECT company_id FROM wbcards WHERE nmID=:n LIMIT 1
+    """), {"n": nm_id})).first()
+    is_own = 1 if (own and (own[0] is None or int(own[0]) == int(company_id))) else 0
+    await db.execute(text("""
+        INSERT INTO wb_competitor_capture
+          (nm_id, company_id, is_own, is_hidden, first_seen_by, last_seen_by)
+        VALUES (:n, :cid, :own, 0, :uid, :uid)
+        ON DUPLICATE KEY UPDATE
+          last_seen_at=NOW(),
+          last_seen_by=:uid,
+          is_own=:own
+    """), {"n": nm_id, "cid": company_id, "own": is_own, "uid": user_id})
+
+
 async def capture(db: AsyncSession, company_id: int, user_id: int | None, payload: dict) -> dict:
     """Сохранить карточку, открытую в браузере. Возвращает {skipped} или {ok}.
 
@@ -213,7 +303,9 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
 
     allow_own = bool(payload.get("allow_own"))
     force = bool(payload.get("force"))
-    explicit = bool(payload.get("explicit"))  # явный клик: снимает is_hidden
+    # «явный клик» — раньше снимал is_hidden. Теперь исключение снимает только
+    # кнопка «Вернуть» на сайте, поэтому флаг просто эхом возвращаем в ответе.
+    explicit = bool(payload.get("explicit"))
     partial = bool(payload.get("partial"))    # фоновое наблюдение
 
     # 1. Своя ли карточка? (PK wbcards = nmID; company_id NULL — легаси, считаем своей)
@@ -223,6 +315,12 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
     is_own = bool(own_row) and (own_row[0] is None or int(own_row[0]) == int(company_id))
     if is_own and not allow_own:
         return {"skipped": True, "reason": "own_card", "nm_id": nm_id, "is_own": True}
+
+    # 1b. Исключена из сбора для этой компании? — не трогаем вообще: ни контент,
+    #     ни реестр, ни историю. Вернуть — только явная кнопка «Вернуть».
+    if await is_excluded(db, company_id, nm_id):
+        return {"skipped": True, "reason": "hidden", "nm_id": nm_id, "is_own": is_own,
+                "explicit": explicit}
 
     # 2. Нормализация payload
     title = str(payload.get("title") or "")[:500]
@@ -266,21 +364,17 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
             except TypeError:
                 age_h = None
             if age_h is not None and age_h < FRESH_HOURS:
-                if explicit:
-                    await db.execute(text("""
-                        INSERT INTO wb_competitor_capture
-                          (nm_id, company_id, is_own, is_hidden, first_seen_by, last_seen_by)
-                        VALUES (:n, :cid, 0, 0, :uid, :uid)
-                        ON DUPLICATE KEY UPDATE
-                          last_seen_at=NOW(), last_seen_by=:uid, is_hidden=0
-                    """), {"n": nm_id, "cid": company_id, "uid": user_id})
+                # Контент свежий — но компания карточку ВИДИТ: регистрируем видимость
+                # в реестре (иначе «мы собрали» не попадает в «Собранные карточки»).
+                await register_capture(db, company_id, nm_id, user_id)
                 await db.execute(text("""
                     UPDATE wb_enrich_queue SET status='done', processed_at=NOW()
                     WHERE nm_id=:n AND status='need_update'
                 """), {"n": nm_id})
                 await db.commit()
                 return {"skipped": True, "reason": "fresh", "nm_id": nm_id, "age_h": round(age_h, 1),
-                        "collected_at": _iso(row["collected_at"]), "is_own": is_own}
+                        "collected_at": _iso(row["collected_at"]), "is_own": is_own,
+                        "explicit": explicit}
 
         # 5. Слияние: изменяемое — всегда, контент — только непустой
         m_title = _pick(title, row["title"])
@@ -395,18 +489,8 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
                     "full": 1 if is_full else 0,
                 })
 
-            # 7. Видимость по компании (m:n). Явный клик возвращает скрытую карточку.
-            await db.execute(text("""
-                INSERT INTO wb_competitor_capture
-                  (nm_id, company_id, is_own, is_hidden, first_seen_by, last_seen_by)
-                VALUES (:n, :cid, :own, 0, :uid, :uid)
-                ON DUPLICATE KEY UPDATE
-                  last_seen_at=NOW(),
-                  last_seen_by=:uid,
-                  is_own=:own,
-                  is_hidden=IF(:exp=1, 0, is_hidden)
-            """), {"n": nm_id, "cid": company_id, "own": 1 if is_own else 0, "uid": user_id,
-                   "exp": 1 if explicit else 0})
+            # 7. Видимость по компании (m:n) — через единственную точку записи.
+            await register_capture(db, company_id, nm_id, user_id)
 
             # 8. История: снимок при новом content_hash (по ИТОГОВОЙ строке, не по payload)
             h = content_hash(m_title, m_desc, m_chars, m_price, m_old)
@@ -435,6 +519,7 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
         return {
             "ok": True, "skipped": False, "nm_id": nm_id, "is_own": is_own,
             "content_hash": h, "history": history, "changed": changed, "partial": partial,
+            "explicit": explicit,
             "collected_at": datetime.now().isoformat(timespec="seconds"),
             "desc_len": len(m_desc or ""), "chars_cnt": _cnt(chars_raw),
             "price": m_price, "old_price": m_old, "rating": m_rating,
@@ -442,19 +527,11 @@ async def capture(db: AsyncSession, company_id: int, user_id: int | None, payloa
         }
 
     # Ничего не изменилось — только отмечаем «мы видели» (last_seen_at)
-    await db.execute(text("""
-        INSERT INTO wb_competitor_capture
-          (nm_id, company_id, is_own, is_hidden, first_seen_by, last_seen_by)
-        VALUES (:n, :cid, :own, 0, :uid, :uid)
-        ON DUPLICATE KEY UPDATE
-          last_seen_at=NOW(), last_seen_by=:uid, is_own=:own,
-          is_hidden=IF(:exp=1, 0, is_hidden)
-    """), {"n": nm_id, "cid": company_id, "own": 1 if is_own else 0, "uid": user_id,
-           "exp": 1 if explicit else 0})
+    await register_capture(db, company_id, nm_id, user_id)
     await db.commit()
     return {
         "ok": True, "skipped": False, "nm_id": nm_id, "is_own": is_own, "changed": False,
-        "partial": partial, "history": "same",
+        "partial": partial, "history": "same", "explicit": explicit,
         "collected_at": datetime.now().isoformat(timespec="seconds"),
         "desc_len": len(m_desc or ""), "chars_cnt": _cnt(chars_raw),
         "price": m_price, "old_price": m_old, "rating": m_rating,

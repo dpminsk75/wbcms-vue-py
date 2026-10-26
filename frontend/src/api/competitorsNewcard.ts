@@ -155,21 +155,61 @@ export interface CapturedRow {
   title?: string | null
   brand?: string | null
   seller?: string | null
-  price?: string | null
+  price?: string | number | null
   old_price?: string | null
   url?: string | null
   photo?: string | null
   desc_len: number
   chars_cnt: number
   collected_at?: string | null
+  /** Полный сбор (описание+характеристики) — достоверная дата, в отличие от collected_at. */
+  full_collected_at?: string | null
+  first_collected_at?: string | null
   first_seen_at?: string | null
   last_seen_at?: string | null
   companies_cnt: number
   is_own: boolean
+  /** Исключена из сбора для нашей компании. */
   is_hidden: boolean
+  /** Есть в реестре нашей компании (в режиме «Общий кэш» — собрали мы). */
+  captured_by_us: boolean
+  /** Фраз карточки в выдаче (wb_competitor_position) — сколько просмотрено. */
+  positions_cnt: number
+  /** Формулировок после разбора (wb_competitor_phrase_comp, /competitor/phrase-miner). */
+  phrases_cnt: number
   attached: CapturedAttachedCard[]
   attached_cnt: number
   history_cnt: number
+}
+
+/** Фильтры/сортировка/пагинация списка собранных карточек (§19.6). */
+export interface CapturedListParams {
+  q?: string
+  include_hidden?: boolean
+  limit?: number
+  offset?: number
+  sort?: string
+  direction?: 'asc' | 'desc'
+  /** `captured` — наш реестр; `all_details` — общий кэш контента. */
+  scope?: 'captured' | 'all_details'
+  collected_from?: string
+  collected_to?: string
+  first_seen_from?: string
+  first_seen_to?: string
+  content?: string
+  phrase?: string
+  attached?: string
+  source?: string
+}
+
+export interface CapturedList {
+  items: CapturedRow[]
+  total: number
+  limit: number
+  offset: number
+  sort: string
+  direction: string
+  scope: string
 }
 
 export interface WbCardOption {
@@ -615,9 +655,9 @@ export const competitorsNewcardApi = {
 
   // ---------- «Собранные карточки» (capture, §8.5) ----------
 
-  captured: (q = '', includeHidden = false, limit = 300) =>
-    api.get('/api/competitors/captured', { params: { q, include_hidden: includeHidden, limit } })
-      .then((r) => r.data as { items: CapturedRow[]; total: number }),
+  captured: (params: CapturedListParams = {}) =>
+    api.get('/api/competitors/captured', { params })
+      .then((r) => r.data as CapturedList),
 
   capturedHistory: (nm: number, limit = 50) =>
     api.get(`/api/competitors/captured/${nm}/history`, { params: { limit } })

@@ -42,6 +42,10 @@ cat_router = APIRouter(prefix="/api/companies/{company_id}/ext-filters", tags=["
 
 OWNED_CARDS = "SELECT nmID FROM wbcards WHERE company_id=:cid"
 
+# Позиции выдачи, которые становятся нашими конкурентами (wb_competitor_cards).
+# Всё, что ниже, пишется только в wb_competitor_position (наблюдение выдачи).
+TOP_COMPETITORS = 20
+
 
 async def _owns_card(db: AsyncSession, cid: int, nm_id: int) -> bool:
     r = (await db.execute(text(f"SELECT 1 FROM wbcards WHERE nmID=:n AND company_id=:c LIMIT 1"),
@@ -151,6 +155,10 @@ async def ext_status(
         src_cond = "q.source='watch'"
     else:
         src_cond = "(q.source='' OR q.source IS NULL)"
+    # Исключённые из сбора не считаем: /next их всё равно не отдаст, а рассинхрон
+    # счётчика и выдачи пугал («очередь пуста», а счётчик показывает pending).
+    hidden_cond = ("NOT EXISTS (SELECT 1 FROM wb_competitor_capture cap"
+                   " WHERE cap.nm_id=q.nm_id AND cap.company_id=:cid AND cap.is_hidden=1)")
     if nm_id:
         if not await _owns_card(db, cid, nm_id):
             raise HTTPException(status_code=403, detail="foreign source_nm_id")
@@ -158,15 +166,19 @@ async def ext_status(
             SELECT q.status, COUNT(DISTINCT q.id) as cnt FROM wb_enrich_queue q
             JOIN wb_competitor_cards c ON c.nm_id=q.nm_id AND c.source_nm_id=:nm
             WHERE (q.company_id=:cid OR q.company_id IS NULL OR q.status='need_update')
+              AND q.nm_id > 0
               AND {src_cond}
               AND c.source_nm_id IN ({OWNED_CARDS.replace(':cid', ':cid2')})
+              AND {hidden_cond}
             GROUP BY q.status
         """), {"nm": nm_id, "cid": cid, "cid2": cid})).mappings().all()
     else:
         rows = (await db.execute(text(f"""
             SELECT status, COUNT(*) as cnt FROM wb_enrich_queue q
             WHERE (q.company_id=:cid OR q.company_id IS NULL OR q.status='need_update')
+              AND q.nm_id > 0
               AND {src_cond}
+              AND {hidden_cond}
             GROUP BY status
         """), {"cid": cid})).mappings().all()
     counts = {r["status"]: r["cnt"] for r in rows}
@@ -194,12 +206,16 @@ async def ext_seed(
         # руками (режим «Обновление» / need_update), а ожившее — кнопкой
         # «Сброс ошибок / зависших». Раньше тут стоял TTL 24 ч и перевод
         # done->pending — из-за этого «Обработано» таяло, а очередь пухла.
+        # Нулевые артикулы и исключённые из сбора (is_hidden, §19.4) не сеем.
         r = await db.execute(text(f"""
             INSERT INTO wb_enrich_queue (nm_id, company_id)
-            SELECT DISTINCT nm_id, :cid FROM wb_competitor_cards
-            WHERE source_nm_id=:s
-              AND nm_id > 0
-              AND nm_id NOT IN (SELECT nm_id FROM wb_enrich_queue)
+            SELECT DISTINCT wc.nm_id, :cid FROM wb_competitor_cards wc
+            WHERE wc.source_nm_id=:s
+              AND wc.nm_id > 0
+              AND wc.nm_id NOT IN (SELECT nm_id FROM wb_enrich_queue)
+              AND NOT EXISTS (SELECT 1 FROM wb_competitor_capture cap
+                              WHERE cap.nm_id=wc.nm_id
+                                AND cap.company_id=:cid AND cap.is_hidden=1)
             ON DUPLICATE KEY UPDATE
               company_id=IF(company_id IS NULL, :cid, company_id)
         """), {"s": source, "cid": cid})
@@ -207,10 +223,13 @@ async def ext_seed(
         # То же для всех наших карточек-источников (без TTL и без перевода статусов)
         r = await db.execute(text(f"""
             INSERT INTO wb_enrich_queue (nm_id, company_id)
-            SELECT DISTINCT nm_id, :cid FROM wb_competitor_cards
-            WHERE source_nm_id IN ({OWNED_CARDS.replace(':cid', ':cid2')})
-              AND nm_id > 0
-              AND nm_id NOT IN (SELECT nm_id FROM wb_enrich_queue)
+            SELECT DISTINCT wc.nm_id, :cid FROM wb_competitor_cards wc
+            WHERE wc.source_nm_id IN ({OWNED_CARDS.replace(':cid', ':cid2')})
+              AND wc.nm_id > 0
+              AND wc.nm_id NOT IN (SELECT nm_id FROM wb_enrich_queue)
+              AND NOT EXISTS (SELECT 1 FROM wb_competitor_capture cap
+                              WHERE cap.nm_id=wc.nm_id
+                                AND cap.company_id=:cid AND cap.is_hidden=1)
             ON DUPLICATE KEY UPDATE
               company_id=IF(company_id IS NULL, :cid, company_id)
         """), {"cid": cid, "cid2": cid})
@@ -252,50 +271,94 @@ async def ext_next(
           AND (claimed_at IS NULL OR claimed_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE))
     """), {"cid": cid})
     await db.commit()
+    # Сюда же нулевые артикулы не отдаём: строку с nm_id=0 расширение трактует
+    # как «nm_is falsy» → «очередь пуста», а на деле — битая строка (баг 26.10).
     if mode == "new":
         cond = ("q.status='pending' AND (q.company_id=:cid OR q.company_id IS NULL)"
+                " AND q.nm_id > 0"
                 " AND (q.source='' OR q.source IS NULL)")
         order = "q.id"
     elif mode == "refresh":
-        cond = ("q.status='need_update' AND (q.source='' OR q.source IS NULL)")
+        cond = ("q.status='need_update' AND q.nm_id > 0"
+                " AND (q.source='' OR q.source IS NULL)")
         order = "q.id"
     elif mode == "watch":
         cond = ("q.status='pending' AND q.source='watch'"
+                " AND q.nm_id > 0"
                 " AND (q.company_id=:cid OR q.company_id IS NULL)")
         order = "q.id"
     else:
         # скобки обязательны: без них AND перехватил бы только ветку need_update
         cond = ("((q.status='pending' AND (q.company_id=:cid OR q.company_id IS NULL))"
                 " OR q.status='need_update')"
+                " AND q.nm_id > 0"
                 " AND (q.source='' OR q.source IS NULL)")
         order = "CASE WHEN q.status='pending' THEN 0 ELSE 1 END, q.id"
+    # Исключённые из сбора карточки расширению не отдаём (§19.4): иначе оно
+    # откроет вкладку, прокрутит карточку и потратит время впустую.
+    cond += (" AND NOT EXISTS (SELECT 1 FROM wb_competitor_capture cap"
+             " WHERE cap.nm_id=q.nm_id AND cap.company_id=:cid AND cap.is_hidden=1)")
     if nm_id:
         if not await _owns_card(db, cid, nm_id):
             return {"nm_id": None}
-        row = (await db.execute(text(f"""
+        rows = (await db.execute(text(f"""
             SELECT q.id, q.nm_id FROM wb_enrich_queue q
             JOIN wb_competitor_cards c ON c.nm_id=q.nm_id AND c.source_nm_id=:nm
             WHERE {cond}
               AND c.source_nm_id IN ({OWNED_CARDS.replace(':cid', ':cid2')})
-            GROUP BY q.id, q.nm_id, q.status ORDER BY {order} LIMIT 1
-        """), {"nm": nm_id, "cid": cid, "cid2": cid})).mappings().first()
+            GROUP BY q.id, q.nm_id, q.status ORDER BY {order} LIMIT 10
+        """), {"nm": nm_id, "cid": cid, "cid2": cid})).mappings().all()
     else:
-        row = (await db.execute(text(f"""
+        rows = (await db.execute(text(f"""
             SELECT q.id, q.nm_id FROM wb_enrich_queue q
             WHERE {cond}
-            ORDER BY {order} LIMIT 1
-        """), {"cid": cid})).mappings().first()
-    if not row:
-        return {"nm_id": None}
-    await db.execute(text("""
-        UPDATE wb_enrich_queue
-        SET status='processing', company_id=:cid, claimed_at=NOW()
-        WHERE id=:i
-          AND (status='need_update'
-               OR (status='pending' AND (company_id=:cid OR company_id IS NULL)))
-    """), {"cid": cid, "i": row["id"]})
+            ORDER BY {order} LIMIT 10
+        """), {"cid": cid})).mappings().all()
+    # Claim — атомарный: строку забирает тот, чей UPDATE реально что-то изменил.
+    # Раньше вместо проверки rowcount возвращали карточку всегда, и второй сборщик
+    # (два сотрудника/два экземпляра) собирал ту же строку — п.9 из ревью ext.
+    for row in rows:
+        upd = await db.execute(text("""
+            UPDATE wb_enrich_queue
+            SET status='processing', company_id=:cid, claimed_at=NOW()
+            WHERE id=:i
+              AND (status='need_update'
+                   OR (status='pending' AND (company_id=:cid OR company_id IS NULL)))
+        """), {"cid": cid, "i": row["id"]})
+        if upd.rowcount:
+            await db.commit()
+            return {"queue_id": row["id"], "nm_id": row["nm_id"]}
     await db.commit()
-    return {"queue_id": row["id"], "nm_id": row["nm_id"]}
+    return {"nm_id": None}
+
+
+@router.post("/skip")
+async def ext_skip(
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    ext: dict = Depends(require_ext_token),
+):
+    """Вернуть карточку в очередь, не собрав её (исключена из сбора).
+
+    Расширение спрашивает `cap_state` ПЕРЕД сбором: если карточка исключена из
+    сбора для нашей компании — вкладку не открываем, а строку очереди возвращаем
+    в `pending` (иначе она «висит» в `processing` до 30-минутного таймаута).
+    Вернётся в сбор, когда карточку вернут на сайте («Вернуть»).
+    """
+    cid = int(ext["company_id"])
+    try:
+        nm_id = int((payload or {}).get("nm_id") or 0)
+    except (TypeError, ValueError):
+        nm_id = 0
+    if not nm_id:
+        raise HTTPException(status_code=400, detail="nm_id required")
+    r = await db.execute(text("""
+        UPDATE wb_enrich_queue SET status='pending', claimed_at=NULL
+        WHERE nm_id=:n AND status='processing'
+          AND (company_id=:c OR company_id IS NULL)
+    """), {"n": nm_id, "c": cid})
+    await db.commit()
+    return {"ok": True, "released": int(r.rowcount or 0)}
 
 
 @router.post("/result")
@@ -324,6 +387,11 @@ async def ext_result(
         """), {"n": nm_id, "c2": cid})).first()
         if not chk:
             raise HTTPException(status_code=403, detail="foreign nm_id")
+    # Исключена из сбора для этой компании? (§19.4) — контент НЕ обновляем и в
+    # реестр не пишем. Очередь не закрываем: карточка вернётся в сбор, когда
+    # пользователь нажмёт «Вернуть» на сайте.
+    if await capture_service.is_excluded(db, cid, nm_id):
+        return {"ok": True, "skipped": True, "reason": "hidden", "nm_id": nm_id}
     existing = (await db.execute(text("""
         SELECT id, recommendations, collected_at, full_collected_at
         FROM wb_competitor_details WHERE nm_id=:n
@@ -401,6 +469,14 @@ async def ext_result(
             VALUES (:n, :t, :d, :nr, :u, :b, :s, :p, :o, :img, :chars, :subj, :rate, :fb, :q, :bg, :so,
                     NOW(), IF(:full=1, NOW(), NULL), :cid, :uid)
         """), {**params, "nr": new_recs})
+
+    # Видимость: контент собрали для нашей компании → регистрируем карточку в
+    # wb_competitor_capture. Без этого контент лежит в общем кэше, а на странице
+    # «Собранные карточки» карточки нет — список строится по capture.
+    # Единственная точка записи — capture_service.register_capture() (там же
+    # считается «наша» по wbcards и не трогается is_hidden).
+    await capture_service.register_capture(db, cid, nm_id, uid)
+
     # История: снимок при смене content_hash (source='enrich', как в capture_service).
     cur = (await db.execute(text("""
         SELECT title, description, characteristics, brand, seller, price, old_price, images
@@ -458,6 +534,45 @@ async def ext_capture(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+@router.get("/cap_state")
+async def ext_cap_state(
+    nm_id: int = Query(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+    ext: dict = Depends(require_ext_token),
+):
+    """Состояние карточки ДО сбора: исключена ли она из сбора (§19.4).
+
+    Расширение спрашивает заранее — раньше состояние жило в `sessionStorage` и
+    заполнялось только ПОСЛЕ ответа сервера, поэтому исключённую карточку
+    успевали открыть и прокрутить (потраченное время впустую).
+
+    Ответ: `{nm_id, hidden, own, collected_at, full_collected_at, first_seen_at, last_seen_at}`.
+    `hidden=true` → карточка исключена из сбора для этой компании: сервер её
+    не обновит, в реестр не запишет; вернуть — кнопка «Вернуть» на сайте.
+    """
+    cid = int(ext["company_id"])
+    cap = (await db.execute(text("""
+        SELECT is_hidden, first_seen_at, last_seen_at FROM wb_competitor_capture
+        WHERE nm_id=:n AND company_id=:c LIMIT 1
+    """), {"n": nm_id, "c": cid})).mappings().first()
+    own = (await db.execute(text("""
+        SELECT company_id FROM wbcards WHERE nmID=:n LIMIT 1
+    """), {"n": nm_id})).first()
+    det = (await db.execute(text("""
+        SELECT collected_at, full_collected_at FROM wb_competitor_details WHERE nm_id=:n LIMIT 1
+    """), {"n": nm_id})).mappings().first()
+    is_own = bool(own) and (own[0] is None or int(own[0]) == int(cid))
+    return {
+        "nm_id": nm_id,
+        "hidden": bool(cap["is_hidden"]) if cap else False,
+        "own": is_own,
+        "collected_at": capture_service._iso(det["collected_at"]) if det else None,
+        "full_collected_at": capture_service._iso(det["full_collected_at"]) if det else None,
+        "first_seen_at": capture_service._iso(cap["first_seen_at"]) if cap else None,
+        "last_seen_at": capture_service._iso(cap["last_seen_at"]) if cap else None,
+    }
+
+
 @router.post("/error")
 async def ext_error(
     payload: dict = Body(...),
@@ -501,8 +616,8 @@ async def ext_observe_search(
 
     - все позиции → `wb_competitor_position` (дневные срезы, `source_nm_id` = наша карточка
       из выдачи, 0 — если наших в выдаче не было);
-    - топ-12 → `wb_competitor_cards` (конкуренты нашей карточки);
-    - топ-12 → `wb_competitor_details` (цена/рейтинг/бейджи — «кто в акции»).
+    - топ-20 → `wb_competitor_cards` (конкуренты нашей карточки);
+    - топ-20 → `wb_competitor_details` (цена/рейтинг/бейджи — «кто в акции»).
 
     Ничего не привязывает к анализу: только карточка+позиции+контент.
     """
@@ -543,6 +658,21 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
     # наши карточки среди выдачи (определяем на сервере — расширение о компании не знает)
     ids = [int(p.get("id")) for p in products[:200] if p.get("id")]
     sources = await search_raw_service.position_sources(db, cid, ids)
+    # `our` — наши nm из выдачи (>0). position_sources отдаёт [0], когда наших в выдаче
+    # нет: это значит «привязать не к чему», в wb_competitor_cards тогда не пишем.
+    our = {int(s) for s in sources if int(s) > 0}
+
+    # Карточки, исключённые из сбора для этой компании (§19.4): позиции выдачи
+    # пишем (это мониторинг), а саму карточку — нет: ни контент, ни реестр.
+    top_pids: list[int] = []
+    for idx, p in enumerate(products[:200], 1):
+        pid = p.get("id")
+        if not pid:
+            continue
+        if int(p.get("position") or idx) > TOP_COMPETITORS:
+            continue
+        top_pids.append(int(pid))
+    excluded = await capture_service.excluded_nms(db, cid, top_pids)
 
     saved = 0
     for idx, p in enumerate(products[:200], 1):
@@ -601,8 +731,11 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
                    "uid": uid, "tok": tok,
                    "slice_stamp": slice_stamp})
 
-        # конкуренты нашей карточки — только топ-12
-        if pos > 12:
+        # конкуренты нашей карточки — топ-N (позиции 1..N → wb_competitor_cards)
+        if pos > TOP_COMPETITORS:
+            continue
+        # исключена из сбора — позиции выше уже записаны, карточку не трогаем
+        if int(pid) in excluded:
             continue
         if our:
             for src in sorted(our):
@@ -662,13 +795,8 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
                "cid": cid, "uid": ext.get("created_by")})
         # видимость: конкурента мы «собрали» (позиция, цена, акции) — он попадает
         # в «Собранные карточки» и в попап; описание доберёт очередь.
-        await db.execute(text("""
-            INSERT INTO wb_competitor_capture
-              (nm_id, company_id, is_own, is_hidden, first_seen_by, last_seen_by)
-            VALUES (:n, :cid, 0, 0, :uid, :uid)
-            ON DUPLICATE KEY UPDATE
-              last_seen_at=NOW(), last_seen_by=:uid
-        """), {"n": pid, "cid": cid, "uid": ext.get("created_by")})
+        # Единственная точка записи в реестр — capture_service.register_capture().
+        await capture_service.register_capture(db, cid, int(pid), ext.get("created_by"))
         saved += 1
 
     await db.commit()
@@ -891,10 +1019,16 @@ async def ext_search_next(
                 ORDER BY priority DESC, id LIMIT 1
             """), {"c2": cid})).mappings().first()
         if row:
-            # updated_at=NOW() явно — точка старта 30-минутного таймаута processing
-            await db.execute(text("UPDATE wb_seo_target SET status='processing', updated_at=NOW() WHERE id=:i"), {"i": row["id"]})
+            # updated_at=NOW() явно — точка старта 30-минутного таймаута processing.
+            # Guard по статусу + сверка rowcount: строку забирает тот, чей UPDATE
+            # реально что-то изменил (два сборщика не соберут одну фразу).
+            upd = await db.execute(text("""
+                UPDATE wb_seo_target SET status='processing', updated_at=NOW()
+                WHERE id=:i AND status='pending'
+            """), {"i": row["id"]})
             await db.commit()
-            return {"queue_id": row["id"], "nm_id": row["nmID"], "phrase": row["phrase"]}
+            if upd.rowcount:
+                return {"queue_id": row["id"], "nm_id": row["nmID"], "phrase": row["phrase"]}
     if source in ("report", "both") and nm_id:
         rep = await _next_report_phrase(db, nm_id)
         if rep:
@@ -1005,8 +1139,8 @@ async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
                    "bg": json.dumps(badges, ensure_ascii=False),
                    "promo": promo_id, "img": img, "so": sold_out,
                    "uid": uid, "tok": tok, "slice_stamp": slice_stamp})
-        # Конкуренты нашей карточки — только топ-12 (схема: «позиция в выдаче, 1-12»)
-        if pos > 12:
+        # Конкуренты нашей карточки — топ-N (позиции 1..N → wb_competitor_cards)
+        if pos > TOP_COMPETITORS:
             continue
         if not nm_id:
             # фраза без привязки к нашей карточке: позиции пишем, конкурентов — некуда
@@ -1110,6 +1244,9 @@ async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
                   SELECT d.nm_id FROM wb_competitor_details d
                   WHERE d.collected_at > NOW() - INTERVAL 24 HOUR
               )
+              AND NOT EXISTS (SELECT 1 FROM wb_competitor_capture cap
+                              WHERE cap.nm_id=c.nm_id
+                                AND cap.company_id=:c AND cap.is_hidden=1)
             ON DUPLICATE KEY UPDATE
               company_id=IF(company_id IS NULL, :c, company_id),
               status=IF((company_id IS NULL OR company_id=:c) AND status IN ('done', 'error'), 'pending', status)

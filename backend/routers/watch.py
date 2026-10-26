@@ -227,3 +227,30 @@ async def watch_collect(
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         raise _fail("collect", exc)
+
+
+@router.post("/collect-nms")
+async def watch_collect_nms(
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Собрать перечисленные карточки → очередь enrich (`source='watch'`).
+
+    Кнопка «Собрать» на странице собранных карточек: одна карточка или
+    все помеченные. Исключённые из сбора (`is_hidden`) не ставятся; карточки
+    в работе (`processing`) не трогаем. Повтор — пересбор (`uq_nm_id`).
+    """
+    raw = (payload or {}).get("nm_ids") or []
+    try:
+        nm_ids = sorted({int(x) for x in raw if int(x) > 0})
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="nm_ids — список nmID")
+    if not nm_ids:
+        raise HTTPException(status_code=400, detail="Укажите nm_ids")
+    svc = WatchService(db, company_id)
+    try:
+        return await svc.collect_nm_ids(nm_ids)
+    except Exception as exc:
+        raise _fail("collect-nms", exc)

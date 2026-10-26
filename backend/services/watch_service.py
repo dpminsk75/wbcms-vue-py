@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # Нормализация фразы — единая с отчётом «Выдача WB» (competitors_positions_service),
 # чтобы наши фразы из Search Reports и фразы из срезов выдачи сравнивались одинаково.
 from backend.services.competitors_positions_service import _norm_phrase
+from backend.services import capture_service
 
 # Кэш матрицы в процессе: /summary и /matrix считают одно и то же, а фронт зовёт их
 # параллельно. Без кэша тяжёлый расчёт выполняется дважды.
@@ -1188,6 +1189,43 @@ class WatchService:
                 "phrases_cnt": len(norm), "skipped_today": len(skipped_today),
                 "stale_days": st["stale_days"]}
 
+    async def collect_nm_ids(self, nm_ids: list[int]) -> dict:
+        """Перечисленные карточки → очередь enrich (`source='watch'`).
+
+        Кнопка «Собрать» на странице собранных карточек (одна или помеченные).
+        Карточки, исключённые из сбора (`wb_competitor_capture.is_hidden`), не
+        ставятся — счётчиком `excluded`. Повторный вызов идемпотентен
+        (`uq_nm_id` + `ON DUPLICATE KEY` в `_enqueue_watch`).
+        """
+        norm: list[int] = []
+        for x in nm_ids or []:
+            try:
+                n = int(x)
+            except (TypeError, ValueError):
+                continue
+            if n > 0:
+                norm.append(n)
+        norm = list(dict.fromkeys(norm))[:500]
+        if not norm:
+            return {"requested": 0, "assigned": 0, "skipped": 0, "excluded": 0}
+
+        cl, cp = self._inlist("e", norm)
+        cond = f"AND c.company_id=:cid" if self.company_id is not None else ""
+        iparams: dict = dict(cp)
+        if self.company_id is not None:
+            iparams["cid"] = self.company_id
+        rows = (await self.db.execute(text(f"""
+            SELECT c.nm_id FROM wb_competitor_capture c
+            WHERE c.nm_id IN ({cl}) AND c.is_hidden=1 {cond}
+        """), iparams)).scalars().all()
+        excluded = set(int(x) for x in rows)
+
+        cand = [n for n in norm if n not in excluded]
+        assigned, skipped = await self._enqueue_watch(set(cand))
+        await self.db.commit()
+        return {"requested": len(norm), "assigned": assigned,
+                "skipped": skipped, "excluded": len(excluded)}
+
     async def _enqueue_watch(self, cand: set[int]) -> tuple[int, int]:
         """Карточки → `wb_enrich_queue` (pending, source='watch').
 
@@ -1198,7 +1236,13 @@ class WatchService:
         skipped = 0
         if not cand:
             return 0, 0
-        cl = sorted(cand)
+        cl = sorted(n for n in cand if isinstance(n, int) and n > 0)
+        # Исключённые из сбора (is_hidden, §19.4) в очередь не возвращаем:
+        # /next их всё равно не отдаст, а строка зря висела бы «в очереди».
+        if self.company_id is not None and cl:
+            hid = await capture_service.excluded_nms(self.db, self.company_id, cl)
+            if hid:
+                cl = [n for n in cl if n not in hid]
         # что уже есть в очереди: статус
         cur: dict[int, str] = {}
         for i in range(0, len(cl), 400):

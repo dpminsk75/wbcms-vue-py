@@ -540,7 +540,7 @@ class CompetitorsNewcardService:
         if self.company_id is None:
             return True
         r = (await self.db.execute(text("""
-            SELECT 1 FROM wbcards WHERE nmID=:n AND company_id=:c LIMIT 1
+            SELECT 1 FROM wbcards WHERE nmID=:n AND (company_id=:c OR company_id IS NULL) LIMIT 1
         """), {"n": nm_id, "c": self.company_id})).first()
         return r is not None
 
@@ -1058,32 +1058,155 @@ class CompetitorsNewcardService:
 
     # ---------- §8.5/§11.3: «Собранные карточки» (capture) ----------
 
-    async def list_captured(self, q: str = "", include_hidden: bool = False,
-                            limit: int = 300) -> dict:
-        """Список `wb_competitor_capture` компании + контент из общих `wb_competitor_details`.
+    # Сортировка списка — whitelist (SQL не собирается из пользователя).
+    # Значения — готовые выражения MySQL (агрегаты по группе nm_id).
+    CAPTURED_SORTS = {
+        "collected_at": "COALESCE(MAX(d.full_collected_at), MAX(d.collected_at))",
+        "first_collected_at": "MAX(d.first_collected_at)",
+        "first_seen_at": "MIN(c.first_seen_at)",
+        "title": "MAX(d.title)",
+        "desc_len": "MAX(CHAR_LENGTH(COALESCE(d.description,'')))",
+        "chars_cnt": "MAX(JSON_LENGTH(COALESCE(d.characteristics, JSON_ARRAY())))",
+        "price": "CAST(MAX(d.price) AS DECIMAL(12,2))",
+        "attached_cnt": "COALESCE(MAX(att.attached_cnt), 0)",
+        "companies_cnt": "COUNT(DISTINCT c.company_id)",
+        "nm_id": "base.nm_id",
+    }
 
-        global admin (company_id None) видит все компании; is_hidden — своё значение для
-        компании, у админа MIN (видна, если хотя бы у одной компании не скрыта).
+    async def list_captured(self, q: str = "", include_hidden: bool = False,
+                            limit: int = 50, offset: int = 0, *,
+                            sort: str = "collected_at", direction: str = "desc",
+                            scope: str = "captured",
+                            collected_from: str = "", collected_to: str = "",
+                            first_seen_from: str = "", first_seen_to: str = "",
+                            content: str = "", phrase: str = "",
+                            attached: str = "", source: str = "") -> dict:
+        """Собранные карточки: фильтры + сортировка + пагинация (§19.6).
+
+        `scope`:
+        - `captured` (по умолчанию) — реестр `wb_competitor_capture` нашей компании
+          (что собрали мы); глобальный админ видит все компании;
+        - `all_details` — общий кэш контента `wb_competitor_details`: видно и то,
+          что собрали другие компании, плюс наши отметки (исключено/наша/привязана).
+
+        Наши карточки (`wbcards`) не показываются никогда: сбор их пропускает
+        (`own_card`), а в списке конкурентов они пользы не дают.
         """
-        where = []
-        params: dict = {"lim": limit}
-        if self.company_id is not None:
-            where.append("c.company_id = :cid")
-            params["cid"] = self.company_id
-        if not include_hidden:
-            where.append("c.is_hidden = 0")
-        having = ""
+        cid = self.company_id
+        limit = max(1, min(int(limit or 50), 300))
+        offset = max(0, int(offset or 0))
+        sort_key = str(sort or "").strip() or "collected_at"
+        sort_expr = self.CAPTURED_SORTS.get(sort_key, self.CAPTURED_SORTS["collected_at"])
+        dir_sql = "ASC" if str(direction or "desc").strip().lower() == "asc" else "DESC"
+        all_details = str(scope or "").strip() == "all_details"
+
+        params: dict = {}
+        where: list[str] = []
+        having: list[str] = []
+
+        # --- откуда строки ---
+        if all_details:
+            base_sql = "SELECT nm_id FROM wb_competitor_details"
+        elif cid is not None:
+            base_sql = "SELECT nm_id FROM wb_competitor_capture WHERE company_id=:cid"
+            params["cid"] = cid
+        else:
+            base_sql = "SELECT nm_id FROM wb_competitor_capture"
+
+        # --- наши отметки по компании ---
+        cap_join = "LEFT JOIN wb_competitor_capture c ON c.nm_id=base.nm_id"
+        own_join = "LEFT JOIN wbcards w ON w.nmID=base.nm_id"
+        if cid is not None:
+            cap_join += " AND c.company_id=:cid"
+            own_join += " AND w.company_id=:cid"
+            params["cid"] = cid
+
+        # --- привязки (cards.source='capture') — счётчик для сортировки/фильтра ---
+        att_sql = ("LEFT JOIN (SELECT cc.nm_id, COUNT(DISTINCT cc.source_nm_id) AS attached_cnt"
+                   " FROM wb_competitor_cards cc WHERE cc.source='capture'")
+        if cid is not None:
+            att_sql += " AND cc.source_nm_id IN (SELECT nmID FROM wbcards WHERE company_id=:cid2)"
+            params["cid2"] = cid
+        att_sql += " GROUP BY cc.nm_id) att ON att.nm_id=base.nm_id"
+
+        # --- поиск ---
         if q.strip():
             params["like"] = _like(q)
-            having = ("HAVING (title LIKE :like OR brand LIKE :like OR seller LIKE :like"
-                      " OR CAST(c.nm_id AS CHAR) LIKE :like)")
-        rows = (await self.db.execute(text(f"""
-            SELECT c.nm_id,
-                   MAX(c.is_own) AS is_own,
+            having.append("(title LIKE :like OR brand LIKE :like OR seller LIKE :like"
+                          " OR CAST(nm_id AS CHAR) LIKE :like)")
+
+        # --- даты ---
+        if collected_from:
+            params["cf"] = collected_from
+            where.append("d.collected_at >= :cf")
+        if collected_to:
+            params["ct"] = collected_to
+            where.append("d.collected_at < DATE_ADD(:ct, INTERVAL 1 DAY)")
+        if first_seen_from:
+            params["ff"] = first_seen_from
+            having.append("MIN(c.first_seen_at) >= :ff")
+        if first_seen_to:
+            params["ft"] = first_seen_to
+            having.append("MIN(c.first_seen_at) < DATE_ADD(:ft, INTERVAL 1 DAY)")
+
+        # --- контент ---
+        if content == "has_desc":
+            having.append("desc_len > 0")
+        elif content == "no_desc":
+            having.append("desc_len = 0")
+        elif content == "has_chars":
+            having.append("chars_cnt > 0")
+        elif content == "no_chars":
+            having.append("chars_cnt = 0")
+
+        # --- фраза: позиции выдачи + формулировки конкурентов ---
+        if phrase.strip():
+            params["ph"] = _like(phrase)
+            subs = ["(SELECT p.nm_id FROM wb_competitor_position p"
+                    " WHERE p.query_phrase LIKE :ph"]
+            if cid is not None:
+                subs[0] += " AND p.company_id=:cid3"
+                params["cid3"] = cid
+            subs[0] += ")"
+            if await _phrase_schema_ready(self.db):
+                subs.append("(SELECT pc.competitor_nm_id FROM wb_competitor_phrase_comp pc"
+                            " WHERE pc.phrase LIKE :ph")
+                if cid is not None:
+                    subs[-1] += " AND pc.company_id=:cid3"
+                subs[-1] += ")"
+            where.append(f"base.nm_id IN ({' UNION '.join(subs)})")
+
+        # --- привязка ---
+        if attached == "yes":
+            having.append("attached_cnt > 0")
+        elif attached == "no":
+            having.append("attached_cnt = 0")
+
+        # --- источник (cards.source) ---
+        if source.strip():
+            params["src"] = source.strip()
+            sub = "(SELECT cc.nm_id FROM wb_competitor_cards cc WHERE cc.source=:src"
+            if cid is not None:
+                sub += " AND cc.source_nm_id IN (SELECT nmID FROM wbcards WHERE company_id=:cid4)"
+                params["cid4"] = cid
+            sub += ")"
+            where.append(f"base.nm_id IN {sub}")
+
+        # --- свои карточки: никогда не показываем (сбор их пропускает — own_card) ---
+        having.append("is_own = 0")
+
+        # --- исключённые из сбора (is_hidden) ---
+        if not include_hidden:
+            having.append("(is_hidden IS NULL OR is_hidden = 0)")
+
+        select_sql = f"""
+            SELECT base.nm_id AS nm_id,
+                   MAX(w.nmID IS NOT NULL) AS is_own,
                    MIN(c.is_hidden) AS is_hidden,
                    MIN(c.first_seen_at) AS first_seen_at,
                    MAX(c.last_seen_at) AS last_seen_at,
                    COUNT(DISTINCT c.company_id) AS companies_cnt,
+                   MAX(c.company_id IS NOT NULL) AS captured_by_us,
                    MAX(d.title) AS title,
                    MAX(d.brand) AS brand,
                    MAX(d.seller) AS seller,
@@ -1094,30 +1217,45 @@ class CompetitorsNewcardService:
                    MAX(d.preview_image) AS preview_image,
                    MAX(CHAR_LENGTH(COALESCE(d.description,''))) AS desc_len,
                    MAX(JSON_LENGTH(COALESCE(d.characteristics, JSON_ARRAY()))) AS chars_cnt,
-                   MAX(d.collected_at) AS collected_at
-            FROM wb_competitor_capture c
-            LEFT JOIN wb_competitor_details d ON d.nm_id = c.nm_id
+                   MAX(d.collected_at) AS collected_at,
+                   MAX(d.full_collected_at) AS full_collected_at,
+                   MAX(d.first_collected_at) AS first_collected_at,
+                   COALESCE(MAX(att.attached_cnt), 0) AS attached_cnt
+            FROM ({base_sql}) base
+            {cap_join}
+            {own_join}
+            {att_sql}
+            LEFT JOIN wb_competitor_details d ON d.nm_id=base.nm_id
             WHERE {' AND '.join(where) if where else '1=1'}
-            GROUP BY c.nm_id
-            {having}
-            ORDER BY MAX(c.last_seen_at) DESC
-            LIMIT :lim
-        """), params)).mappings().all()
+            GROUP BY base.nm_id
+        """
+        having_sql = (" HAVING " + " AND ".join(having)) if having else ""
+
+        rows = (await self.db.execute(text(
+            select_sql + having_sql
+            + f" ORDER BY {sort_expr} {dir_sql}, base.nm_id {dir_sql}"
+            + " LIMIT :lim OFFSET :off"
+        ), {**params, "lim": limit, "off": offset})).mappings().all()
+        total = int((await self.db.execute(text(
+            f"SELECT COUNT(*) FROM ({select_sql}{having_sql}) t"
+        ), params)).scalar() or 0)
 
         ids = [r["nm_id"] for r in rows]
         attached: dict[int, list[dict]] = {}
         history_cnt: dict[int, int] = {}
+        positions_cnt: dict[int, int] = {}
+        phrases_cnt: dict[int, int] = {}
         if ids:
             ph = ",".join(f":d{i}" for i in range(len(ids)))
-            iparams: dict = {f"d{i}": v for i, v in enumerate(ids)}
+            iparams = {f"d{i}": v for i, v in enumerate(ids)}
             scope = ""
             if self.company_id is not None:
                 scope = "AND cc.source_nm_id IN (SELECT nmID FROM wbcards WHERE company_id=:cid2)"
                 iparams["cid2"] = self.company_id
             for r in (await self.db.execute(text(f"""
-                SELECT cc.nm_id, cc.source_nm_id, w.title AS source_title
+                SELECT cc.nm_id, cc.source_nm_id, w2.title AS source_title
                 FROM wb_competitor_cards cc
-                LEFT JOIN wbcards w ON w.nmID = cc.source_nm_id
+                LEFT JOIN wbcards w2 ON w2.nmID = cc.source_nm_id
                 WHERE cc.source='capture' AND cc.nm_id IN ({ph}) {scope}
                 ORDER BY cc.source_nm_id
             """), iparams)).mappings().all():
@@ -1131,6 +1269,25 @@ class CompetitorsNewcardService:
             """), iparams)).mappings().all():
                 history_cnt[int(r["nm_id"])] = int(r["cnt"] or 0)
 
+            # --- фразы: выдача (positions) + формулировки после разбора (phrase_comp) ---
+            pscope, pscope_p = "", {}
+            if self.company_id is not None:
+                pscope = "AND company_id=:pcid"
+                pscope_p["pcid"] = self.company_id
+            for r in (await self.db.execute(text(f"""
+                SELECT nm_id, COUNT(DISTINCT query_phrase) AS cnt
+                FROM wb_competitor_position
+                WHERE nm_id IN ({ph}) {pscope} GROUP BY nm_id
+            """), {**iparams, **pscope_p})).mappings().all():
+                positions_cnt[int(r["nm_id"])] = int(r["cnt"] or 0)
+            if await _phrase_schema_ready(self.db):
+                for r in (await self.db.execute(text(f"""
+                    SELECT competitor_nm_id AS nm_id, COUNT(DISTINCT phrase) AS cnt
+                    FROM wb_competitor_phrase_comp
+                    WHERE competitor_nm_id IN ({ph}) {pscope} GROUP BY competitor_nm_id
+                """), {**iparams, **pscope_p})).mappings().all():
+                    phrases_cnt[int(r["nm_id"])] = int(r["cnt"] or 0)
+
         items = []
         for r in rows:
             d = dict(r)
@@ -1140,13 +1297,24 @@ class CompetitorsNewcardService:
             d["chars_cnt"] = int(d.get("chars_cnt") or 0)
             d["is_own"] = bool(d.get("is_own"))
             d["is_hidden"] = bool(d.get("is_hidden"))
+            d["captured_by_us"] = bool(d.get("captured_by_us"))
             d["companies_cnt"] = int(d.get("companies_cnt") or 0)
             d["attached"] = attached.get(n, [])
-            d["attached_cnt"] = len(d["attached"])
+            d["attached_cnt"] = int(d.get("attached_cnt") or 0)
             d["history_cnt"] = history_cnt.get(n, 0)
+            d["positions_cnt"] = positions_cnt.get(n, 0)
+            d["phrases_cnt"] = phrases_cnt.get(n, 0)
             d["url"] = d.get("url") or f"https://www.wildberries.ru/catalog/{n}/detail.aspx"
             items.append(d)
-        return {"items": items, "total": len(items)}
+        return {
+            "items": items,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "sort": sort_key,
+            "direction": dir_sql.lower(),
+            "scope": "all_details" if all_details else "captured",
+        }
 
     # ---------- §16: подбор конкурентов и массовая привязка ----------
 
@@ -1224,7 +1392,7 @@ class CompetitorsNewcardService:
             rows = (await self.db.execute(text("SELECT nmID FROM wbcards"))).scalars().all()
         else:
             rows = (await self.db.execute(text(
-                "SELECT nmID FROM wbcards WHERE company_id=:cid"
+                "SELECT nmID FROM wbcards WHERE company_id=:cid OR company_id IS NULL"
             ), {"cid": self.company_id})).scalars().all()
         return {int(x) for x in rows}
 
@@ -2599,7 +2767,11 @@ class CompetitorsNewcardService:
         return {"detached": int(r.rowcount or 0), "source_nm_id": source_nm_id}
 
     async def hide(self, nm_id: int, hidden: bool = True) -> dict:
-        """Скрыть/вернуть в своём списке: `wb_competitor_capture.is_hidden`."""
+        """Исключить карточку из сбора / вернуть: `wb_competitor_capture.is_hidden`.
+
+        Исключение per-company: другая компания ту же карточку собирать может.
+        Исключённая карточка не обновляется (сервер) и не собирается (расширение).
+        """
         if self.company_id is None:
             raise ValueError("Выберите компанию в шапке — скрытие своё у каждой компании")
         await self.db.rollback()
@@ -3580,12 +3752,15 @@ class CompetitorsNewcardService:
             INSERT INTO wb_enrich_queue (nm_id, company_id)
             SELECT t.nm_id, :cid FROM (
                 SELECT DISTINCT nm_id FROM wb_competitor_cards
-                WHERE nm_id IN ({ph})
+                WHERE nm_id IN ({ph}) AND nm_id > 0
             ) t
             WHERE t.nm_id NOT IN (
                 SELECT nm_id FROM wb_competitor_details
                 WHERE full_collected_at > NOW() - INTERVAL 24 HOUR
             )
+              AND NOT EXISTS (SELECT 1 FROM wb_competitor_capture cap
+                              WHERE cap.nm_id=t.nm_id AND cap.company_id=:cid
+                                AND cap.is_hidden=1)
             ON DUPLICATE KEY UPDATE
               company_id=IF(company_id IS NULL, :cid, company_id),
               status=IF((company_id IS NULL OR company_id=:cid) AND status IN ('done','error'), 'pending', status)

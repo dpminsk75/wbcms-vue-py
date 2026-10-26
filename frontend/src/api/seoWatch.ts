@@ -287,4 +287,10 @@ export const seoWatchApi = {
     api.post('/api/seo-watch/collect', { mode, phrases, top, ...f },
       { params: { date_from: dateFrom || undefined, date_to: dateTo || undefined }, timeout: seoWatchApi.TIMEOUT })
       .then((r) => r.data as WatchCollectResult),
+
+  /** Собрать перечисленные карточки сейчас («Собрать» на собранных карточках).
+   * Исключённые из сбора (is_hidden) расширение не трогает — сервер их пропускает. */
+  collectNms: (nmIds: number[]) =>
+    api.post('/api/seo-watch/collect-nms', { nm_ids: nmIds }, { timeout: seoWatchApi.TIMEOUT })
+      .then((r) => r.data as { requested: number; assigned: number; skipped: number; excluded: number }),
 }

@@ -425,17 +425,41 @@ async def pick_attach(
 async def captured_list(
     q: str = Query(default=""),
     include_hidden: bool = Query(default=False),
-    limit: int = Query(default=300, ge=1, le=1000),
+    limit: int = Query(default=50, ge=1, le=300),
+    offset: int = Query(default=0, ge=0),
+    sort: str = Query(default="collected_at"),
+    direction: str = Query(default="desc"),
+    scope: str = Query(default="captured"),
+    collected_from: str = Query(default=""),
+    collected_to: str = Query(default=""),
+    first_seen_from: str = Query(default=""),
+    first_seen_to: str = Query(default=""),
+    content: str = Query(default=""),
+    phrase: str = Query(default=""),
+    attached: str = Query(default=""),
+    source: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(require_seo),
     company_id: int | None = Depends(get_current_company),
 ):
     """Что расширение собрало в общую базу. Ничего не привязано — только видимость компании.
 
-    `include_hidden=1` — показать скрытые этой компанией (скрытая не всплывает от
-    авто-capture, но явная кнопка «Собрать» её возвращает).
+    Фильтры/сортировка/пагинация — §19.6:
+    - `scope=captured` (по умолчанию) — реестр нашей компании; `scope=all_details` —
+      общий кэш контента (видно и собранное другими компаниями);
+    - `include_hidden=1` — показать карточки, исключённые из сбора;
+    - `sort`/`direction` — серверная сортировка (whitelist);
+    - `collected_from/to`, `first_seen_from/to` — даты (YYYY-MM-DD);
+    - `content` — has_desc|no_desc|has_chars|no_chars; `attached` — yes|no;
+    - `phrase` — по позициям выдачи и формулировкам конкурентов; `source` — cards.source.
     """
-    return await CompetitorsNewcardService(db, company_id).list_captured(q, include_hidden, limit)
+    return await CompetitorsNewcardService(db, company_id).list_captured(
+        q, include_hidden, limit, offset,
+        sort=sort, direction=direction, scope=scope,
+        collected_from=collected_from, collected_to=collected_to,
+        first_seen_from=first_seen_from, first_seen_to=first_seen_to,
+        content=content, phrase=phrase, attached=attached, source=source,
+    )
 
 
 @captured_router.get("/{nm_id}/history")
@@ -555,7 +579,11 @@ async def captured_hide(
     _user: dict = Depends(require_seo),
     company_id: int | None = Depends(get_current_company),
 ):
-    """Скрыть/вернуть в списке компании (`?hidden=0` — вернуть)."""
+    """Исключить карточку из сбора / вернуть (`?hidden=0` — вернуть).
+
+    Исключение per-company: карточка перестаёт собираться (расширение её не
+    открывает и не скроллит, сервер не обновляет контент). Вернуть — только здесь.
+    """
     svc = CompetitorsNewcardService(db, company_id)
     try:
         return await svc.hide(nm_id, hidden)
