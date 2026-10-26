@@ -1,7 +1,8 @@
-from sqlalchemy import bindparam, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.services.profit_columns import MARGIN_DIMENSIONS, MARGIN_SELECT, default_period, validate_sort
+from backend.services.stocks_service import StocksService
 
 class TopProductsService:
     def __init__(self, db: AsyncSession, company_id: int | None = None):
@@ -44,39 +45,10 @@ class TopProductsService:
 
         # 3. Остатки по складам WB (Склад WB) — опционально, чекбокс «выводить остаток»
         if with_stock:
-            stocks, stock_date = await self._get_stocks(date_to, [r["nm_id"] for r in rows])
+            stocks, stock_date = await StocksService(self.db, self.company_id).get_stocks(
+                date_to, [r["nm_id"] for r in rows])
             for r in rows:
                 r["stock"] = stocks.get(str(r["nm_id"]), 0)
                 r["stock_date"] = stock_date
 
         return rows
-
-    async def _get_stocks(self, date_to: str, nm_ids: list) -> tuple[dict, str | None]:
-        """Остатки из wb_stocks (склады WB = «Склад WB»).
-
-        Дата снимка: MAX(date) WHERE date <= date_to (фолбэк, если на date_to снимка нет).
-        nm_id в wb_stocks — varchar, поэтому биндим строки (иначе индекс idx-wb_stocks-nm_id не используется).
-        Возвращает (map nm_id -> quantity, дата снимка ISO).
-        """
-        if not nm_ids:
-            return {}, None
-
-        cid = "" if self.company_id is None else " AND s.company_id = :company_id"
-        params = {"d": date_to, **self._company_params()}
-
-        res = await self.db.execute(
-            text(f"SELECT MAX(s.date) FROM wb_stocks s WHERE s.date <= :d{cid}"), params)
-        stock_date = res.scalar()
-        if not stock_date:
-            return {}, None
-
-        ids = [str(int(n)) for n in nm_ids]
-        sql = text(f"""
-            SELECT s.nm_id, SUM(s.quantity) AS stock
-            FROM wb_stocks s
-            WHERE s.date = :d{cid} AND s.nm_id IN :ids
-            GROUP BY s.nm_id
-        """).bindparams(bindparam("ids", expanding=True))
-        res = await self.db.execute(sql, {**params, "ids": ids})
-        stocks = {str(r[0]): int(r[1] or 0) for r in res.fetchall()}
-        return stocks, stock_date.isoformat() if hasattr(stock_date, "isoformat") else str(stock_date)

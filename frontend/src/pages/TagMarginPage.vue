@@ -36,6 +36,17 @@
           </button>
         </div>
       </div>
+
+      <!-- Чекбоксы и подписи -->
+      <div class="row g-3 align-items-center">
+        <div class="col-md-6 d-flex align-items-center gap-3">
+          <div class="form-check mb-0">
+            <input id="tm-with-stock" v-model="filters.with_stock" type="checkbox" class="form-check-input" />
+            <label class="form-check-label" for="tm-with-stock">Выводить остаток</label>
+          </div>
+          <span v-if="stockDate" class="text-muted small">Остатки на {{ stockDate }}</span>
+        </div>
+      </div>
     </div>
 
     <div class="card shadow-sm">
@@ -57,7 +68,14 @@
           <div class="mt-2 text-muted">Загрузка данных...</div>
         </div>
 
-        <MarginTable v-else :rows="rows" footer-label="Итого по тегу:" />
+        <MarginTable
+          v-else
+          :rows="rows"
+          footer-label="Итого по тегу:"
+          :show-stock="filters.with_stock"
+          :period="`${filters.date_from} — ${filters.date_to}`"
+          show-breakdown
+        />
       </div>
     </div>
   </div>
@@ -79,11 +97,15 @@ const today = new Date()
 const defTo = today.toISOString().slice(0, 10)
 const defFrom = new Date(today.getTime() - 30 * 864e5).toISOString().slice(0, 10)
 
+const SORTS = ['qnt', 'amount', 'net_profit', 'clean_margin']
+
+// Фильтры живут в URL: F5 сохраняет отчёт, ссылку можно отправить
 const filters = ref({
   date_from: String(route.query.date_from || defFrom),
   date_to: String(route.query.date_to || defTo),
   tag_id: String(route.query.id || ''),
-  sort_by: String(route.query.sort_by || 'qnt'),
+  sort_by: SORTS.includes(String(route.query.sort_by)) ? String(route.query.sort_by) : 'qnt',
+  with_stock: route.query.with_stock === '1'
 })
 
 const tagOptions = ref<TagItem[]>([])
@@ -94,6 +116,46 @@ const error = ref('')
 const currentTag = computed(() => tagOptions.value.find((t) => String(t.id) === String(filters.value.tag_id)))
 const pageTitle = computed(() => currentTag.value ? `Маржа по тегу - ${currentTag.value.name}` : 'Маржа по тегам')
 const headerLabel = computed(() => currentTag.value ? `Маржа: ${currentTag.value.name}` : 'Маржа по тегу')
+
+// Фактическая дата снимка остатков (может быть < date_to — фолбэк)
+const stockDate = computed(() => {
+  if (!filters.value.with_stock) return ''
+  const d = rows.value[0]?.stock_date
+  return d ? String(d).slice(0, 10) : ''
+})
+
+// URL → фильтры (навигация назад/вперёд, чужая ссылка)
+function applyFromRoute(nq: any) {
+  const s = String(nq.sort_by || '')
+  const next = {
+    date_from: String(nq.date_from || defFrom),
+    date_to: String(nq.date_to || defTo),
+    tag_id: String(nq.id || filters.value.tag_id),
+    sort_by: SORTS.includes(s) ? s : 'qnt',
+    with_stock: nq.with_stock === '1'
+  }
+  const cur = filters.value
+  if (cur.date_from !== next.date_from || cur.date_to !== next.date_to ||
+      cur.tag_id !== next.tag_id || cur.sort_by !== next.sort_by ||
+      cur.with_stock !== next.with_stock) {
+    filters.value = next
+  }
+}
+
+// фильтры → URL (replace, чтобы не плодить историю)
+let syncing = false
+function syncRoute() {
+  const q: Record<string, string> = {
+    date_from: filters.value.date_from,
+    date_to: filters.value.date_to
+  }
+  if (filters.value.tag_id) q.id = filters.value.tag_id
+  if (filters.value.sort_by !== 'qnt') q.sort_by = filters.value.sort_by
+  if (filters.value.with_stock) q.with_stock = '1'
+  syncing = true
+  router.replace({ path: '/tag/margin', query: q })
+    .finally(() => setTimeout(() => (syncing = false), 50))
+}
 
 async function fetchTags() {
   try {
@@ -111,7 +173,9 @@ async function fetchData() {
   isLoading.value = true
   error.value = ''
   try {
-    rows.value = await tagsApi.margin(filters.value.tag_id, filters.value.date_from, filters.value.date_to, filters.value.sort_by)
+    rows.value = await tagsApi.margin(
+      filters.value.tag_id, filters.value.date_from, filters.value.date_to,
+      filters.value.sort_by, filters.value.with_stock)
     document.title = `${pageTitle.value} — SelBI`
   } catch {
     error.value = 'load'
@@ -122,23 +186,27 @@ async function fetchData() {
 }
 
 function onApply() {
-  router.replace({ path: '/tag/margin', query: { id: filters.value.tag_id, date_from: filters.value.date_from, date_to: filters.value.date_to, sort_by: filters.value.sort_by } })
   fetchData()
 }
 
 function exportExcel() {
-  exportMarginExcel(rows.value, `tag-margin_${filters.value.tag_id}_${filters.value.date_from}_${filters.value.date_to}.xlsx`, 'Маржа тега')
+  exportMarginExcel(
+    rows.value,
+    `tag-margin_${filters.value.tag_id}_${filters.value.date_from}_${filters.value.date_to}.xlsx`,
+    'Маржа тега',
+    filters.value.with_stock,
+  )
 }
+
+watch(filters, () => syncRoute(), { deep: true })
+watch(() => route.query, (nq) => {
+  if (syncing) return
+  applyFromRoute(nq)
+  fetchData()
+})
 
 onMounted(async () => {
   await fetchTags()
   await fetchData()
-})
-
-watch(() => route.query.id, (id) => {
-  if (id && String(id) !== String(filters.value.tag_id)) {
-    filters.value.tag_id = String(id)
-    fetchData()
-  }
 })
 </script>

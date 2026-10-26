@@ -62,8 +62,8 @@ export const tagsApi = {
     const { data } = await api.get(`/api/tags/${id}/analytics`, { params: { date_from: dateFrom, date_to: dateTo } })
     return data
   },
-  async margin(id: number | string, dateFrom: string, dateTo: string, sortBy = 'qnt'): Promise<any[]> {
-    const { data } = await api.get(`/api/tags/${id}/margin`, { params: { date_from: dateFrom, date_to: dateTo, sort_by: sortBy } })
+  async margin(id: number | string, dateFrom: string, dateTo: string, sortBy = 'qnt', withStock = false): Promise<any[]> {
+    const { data } = await api.get(`/api/tags/${id}/margin`, { params: { date_from: dateFrom, date_to: dateTo, sort_by: sortBy, with_stock: withStock ? 1 : 0 } })
     return Array.isArray(data) ? data : []
   },
   async exportByProduct(id: number | string, dateFrom: string, dateTo: string) {

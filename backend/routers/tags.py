@@ -126,6 +126,7 @@ async def tag_margin(
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
     sort_by: str = Query(default="qnt"),
+    with_stock: int = Query(default=0),
     db: AsyncSession = Depends(get_db),
     company_id: int | None = Depends(get_current_company),
 ):
@@ -139,7 +140,7 @@ async def tag_margin(
     if not exists:
         raise HTTPException(status_code=404, detail="tag not found")
     svc = TagMarginService(db, company_id=company_id)
-    return await svc.get_margin(tag_id, date_from, date_to, sort_by)
+    return await svc.get_margin(tag_id, date_from, date_to, sort_by, bool(with_stock))
 
 
 @router.get("/{tag_id}/analytics")

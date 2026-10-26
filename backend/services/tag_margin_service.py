@@ -3,6 +3,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.services.profit_columns import MARGIN_DIMENSIONS, MARGIN_SELECT, default_period, validate_sort
+from backend.services.stocks_service import StocksService
 
 
 class TagMarginService:
@@ -17,7 +18,8 @@ class TagMarginService:
         return {} if self.company_id is None else {"company_id": self.company_id}
 
     async def get_margin(self, tag_id: int, date_from: str | None = None,
-                         date_to: str | None = None, sort_by: str = "qnt"):
+                         date_to: str | None = None, sort_by: str = "qnt",
+                         with_stock: bool = False):
         date_from, date_to = default_period(date_from, date_to)
         sort_by = validate_sort(sort_by)
         cols = ",\n                ".join([*MARGIN_DIMENSIONS, *MARGIN_SELECT])
@@ -34,4 +36,14 @@ class TagMarginService:
         """)
         params = {"d1": date_from, "d2": date_to, "tid": tag_id, **self._company_params()}
         result = await self.db.execute(sql, params)
-        return [dict(r._mapping) for r in result.fetchall()]
+        rows = [dict(r._mapping) for r in result.fetchall()]
+
+        # Остатки по складам WB — опционально, чекбокс «выводить остаток»
+        if with_stock:
+            stocks, stock_date = await StocksService(self.db, self.company_id).get_stocks(
+                date_to, [r["nm_id"] for r in rows])
+            for r in rows:
+                r["stock"] = stocks.get(str(r["nm_id"]), 0)
+                r["stock_date"] = stock_date
+
+        return rows
