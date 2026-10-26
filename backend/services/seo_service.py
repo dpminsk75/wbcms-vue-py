@@ -180,8 +180,12 @@ class SeoService:
         else:
             cond = "(w.title LIKE :ql OR w.vendorCode LIKE :ql OR w.subjectName LIKE :ql)"
             p["ql"] = f"%{q}%"
-        # Как в yii: глобально без company/is_active (иначе "заготов" не находится)
-        base = f"""FROM wbcards w WHERE {cond} AND w.nmID NOT IN (
+        # Как в yii: глобально без company/is_active (иначе "заготов" не находится) —
+        # но по wbcards фильтруем по компании: чужие карточки искать нельзя.
+        cscope = "" if self.company_id is None else " AND (w.company_id=:cid OR w.company_id IS NULL)"
+        if self.company_id is not None:
+            p["cid"] = self.company_id
+        base = f"""FROM wbcards w WHERE {cond}{cscope} AND w.nmID NOT IN (
             SELECT nmID FROM wb_seo_recommendation
             WHERE is_requeued=0 AND created_at >= DATE_SUB(NOW(), INTERVAL :spam DAY))"""
         total = (await self.db.execute(text(f"SELECT COUNT(*) {base}"), p)).scalar()

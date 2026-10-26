@@ -164,6 +164,7 @@ class CardsSyncService:
             VALUES(:cid, :nm, :imt, :uuid, :sid, :snm, :vc, :br, :ti, :de,
                 :ph, :vi, :di, :ch, :sz, :tg, :now, 1) AS new
             ON DUPLICATE KEY UPDATE
+                company_id = new.company_id,
                 imtID = new.imtID, nmUUID = new.nmUUID, subjectID = new.subjectID,
                 subjectName = new.subjectName, vendorCode = new.vendorCode,
                 brand = new.brand, title = new.title, description = new.description,

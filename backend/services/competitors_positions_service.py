@@ -291,7 +291,7 @@ class CompetitorsPositionsService:
                 v = (r["preview_image"] or "").strip()
                 if v:
                     imgs[int(r["nm_id"] or 0)] = v if v.startswith("http") else ("https:" + v)
-        # у карточек вне топ-12 деталей может не быть — для наших берём wbcards
+        # у карточек вне топ-20 деталей может не быть — для наших берём wbcards
         empty = [nm for nm in need if nm not in imgs]
         if empty:
             for k in range(0, len(empty), 400):
@@ -698,10 +698,11 @@ class CompetitorsPositionsService:
 
         Клик по своей карточке в отчёте «Выдача WB» → эта сводка.
         """
+        cids = "" if self.company_id is None else " AND (company_id=:cid OR company_id IS NULL)"
         card = (await self.db.execute(
             text("SELECT nmID, title, brand, vendorCode, subjectName, description, "
-                 "characteristics, photos FROM wbcards WHERE nmID=:n LIMIT 1"),
-            {"n": nm_id},
+                 "characteristics, photos FROM wbcards WHERE nmID=:n" + cids + " LIMIT 1"),
+            {"n": nm_id} | ({} if self.company_id is None else {"cid": self.company_id}),
         )).mappings().first()
 
         scope, sparams = self._scope()
@@ -787,9 +788,10 @@ class CompetitorsPositionsService:
         where, params = self._period(date_from, date_to)
         params.update(sparams)
 
+        cids = "" if self.company_id is None else " AND (company_id=:cid OR company_id IS NULL)"
         card_row = (await self.db.execute(
-            text("SELECT nmID, title, vendorCode, brand FROM wbcards WHERE nmID=:n LIMIT 1"),
-            {"n": nm_id},
+            text("SELECT nmID, title, vendorCode, brand FROM wbcards WHERE nmID=:n" + cids + " LIMIT 1"),
+            {"n": nm_id} | ({} if self.company_id is None else {"cid": self.company_id}),
         )).mappings().first()
 
         # все строки выдачи, привязанные к нашей карточке

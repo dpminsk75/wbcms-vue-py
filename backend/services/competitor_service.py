@@ -11,6 +11,7 @@ import re
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import HTTPException
 
 from backend.services import openrouter_service as llm
 from backend.services import llm_provider
@@ -158,6 +159,13 @@ class CompetitorService:
             return None
         return card
 
+    async def _require_own_card(self, nm_id: int) -> dict:
+        """GET-ветки: карточка-источник обязана быть своей (global admin — любая), иначе 404."""
+        card = await self._own_card(nm_id)
+        if not card:
+            raise HTTPException(status_code=404, detail="Карточка не найдена в вашей компании")
+        return card
+
     async def list_sources(self) -> dict:
         params: dict = {}
         scope = ""
@@ -207,6 +215,7 @@ class CompetitorService:
 
     async def get_phrases(self, nm_id: int) -> dict:
         """Порт actionSelect: все фразы + уже отобранные + карточка."""
+        await self._require_own_card(nm_id)
         scope, p = self._scope("a")
         selected = (await self.db.execute(text(f"""
             SELECT DISTINCT query_phrase FROM wb_competitor_analysis a
@@ -272,6 +281,7 @@ class CompetitorService:
 
     async def get_selected(self, nm_id: int) -> dict:
         """Порт actionSelected (GET): конкуренты с фразами + details + analysisMap."""
+        await self._require_own_card(nm_id)
         scope, p = self._scope("a")
         rows = (await self.db.execute(text(f"""
             SELECT a.* FROM wb_competitor_analysis a
@@ -371,6 +381,7 @@ class CompetitorService:
                           user_id: int | None = None) -> dict:
         """Порт actionSummary: кэш 30д (force только admin), иначе генерация платной моделью."""
         import json as _json
+        await self._require_own_card(nm_id)
         cached = (await self.db.execute(text("""
             SELECT * FROM wb_competitor_summary WHERE source_nm_id=:n LIMIT 1
         """), {"n": nm_id})).mappings().first()

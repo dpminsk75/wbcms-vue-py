@@ -72,7 +72,9 @@ class WbSearchService:
 
     async def card_info(self, nm_id: int) -> dict | None:
         row = (await self.db.execute(
-            text("SELECT nmID, title FROM wbcards WHERE nmID=:id"), {"id": nm_id}
+            text("SELECT nmID, title FROM wbcards WHERE nmID=:id"
+                 + ("" if self.company_id is None else " AND (company_id = :cid OR company_id IS NULL)")),
+            {"id": nm_id} | ({} if self.company_id is None else {"cid": self.company_id}),
         )).mappings().first()
         return dict(row) if row else None
 

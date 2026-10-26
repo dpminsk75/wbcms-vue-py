@@ -195,21 +195,29 @@ class ReplyRulesService:
         from sqlalchemy import text
         if not (q or "").strip():
             return []
+        cscope = "" if self.company_id is None else " AND (company_id = :cid OR company_id IS NULL)"
+        params: dict = {"q": f"%{q.strip()}%"}
+        if self.company_id is not None:
+            params["cid"] = self.company_id
         rows = (await self.db.execute(text(
             """SELECT CAST(nmID AS CHAR) AS id, CONCAT('[', nmID, '] ', title) AS text
                 FROM wbcards
-                WHERE title LIKE :q OR CAST(nmID AS CHAR) LIKE :q
+                WHERE (title LIKE :q OR CAST(nmID AS CHAR) LIKE :q)""" + cscope + """
                 ORDER BY nmID DESC LIMIT 20"""),
-            {"q": f"%{q.strip()}%"})).mappings().all()
+            params)).mappings().all()
         return [dict(r) for r in rows]
 
     async def brand_list(self, q: str) -> list:
         from sqlalchemy import text
         if not (q or "").strip():
             return []
+        cscope = "" if self.company_id is None else " AND (company_id = :cid OR company_id IS NULL)"
+        params: dict = {"q": f"%{q.strip()}%"}
+        if self.company_id is not None:
+            params["cid"] = self.company_id
         rows = (await self.db.execute(text(
             """SELECT DISTINCT brand AS id, brand AS text FROM wbcards
-                WHERE brand LIKE :q AND brand IS NOT NULL AND brand != ''
+                WHERE brand LIKE :q AND brand IS NOT NULL AND brand != ''""" + cscope + """
                 ORDER BY brand LIMIT 20"""),
-            {"q": f"%{q.strip()}%"})).mappings().all()
+            params)).mappings().all()
         return [dict(r) for r in rows]

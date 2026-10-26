@@ -97,8 +97,10 @@ class TagService:
             SELECT w.nmID AS nmId, w.title AS card_name, w.vendorCode AS vendorCode
             FROM tag_card_links t INNER JOIN wbcards w ON t.nmID = w.nmID
             WHERE t.tag_id = :id
-        """)
-        related = [dict(r) for r in (await self.db.execute(links_stmt, {"id": tag["id"]})).mappings().all()]
+            """ + ("" if self.company_id is None else " AND (w.company_id = :cid OR w.company_id IS NULL)"))
+        related = [dict(r) for r in (await self.db.execute(
+            links_stmt, {} if self.company_id is None else {"id": tag["id"], "cid": self.company_id}
+        )).mappings().all()]
         by_date = await self.get_stats(nm_ids, date_from, date_to, True, False)
         detail = await self.get_stats(nm_ids, date_from, date_to, True, True)
         by_product = await self.get_stats(nm_ids, date_from, date_to, False, True)
