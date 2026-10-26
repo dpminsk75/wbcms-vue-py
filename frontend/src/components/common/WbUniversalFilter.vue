@@ -19,16 +19,34 @@
         <label class="form-label mb-1 wb-universal-filter__label">Дата по</label>
         <WbDateInput v-model="dateTo" />
       </div>
-      <div v-if="showProduct" class="col-md-4">
+      <div v-if="showProduct" class="col-md-4 wb-universal-filter__product">
         <label class="form-label mb-1 wb-universal-filter__label">Товар</label>
-        <input v-model="product" :list="listId" placeholder="nm_id, артикул или часть названия..." class="form-control" autocomplete="off" />
-        <datalist :id="listId">
-          <option v-for="c in suggestions" :key="c.nmID" :value="String(c.vendorCode || c.nmID)">{{ c.nmID }} | {{ c.title }}</option>
-        </datalist>
+        <input
+          v-model="product"
+          class="form-control"
+          placeholder="nm_id, артикул или часть названия..."
+          autocomplete="off"
+          @focus="popupOpen = suggestions.length > 0"
+          @blur="closeSuggest"
+        />
+        <!-- свой попап вместо нативного <datalist>: браузерный уезжает в сторону и перекрывает страницу -->
+        <div v-if="popupOpen && suggestions.length" class="wb-universal-filter__suggest">
+          <button
+            v-for="c in suggestions"
+            :key="c.nmID"
+            type="button"
+            class="wb-universal-filter__suggest-row"
+            @mousedown.prevent="pickSuggestion(c)"
+          >
+            <span class="wb-universal-filter__suggest-nm">{{ c.nmID }}</span>
+            <span class="wb-universal-filter__suggest-title">{{ c.title }}</span>
+            <span v-if="c.vendorCode" class="wb-universal-filter__suggest-vc">{{ c.vendorCode }}</span>
+          </button>
+        </div>
       </div>
       <template v-if="showBrandCategory">
         <div class="col-md-2">
-          <label class="form-label mb-1 wb-universal-filter__label">Бренд</label>
+          <label class="form-label mb-1 wb-universal-filter__label">{{ brandLabel }}</label>
           <select v-model="brand" class="form-control" @change="emit('apply')">
             <option value="">Все</option>
             <option v-for="b in brands" :key="b" :value="b">{{ b }}</option>
@@ -66,6 +84,7 @@ const props = withDefaults(defineProps<{
   defaultPreset?: string
   presetEnd?: 'today' | 'yesterday'
   categoryLabel?: string
+  brandLabel?: string
   listId?: string
   showQuick?: boolean
   quickButtonsProp?: any[] | null
@@ -73,7 +92,7 @@ const props = withDefaults(defineProps<{
   brands: () => [], categories: () => [],
   showProduct: true, showBrandCategory: true,
   defaultPreset: '30', presetEnd: 'today',
-  categoryLabel: 'Категория', listId: 'wbuf-product-list',
+  categoryLabel: 'Категория', brandLabel: 'Бренд', listId: 'wbuf-product-list',
   showQuick: true, quickButtonsProp: null,
 })
 
@@ -100,6 +119,15 @@ const presets = [
 ]
 const activePreset = ref(props.defaultPreset)
 const suggestions = ref<any[]>([])
+const popupOpen = ref(false)
+
+// выбор из подсказки: подставляем артикул продавца (то же, что делал <datalist>)
+const pickSuggestion = (c: any) => {
+  product.value = String(c.vendorCode || c.nmID)
+  popupOpen.value = false
+}
+// blur срабатывает раньше mousedown по кнопке — закрываем с задержкой
+const closeSuggest = () => { setTimeout(() => { popupOpen.value = false }, 120) }
 // быстрые кнопки как в WbFilterBar (backend/config/quick_buttons.json + фолбэк)
 const defaultQuickButtons = [
   { icon: 'bi bi-journal-text', label: 'Дневник', nm_id: 526443466 },
@@ -166,13 +194,14 @@ watch([dateFrom, dateTo], syncPresetToDates, { immediate: true })
 watch(() => product.value, (v) => {  if (!props.showProduct) return
   if (searchTimer) clearTimeout(searchTimer)
   const q = String(v || '').trim()
-  if (q.length < 2) { suggestions.value = []; return }
+  if (q.length < 2) { suggestions.value = []; popupOpen.value = false; return }
   searchTimer = setTimeout(async () => {
     const my = ++reqSeq
     try {
       const { data: d } = await api.get('/api/wb/cards', { params: { q, limit: 20 } })
       if (my !== reqSeq) return
       suggestions.value = Array.isArray(d) ? d : (d?.items ?? [])
+      popupOpen.value = suggestions.value.length > 0
     } catch { /* noop */ }
   }, 300)
 })
@@ -194,4 +223,21 @@ onBeforeUnmount(() => { if (searchTimer) clearTimeout(searchTimer); reqSeq++ })
 .wb-universal-filter__label { font-size: 12px; font-weight: 600; }
 .wb-universal-filter__btns { margin-top: 12px; display: flex; gap: 8px; }
 .wb-universal-filter__apply { width: 120px; }
+
+/* Попап подсказок по товару (свой, вместо нативного <datalist>) */
+.wb-universal-filter__product { position: relative; }
+.wb-universal-filter__suggest {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 30;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(0,0,0,.12);
+  max-height: 260px; overflow-y: auto;
+}
+.wb-universal-filter__suggest-row {
+  display: flex; align-items: baseline; gap: 8px; width: 100%;
+  padding: 6px 10px; border: 0; background: none; text-align: left; font-size: 12px;
+}
+.wb-universal-filter__suggest-row:hover { background: #f3f4f6; }
+.wb-universal-filter__suggest-nm { font-weight: 700; color: #111827; }
+.wb-universal-filter__suggest-title { color: #374151; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-universal-filter__suggest-vc { margin-left: auto; color: #9ca3af; font-size: 11px; white-space: nowrap; }
 </style>

@@ -15,6 +15,7 @@
       {"label": "Реклама", "url": "/wb-adv-report/", "visibleIn": ["top", "side"]},
       {"label": "По ГЕО", "url": "/geo/sales-map", "visibleIn": ["top", "side"]},
       {"label": "Возвраты", "url": "/unclaimed-orders/", "visibleIn": ["top", "side"]},
+      {"label": "Штрафы и потери", "url": "/wb-penalty/logistics", "visibleIn": ["top", "side"]},
       {"label": "Воронка продаж", "url": "/wb-get-sales-funnel/wbcard/", "visibleIn": ["top", "side"]},
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "ТОП товары", "url": "/wb-profit/top-products", "visibleIn": ["top", "side"]},

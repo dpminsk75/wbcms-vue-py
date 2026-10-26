@@ -15,7 +15,12 @@ from datetime import date, timedelta
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.services.wb_ops import LOGISTICS_OPS, ops_sql
 from backend.services.wb_sync_base import company_sync_plan, post_json
+
+# WB переименовала «Логистика» → «Доставка» (август 2026). Старые строки остались
+# с прежним именем — фильтр по операции доставки всегда IN (см. services/wb_ops.py).
+LOGISTICS_OPS_SQL = ops_sql(LOGISTICS_OPS)
 
 DETAIL_URL = "https://finance-api.wildberries.ru/api/finance/v1/sales-reports/detailed"
 TIMEOUT_S = 15
@@ -285,7 +290,8 @@ class FinanceDetailService:
                     JOIN wb_order o ON o.srid = d.srid
                     WHERE d.company_id = :cid AND o.company_id = :cid
                       AND d.rr_dt IS NOT NULL AND DATE(d.rr_dt) IN ({ph})
-                      AND d.supplier_oper_name IN ('Продажа', 'Логистика')
+                      AND (d.supplier_oper_name = 'Продажа'
+                           OR d.supplier_oper_name IN {LOGISTICS_OPS_SQL})
                     GROUP BY o.company_id, DATE(d.rr_dt), o.warehouse_type,
                       o.warehouse_name, o.region_name, o.category, o.subject
                     AS new
@@ -321,22 +327,22 @@ class FinanceDetailService:
                        SELECT d.srid, d.delivery_rub, d.delivery_method,
                               ROW_NUMBER() OVER (PARTITION BY d.srid ORDER BY d.rrd_id DESC) AS rn
                        FROM detail_by_period d
-                       WHERE d.company_id = :company_id AND d.supplier_oper_name = 'Логистика'
+                       WHERE d.company_id = :company_id AND d.supplier_oper_name IN {ops}
                          AND d.delivery_amount > 0 AND d.srid IN ({ph})) t WHERE t.rn = 1
                    ) t ON t.srid = o.srid
                    SET o.delivery_rub = t.delivery_rub, o.delivery_method = t.delivery_method,
                        o.facts_updated_at = NOW()
-                   WHERE o.company_id = :company_id""".replace("{ph}", ph),
+                   WHERE o.company_id = :company_id""".replace("{ph}", ph).replace("{ops}", LOGISTICS_OPS_SQL),
                 """UPDATE wb_order o JOIN (
                      SELECT t.srid, t.delivery_rub AS return_rub FROM (
                        SELECT d.srid, d.delivery_rub,
                               ROW_NUMBER() OVER (PARTITION BY d.srid ORDER BY d.rrd_id DESC) AS rn
                        FROM detail_by_period d
-                       WHERE d.company_id = :company_id AND d.supplier_oper_name = 'Логистика'
+                       WHERE d.company_id = :company_id AND d.supplier_oper_name IN {ops}
                          AND d.return_amount > 0 AND d.srid IN ({ph})) t WHERE t.rn = 1
                    ) t ON t.srid = o.srid
                    SET o.return_rub = t.return_rub, o.facts_updated_at = NOW()
-                   WHERE o.company_id = :company_id""".replace("{ph}", ph),
+                   WHERE o.company_id = :company_id""".replace("{ph}", ph).replace("{ops}", LOGISTICS_OPS_SQL),
                 """UPDATE wb_order o JOIN (
                      SELECT t.srid, t.commission_percent, t.retail_price_withdisc_rub,
                             t.acquiring_percent, t.acquiring_fee FROM (
@@ -351,7 +357,7 @@ class FinanceDetailService:
                        o.commission_fee = ROUND(t.retail_price_withdisc_rub * t.commission_percent / 100, 2),
                        o.acquiring_percent = t.acquiring_percent,
                        o.acquiring_fee = t.acquiring_fee, o.facts_updated_at = NOW()
-                   WHERE o.company_id = :company_id""".replace("{ph}", ph),
+                   WHERE o.company_id = :company_id""".replace("{ph}", ph).replace("{ops}", LOGISTICS_OPS_SQL),
                 """UPDATE wb_order o JOIN (
                      SELECT t.srid, t.cashback_amount FROM (
                        SELECT d.srid, d.cashback_amount,
@@ -362,7 +368,7 @@ class FinanceDetailService:
                          AND d.srid IN ({ph})) t WHERE t.rn = 1
                    ) t ON t.srid = o.srid
                    SET o.cashback_amount = t.cashback_amount, o.facts_updated_at = NOW()
-                   WHERE o.company_id = :company_id""".replace("{ph}", ph),
+                   WHERE o.company_id = :company_id""".replace("{ph}", ph).replace("{ops}", LOGISTICS_OPS_SQL),
             ):
                 try:
                     r = await self.db.execute(text(sql), p)

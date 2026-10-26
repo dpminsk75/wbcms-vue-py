@@ -42,7 +42,7 @@
             <td style="text-align:right; font-weight:bold">{{ fmt0(r.amount) }}</td>
             <td style="text-align:right; color:#c0392b">{{ fmt0(r.commission) }}</td>
             <td style="text-align:right; color:#c0392b">{{ fmt0(r.f_acquiring_fee) }}</td>
-            <td style="text-align:right; color:#c0392b; font-weight:500">{{ fmt0(r.f_delivery) }}</td>
+            <td style="text-align:right; color:#c0392b; font-weight:500"><span class="week-logistics" title="Расшифровка логистики" @click.stop="openLogistics(r)">{{ fmt0(r.f_delivery) }}</span></td>
             <td style="text-align:right; color:#c0392b">{{ fmt0(r.f_penalty) }}</td>
             <td style="text-align:right; color:#16a085">{{ fmt0(r.f_otziv) }}</td>
             <td style="text-align:right; color:#2980b9">{{ fmt0(r.f_adv) }}</td>
@@ -81,12 +81,14 @@
         </tfoot>
       </table>
     </div>
-    <MarginBreakdownPopup v-if="breakdownRow" :open="true" :row="breakdownRow" :period="weekPeriod(breakdownRow.sdate)" @close="breakdownRow = null" />
+    <MarginBreakdownPopup v-if="breakdownRow" :open="true" :row="breakdownRow" :period="weekPeriod(breakdownRow.sdate)" @close="breakdownRow = null" @logistics="onLogistics" />
+    <FinancePopup v-if="logisticsPeriod" kind="logistics" :date-from="logisticsPeriod.dateFrom" :date-to="logisticsPeriod.dateTo" @close="logisticsPeriod = null" />
   </div>
 </template>
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, onMounted } from 'vue'
 import MarginBreakdownPopup from '../profit/MarginBreakdownPopup.vue'
+import FinancePopup from '../dashboard/FinancePopup.vue'
 const props = withDefaults(defineProps<{
   rows: any[]
   isLoading?: boolean
@@ -115,6 +117,19 @@ const openBreakdown = (r: any) => {
     nm_id: card.value.nmID || props.nmId || '',
     vendor_code: card.value.vendorCode || '',
   }
+}
+
+// Расшифровка «Логистики»: клик по колонке — за неделю строки,
+// клик по строке «Логистика (доставка)» в попапе затрат — за его период.
+const logisticsPeriod = ref<{ dateFrom: string, dateTo: string } | null>(null)
+const openLogistics = (r: any) => {
+  if (!r?.sdate) return
+  const end = new Date(new Date(r.sdate + 'T00:00:00Z').getTime() + 6 * 864e5).toISOString().slice(0, 10)
+  logisticsPeriod.value = { dateFrom: r.sdate, dateTo: end }
+}
+const onLogistics = (p: { dateFrom: string, dateTo: string }) => {
+  breakdownRow.value = null
+  logisticsPeriod.value = p
 }
 const enableResize = ()=>{
   const t=tbl.value; if(!t) return
@@ -160,4 +175,6 @@ const exportExcel = async()=>{
 .week-pos{position:relative; text-align:center; font-weight:bold; color:#2c3e50; white-space:nowrap}
 .week-eye{position:absolute; left:4px; top:50%; transform:translateY(-50%); border:0; background:transparent; color:#9aa0a8; padding:0; font-size:11px; line-height:1; cursor:pointer}
 .week-eye:hover{color:#8a2be0}
+.week-logistics{cursor:pointer; border-bottom:1px dashed #c0392b}
+.week-logistics:hover{color:#8a2be0}
 </style>

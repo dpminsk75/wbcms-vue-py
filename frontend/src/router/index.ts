@@ -43,6 +43,8 @@ const router = createRouter({
     { path: '/wb-order/feed/', redirect: feedRedirect },
     { path: '/wb-order/feed-aggregated', name: 'feed-aggregated', component: () => import('../pages/OrdersFeedAggregated.vue'), meta: { title: 'Сводка по товарам (заказы) — SelBI' } },
     { path: '/wb-order/heatmap', name: 'heatmap', component: () => import('../pages/OrdersHeatmap.vue'), meta: { title: 'Тепловая карта заказов 7×24 — SelBI' } },
+    { path: '/wb-penalty/logistics', name: 'penalty-logistics', component: () => import('../pages/PenaltyLogisticsPage.vue'), meta: { title: 'Штрафы и потери на доставке — SelBI' } },
+    { path: '/wb-penalty/detail', name: 'penalty-detail', component: () => import('../pages/PenaltyDetailPage.vue'), meta: { title: 'Детализация потерь на доставке — SelBI' } },
     { path: '/geo/sales-map', name: 'geo-sales-map', component: () => import('../pages/GeoSalesMapPage.vue'), meta: { title: 'Продажи на карте — SelBI' } },
     { path: '/fbs-report', name: 'fbs-report', component: () => import('../pages/FbsReportPage.vue'), meta: { title: 'FBS — продажа со своего склада — SelBI' } },
     { path: '/fbs-orders', name: 'fbs-orders', component: () => import('../pages/FbsOrdersPage.vue'), meta: { title: 'FBS Заказы — SelBI' } },

@@ -37,7 +37,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="l in lines" :key="l.key" :class="l.cls">
+          <tr v-for="l in lines" :key="l.key" :class="l.cls" @click="onLineClick(l)">
             <td class="margin-breakdown__label">{{ l.label }}</td>
             <td class="text-end margin-breakdown__val">{{ l.value }}</td>
             <td class="text-end margin-breakdown__pct">{{ l.pct }}</td>
@@ -54,7 +54,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useMoneyFmt } from '@/composables/useMoneyFmt'
 
 const props = defineProps<{ open: boolean, row: any, period?: string }>()
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: [], logistics: [payload: { dateFrom: string, dateTo: string }] }>()
 
 const { formatTitle } = useMoneyFmt()
 
@@ -108,7 +108,7 @@ const lines = computed<Line[]>(() => {
   add('commission', 'Комиссия WB', n('commission'))
   add('f_acquiring_fee', 'Эквайринг', n('f_acquiring_fee'))
   add('f_acceptance', 'Приёмка', n('f_acceptance'))
-  add('f_delivery', 'Логистика (доставка)', n('f_delivery'))
+  add('f_delivery', 'Логистика (доставка)', n('f_delivery'), 'margin-breakdown__row--clickable')
   add('f_storage_fee', 'Хранение', storage)
   add('f_penalty', 'Штрафы', n('f_penalty'))
   add('f_otziv', 'Отзывы', otziv)
@@ -126,6 +126,15 @@ const lines = computed<Line[]>(() => {
 
   return out
 })
+
+// Клик по строке «Логистика (доставка)» — просьба к родителю открыть попап-расшифровку.
+// Период приходит строкой «YYYY-MM-DD — YYYY-MM-DD» — разбираем на даты.
+const onLineClick = (l: Line) => {
+  if (l.key !== 'f_delivery') return
+  const parts = String(props.period || '').split('—').map(s => s.trim()).filter(Boolean)
+  if (parts.length < 2) return
+  emit('logistics', { dateFrom: parts[0], dateTo: parts[1] })
+}
 
 const onEsc = (e: KeyboardEvent) => {
   if (e.key === 'Escape') emit('close')
@@ -209,4 +218,6 @@ function dragEnd(e: PointerEvent) {
 .margin-breakdown__row--total td { font-weight: 700; border-top: 1px solid #e5e7eb; background-color: #f8fafc; }
 .margin-breakdown__row--subtotal td { font-weight: 700; background-color: #eef4fb; border-top: 1px solid #dbe7f3; border-bottom: 2px solid #b9d2ea; }
 .margin-breakdown__row--profit td { font-weight: 700; background-color: #eaf6ef; }
+.margin-breakdown__row--clickable td { cursor: pointer; }
+.margin-breakdown__row--clickable:hover td { background-color: #f5f3ff; }
 </style>

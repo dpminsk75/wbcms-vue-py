@@ -3,8 +3,11 @@
 Запуск (на сервере, только venv):
   .venv/bin/python backend/workers/finance_detail_sync.py
   .venv/bin/python backend/workers/finance_detail_sync.py --date-from 2026-09-01 --date-to 2026-09-30
+  .venv/bin/python backend/workers/finance_detail_sync.py --days 3
   DRY_RUN=1 .venv/bin/python backend/workers/finance_detail_sync.py
   Дефолт -7д..сегодня.
+  Таймер: wbcms-finance-detail (01:00, daily, --days 3) — идёт ПЕРЕД wbcms-aggregate (01:30),
+  чтобы кубы считались по свежей детализации.
 
 API→upsert detail_by_period → forecast по датам → факты wb_order.
 Отдельные update-order-facts/update-forecast покрываются флагами
@@ -32,6 +35,11 @@ async def run(args) -> int:
     from sqlalchemy import text
     from backend.database import get_session
     from backend.services.finance_detail_sync_service import FinanceDetailService
+    # --days N — окно от сегодня (для таймера), перекрывает --date-from
+    if args.days and not args.date_from:
+        from datetime import date as _d, timedelta as _td
+        args.date_from = (_d.today() - _td(days=int(args.days))).isoformat()
+        args.date_to = args.date_to or _d.today().isoformat()
     print("WB API: POST finance.../sales-reports/detailed → detail_by_period",
           flush=True)
     async with get_session() as db:
@@ -98,6 +106,8 @@ def main() -> None:
     ap.add_argument("--company-id", type=int, default=None)
     ap.add_argument("--date-from", default=None)
     ap.add_argument("--date-to", default=None)
+    ap.add_argument("--days", type=int, default=None,
+                    help="окно в днях от сегодня (для таймера: --days 3)")
     ap.add_argument("--facts-only", action="store_true")
     ap.add_argument("--forecast-only", action="store_true")
     ap.add_argument("--dry-run", action="store_true",

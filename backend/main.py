@@ -9,7 +9,7 @@ import time
 from collections import deque
 from backend.database import get_db
 from backend.deps import get_current_user, get_optional_user, require_admin, get_current_company
-from backend.routers import auth_router, companies_router, dashboard_router, admin_router, admin_timers_router, news_router, tags_router, wb_search_router, cost_router, wb_orders_router, wb_sales_router, feedback_router, reply_rules_router, wb_tokens_router, wb_tokens_expiring_router, competitor_router, competitors_newcard_router, competitors_captured_router, competitors_pick_router, competitors_refresh_router, competitors_positions_router, ai_jobs_router, seo_router, seo_models_router, cms_router, ext_router, ext_tokens_admin_router, ext_diag_admin_router, ext_download_router, ext_filters_router, fbs_router, fbs_orders_router, fbs_cancels_router, fbs_commission_router, fbs_pvz_router, geo_sales_router, watch_router, queue_router, phrase_miner_router
+from backend.routers import auth_router, companies_router, dashboard_router, admin_router, admin_timers_router, news_router, tags_router, wb_search_router, cost_router, wb_orders_router, wb_sales_router, feedback_router, reply_rules_router, wb_tokens_router, wb_tokens_expiring_router, competitor_router, competitors_newcard_router, competitors_captured_router, competitors_pick_router, competitors_refresh_router, competitors_positions_router, ai_jobs_router, seo_router, seo_models_router, cms_router, ext_router, ext_tokens_admin_router, ext_diag_admin_router, ext_download_router, ext_filters_router, fbs_router, fbs_orders_router, fbs_cancels_router, fbs_commission_router, fbs_pvz_router, geo_sales_router, watch_router, queue_router, phrase_miner_router, penalty_router
 from backend.services import auth_service as AuthService
 from backend.services.orders_service import OrdersService
 from backend.services.orders_aggregated_service import OrdersAggregatedService
@@ -68,6 +68,7 @@ app.include_router(fbs_cancels_router)
 app.include_router(fbs_commission_router)
 app.include_router(fbs_pvz_router)
 app.include_router(geo_sales_router)
+app.include_router(penalty_router)
 app.include_router(wb_sales_router)
 app.include_router(feedback_router)
 app.include_router(reply_rules_router)
@@ -432,6 +433,22 @@ async def wb_card(nm_id: int, db: AsyncSession = Depends(get_db), company_id: in
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="card not found")
     return data
+
+@app.get("/api/wb/detail/prices")
+async def wb_detail_prices(nm_id: int = Query(..., ge=1), db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
+    """Текущие цены и скидки по размерам карточки (wb_price_history, is_latest=1)."""
+    from backend.services.price_service import PriceService
+    svc = PriceService(db, company_id=company_id)
+    rows = await svc.current(nm_id)
+    return {"rows": rows}
+
+@app.get("/api/wb/detail/prices/history")
+async def wb_detail_prices_history(nm_id: int = Query(..., ge=1), date_from: str = Query(...), date_to: str = Query(...), limit: int = Query(default=200, ge=1, le=500), db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
+    """История изменения цены/скидки карточки за период."""
+    from backend.services.price_service import PriceService
+    svc = PriceService(db, company_id=company_id)
+    rows = await svc.history(nm_id, date_from, date_to, limit)
+    return {"rows": rows}
 
 @app.get("/api/wb-sales-funnel/wbcard")
 async def wb_sales_funnel_wbcard(

@@ -46,6 +46,7 @@
                   <div class="dl_item"><dt class="card_characteristics__dt">Арт.:</dt><dd class="card_characteristics__dd"><b>{{ card.vendorCode }}</b></dd></div>
                   <div class="dl_item"><dt class="card_characteristics__dt">Бренд:</dt><dd class="card_characteristics__dd"><b>{{ card.brand }}</b></dd></div>
                   <div class="dl_item"><dt class="card_characteristics__dt">Размер:</dt><dd class="card_characteristics__dd">{{ dimensions }}</dd></div>
+                  <PriceBlock :nm-id="filters.nm_id" @open="priceOpen = true" />
                 </dl>
               </div>
               <div class="col-md-6">
@@ -114,6 +115,7 @@
     <SeoTargetsModal :open="targetsOpen" :nm-id="filters.nm_id" @close="targetsOpen=false" />
     <CompetitorsQueriesModal :open="queriesOpen" :nm-id="filters.nm_id" @close="queriesOpen=false" @changed="fetchCard()" />
     <CompetitorsModal :open="competitorsOpen" :nm-id="filters.nm_id" @close="competitorsOpen=false" @changed="fetchCard()" />
+    <PriceHistoryPopup :open="priceOpen" :nm-id="filters.nm_id" :date-from="filters.date_from" :date-to="filters.date_to" @close="priceOpen=false" />
   </div>
 </template>
 <script setup lang="ts">
@@ -133,6 +135,8 @@ import DetailCharts from '../components/wb-detail/DetailCharts.vue'
 import SeoTargetsModal from '../components/seo/SeoTargetsModal.vue'
 import CompetitorsQueriesModal from '../components/competitors/CompetitorsQueriesModal.vue'
 import CompetitorsModal from '../components/competitors/CompetitorsModal.vue'
+import PriceBlock from '../components/wb-detail/PriceBlock.vue'
+import PriceHistoryPopup from '../components/wb-detail/PriceHistoryPopup.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -140,6 +144,7 @@ const router = useRouter()
 const targetsOpen = ref(false)
 const queriesOpen = ref(false)
 const competitorsOpen = ref(false)
+const priceOpen = ref(false)
 
 function mondayOfWeek(d: Date){
   const day=d.getDay(); const diff = day===0 ? -6 : 1-day

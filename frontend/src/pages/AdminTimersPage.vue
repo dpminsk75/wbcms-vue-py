@@ -90,9 +90,31 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { adminTimersApi, type AdminTimerRow } from '../api/adminTimers'
 
 const rows = ref<AdminTimerRow[]>([])
+
+// Время суток запуска в минутах от 00:00 — ключ сортировки внутри группы.
+// Форматы OnCalendar в проекте: «04:00», «00,06,12,18:30», «00,03,...,21:05».
+// Интервальные (*:00/5, *:05, OnUnitActiveSec=…) уходят в конец — у них нет
+// фиксированного времени суток.
+function schedMinutes(r: AdminTimerRow): number {
+  const cal = (r.on_calendar || []).join(' ') || r.default || ''
+  if (!cal) return 9999
+  if (/On(UnitActive|Boot)Sec=/.test(cal)) return 9999
+  if (cal.includes('*')) return 9999
+  const [left, right] = cal.split(':')
+  const minute = right !== undefined && right !== '' ? Number(right) : 0
+  const hours = left.split(',').map((x) => Number(x.trim())).filter((x) => Number.isFinite(x))
+  if (!hours.length) return cal.trim().toLowerCase() === 'daily' ? 0 : 9999
+  return Math.min(...hours) * 60 + (Number.isFinite(minute) ? minute : 0)
+}
+
+const byTime = (a: AdminTimerRow, b: AdminTimerRow): number => {
+  const d = schedMinutes(a) - schedMinutes(b)
+  return d !== 0 ? d : a.id.localeCompare(b.id)
+}
+
 const groups = computed(() => [
-  { key: 'night', title: 'Ночные (раз в сутки)', rows: rows.value.filter((r) => r.group !== 'day') },
-  { key: 'day', title: 'Дневные (регулярные)', rows: rows.value.filter((r) => r.group === 'day') },
+  { key: 'night', title: 'Ночные (раз в сутки)', rows: rows.value.filter((r) => r.group !== 'day').sort(byTime) },
+  { key: 'day', title: 'Дневные (регулярные)', rows: rows.value.filter((r) => r.group === 'day').sort(byTime) },
 ])
 const loading = ref(false)
 const error = ref('')

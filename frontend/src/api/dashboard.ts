@@ -28,6 +28,7 @@ export const dashboardApi = {
   financeDetail: (type:'shf'|'udr'|'adv', dateFrom:string, dateTo:string) => api.get('/api/dashboard/finance-detail', {params:{type, date_from:dateFrom, date_to:dateTo}}).then(r=>r.data),
   financeStorage: (dateFrom:string, dateTo:string) => api.get('/api/dashboard/finance-storage', {params:{date_from:dateFrom, date_to:dateTo}}).then(r=>r.data),
   financeAcceptance: (dateFrom:string, dateTo:string) => api.get('/api/dashboard/finance-acceptance', {params:{date_from:dateFrom, date_to:dateTo}}).then(r=>r.data),
+  financeLogistics: (dateFrom:string, dateTo:string, nmId?:string|number) => api.get('/api/penalty/popup', {params:{date_from:dateFrom, date_to:dateTo, ...(nmId?{nm_id:nmId}:{})}}).then(r=>r.data),
   feedbackPopup: (dateFrom:string, dateTo:string, paidOnly:boolean=true) => api.get('/api/feedback/popup-report', {params:{date_from:dateFrom, date_to:dateTo, paid_only:paidOnly?1:0}}).then(r=>r.data),
   todayStats: (period:Period, tab:'orders'|'sales', trimPast:boolean=true) => api.get<PeriodStats>('/api/dashboard/today-stats', {params:{period,tab,trim_past: trimPast?1:0}}).then(r=>r.data),
   newCards: (p:{dateFrom?:string,dateTo?:string,title?:string,sort?:string}) => api.get('/api/dashboard/new-cards', {params:p}).then(r=>r.data),

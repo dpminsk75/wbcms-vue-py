@@ -1,0 +1,26 @@
+/* page-penalty-detail.css — чанк страницы /wb-penalty/detail
+ * (построчная детализация потерь на доставке).
+ * Общие таблицы — Bootstrap + wb-ui.css; свои правила — только ширины колонок.
+ */
+.page-penalty-detail__summary { overflow: hidden; }
+.page-penalty-detail__summary-wrap { max-height: 260px; overflow-y: auto; }
+.page-penalty-detail__scroll { max-height: 560px; overflow-y: auto; }
+
+.page-penalty-detail__th-date { width: 130px; min-width: 120px; white-space: nowrap; }
+.page-penalty-detail__th-nm { width: 110px; min-width: 100px; }
+.page-penalty-detail__th-office { width: 220px; min-width: 180px; }
+.page-penalty-detail__th-reason { min-width: 220px; }
+.page-penalty-detail__th-sum { width: 120px; min-width: 110px; text-align: right; }
+.page-penalty-detail__th-num { width: 100px; min-width: 90px; text-align: right; }
+
+/* Дата — одной строкой, склад/причина — с многоточием (колонки фиксированной ширины) */
+.page-penalty-detail__date { white-space: nowrap; color: #6b7280; }
+.page-penalty-detail__office,
+.page-penalty-detail__reason { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-penalty-detail__office { color: #4b5563; }
+.page-penalty-detail__reason { color: #374151; }
+.page-penalty-detail__sum { font-weight: 700; color: #5A1C9C; text-align: right; white-space: nowrap; }
+.page-penalty-detail__link { color: #2980b9; text-decoration: none; }
+.page-penalty-detail__link:hover { text-decoration: underline; }
+.page-penalty-detail__empty { font-size: 12px; color: #6b7280; padding: 8px 0; }
+.page-penalty-detail__total-row { font-weight: 700; background: #f2e7c3; }

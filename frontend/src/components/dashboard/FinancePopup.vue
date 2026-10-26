@@ -51,7 +51,7 @@ import { useQuery } from '@tanstack/vue-query'
 import { dashboardApi } from '../../api/dashboard'
 import { useAuthStore } from '../../stores/auth'
 
-export type FinancePopupKind = 'shf' | 'udr' | 'feedback' | 'storage' | 'acceptance' | 'adv'
+export type FinancePopupKind = 'shf' | 'udr' | 'feedback' | 'storage' | 'acceptance' | 'adv' | 'logistics'
 
 const props = defineProps<{ kind: FinancePopupKind, dateFrom: string, dateTo: string }>()
 const emit = defineEmits<{ close: [] }>()
@@ -63,6 +63,7 @@ const { data, isLoading, isFetching, isError } = useQuery({
   queryKey: computed(() => ['finance-popup', props.kind, auth.companyId, props.dateFrom, props.dateTo, paidOnly.value] as const),
   queryFn: () => {
     if (props.kind === 'shf' || props.kind === 'udr' || props.kind === 'adv') return dashboardApi.financeDetail(props.kind, props.dateFrom, props.dateTo)
+    if (props.kind === 'logistics') return dashboardApi.financeLogistics(props.dateFrom, props.dateTo)
     if (props.kind === 'storage') return dashboardApi.financeStorage(props.dateFrom, props.dateTo)
     if (props.kind === 'acceptance') return dashboardApi.financeAcceptance(props.dateFrom, props.dateTo)
     return dashboardApi.feedbackPopup(props.dateFrom, props.dateTo, paidOnly.value)
@@ -78,6 +79,7 @@ const META: Record<FinancePopupKind, { title: string, color: string }> = {
   storage: { title: 'Хранение', color: '#c0392b' },
   acceptance: { title: 'Приёмка', color: '#c0392b' },
   adv: { title: 'Реклама', color: '#8a2be0' },
+  logistics: { title: 'Логистика', color: '#e67e22' },
 }
 const meta = computed(() => META[props.kind])
 
@@ -108,7 +110,7 @@ const statMainCap = computed(() => (props.kind === 'feedback' ? 'Всего от
 const statSecond = computed(() => {
   const p = payload.value
   if (!p) return ''
-  if (props.kind === 'shf' || props.kind === 'udr' || props.kind === 'acceptance' || props.kind === 'adv') return fmt0(p.total_count)
+  if (props.kind === 'shf' || props.kind === 'udr' || props.kind === 'acceptance' || props.kind === 'adv' || props.kind === 'logistics') return fmt0(p.total_count)
   if (props.kind === 'feedback') return new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(p.stats?.avg_valuation) || 0)
   return ''
 })
@@ -123,6 +125,7 @@ const cols = computed<Col[]>(() => {
     case 'shf':
     case 'udr':
     case 'adv':
+    case 'logistics':
       return [
         { k: 'row_date', cls: 'page-dashboard__popup-date' },
         { k: 'product', cls: '' },
@@ -157,7 +160,8 @@ const columns = computed(() => {
   switch (props.kind) {
     case 'shf':
     case 'udr':
-    case 'adv': return ['Дата', 'Товар', 'Сумма', 'Обоснование / Описание']
+    case 'adv':
+    case 'logistics': return ['Дата', 'Товар', 'Сумма', 'Обоснование / Описание']
     case 'feedback': return ['Дата', 'Товар', 'Оценка', 'Пользователь', 'Стоимость', 'Содержимое отзыва']
     case 'storage': return ['Дата', 'Склад', 'Сумма', 'Штук']
     case 'acceptance': return ['Дата', 'Сумма', 'Записей']

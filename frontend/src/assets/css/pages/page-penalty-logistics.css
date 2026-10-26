@@ -1,0 +1,29 @@
+/* page-penalty-logistics.css — чанк страницы /wb-penalty/logistics
+ * (Штрафы и потери на доставке). Общие таблицы — Bootstrap + wb-ui.css.
+ * Свои правила только там, чего нет в Bootstrap: ширины колонок и раскладка блоков.
+ */
+.page-penalty-logistics__blocks { display: flex; flex-wrap: wrap; gap: 12px; }
+.page-penalty-logistics__block { flex: 1 1 460px; min-width: 420px; }
+
+/* Колонки «разбивки потерь» — узкие числа, ширины фиксируем (утилит BS нет) */
+.page-penalty-logistics__th-num { width: 100px; min-width: 90px; text-align: right; }
+.page-penalty-logistics__th-reason { min-width: 240px; }
+.page-penalty-logistics__th-nm { width: 110px; min-width: 100px; }
+.page-penalty-logistics__th-card { min-width: 220px; max-width: 420px; }
+
+.page-penalty-logistics__sum { font-weight: 700; color: #5A1C9C; }
+.page-penalty-logistics__link { color: #2980b9; text-decoration: none; }
+.page-penalty-logistics__link:hover { text-decoration: underline; }
+.page-penalty-logistics__reason { color: #374151; }
+/* Название товара — одна строка с многоточием (колонка узкая) */
+.page-penalty-logistics__card { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-penalty-logistics__empty { font-size: 12px; color: #6b7280; padding: 8px 0; }
+.page-penalty-logistics__total-row { font-weight: 700; background: #f2e7c3; }
+
+/* Разбивка итогов по корзинам — четыре подписи в ряд (Bootstrap-утилит нет) */
+.page-penalty-logistics__buckets {
+  display: flex; flex-wrap: wrap; gap: 14px;
+  padding: 6px 10px; font-size: 11px; color: #6b7280;
+  border-top: 1px solid #eee;
+}
+.page-penalty-logistics__buckets b { color: #374151; }

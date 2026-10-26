@@ -20,6 +20,11 @@ ALLOWED: dict[str, dict] = {
         "default": "00,03,06,09,12,15,18,21:05",
         "group": "day",
     },
+    "wbcms-finance-detail": {
+        "title": "Финдетализация WB (detail_by_period)",
+        "default": "01:00",
+        "group": "night",
+    },
     "wbcms-funnel-sync": {
         "title": "Воронка продаж WB (sync)",
         "default": "03:00",
@@ -78,6 +83,21 @@ ALLOWED: dict[str, dict] = {
         "title": "Остатки WB (блок: stocks+offices+products)",
         "default": "04:30",
         "group": "night",
+    },
+    "wbcms-price-sync": {
+        "title": "Цены и скидки WB (discounts-prices)",
+        "default": "00,06,12,18:30",
+        "group": "day",
+    },
+    "wbcms-aggregate": {
+        "title": "Агрегаты OLAP (кубы + ff_otziv/ff_adv)",
+        "default": "01:30",
+        "group": "night",
+    },
+    "wbcms-fbs-supplies": {
+        "title": "Поставки FBS (скан приёмки)",
+        "default": "*:00,30",
+        "group": "day",
     },
     "wbcms-search-report": {
         "title": "Search-report WB (позиции + фразы)",

@@ -96,7 +96,8 @@
       </tfoot>
     </table>
   </div>
-  <MarginBreakdownPopup v-if="breakdownRow" :open="true" :row="breakdownRow" :period="period" @close="breakdownRow = null" />
+  <MarginBreakdownPopup v-if="breakdownRow" :open="true" :row="breakdownRow" :period="period" @close="breakdownRow = null" @logistics="onLogistics" />
+  <FinancePopup v-if="logisticsPeriod" kind="logistics" :date-from="logisticsPeriod.dateFrom" :date-to="logisticsPeriod.dateTo" @close="logisticsPeriod = null" />
 </template>
 
 <script setup lang="ts">
@@ -104,6 +105,7 @@ import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useMoneyFmt } from '@/composables/useMoneyFmt'
 import { marginTotals } from '@/api/profit'
 import MarginBreakdownPopup from './MarginBreakdownPopup.vue'
+import FinancePopup from '../dashboard/FinancePopup.vue'
 
 const props = defineProps<{ rows: any[], footerLabel: string, showStock?: boolean, showBreakdown?: boolean, period?: string }>()
 
@@ -116,6 +118,13 @@ const wrapRef = ref<HTMLDivElement | null>(null)
 // Попап «Структура затрат» по строке (только при showBreakdown)
 const breakdownRow = ref<any>(null)
 const openBreakdown = (r: any) => { breakdownRow.value = r }
+
+// Расшифровка «Логистики» из попапа затрат (период приходит строкой «from — to»)
+const logisticsPeriod = ref<{ dateFrom: string, dateTo: string } | null>(null)
+const onLogistics = (p: { dateFrom: string, dateTo: string }) => {
+  breakdownRow.value = null
+  logisticsPeriod.value = p
+}
 
 const fit = () => {
   const table = tableRef.value
