@@ -4,22 +4,44 @@
  */
 /* Шапка — общая .wb-workspace-head (wb-ui.css): меню рабочего места справа. */
 .page-captured__head .page-competitor__head-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-.page-captured__bulk-bar { margin-top: 12px; }
+/* ---------- тулбар: только поиск ---------- */
 .page-captured__toolbar {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   margin: 12px 0; padding: 10px 12px; background: #f8f9fa;
   border: 1px solid #e5e7eb; border-radius: 8px;
 }
 .page-captured__search { max-width: 320px; }
-.page-captured__check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #444; cursor: pointer; }
-.page-captured__check input { margin: 0; }
 .page-captured__notice { color: #2e7d32; font-size: 13px; margin-bottom: 8px; }
 
+/* ---------- полоса: фильтры слева + общая панель справа ---------- */
+.page-captured__bar { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 12px; }
+.page-captured__bar .page-captured__filters { flex: 1 1 auto; margin: 0; }
+.page-captured__panel {
+  flex: 0 0 250px; margin-left: auto; display: flex; flex-direction: column; gap: 8px;
+  border: 1px solid #e5e7eb; border-radius: 8px; background: #fff;
+  padding: 10px 14px 12px;
+}
+.page-captured__panel-hint { font-size: 11px; color: #adb5bd; }
+.page-captured__panel-clear {
+  border: 0; background: transparent; padding: 0; margin: 0;
+  font-size: 12px; color: #6c757d; cursor: pointer; text-decoration: underline dotted;
+}
+.page-captured__panel-clear:hover { color: #dc3545; }
+.page-captured__panel-clear:disabled { color: #d0d4d9; cursor: default; }
+.page-captured__check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #444; cursor: pointer; }
+.page-captured__check input { margin: 0; cursor: pointer; }
+.page-captured__check:hover { color: #212529; }
+
+/* ---------- ширины колонок (th nowrap) ---------- */
+.page-captured__grid thead th { white-space: nowrap; }
 .page-captured__grid td { vertical-align: middle; }
 .page-captured__col-product { min-width: 300px; }
-.page-captured__col-num { width: 90px; }
-.page-captured__col-date { width: 110px; }
+.page-captured__col-num { width: 72px; }
+.page-captured__col-desc { width: 80px; }
+.page-captured__col-chg { width: 80px; }
+.page-captured__col-date { width: 115px; }
 .page-captured__col-attach { min-width: 120px; }
+.page-captured__col-phrase { white-space: nowrap; }
 .page-captured__date { font-size: 12px; color: #555; white-space: nowrap; }
 .page-captured__badges { margin-top: 4px; display: flex; gap: 4px; flex-wrap: wrap; }
 .page-captured__badges .badge { font-weight: 500; }
@@ -88,3 +110,56 @@
 .page-captured__hist-text { white-space: pre-wrap; color: #333; margin-top: 6px; }
 .page-captured__hist-chars { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; color: #444; }
 .page-captured__char b { color: #2c3e50; }
+
+/* ---------- фильтры (§19.6) ---------- */
+.page-captured__filters {
+  margin: 0 0 12px; padding: 8px 12px;
+  border: 1px solid #e5e7eb; border-radius: 8px; background: #fff;
+}
+.page-captured__filters > summary {
+  cursor: pointer; font-size: 13px; font-weight: 600; color: #2c3e50;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.page-captured__filters-count {
+  display: inline-block; min-width: 18px; padding: 0 6px; border-radius: 9px;
+  background: #0d6efd; color: #fff; font-size: 11px; line-height: 18px; text-align: center;
+}
+/* ---------- фильтры: блок на треть ширины, поля — во всю блока (как в мокапе) ---------- */
+.page-captured__bar .page-captured__filters { flex: 0 0 33%; min-width: 380px; }
+.page-captured__filters-list { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.page-captured__field { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #555; }
+.page-captured__field > span { white-space: nowrap; }
+.page-captured__field .form-control, .page-captured__field .form-select { flex: 1; min-width: 0; }
+.page-captured__field input[type="date"] { min-width: 105px; }
+.page-captured__checks { display: flex; gap: 18px; flex-wrap: wrap; }
+.page-captured__filters-actions { margin-top: 10px; display: flex; gap: 8px; }
+
+/* ---------- сортировка в шапке ---------- */
+.page-captured__sort {
+  border: 0; background: transparent; padding: 0; margin: 0;
+  font: inherit; font-weight: 600; color: inherit; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.page-captured__sort:hover { color: #0d6efd; }
+.page-captured__sort .bi { font-size: 10px; opacity: .55; }
+.page-captured__sort:hover .bi { opacity: 1; }
+
+/* ---------- пагинация ---------- */
+.page-captured__pager {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 12px 0; font-size: 13px; color: #555;
+}
+.page-captured__pager-label { white-space: nowrap; }
+.page-captured__pagesize { width: auto; }
+.page-captured__price { white-space: nowrap; font-size: 13px; }
+
+/* ---------- колонка «Фразы»: только цветные цифры ---------- */
+.page-captured__phrases { min-width: 80px; white-space: nowrap; }
+.page-captured__phrase-badge { display: inline-block; margin: 1px 2px; min-width: 18px; }
+.page-captured__phrase-none { color: #b0b4b8; font-size: 12px; }
+
+/* ---------- действия: одна строка иконок, подписи в title ---------- */
+.page-captured__grid .page-competitor__col-actions { width: 185px; }
+.page-captured__acts { display: flex; flex-wrap: nowrap; gap: 4px; }
+.page-captured__acts .btn { width: 30px; padding: 3px 0; text-align: center; }
+.page-captured__acts .bi { font-size: 14px; }

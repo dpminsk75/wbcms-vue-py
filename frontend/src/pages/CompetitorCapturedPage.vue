@@ -5,26 +5,126 @@
       <WbWorkspaceTabs active="captured" :tabs="WORKSPACE_TABS" />
     </div>
     <p class="text-muted">
-      Контент конкурентов, который расширение собрало в общую базу. Авто-сбор ничего не привязывает:
-      привязка, отвязка и скрытие — только отсюда.
+      Контент конкурентов, который расширение собрало в общую базу. Привязка, отвязка и
+      исключение из сбора — только отсюда. Исключённая карточка больше не собирается:
+      расширение её не открывает и не скроллит.
     </p>
 
+    <!-- Тулбар: только поиск -->
     <div class="page-captured__toolbar">
       <input
         v-model="q"
         class="form-control form-control-sm page-captured__search"
         placeholder="Название, бренд, продавец, nmID"
-        @keyup.enter="load"
+        @keyup.enter="applyFilters"
       />
-      <button class="btn btn-sm btn-primary" :disabled="loading" @click="load">
+      <button class="btn btn-sm btn-primary" :disabled="loading" @click="applyFilters">
         <i class="bi bi-search"></i> Найти
       </button>
-      <button class="btn btn-sm btn-outline-secondary" :disabled="loading" @click="reset">Сброс</button>
-      <label class="page-captured__check">
-        <input v-model="includeHidden" type="checkbox" @change="load()" />
-        показать скрытые
-      </label>
-      <span class="badge bg-secondary">Карточек: {{ rows.length }}</span>
+    </div>
+
+    <!-- Полоса: слева фильтры (открыты по умолчанию, закрывает пользователь), справа — общая панель -->
+    <div class="page-captured__bar">
+      <details class="page-captured__filters" open>
+        <summary>
+          Фильтры
+          <span v-if="activeFilters" class="page-captured__filters-count">{{ activeFilters }}</span>
+        </summary>
+        <div class="page-captured__filters-list">
+          <label class="page-captured__field">
+            <span>Сбор: с</span>
+            <input v-model="collectedFrom" type="date" class="form-control form-control-sm" @change="applyFilters" />
+            <span>по</span>
+            <input v-model="collectedTo" type="date" class="form-control form-control-sm" @change="applyFilters" />
+          </label>
+          <label class="page-captured__field">
+            <span>Появление: с</span>
+            <input v-model="firstSeenFrom" type="date" class="form-control form-control-sm" @change="applyFilters" />
+            <span>по</span>
+            <input v-model="firstSeenTo" type="date" class="form-control form-control-sm" @change="applyFilters" />
+          </label>
+          <label class="page-captured__field">
+            <span>Фраза</span>
+            <input
+              v-model="phraseFilter"
+              class="form-control form-control-sm"
+              placeholder="фраза из выдачи или формулировка конкурента"
+              @keyup.enter="applyFilters"
+              @change="applyFilters"
+            />
+          </label>
+          <label class="page-captured__field">
+            <span>Привязка</span>
+            <select v-model="attachedFilter" class="form-select form-select-sm" @change="applyFilters">
+              <option value="">любая</option>
+              <option value="yes">привязана</option>
+              <option value="no">не привязана</option>
+            </select>
+          </label>
+          <label class="page-captured__field">
+            <span>Источник</span>
+            <select v-model="sourceFilter" class="form-select form-select-sm" @change="applyFilters">
+              <option value="">любой</option>
+              <option value="search">выдача</option>
+              <option value="manual">вручную</option>
+              <option value="sibling">с карточки</option>
+              <option value="capture">привязка</option>
+            </select>
+          </label>
+        </div>
+        <div class="page-captured__checks">
+          <label class="page-captured__check" title="desc_len = 0 — контент не собран">
+            <input
+              type="checkbox"
+              :checked="contentFilter === 'no_desc'"
+              @change="toggleNoDesc"
+            />
+            без описания
+          </label>
+          <label class="page-captured__check" title="показать исключённые из сбора карточки">
+            <input v-model="includeHidden" type="checkbox" @change="applyFilters" />
+            показать исключённые
+          </label>
+        </div>
+        <div class="page-captured__filters-actions">
+          <button class="btn btn-sm btn-outline-secondary" @click="resetFilters">Сбросить фильтры</button>
+        </div>
+      </details>
+
+      <!-- Общая панель: режим списка и массовые действия -->
+      <div class="page-captured__panel">
+        <select
+          v-model="scope"
+          class="form-select form-select-sm page-captured__panel-scope"
+          title="Собранные нами — реестр компании; От всех пользователей — весь собранный контент"
+          @change="applyFilters"
+        >
+          <option value="captured">Собранные нами</option>
+          <option value="all_details">От всех пользователей</option>
+        </select>
+        <div class="page-captured__panel-hint">что показываем в списке</div>
+        <button
+          class="btn btn-sm btn-outline-success"
+          :disabled="!!collecting || !selectedRows.length"
+          title="Все помеченные — в очередь сбора («SEO-мониторинг»)"
+          @click="collectSelected()"
+        >
+          <i class="bi bi-cloud-download"></i> Собрать ({{ selectedRows.length }})
+        </button>
+        <button
+          class="btn btn-sm btn-outline-primary"
+          :disabled="!selectedRows.length"
+          title="Привязать помеченные к нашим карточкам"
+          @click="bulkOpen = true"
+        >
+          <i class="bi bi-link-45deg"></i> Привязать ({{ selectedRows.length }})
+        </button>
+        <button
+          class="page-captured__panel-clear"
+          :disabled="!selectedNms.length"
+          @click="selectedNms = []"
+        >снять выбор</button>
+      </div>
     </div>
 
     <div v-if="error" class="wb-error">{{ error }}</div>
@@ -50,13 +150,38 @@
               @change="toggleSelectAll"
             />
           </th>
-          <th class="page-captured__col-product">Товар</th>
-          <th class="text-center page-captured__col-num" title="Длина описания">Описание</th>
-          <th class="text-center page-captured__col-num" title="Количество характеристик">Хар-ки</th>
-          <th class="page-captured__col-date" title="Когда контент собран последний раз">Собрано</th>
-          <th class="page-captured__col-date" title="Когда карточка впервые попала в базу">В базе с</th>
-          <th class="text-center page-captured__col-num" title="Снимков с изменённым контентом">Изменений</th>
-          <th class="page-captured__col-attach">Привязка</th>
+          <th class="page-captured__col-product">
+            <button type="button" class="page-captured__sort" @click="toggleSort('title')">
+              Товар <i class="bi" :class="sortIcon('title')"></i>
+            </button>
+          </th>
+          <th class="text-center page-captured__col-num">
+            <button type="button" class="page-captured__sort" @click="toggleSort('price')">
+              Цена <i class="bi" :class="sortIcon('price')"></i>
+            </button>
+          </th>
+          <th class="text-center page-captured__col-desc" title="Длина описания">
+            <button type="button" class="page-captured__sort" @click="toggleSort('desc_len')">
+              Описание <i class="bi" :class="sortIcon('desc_len')"></i>
+            </button>
+          </th>
+          <th class="text-center page-captured__col-num" title="Количество характеристик">
+            <button type="button" class="page-captured__sort" @click="toggleSort('chars_cnt')">
+              Хар-ки <i class="bi" :class="sortIcon('chars_cnt')"></i>
+            </button>
+          </th>
+          <th class="text-center page-captured__col-phrase" title="серая — фразы в выдаче, синяя — формулировки после разбора (/competitor/phrase-miner)">Фразы</th>
+          <th class="page-captured__col-date" title="Когда контент собран последний раз">
+            <button type="button" class="page-captured__sort" @click="toggleSort('collected_at')">
+              Собрано <i class="bi" :class="sortIcon('collected_at')"></i>
+            </button>
+          </th>
+          <th class="text-center page-captured__col-chg" title="Снимков с изменённым контентом">Изменений</th>
+          <th class="page-captured__col-attach">
+            <button type="button" class="page-captured__sort" @click="toggleSort('attached_cnt')">
+              Привязка <i class="bi" :class="sortIcon('attached_cnt')"></i>
+            </button>
+          </th>
           <th class="page-competitor__col-actions">Действия</th>
         </tr>
       </thead>
@@ -67,7 +192,7 @@
               type="checkbox"
               :checked="isSelected(r.nm_id)"
               :disabled="!canSelect(r)"
-              :title="canSelect(r) ? '' : (r.is_own ? 'Наша карточка — привязка недоступна' : 'Скрыта — сначала верните')"
+              :title="canSelect(r) ? '' : (r.is_own ? 'Наша карточка — привязка недоступна' : 'Исключена — сначала верните')"
               @change="toggleSelect(r)"
             />
           </td>
@@ -88,24 +213,43 @@
                   </button>
                   <span v-if="r.brand"> · {{ r.brand }}</span>
                   <span v-if="r.seller && r.seller !== r.brand"> · {{ r.seller }}</span>
-                  <span v-if="r.price"> · {{ r.price }} ₽</span>
                 </div>
                 <div class="page-captured__badges">
                   <span v-if="r.is_own" class="badge bg-warning text-dark" title="nm есть в wbcards нашей компании">наша карточка</span>
-                  <span v-if="r.is_hidden" class="badge bg-secondary">скрыта</span>
+                  <span v-if="r.is_hidden" class="badge bg-secondary" title="Исключена из сбора — расширение её не собирает">исключено</span>
+                  <span v-if="scope === 'all_details' && r.captured_by_us" class="badge bg-info text-dark" title="Собрали мы">собрано нами</span>
                   <span v-if="r.companies_cnt > 1" class="badge bg-light text-dark" :title="`видна компаниям: ${r.companies_cnt}`">компаний: {{ r.companies_cnt }}</span>
                 </div>
               </div>
             </div>
           </td>
+          <td class="text-center page-captured__price">{{ r.price ? `${r.price} ₽` : '—' }}</td>
           <td class="text-center">
             <span class="badge" :class="r.desc_len ? 'bg-success' : 'bg-danger'">{{ r.desc_len }}</span>
           </td>
           <td class="text-center">
             <span class="badge" :class="r.chars_cnt ? 'bg-success' : 'bg-danger'">{{ r.chars_cnt }}</span>
           </td>
-          <td class="page-captured__date" :title="fmtFull(r.collected_at)">{{ fmtAgo(r.collected_at) }}</td>
-          <td class="page-captured__date" :title="fmtFull(r.first_seen_at)">{{ fmtDate(r.first_seen_at) }}</td>
+          <td class="text-center page-captured__phrases">
+            <template v-if="r.positions_cnt || r.phrases_cnt">
+              <span
+                v-if="r.positions_cnt"
+                class="badge bg-secondary page-captured__phrase-badge"
+                title="Фраз, по которым карточка замечена в выдаче (wb_competitor_position)"
+              >{{ r.positions_cnt }}</span>
+              <span
+                v-if="r.phrases_cnt"
+                class="badge bg-primary page-captured__phrase-badge"
+                title="Формулировок после разбора (wb_competitor_phrase_comp) — разбор идёт фоном: /competitor/phrase-miner"
+              >{{ r.phrases_cnt }}</span>
+            </template>
+            <span
+              v-else
+              class="page-captured__phrase-none"
+              title="Фраз нет — разбор запускается фоном в /competitor/phrase-miner"
+            >—</span>
+          </td>
+          <td class="page-captured__date" :title="collectedTitle(r)">{{ fmtDateTime(collectedAt(r)) }}</td>
           <td class="text-center">
             <button
               v-if="r.history_cnt"
@@ -129,39 +273,58 @@
             <span v-else class="text-muted small">не привязан</span>
           </td>
           <td class="page-competitor__actions">
-            <button class="btn btn-sm btn-outline-primary" :disabled="busy === r.nm_id" @click="openAttach(r)">
-              <i class="bi bi-link-45deg"></i> Привязать
-            </button>
-            <button class="btn btn-sm btn-outline-secondary" @click="openDetails(r)">
-              <i class="bi bi-eye"></i> Открыть
-            </button>
-            <button class="btn btn-sm btn-outline-secondary" @click="openHistory(r)">
-              <i class="bi bi-clock-history"></i> История
-            </button>
-            <button
-              class="btn btn-sm"
-              :class="r.is_hidden ? 'btn-outline-success' : 'btn-outline-warning'"
-              :disabled="busy === r.nm_id"
-              @click="toggleHidden(r)"
-            >
-              <i class="bi" :class="r.is_hidden ? 'bi-eye' : 'bi-eye-slash'"></i>
-              {{ r.is_hidden ? 'Вернуть' : 'Скрыть' }}
-            </button>
+            <div class="page-captured__acts">
+              <button
+                class="btn btn-sm btn-outline-primary"
+                :disabled="busy === r.nm_id"
+                title="Привязать к нашей карточке"
+                @click="openAttach(r)"
+              ><i class="bi bi-link-45deg"></i></button>
+              <button
+                class="btn btn-sm btn-outline-success"
+                :disabled="!!collecting || !canCollect(r)"
+                :title="canCollect(r) ? 'В очередь сбора («SEO-мониторинг») — соберёт расширение фоном' : 'Исключена из сбора — сначала верните'"
+                @click="collectOne(r)"
+              ><i class="bi bi-cloud-download"></i></button>
+              <button
+                class="btn btn-sm btn-outline-secondary"
+                title="Открыть контент карточки"
+                @click="openDetails(r)"
+              ><i class="bi bi-eye"></i></button>
+              <button
+                class="btn btn-sm btn-outline-secondary"
+                title="История изменений контента"
+                @click="openHistory(r)"
+              ><i class="bi bi-clock-history"></i></button>
+              <button
+                class="btn btn-sm"
+                :class="r.is_hidden ? 'btn-outline-success' : 'btn-outline-warning'"
+                :disabled="busy === r.nm_id || !canExclude(r)"
+                :title="r.is_hidden ? 'Вернуть в сбор' : (canExclude(r) ? 'Исключить из сбора — расширение её больше не собирает' : 'Карточка не в нашем реестре — исключать нечего')"
+                @click="toggleHidden(r)"
+              ><i class="bi" :class="r.is_hidden ? 'bi-eye' : 'bi-eye-slash'"></i></button>
+            </div>
           </td>
         </tr>
       </tbody>
     </table>
 
-    <div v-if="selectedRows.length" class="page-pick__bar page-captured__bulk-bar">
-      <div class="page-pick__bar-info">
-        Выбрано для привязки: <b>{{ selectedRows.length }}</b>
-      </div>
-      <div class="page-pick__bar-actions">
-        <button class="btn btn-sm btn-outline-secondary" @click="selectedNms = []">Снять выбор</button>
-        <button class="btn btn-sm btn-success" @click="bulkOpen = true">
-          <i class="bi bi-link-45deg"></i> Привязать к нашим карточкам
-        </button>
-      </div>
+    <!-- Пагинация -->
+    <div v-if="!loading" class="page-captured__pager">
+      <button class="btn btn-sm btn-outline-secondary" :disabled="page <= 1" @click="goPage(page - 1)">
+        <i class="bi bi-chevron-left"></i> Назад
+      </button>
+      <span class="page-captured__pager-label">
+        Стр. {{ page }} из {{ totalPages }} · показано {{ rows.length }} из {{ total }}
+      </span>
+      <button class="btn btn-sm btn-outline-secondary" :disabled="page >= totalPages" @click="goPage(page + 1)">
+        Вперёд <i class="bi bi-chevron-right"></i>
+      </button>
+      <select v-model.number="pageSize" class="form-select form-select-sm page-captured__pagesize" @change="applyFilters">
+        <option :value="50">50</option>
+        <option :value="100">100</option>
+        <option :value="300">300</option>
+      </select>
     </div>
 
     <CompetitorAttachModal
@@ -198,8 +361,10 @@
 import '@/assets/css/pages/page-competitor.css'
 import '@/assets/css/pages/page-competitor-captured.css'
 import '@/assets/css/pages/page-competitor-pick.css'
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { competitorsNewcardApi, type CapturedRow, type PickAttachResult } from '../api/competitorsNewcard'
+import { seoWatchApi } from '../api/seoWatch'
+import { useAuthStore } from '../stores/auth'
 import { copyText } from '../utils/clipboard'
 import CompetitorAttachModal from '../components/competitors/CompetitorAttachModal.vue'
 import CompetitorBulkAttachModal from '../components/competitors/CompetitorBulkAttachModal.vue'
@@ -208,15 +373,52 @@ import { WORKSPACE_TABS } from '@/components/common/workspaceTabs'
 import CompetitorDetailsModal from '../components/competitors/CompetitorDetailsModal.vue'
 import CompetitorHistoryModal from '../components/competitors/CompetitorHistoryModal.vue'
 
+const auth = useAuthStore()
+
 const rows = ref<CapturedRow[]>([])
 const q = ref('')
 const includeHidden = ref(false)
+const scope = ref<'captured' | 'all_details'>('captured')
 const loading = ref(false)
 const error = ref('')
 const notice = ref('')
 const busy = ref<number | null>(null)
+const collecting = ref<number | 'bulk' | null>(null)
 const selectedNms = ref<number[]>([])
 const bulkOpen = ref(false)
+
+// Фильтры
+const collectedFrom = ref('')
+const collectedTo = ref('')
+const firstSeenFrom = ref('')
+const firstSeenTo = ref('')
+const contentFilter = ref('')
+const attachedFilter = ref('')
+const sourceFilter = ref('')
+const phraseFilter = ref('')
+
+// Сортировка и пагинация
+const sortKey = ref('collected_at')
+const sortDir = ref<'asc' | 'desc'>('desc')
+const page = ref(1)
+const pageSize = ref(50)
+const total = ref(0)
+
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
+const offset = computed(() => (page.value - 1) * pageSize.value)
+
+const activeFilters = computed(() => {
+  let n = 0
+  if (collectedFrom.value) n++
+  if (collectedTo.value) n++
+  if (firstSeenFrom.value) n++
+  if (firstSeenTo.value) n++
+  if (contentFilter.value) n++
+  if (attachedFilter.value) n++
+  if (sourceFilter.value) n++
+  if (phraseFilter.value.trim()) n++
+  return n
+})
 
 const selectableRows = computed(() => rows.value.filter((r) => canSelect(r)))
 const selectedRows = computed(() => rows.value.filter((r) => selectedNms.value.includes(r.nm_id)))
@@ -235,20 +437,71 @@ async function load(silent = false) {
   if (!silent) loading.value = true
   error.value = ''
   try {
-    const d = await competitorsNewcardApi.captured(q.value.trim(), includeHidden.value, 300)
+    const d = await competitorsNewcardApi.captured({
+      q: q.value.trim(),
+      include_hidden: includeHidden.value,
+      limit: pageSize.value,
+      offset: offset.value,
+      sort: sortKey.value,
+      direction: sortDir.value,
+      scope: scope.value,
+      collected_from: collectedFrom.value,
+      collected_to: collectedTo.value,
+      first_seen_from: firstSeenFrom.value,
+      first_seen_to: firstSeenTo.value,
+      content: contentFilter.value,
+      attached: attachedFilter.value,
+      source: sourceFilter.value,
+      phrase: phraseFilter.value.trim(),
+    })
     rows.value = d.items || []
+    total.value = d.total || 0
     const ids = new Set(rows.value.filter((r) => canSelect(r)).map((r) => r.nm_id))
     selectedNms.value = selectedNms.value.filter((id) => ids.has(id))
   } catch (e: any) {
     error.value = e?.response?.data?.detail || String(e)
     rows.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
 }
 
+/** Любой фильтр/поиск/режим — с первой страницы. */
+function applyFilters() {
+  page.value = 1
+  load()
+}
+
+function goPage(p: number) {
+  const p2 = Math.max(1, Math.min(p, totalPages.value))
+  if (p2 === page.value) return
+  page.value = p2
+  load()
+}
+
+function toggleSort(key: string) {
+  if (sortKey.value === key) {
+    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortKey.value = key
+    sortDir.value = key === 'title' ? 'asc' : 'desc'
+  }
+  applyFilters()
+}
+
+function sortIcon(key: string): string {
+  if (sortKey.value !== key) return 'bi-arrow-down-up'
+  return sortDir.value === 'asc' ? 'bi-caret-up-fill' : 'bi-caret-down-fill'
+}
+
 function canSelect(r: CapturedRow): boolean {
   return !r.is_own && !r.is_hidden
+}
+
+/** Исключить можно только то, что есть в нашем реестре (в общем кэше — нечего). */
+function canExclude(r: CapturedRow): boolean {
+  return scope.value === 'captured' || r.captured_by_us
 }
 
 function isSelected(nm: number): boolean {
@@ -280,40 +533,91 @@ function onBulkChanged(res: PickAttachResult) {
   load(true)
 }
 
+/** Исключённые карточки расширение не собирает — кнопку блокируем. */
+function canCollect(r: CapturedRow): boolean {
+  return !r.is_hidden
+}
+
+async function collectOne(r: CapturedRow) {
+  if (collecting.value) return
+  await doCollect([r.nm_id], r.nm_id, 'single')
+}
+
+async function collectSelected() {
+  if (collecting.value || !selectedRows.value.length) return
+  const ids = selectedRows.value.filter((r) => canCollect(r)).map((r) => r.nm_id)
+  if (!ids.length) return
+  await doCollect(ids, null, 'bulk')
+}
+
+/** Карточки → очередь «SEO-мониторинг» (wb_enrich_queue, source='watch'). */
+async function doCollect(nmIds: number[], singleNm: number | null, kind: 'single' | 'bulk') {
+  collecting.value = kind === 'single' ? singleNm : 'bulk'
+  error.value = ''
+  notice.value = ''
+  try {
+    const res = await seoWatchApi.collectNms(nmIds)
+    const parts = [`в очередь («SEO-мониторинг»): ${res.assigned}`]
+    if (res.excluded) parts.push(`исключено: ${res.excluded}`)
+    if (res.skipped) parts.push(`в работе: ${res.skipped}`)
+    notice.value = parts.join(', ')
+    if (singleNm) selectedNms.value = selectedNms.value.filter((id) => id !== singleNm)
+  } catch (e: any) {
+    error.value = e?.response?.data?.detail || 'Не удалось поставить в очередь'
+  } finally {
+    collecting.value = null
+  }
+}
+
 async function reloadCurrent() {
   const id = active.value?.nm_id
   await load(true)
   if (id) active.value = rows.value.find((r) => r.nm_id === id) || active.value
 }
 
-function reset() {
+/** Чек «без описания» = content=no_desc (полный селект «Контент» убран за ненадобностью). */
+function toggleNoDesc(e: Event) {
+  contentFilter.value = (e.target as HTMLInputElement).checked ? 'no_desc' : ''
+  applyFilters()
+}
+
+function resetFilters(andLoad = true) {
   q.value = ''
-  includeHidden.value = false
-  load()
+  collectedFrom.value = ''
+  collectedTo.value = ''
+  firstSeenFrom.value = ''
+  firstSeenTo.value = ''
+  contentFilter.value = ''
+  attachedFilter.value = ''
+  sourceFilter.value = ''
+  phraseFilter.value = ''
+  if (andLoad) applyFilters()
+}
+
+/** Глобальный админ в режиме «все компании» — по умолчанию общий кэш. */
+function defaultScope(): 'captured' | 'all_details' {
+  return auth.companyId === 'all' ? 'all_details' : 'captured'
 }
 
 function wbUrl(r: CapturedRow): string {
   return r.url || `https://www.wildberries.ru/catalog/${r.nm_id}/detail.aspx`
 }
 
-function fmtAgo(v?: string | null): string {
-  if (!v) return '—'
-  const t = new Date(v).getTime()
-  if (!isFinite(t)) return String(v)
-  const m = Math.round((Date.now() - t) / 60000)
-  if (m < 1) return 'только что'
-  if (m < 60) return `${m} мин назад`
-  const h = Math.round(m / 60)
-  if (h < 24) return `${h} ч назад`
-  const d = Math.round(h / 24)
-  if (d < 30) return `${d} дн назад`
-  return new Date(v).toLocaleDateString('ru-RU')
+/** Достоверная дата — полный сбор; collected_at может «обновиться» от наблюдения. */
+function collectedAt(r: CapturedRow): string | null | undefined {
+  return r.full_collected_at || r.collected_at
 }
 
-function fmtDate(v?: string | null): string {
+function collectedTitle(r: CapturedRow): string {
+  const full = r.full_collected_at ? `полный сбор: ${fmtFull(r.full_collected_at)}` : ''
+  const any = r.collected_at ? `последнее обновление: ${fmtFull(r.collected_at)}` : ''
+  return [full, any].filter(Boolean).join(' · ') || '—'
+}
+
+function fmtDateTime(v?: string | null): string {
   if (!v) return '—'
   const d = new Date(v)
-  return isFinite(d.getTime()) ? d.toLocaleDateString('ru-RU') : String(v)
+  return isFinite(d.getTime()) ? d.toLocaleString('ru-RU') : String(v)
 }
 
 function fmtFull(v?: string | null): string {
@@ -355,7 +659,9 @@ async function toggleHidden(r: CapturedRow) {
   try {
     const next = !r.is_hidden
     await competitorsNewcardApi.hideCaptured(r.nm_id, next)
-    notice.value = next ? `Скрыто: ${r.nm_id}` : `Возвращено: ${r.nm_id}`
+    notice.value = next
+      ? `Исключено из сбора: ${r.nm_id} — расширение её больше не собирает`
+      : `Возвращено в сбор: ${r.nm_id}`
     await load(true)
   } catch (e: any) {
     error.value = e?.response?.data?.detail || 'Не удалось изменить видимость'
@@ -364,7 +670,16 @@ async function toggleHidden(r: CapturedRow) {
   }
 }
 
-onMounted(() => load())
+// Смена компании в шапке — свой реестр против общего кэша
+watch(() => auth.companyId, () => {
+  scope.value = defaultScope()
+  applyFilters()
+})
+
+onMounted(() => {
+  scope.value = defaultScope()
+  load()
+})
 onBeforeUnmount(() => {
   if (copiedTimer) clearTimeout(copiedTimer)
 })
