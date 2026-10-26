@@ -43,6 +43,8 @@ const daysAgo = (n: number) => {
 
 const dateFrom = ref(daysAgo(29))
 const dateTo = ref(today())
+/** Отсечка для «Пересобрать старше даты»: по умолчанию — вчера. */
+const olderDate = ref(daysAgo(1))
 const activePreset = ref('30')
 
 /* ---------- Фильтры панели: карточка / запросы / ранг фраз ---------- */
@@ -183,6 +185,10 @@ const actionBusy = ref('')
 const actionNotice = ref('')
 
 const competitorNm = ref<number | null>(null)
+/** Контекст для «Собрать в расширении» в досье конкурента: наша карточка
+ *  среза + фраза выдачи, по которой кликнули. */
+const competitorOurNm = ref(0)
+const competitorPhrase = ref('')
 const ourCardNm = ref<number | null>(null)
 
 const items = computed<WatchMatrixRow[]>(() => matrix.value?.items || [])
@@ -228,6 +234,7 @@ function resetFilters() {
   activePreset.value = '30'
   dateFrom.value = daysAgo(29)
   dateTo.value = today()
+  olderDate.value = daysAgo(1)
   fCardNm.value = ''
   fQueries.value = 0
   fRank.value = 'orders'
@@ -311,10 +318,38 @@ function priceTitle(row: WatchMatrixRow, o: WatchOurPosition | null): string {
   return parts.join(' · ')
 }
 
+/** Наша карточка строки матрицы по фразе — запасной контекст для сбора. */
+function ourNmOfPhrase(phrase: string): number {
+  const row = items.value.find((i) => i.phrase === phrase)
+  return row?.cards?.[0]?.nm_id || 0
+}
+
 /** Наш товар из выдачи → карточка товара на WB (клик по позиции). */
 function openCard(card: PositionsItem) {
-  if (card.is_ours) ourCardNm.value = card.nm_id
-  else competitorNm.value = card.nm_id
+  if (card.is_ours) {
+    ourCardNm.value = card.nm_id
+    return
+  }
+  competitorNm.value = card.nm_id
+  // Контекст для «Собрать в расширении»: наша карточка, чей запрос собирали
+  // (source_nm_id среза), и открытая фраза. У легаси-срезов source_nm_id пуст —
+  // берём первую нашу карточку строки матрицы.
+  competitorOurNm.value = card.source_nm_id || ourNmOfPhrase(expanded.value)
+  competitorPhrase.value = expanded.value
+}
+
+/** Досье конкурента из блока событий: фраза — из строки, наша карточка — её. */
+function openCompetitor(nm: number, row: WatchMatrixRow) {
+  competitorNm.value = nm
+  competitorOurNm.value = row.cards?.[0]?.nm_id || 0
+  competitorPhrase.value = row.phrase
+}
+
+/** Закрыть досье конкурента и сбросить контекст сбора. */
+function closeCompetitor() {
+  competitorNm.value = null
+  competitorOurNm.value = 0
+  competitorPhrase.value = ''
 }
 
 /** Строки среза → формат карточки товара (общий WbSearchCard). */
@@ -481,8 +516,22 @@ const allChecked = computed({
 /** Фразы с устаревшим сбором выдачи (последний заход старше порога компании). */
 const stalePhrases = computed(() => items.value.filter((i) => !i.fresh).map((i) => i.phrase))
 
+/**
+ * Фразы, чей последний сбор выдачи старше выбранной даты — для кнопки
+ * «Пересобрать старше даты». Отметки чекбоксов не учитываются: критерий
+ * только дата (`last_at` — дата последнего захода, ISO). Сборов не было ни
+ * разу (last_at пуст) — тоже «старше» любой даты.
+ */
+const olderPhrases = computed<string[]>(() => {
+  const d = olderDate.value
+  if (!d) return []
+  return items.value.filter((i) => !i.last_at || i.last_at < d).map((i) => i.phrase)
+})
+
 /** Глубина захода для «Обновить устаревшие»: ТОП-10/20/40 позиций выдачи. */
 const cardTop = ref(20)
+/** Глубина захода для «Собрать отсутствующие» — своя (по умолчанию ТОП-40). */
+const missingTop = ref(40)
 const CARD_TOP_OPTIONS = [
   { v: 10, label: 'ТОП-10' },
   { v: 20, label: 'ТОП-20' },
@@ -537,10 +586,11 @@ function poolUnique(depth: number, kinds: number[]): number {
 }
 
 /**
- * Пул «Собрать отсутствующие»: карточки ТОП-40 без описания — контент по ним
- * не собирали ни разу (в т.ч. наши карточки из выдачи).
+ * Пул «Собрать отсутствующие»: карточки выбранной глубины (ТОП-`missingTop`)
+ * без описания — контент по ним не собирали ни разу (в т.ч. наши карточки
+ * из выдачи).
  */
-const missingCardsCnt = computed(() => poolUnique(40, [2]))
+const missingCardsCnt = computed(() => poolUnique(missingTop.value, [2]))
 
 /** Пул «Обновить устаревшие»: устаревший или отсутствующий контент на глубине «из:». */
 const staleCardsCnt = computed(() => poolUnique(cardTop.value, [1, 2]))
@@ -559,6 +609,28 @@ async function doRequeue() {
     selected.value = []
     await load()
     actionNotice.value = `в очереди на пересборку: ${r.queued}`
+  } catch (e: any) {
+    error.value = e?.response?.data?.detail || e?.message || 'Ошибка постановки в очередь'
+  } finally {
+    actionBusy.value = ''
+  }
+}
+
+/**
+ * Пересборка выдачи по дате: фразы, чей последний заход старше `olderDate`.
+ * Отметки в матрице не учитываются — критерий только дата. Фразы уходят в
+ * ту же очередь пересборки (`wb_search_phrase_queue`, source='watch'), что и
+ * «Пересобрать выдачу» — расширение заберёт их в режиме «Поисковые фразы».
+ */
+async function doRequeueOlder() {
+  if (actionBusy.value) return
+  const target = olderPhrases.value
+  if (!target.length) return
+  actionBusy.value = 'requeue-older'
+  try {
+    const r = await seoWatchApi.requeue(target, dateFrom.value, filterParams.value)
+    await load()
+    actionNotice.value = `в очереди на пересборку (старше ${olderDate.value}): ${r.queued}`
   } catch (e: any) {
     error.value = e?.response?.data?.detail || e?.message || 'Ошибка постановки в очередь'
   } finally {
@@ -603,14 +675,14 @@ async function doCollect(mode: 'changed' | 'stale' | 'missing') {
   actionBusy.value = mode
   try {
     const phrases = mode === 'changed' ? [] : selected.value
-    // «Собрать отсутствующие» — окно анализа (ТОП-40), ровно то, что в колонке
-    // «А|У|Н»; «Обновить устаревшие» — выбранная глубина «из:».
-    const top = mode === 'missing' ? 40 : cardTop.value
+    // «Собрать отсутствующие» — своя глубина (селектор у кнопки), «Обновить
+    // устаревшие» — глубина «из:» рядом с ним.
+    const top = mode === 'missing' ? missingTop.value : cardTop.value
     const r = await seoWatchApi.collect(mode, phrases, top, dateFrom.value, dateTo.value, filterParams.value)
     const notice = mode === 'stale'
       ? `в очередь enrich: ${r.assigned} (устаревших ${r.candidates}, пропущено ${r.skipped}, порог ${r.stale_days} дн.)`
       : mode === 'missing'
-        ? `в очередь enrich: ${r.assigned} (без описания ${r.candidates}, пропущено ${r.skipped} — описание уже есть)`
+        ? `в очередь enrich: ${r.assigned} (без описания ${r.candidates}, ТОП-${r.top}, пропущено ${r.skipped} — описание уже есть)`
         : `в очередь enrich: ${r.assigned} (новых и изменённых ${r.candidates}, пропущено ${r.skipped})`
     selected.value = []
     await load()
@@ -752,32 +824,51 @@ onMounted(() => {
       <div class="wb-grid-card page-seo-watch__block page-seo-watch__actions">
         <div class="page-seo-watch__actions-title">Действия</div>
         <div class="page-seo-watch__actions-groups row d-flex flex-nowrap">
-          <!-- фразы → пересборка выдачи (расширение «Поисковые фразы») -->
-          <div class="page-seo-watch__actions-phrases col-md-4">
-            <label class="page-seo-watch__check ms-2">
-              <input type="checkbox" v-model="allChecked" />
-              <span>выбрать все</span>
-            </label>
-            <button
-              class="btn btn-sm btn-primary"
-              :disabled="!!actionBusy || (!selected.length && !stalePhrases.length)"
-              :title="selected.length
-                ? 'Отправить выбранные фразы в расширение — оно пересоберёт выдачу по ним'
-                : 'Отправить в расширение все фразы с устаревшим сбором выдачи'"
-              @click="doRequeue"
-            >
-              <i class="bi bi-arrow-repeat"></i>
-              Пересобрать выдачу
-              <span class="page-seo-watch__cnt">({{ selected.length || stalePhrases.length }})</span>
-            </button>
+          <!-- фразы → пересборка выдачи (расширение «Поисковые фразы»).
+               Две строки: «Пересобрать выдачу» и «Пересобрать старше даты»
+               с календарём — в одну строку панель не влезает в container-xxl -->
+          <div class="page-seo-watch__actions-phrases col-md-5 d-flex flex-column align-items-start justify-content-center gap-2">
+            <div class="d-flex flex-wrap align-items-center gap-2 ms-2 w-100">
+              <label class="page-seo-watch__check ms-2 col-md-4">
+                <input type="checkbox" v-model="allChecked" />
+                <span>выбрать все</span>
+              </label>
+              <button
+                class="btn btn-sm btn-primary col-md-6"
+                :disabled="!!actionBusy || (!selected.length && !stalePhrases.length)"
+                :title="selected.length
+                  ? 'Отправить выбранные фразы в расширение — оно пересоберёт выдачу по ним'
+                  : 'Отправить в расширение все фразы с устаревшим сбором выдачи'"
+                @click="doRequeue"
+              >
+                <i class="bi bi-arrow-repeat"></i>
+                Пересобрать выдачу
+                <span class="page-seo-watch__cnt">({{ selected.length || stalePhrases.length }})</span>
+              </button>
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2 ms-2 w-100">
+              <div class="page-seo-watch__older-date col-md-4 me-2">
+                <WbDateInput v-model="olderDate" />
+              </div>
+              <button
+                class="btn btn-sm btn-outline-primary col-md-6"
+                :disabled="!!actionBusy || !olderPhrases.length"
+                :title="`Фразы матрицы, у которых последний сбор выдачи старше ${olderDate} → в очередь пересборки (расширение «Поисковые фразы»). Отметки в матрице не учитываются. Сборов не было ни разу — тоже считаются (старше любой даты)`"
+                @click="doRequeueOlder"
+              >
+                <i class="bi bi-calendar2-week"></i>
+                Пересобрать старше даты
+                <span class="page-seo-watch__cnt">({{ olderPhrases.length }})</span>
+              </button>
+            </div>
           </div>
           <!-- карточки: раскладка предопределена grid-областями — всегда 2 строки
                («собрать» над «обновить»), колонки выровнены, счётчики в
                фикс-слоте: ширина кнопок не зависит от цифр, панели нечему
                переверстываться и прыгать при каждом клике -->
           <div class="page-seo-watch__actions-cards col d-block">
-            <div class="row">
-              <div class="col-md-6">
+            <div class="row w-100 mb-2">
+              <div class="col-md-7">
                 
             <button
               class="btn btn-sm btn-outline-primary page-seo-watch__act--stale"
@@ -803,7 +894,7 @@ onMounted(() => {
 
 
               </div>
-              <div class="col-md-6 text-end">
+              <div class="col text-end">
             <button
               class="btn btn-sm btn-outline-primary page-seo-watch__act--refresh"
               :disabled="!!actionBusy || !items.length"
@@ -819,23 +910,32 @@ onMounted(() => {
               </div>
 
             </div>
-            <div class="row">
-              <div class="col-md-6">
+            <div class="row w-100">
+              <div class="col-md-7">
             <button
               class="btn btn-sm btn-outline-primary page-seo-watch__act--missing"
               :disabled="!!actionBusy || !missingCardsCnt"
               :title="`${selected.length
-                ? `Карточки ТОП-40, у которых описания нет вовсе (контент не собирали ни разу), только по отмеченным фразам (${selected.length})`
-                : 'Карточки ТОП-40, у которых описания нет вовсе (контент не собирали ни разу), по всем фразам мониторинга'}. В скобках: УНИКАЛЬНЫХ карточек к сбору — ровно столько встанет в очередь (дубль в нескольких фразах считается один раз). Описание есть, но старое — для них «Обновить устаревшие»`"
+                ? `Карточки ТОП-${missingTop}, у которых описания нет вовсе (контент не собирали ни разу), только по отмеченным фразам (${selected.length})`
+                : `Карточки ТОП-${missingTop}, у которых описания нет вовсе (контент не собирали ни разу), по всем фразам мониторинга`}. Глубина захода — «из:» рядом. В скобках: УНИКАЛЬНЫХ карточек к сбору — ровно столько встанет в очередь (дубль в нескольких фразах считается один раз). Описание есть, но старое — для них «Обновить устаревшие»`"
               @click="doCollect('missing')"
             >
               <i class="bi bi-inboxes"></i>
               Собрать отсутствующие
               <span class="page-seo-watch__cnt">({{ missingCardsCnt }})</span>
             </button>
+            <label
+              class="page-seo-watch__depth page-seo-watch__act--depth"
+              title="Какие первые позиции последнего захода каждой фразы попадут в пул «Собрать отсутствующие». На остальные кнопки не влияет"
+            >
+              <span class="ms-3">из:</span>
+              <select v-model.number="missingTop" class="form-select form-select-sm">
+                <option v-for="o in CARD_TOP_OPTIONS" :key="o.v" :value="o.v">{{ o.label }}</option>
+              </select>
+            </label>
 
               </div>
-              <div class="col-md-6 text-end"> 
+              <div class="col text-end"> 
             <button
               class="btn btn-sm btn-outline-primary page-seo-watch__act--changed"
               :disabled="!!actionBusy || !newPoolCnt"
@@ -1070,7 +1170,7 @@ onMounted(() => {
             <div v-for="mv in row.price_moves" :key="'mv' + mv.nm_id" class="page-seo-watch__event-line">
               <i class="bi bi-cash-coin text-warning"></i>
               сдвиг цены:
-              <button class="btn btn-sm btn-link p-0 page-seo-watch__event-link" @click="competitorNm = mv.nm_id">
+              <button class="btn btn-sm btn-link p-0 page-seo-watch__event-link" @click="openCompetitor(mv.nm_id, row)">
                 {{ mv.title || ('nm ' + mv.nm_id) }}
               </button>
               <span class="page-seo-watch__note">
@@ -1084,7 +1184,13 @@ onMounted(() => {
       <!-- Действия менеджера — панелью над матрицей (page-seo-watch__actions) -->
     </template>
 
-    <CompetitorDetailsModal :open="competitorNm !== null" :nm-id="competitorNm" @close="competitorNm = null" />
+    <CompetitorDetailsModal
+      :open="competitorNm !== null"
+      :nm-id="competitorNm"
+      :our-nm-id="competitorOurNm"
+      :phrase="competitorPhrase"
+      @close="closeCompetitor"
+    />
     <OurCardModal :open="ourCardNm !== null" :nm-id="ourCardNm" :date-from="dateFrom" :date-to="dateTo" @close="ourCardNm = null" />
   </div>
 </template>
