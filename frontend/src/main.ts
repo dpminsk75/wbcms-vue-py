@@ -10,8 +10,13 @@ import './assets/css/wb-ui.css'
 import { VueQueryPlugin } from '@tanstack/vue-query'
 
 import router from './router'
+import { initDraggableModals } from './utils/draggableModals'
+
 const app = createApp(App)
 app.use(createPinia())
 app.use(router)
 app.use(VueQueryPlugin)
+
+// перетаскивание модалок за шапку (для модалок без собственного хендлера)
+initDraggableModals()
 app.mount('#app')

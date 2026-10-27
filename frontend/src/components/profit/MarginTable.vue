@@ -9,7 +9,9 @@
           <th>Выручка</th>
           <th>Ком. WB</th>
           <th>Экв.</th>
+          <th>Приёмка</th>
           <th>Лог-ка</th>
+          <th>Хранение</th>
           <th>Штрафы</th>
           <th>Отзывы</th>
           <th>Реклама</th>
@@ -28,7 +30,7 @@
       </thead>
       <tbody>
         <tr v-if="!rows.length">
-          <td :colspan="showStock ? 21 : 20" class="text-center p-4 text-muted">Нет данных за выбранный период</td>
+          <td :colspan="showStock ? 23 : 22" class="text-center p-4 text-muted">Нет данных за выбранный период</td>
         </tr>
         <tr v-for="(r, i) in rows" :key="r.nm_id">
           <td class="margin-table__pos">
@@ -55,11 +57,34 @@
           <td class="text-end">{{ fmt0(r.amount) }}</td>
           <td class="text-end text-danger">{{ fmt0(r.commission) }}</td>
           <td class="text-end text-danger">{{ fmt0(r.f_acquiring_fee) }}</td>
-          <td class="text-end text-danger fw-medium">{{ fmt0(r.f_delivery) }}</td>
-          <td class="text-end text-danger">{{ fmt0(r.f_penalty) }}</td>
-          <td class="text-end text-success">{{ fmt0(r.f_otziv) }}</td>
-          <td class="text-end text-primary">{{ fmt0(r.f_adv) }}</td>
-          <td class="text-end text-danger">{{ fmt0(r.f_cashback) }}</td>
+          <td class="text-end text-danger">
+            <button v-if="num(r.f_acceptance)" class="wb-cell-link" title="Детализация приёмки" @click="openCell('acceptance', r)">{{ fmt0(r.f_acceptance) }}</button>
+            <template v-else>{{ fmt0(r.f_acceptance) }}</template>
+          </td>
+          <td class="text-end text-danger fw-medium">
+            <button v-if="num(r.f_delivery)" class="wb-cell-link" title="Детализация логистики" @click="openCell('delivery', r)">{{ fmt0(r.f_delivery) }}</button>
+            <template v-else>{{ fmt0(r.f_delivery) }}</template>
+          </td>
+          <td class="text-end text-danger fw-medium">
+            <button v-if="num(r.f_storage_fee)" class="wb-cell-link" title="Детализация хранения" @click="openCell('storage', r)">{{ fmt0(r.f_storage_fee) }}</button>
+            <template v-else>{{ fmt0(r.f_storage_fee) }}</template>
+          </td>
+          <td class="text-end text-danger">
+            <button v-if="num(r.f_penalty)" class="wb-cell-link" title="Детализация штрафов" @click="openCell('penalty', r)">{{ fmt0(r.f_penalty) }}</button>
+            <template v-else>{{ fmt0(r.f_penalty) }}</template>
+          </td>
+          <td class="text-end text-success">
+            <button v-if="num(r.f_otziv)" class="wb-cell-link" title="Детализация отзывов" @click="openCell('otziv', r)">{{ fmt0(r.f_otziv) }}</button>
+            <template v-else>{{ fmt0(r.f_otziv) }}</template>
+          </td>
+          <td class="text-end text-primary">
+            <button v-if="num(r.f_adv)" class="wb-cell-link" title="Детализация рекламы" @click="openCell('adv', r)">{{ fmt0(r.f_adv) }}</button>
+            <template v-else>{{ fmt0(r.f_adv) }}</template>
+          </td>
+          <td class="text-end text-danger">
+            <button v-if="num(r.f_cashback)" class="wb-cell-link" title="Детализация кэшбека" @click="openCell('cashback', r)">{{ fmt0(r.f_cashback) }}</button>
+            <template v-else>{{ fmt0(r.f_cashback) }}</template>
+          </td>
           <td class="text-end fw-bold" :class="r.net_profit < 0 ? 'text-danger' : 'text-success'">{{ fmt0(r.net_profit) }}</td>
           <td class="text-end">{{ fmt0(r.total_nds) }}</td>
           <td class="text-end">{{ fmt0(r.total_cost) }}</td>
@@ -79,7 +104,9 @@
           <td class="text-end">{{ fmt0(totals.amount) }}</td>
           <td class="text-end">{{ fmt0(totals.commission) }}</td>
           <td class="text-end">{{ fmt0(totals.f_acquiring_fee) }}</td>
+          <td class="text-end">{{ fmt0(totals.f_acceptance) }}</td>
           <td class="text-end">{{ fmt0(totals.f_delivery) }}</td>
+          <td class="text-end">{{ fmt0(totals.f_storage_fee) }}</td>
           <td class="text-end">{{ fmt0(totals.f_penalty) }}</td>
           <td class="text-end">{{ fmt0(totals.f_otziv) }}</td>
           <td class="text-end">{{ fmt0(totals.f_adv) }}</td>
@@ -97,17 +124,37 @@
     </table>
   </div>
   <MarginBreakdownPopup v-if="breakdownRow" :open="true" :row="breakdownRow" :period="period" @close="breakdownRow = null" @logistics="onLogistics" />
-  <FinancePopup v-if="logisticsPeriod" kind="logistics" :date-from="logisticsPeriod.dateFrom" :date-to="logisticsPeriod.dateTo" @close="logisticsPeriod = null" />
+  <MarginBreakdownModal
+    v-if="cellModal"
+    :kind="cellModal.kind"
+    :basis="basis"
+    :date-from="cellModal.dateFrom"
+    :date-to="cellModal.dateTo"
+    :nm-id="cellModal.nmId"
+    :detail="detail"
+    @close="cellModal = null"
+  />
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useMoneyFmt } from '@/composables/useMoneyFmt'
 import { marginTotals } from '@/api/profit'
+import type { MarginKind } from '@/api/margin'
 import MarginBreakdownPopup from './MarginBreakdownPopup.vue'
-import FinancePopup from '../dashboard/FinancePopup.vue'
+import MarginBreakdownModal from './MarginBreakdownModal.vue'
 
-const props = defineProps<{ rows: any[], footerLabel: string, showStock?: boolean, showBreakdown?: boolean, period?: string }>()
+const props = withDefaults(defineProps<{
+  rows: any[]
+  footerLabel: string
+  showStock?: boolean
+  showBreakdown?: boolean
+  period?: string
+  dateFrom?: string
+  dateTo?: string
+  basis?: 'month' | 'product'
+  detail?: 0 | 1
+}>(), { basis: 'product', detail: 1 })
 
 const { fmt0, fmt2, formatTitle } = useMoneyFmt()
 const totals = computed(() => marginTotals(props.rows))
@@ -119,11 +166,25 @@ const wrapRef = ref<HTMLDivElement | null>(null)
 const breakdownRow = ref<any>(null)
 const openBreakdown = (r: any) => { breakdownRow.value = r }
 
+// Модалка-расшифровка значения колонки затрат
+const cellModal = ref<{ kind: MarginKind, dateFrom: string, dateTo: string, nmId: number | null } | null>(null)
+const num = (v: any) => Number(v) || 0
+const splitPeriod = (): { from: string, to: string } => {
+  const parts = String(props.period || '').split('—').map(s => s.trim()).filter(Boolean)
+  if (parts.length >= 2) return { from: parts[0], to: parts[1] }
+  return { from: props.dateFrom || '', to: props.dateTo || '' }
+}
+const openCell = (kind: MarginKind, r: any) => {
+  const p = splitPeriod()
+  if (!p.from || !p.to) return
+  cellModal.value = { kind, dateFrom: p.from, dateTo: p.to, nmId: r?.nm_id ?? null }
+}
+
 // Расшифровка «Логистики» из попапа затрат (период приходит строкой «from — to»)
-const logisticsPeriod = ref<{ dateFrom: string, dateTo: string } | null>(null)
 const onLogistics = (p: { dateFrom: string, dateTo: string }) => {
+  const nm = Number(breakdownRow.value?.nm_id) || null
   breakdownRow.value = null
-  logisticsPeriod.value = p
+  cellModal.value = { kind: 'delivery', dateFrom: p.dateFrom, dateTo: p.dateTo, nmId: nm }
 }
 
 const fit = () => {

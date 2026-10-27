@@ -1,7 +1,20 @@
 <template>
   <div class="page-dashboard__popup-overlay" @mousedown.self="$emit('close')">
-    <div class="page-dashboard__popup-box" role="dialog" aria-modal="true" :aria-label="meta.title">
-      <div class="page-dashboard__popup-head">
+    <div
+      ref="boxRef"
+      class="page-dashboard__popup-box"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="meta.title"
+      :style="boxStyle"
+      data-modal-drag="own"
+    >
+      <div
+        class="page-dashboard__popup-head"
+        data-modal-drag-handle
+        title="Потяните, чтобы переместить"
+        v-on="dragHandlers"
+      >
         <span class="page-dashboard__popup-title">Детализация: {{ meta.title }} ({{ periodLabel }})</span>
         <button class="btn btn-sm btn-link page-dashboard__popup-close" title="Закрыть" @click="$emit('close')">✕</button>
       </div>
@@ -50,6 +63,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { dashboardApi } from '../../api/dashboard'
 import { useAuthStore } from '../../stores/auth'
+import { useDraggable } from '@/composables/useDraggable'
 
 export type FinancePopupKind = 'shf' | 'udr' | 'feedback' | 'storage' | 'acceptance' | 'adv' | 'logistics'
 
@@ -197,12 +211,16 @@ const cell = (r: any, k: string): string => {
 const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') emit('close') }
 onMounted(() => window.addEventListener('keydown', onKey))
 onUnmounted(() => window.removeEventListener('keydown', onKey))
+
+// Перетаскивание модалки за шапку
+const boxRef = ref<HTMLElement | null>(null)
+const { boxStyle, dragHandlers } = useDraggable(boxRef)
 </script>
 
 <style scoped>
 .page-dashboard__popup-overlay { position: fixed; inset: 0; z-index: 1060; background: rgba(17,24,39,.5); display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow: auto; }
 .page-dashboard__popup-box { background: #fff; border-radius: 14px; max-width: 1100px; width: 100%; box-shadow: 0 12px 40px rgba(0,0,0,.28); padding: 16px 18px 18px; font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-.page-dashboard__popup-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.page-dashboard__popup-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; cursor: move; touch-action: none; user-select: none; }
 .page-dashboard__popup-title { font-size: 16px; font-weight: 700; color: #111827; }
 .page-dashboard__popup-close { text-decoration: none; font-size: 14px; }
 .page-dashboard__popup-state { margin: 0; }

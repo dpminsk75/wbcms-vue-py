@@ -15,7 +15,7 @@
         </tr></thead>
         <tbody>
           <tr v-for="r in rows" :key="r.campaign_id">
-            <td style="white-space:nowrap; padding:4px"><span :title="Number(r.adv)===1?'Реклама':'Органика'" style="margin-right:6px"><i :class="Number(r.adv)===1?'bi bi-arrow-right-circle text-danger':'bi bi-arrow-repeat text-muted'"></i></span><a :href="'/wb-adv-report/index?id='+r.campaign_id" target="_blank" style="text-decoration:none; color:#8A2BE0; font-weight:600">{{ r.name }}</a></td>
+            <td style="white-space:nowrap; padding:4px"><span :title="Number(r.adv)===1?'Реклама':'Органика'" style="margin-right:6px"><i :class="Number(r.adv)===1?'bi bi-arrow-right-circle text-danger':'bi bi-arrow-repeat text-muted'"></i></span><a :href="'/wb-adv-report?id='+r.campaign_id+'&date_from='+dateFrom+'&date_to='+dateTo" target="_blank" style="text-decoration:none; color:#8A2BE0; font-weight:600">{{ r.name }}</a></td>
             <td style="text-align:center; padding:4px"><span :style="statusStyle(r.status)">{{ statusLabel(r.status) }}</span></td>
             <td style="text-align:right; padding:4px">{{ fmt0(r.orders) }}</td>
             <td style="text-align:right; padding:4px">{{ fmt2(r.sum_price) }}</td>

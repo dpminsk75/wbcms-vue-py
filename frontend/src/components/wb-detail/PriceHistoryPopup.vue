@@ -6,14 +6,14 @@
       role="dialog"
       aria-modal="true"
       aria-label="История изменения цены"
-      :style="{ transform: `translate(${pos.x}px, ${pos.y}px)` }"
+      :style="boxStyle"
+      data-modal-drag="own"
     >
       <div
         class="price-history__head"
+        data-modal-drag-handle
         title="Потяните, чтобы переместить"
-        @pointerdown="dragStart"
-        @pointermove="dragMove"
-        @pointerup="dragEnd"
+        v-on="dragHandlers"
       >
         <div class="price-history__titles">
           <span class="price-history__name">История изменения цены</span>
@@ -56,6 +56,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { api } from '@/api/client'
+import { useDraggable } from '@/composables/useDraggable'
 
 const props = defineProps<{
   open: boolean
@@ -121,42 +122,9 @@ const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') emit('close') }
 onMounted(() => window.addEventListener('keydown', onEsc))
 onUnmounted(() => window.removeEventListener('keydown', onEsc))
 
-// Перетаскивание модалки за шапку (как в MarginBreakdownPopup)
+// Перетаскивание модалки за шапку (composables/useDraggable)
 const boxRef = ref<HTMLElement | null>(null)
-const pos = ref({ x: 0, y: 0 })
-const dragging = ref(false)
-let dragX = 0, dragY = 0, origX = 0, origY = 0
-
-function clamp(x: number, y: number) {
-  const el = boxRef.value
-  if (!el) return { x, y }
-  const w = el.offsetWidth, h = el.offsetHeight
-  const vw = window.innerWidth, vh = window.innerHeight
-  const baseLeft = (vw - w) / 2, baseTop = (vh - h) / 2
-  let nx = x, ny = y
-  if (baseLeft + nx < 8) nx = 8 - baseLeft
-  if (baseLeft + nx + w > vw - 8) nx = vw - 8 - w - baseLeft
-  if (baseTop + ny < 8) ny = 8 - baseTop
-  if (baseTop + ny + h > vh - 8) ny = vh - 8 - h - baseTop
-  return { x: nx, y: ny }
-}
-const dragStart = (e: PointerEvent) => {
-  if (e.button !== 0) return
-  const t = e.target as HTMLElement
-  if (t && t.closest('button, a')) return
-  dragging.value = true
-  dragX = e.clientX; dragY = e.clientY
-  origX = pos.value.x; origY = pos.value.y
-  ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
-}
-const dragMove = (e: PointerEvent) => {
-  if (!dragging.value) return
-  pos.value = clamp(origX + e.clientX - dragX, origY + e.clientY - dragY)
-}
-const dragEnd = (e: PointerEvent) => {
-  dragging.value = false
-  try { (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId) } catch { /* noop */ }
-}
+const { boxStyle, dragHandlers } = useDraggable(boxRef)
 </script>
 
 <style scoped>

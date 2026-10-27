@@ -25,7 +25,7 @@
         </thead>
         <tbody>
           <tr v-for="r in displayRows" :key="r.campaign_id" style="font-size:12px">
-            <td style="padding:4px 8px; color:#7c1af8; font-weight:500; white-space:nowrap"><a :href="'/wb-adv-report/index?id='+r.campaign_id" target="_blank" style="color:#7c1af8; text-decoration:none">{{ r.name }}</a></td>
+            <td style="padding:4px 8px; color:#7c1af8; font-weight:500; white-space:nowrap"><a :href="'/wb-adv-report?id='+r.campaign_id+'&date_from='+dateFrom+'&date_to='+dateTo" target="_blank" style="color:#7c1af8; text-decoration:none">{{ r.name }}</a></td>
             <td style="padding:4px 8px; text-align:center"><span style="display:inline-block; padding:2px 6px; border-radius:4px; font-size:11px; background:#e8f5e9; color:#2e7d32; border:1px solid #c8e6c9">{{ statusLabel(r.status) }}</span></td>
             <td style="padding:4px 8px; text-align:right">{{ fmt(r.views) }}</td>
             <td style="padding:4px 8px; text-align:right">{{ fmt(r.clicks) }}</td>
