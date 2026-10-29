@@ -2,7 +2,7 @@
   <div class="wb-universal-filter">
     <div class="wb-universal-filter__presets">
       <div class="wb-universal-filter__presets-group">
-        <button v-for="p in presets" :key="p.id" class="btn btn-sm" :class="activePreset === p.id ? 'btn-primary' : 'btn-outline-secondary'" @click="applyPreset(p.id)">{{ p.label }}</button>
+        <button v-for="p in presets" :key="p.id" class="btn btn-sm" :class="activePreset === p.id ? 'btn--brand' : 'btn--outline'" @click="applyPreset(p.id)">{{ p.label }}</button>
       </div>
       <div v-if="showQuick && quickButtons.length" class="wb-universal-filter__presets-group wb-universal-filter__presets-group--right">
         <button v-for="btn in quickButtons" :key="btn.nm_id" class="btn btn-panel btn-sm" @click="onQuickClick(btn)" :title="'nm_id ' + btn.nm_id">
@@ -22,10 +22,11 @@
       <div v-if="showProduct" class="col-md-4 wb-universal-filter__product">
         <label class="form-label mb-1 wb-universal-filter__label">Товар</label>
         <input
-          v-model="product"
+          :value="productLabel"
           class="form-control"
           placeholder="nm_id, артикул или часть названия..."
           autocomplete="off"
+          @input="onProductInput"
           @focus="popupOpen = suggestions.length > 0"
           @blur="closeSuggest"
         />
@@ -41,6 +42,14 @@
             <span class="wb-universal-filter__suggest-nm">{{ c.nmID }}</span>
             <span class="wb-universal-filter__suggest-title">{{ c.title }}</span>
             <span v-if="c.vendorCode" class="wb-universal-filter__suggest-vc">{{ c.vendorCode }}</span>
+          </button>
+        </div>
+        <!-- выбранная карточка: значение + сброс (как в WbCardSelect) -->
+        <div v-if="product" class="wb-universal-filter__picked">
+          <span class="wb-universal-filter__picked-label">Выбрано: {{ product }}</span>
+          <button type="button" class="btn btn-sm btn-light wb-universal-filter__picked-btn"
+                  @mousedown.prevent @click="clearProduct">
+            × Сбросить
           </button>
         </div>
       </div>
@@ -62,8 +71,10 @@
       </template>
     </div>
     <div class="wb-universal-filter__btns">
-      <button class="btn btn-primary wb-universal-filter__apply" @click="emit('apply')">Применить</button>
-      <button class="btn btn-light wb-universal-filter__apply" @click="onReset">Сбросить</button>
+      <button class="btn btn--brand wb-universal-filter__apply" @click="emit('apply')">Применить</button>
+      <button class="btn btn--outline wb-universal-filter__apply" @click="onReset">Сбросить</button>
+      <!-- доп. поля конкретной страницы (слот #extra) -->
+      <slot name="extra" />
     </div>
   </div>
 </template>
@@ -120,12 +131,80 @@ const presets = [
 const activePreset = ref(props.defaultPreset)
 const suggestions = ref<any[]>([])
 const popupOpen = ref(false)
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+let reqSeq = 0
 
-// выбор из подсказки: подставляем артикул продавца (то же, что делал <datalist>)
-const pickSuggestion = (c: any) => {
-  product.value = String(c.vendorCode || c.nmID)
+// Поле «Товар»: наружу уходит `product` (то, что бэк должен фильтровать),
+// в инпуте показывается `productLabel` (при выборе карточки — «nmID | название»).
+// Разделение нужно, чтобы на бэк уходил однозначный nmID, а не подпись.
+const productLabel = ref(String(product.value || ''))
+let lastSet = String(product.value || '')   // что выставили сами — чтобы отличить внешнее изменение
+
+/** Программная подстановка: попап закрываем, поиск подсказок не запускаем. */
+const setProduct = (value: string, label?: string) => {
+  lastSet = value
+  product.value = value
+  productLabel.value = label ?? value
+  suggestions.value = []
   popupOpen.value = false
 }
+
+/** Поиск подсказок по введённому тексту (debounce 300 мс). */
+const scheduleSuggest = (raw: string) => {
+  if (searchTimer) clearTimeout(searchTimer)
+  const q = String(raw || '').trim()
+  if (q.length < 2) { suggestions.value = []; popupOpen.value = false; return }
+  searchTimer = setTimeout(async () => {
+    const my = ++reqSeq
+    try {
+      const { data: d } = await api.get('/api/wb/cards', { params: { q, limit: 20 } })
+      if (my !== reqSeq) return
+      suggestions.value = Array.isArray(d) ? d : (d?.items ?? [])
+      popupOpen.value = suggestions.value.length > 0
+    } catch { /* noop */ }
+  }, 300)
+}
+
+/** Ручной ввод: значение — и подпись, и фильтр (маска). */
+const onProductInput = (e: Event) => {
+  const v = (e.target as HTMLInputElement).value
+  productLabel.value = v
+  lastSet = v
+  product.value = v
+  scheduleSuggest(v)
+}
+
+/** Выбор карточки из подсказок: наружу — чистый nmID, в поле — «nmID | название», фильтр применяется. */
+const pickSuggestion = (c: any) => {
+  const nm = String(c.nmID ?? '')
+  const title = String(c.title || '').trim()
+  setProduct(nm, title ? `${nm} | ${title}` : nm)
+  emit('apply')
+}
+
+/** Сброс выбранной карточки — фильтр сразу применяется без товара. */
+const clearProduct = () => {
+  setProduct('')
+  emit('apply')
+}
+
+/** Название карточки по nmID (для быстрых кнопок) — с кэшем. */
+const titleCache = ref<Record<string, string>>({})
+const loadCardTitle = async (nm: string): Promise<string> => {
+  if (!nm) return ''
+  if (titleCache.value[nm]) return titleCache.value[nm]
+  try {
+    const { data } = await api.get('/api/wb/cards', { params: { q: nm, limit: 20 } })
+    const list: any[] = Array.isArray(data) ? data : (data?.items ?? [])
+    const card = list.find((x: any) => String(x.nmID) === nm)
+    const title = String(card?.title || '').trim()
+    if (title) titleCache.value[nm] = title
+    return title
+  } catch {
+    return ''
+  }
+}
+
 // blur срабатывает раньше mousedown по кнопке — закрываем с задержкой
 const closeSuggest = () => { setTimeout(() => { popupOpen.value = false }, 120) }
 // быстрые кнопки как в WbFilterBar (backend/config/quick_buttons.json + фолбэк)
@@ -138,13 +217,16 @@ const defaultQuickButtons = [
 const quickButtonsStatic = ref<any[]>([...defaultQuickButtons])
 const quickButtons = computed(() => props.quickButtonsProp ?? quickButtonsStatic.value)
 
-const onQuickClick = (btn: any) => {
-  // цифры = подстрока nmID ≈ точное попадание; маска-семантика сохраняется
-  product.value = String(btn.nm_id)
+const onQuickClick = async (btn: any) => {
+  // быстрые кнопки — это конкретная карточка: подставляем её nmID и применяем
+  const nm = String(btn.nm_id)
+  setProduct(nm)
   emit('apply')
+  // название карточки догружаем отдельно — как при выборе из списка
+  const title = await loadCardTitle(nm)
+  if (title && product.value === nm) productLabel.value = `${nm} | ${title}`
 }
-let searchTimer: ReturnType<typeof setTimeout> | null = null
-let reqSeq = 0
+
 
 // локальное время (toISOString даёт UTC и сдвигает сутки)
 const fmtD = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -184,26 +266,22 @@ function syncPresetToDates() {
 
 function onReset() {
   activePreset.value = props.defaultPreset
-  product.value = ''
+  setProduct('')
   brand.value = ''
   category.value = ''
   emit('reset')
 }
 
 watch([dateFrom, dateTo], syncPresetToDates, { immediate: true })
-watch(() => product.value, (v) => {  if (!props.showProduct) return
-  if (searchTimer) clearTimeout(searchTimer)
-  const q = String(v || '').trim()
-  if (q.length < 2) { suggestions.value = []; popupOpen.value = false; return }
-  searchTimer = setTimeout(async () => {
-    const my = ++reqSeq
-    try {
-      const { data: d } = await api.get('/api/wb/cards', { params: { q, limit: 20 } })
-      if (my !== reqSeq) return
-      suggestions.value = Array.isArray(d) ? d : (d?.items ?? [])
-      popupOpen.value = suggestions.value.length > 0
-    } catch { /* noop */ }
-  }, 300)
+// Внешнее изменение `product` (из URL, со сброса фильтра на странице) —
+// синхронизируем подпись; собственные подстановки (lastSet) игнорируем.
+watch(() => product.value, (v) => {
+  const val = String(v || '')
+  if (val === lastSet) return
+  lastSet = val
+  productLabel.value = val
+  suggestions.value = []
+  popupOpen.value = false
 })
 onMounted(async () => {
   if (props.quickButtonsProp === null && props.showQuick) {
@@ -216,28 +294,45 @@ onMounted(async () => {
 onBeforeUnmount(() => { if (searchTimer) clearTimeout(searchTimer); reqSeq++ })
 </script>
 <style scoped>
-.wb-universal-filter { padding: 15px; margin-bottom: 16px; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; }
+.wb-universal-filter { padding: 14px; margin-bottom: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); }
 .wb-universal-filter__presets { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; justify-content: space-between; align-items: center; }
 .wb-universal-filter__presets-group { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .wb-universal-filter__presets-group--right { margin-left: auto; }
-.wb-universal-filter__label { font-size: 12px; font-weight: 600; }
-.wb-universal-filter__btns { margin-top: 12px; display: flex; gap: 8px; }
+.wb-universal-filter__label { font-size: calc(12px * var(--fs)); font-weight: 600; color: var(--ink-soft); }
+.wb-universal-filter__btns { margin-top: 12px; display: flex; gap: 8px; align-items: flex-end; }
 .wb-universal-filter__apply { width: 120px; }
+
+/* Поля фильтра — на токенах темы */
+.wb-universal-filter :deep(.form-control) {
+  color: var(--ink);
+  background: var(--surface);
+  border-color: var(--line-strong);
+  font-size: calc(12.5px * var(--fs));
+}
+.wb-universal-filter :deep(.form-control:focus) {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-tint);
+}
 
 /* Попап подсказок по товару (свой, вместо нативного <datalist>) */
 .wb-universal-filter__product { position: relative; }
 .wb-universal-filter__suggest {
   position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 30;
-  background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
-  box-shadow: 0 10px 24px rgba(0,0,0,.12);
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
   max-height: 260px; overflow-y: auto;
 }
 .wb-universal-filter__suggest-row {
   display: flex; align-items: baseline; gap: 8px; width: 100%;
-  padding: 6px 10px; border: 0; background: none; text-align: left; font-size: 12px;
+  padding: 6px 10px; border: 0; background: none; text-align: left; font-size: calc(12px * var(--fs));
 }
-.wb-universal-filter__suggest-row:hover { background: #f3f4f6; }
-.wb-universal-filter__suggest-nm { font-weight: 700; color: #111827; }
-.wb-universal-filter__suggest-title { color: #374151; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wb-universal-filter__suggest-vc { margin-left: auto; color: #9ca3af; font-size: 11px; white-space: nowrap; }
+.wb-universal-filter__suggest-row:hover { background: var(--surface-3); }
+.wb-universal-filter__suggest-nm { font-weight: 700; color: var(--ink); }
+.wb-universal-filter__suggest-title { color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-universal-filter__suggest-vc { margin-left: auto; color: var(--ink-muted); font-size: calc(11px * var(--fs)); white-space: nowrap; }
+
+/* Выбранная карточка: «Выбрано: nmID» + сброс (как в WbCardSelect) */
+.wb-universal-filter__picked { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.wb-universal-filter__picked-label { font-size: calc(11px * var(--fs)); color: var(--brand); }
+.wb-universal-filter__picked-btn { font-size: calc(11px * var(--fs)); padding: 2px 8px; }
 </style>

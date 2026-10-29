@@ -1,0 +1,12 @@
+[Unit]
+Description=wbcms feedback sync (отзывы WB, каждые 30 минут)
+After=network.target mysql.service
+
+[Service]
+Type=oneshot
+User=www-data
+WorkingDirectory=/var/www/wb/wbcms-py
+EnvironmentFile=/var/www/wb/wbcms-py/.env
+Environment=PYTHONUNBUFFERED=1
+# только актуальные отзывы (без архива) за последние 2 дня — догоняем свежее
+ExecStart=/var/www/wb/wbcms-py/.venv/bin/python backend/workers/feedback_sync.py --current-only --date-from -2

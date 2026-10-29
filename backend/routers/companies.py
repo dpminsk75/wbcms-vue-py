@@ -37,6 +37,11 @@ class CompanyCreateIn(BaseModel):
     seo_newcard_prompt: str | None = None
     seo_newcard_model: str | None = None
     seo_phrases_prompt: str | None = None
+    review_analysis_prompt: str | None = None
+    # Разбор отзыва по меткам (эмоциональность/конструктивность/тональность)
+    feedback_review_prompt: str | None = None
+    feedback_auto_review: int | None = None
+    feedback_review_batch: int | None = None
 
 
 class MemberInviteIn(BaseModel):
@@ -71,6 +76,11 @@ class CompanyUpdateIn(BaseModel):
     seo_newcard_model: str | None = None
     seo_phrases_prompt: str | None = None
     # провайдер ИИ: openrouter (текущие настройки) | custom (другой сервис)
+    review_analysis_prompt: str | None = None
+    # Разбор отзыва по меткам (эмоциональность/конструктивность/тональность)
+    feedback_review_prompt: str | None = None
+    feedback_auto_review: int | None = None
+    feedback_review_batch: int | None = None
     seo_llm_provider: Literal["openrouter", "custom"] | None = None
     seo_llm_format: Literal["openai", "anthropic", "gemini", "ollama", "yandex"] | None = None
     seo_llm_url: str | None = None
@@ -146,6 +156,10 @@ async def create_company(
                 seo_newcard_prompt=payload.seo_newcard_prompt,
                 seo_newcard_model=payload.seo_newcard_model,
                 seo_phrases_prompt=payload.seo_phrases_prompt,
+                review_analysis_prompt=payload.review_analysis_prompt,
+                feedback_review_prompt=payload.feedback_review_prompt,
+                feedback_auto_review=payload.feedback_auto_review,
+                feedback_review_batch=payload.feedback_review_batch,
             )
             return auth_service.public_company(company)
     except IntegrityError:

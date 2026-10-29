@@ -90,6 +90,12 @@ class FeedbackService:
                     d[k] = int(d[k])
                 except (TypeError, ValueError):
                     pass
+        # метки ИИ-разбора отзыва (пусто → не разобран)
+        for k in ("ai_emotion", "ai_constructiveness", "ai_tone"):
+            v = d.get(k)
+            d[k] = str(v) if v not in (None, "") else None
+        if d.get("ai_status") == "error":
+            d["ai_error"] = str(d.get("ai_error") or "")[:300]
         return d
 
     async def list(self, date_from=None, date_to=None, nm_id=None, rating=None,
@@ -108,10 +114,17 @@ class FeedbackService:
             f"""SELECT f.id, f.nmID, f.userName, f.productValuation, f.text, f.pros, f.cons,
                 f.answer, f.is_auto_replied, f.rule_id, f.createdDate, f.updatedDate,
                 f.photoLinks, f.video, f.f_cost, f.bables,
-                c.title AS product_title, rr.title AS rule_title
+                c.title AS product_title, rr.title AS rule_title,
+                ar.emotion AS ai_emotion,
+                ar.constructiveness AS ai_constructiveness,
+                ar.tone AS ai_tone,
+                ar.status AS ai_status,
+                ar.error AS ai_error
                 FROM wb_feedbacks f
                 LEFT JOIN wbcards c ON c.nmID = f.nmID
                 LEFT JOIN wb_reply_rules rr ON rr.id = f.rule_id
+                LEFT JOIN wb_feedback_ai_review ar
+                       ON ar.company_id = f.company_id AND ar.feedback_id = f.id
                 WHERE {where_sql}
                 ORDER BY {col} {direction} LIMIT :lim OFFSET :off"""),
             {**params, "lim": page_size, "off": (page - 1) * page_size})).mappings().all()

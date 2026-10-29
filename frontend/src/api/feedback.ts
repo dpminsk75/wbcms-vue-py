@@ -19,7 +19,25 @@ export interface FeedbackAnswer {
   bables: string[]
   product_title: string | null
   rule_title: string | null
+  /** Метки ИИ-разбора отзыва: low|mid|high / neg|pos|neutral; null — не разобран. */
+  ai_emotion: string | null
+  ai_constructiveness: string | null
+  ai_tone: string | null
+  ai_status: string | null
+  ai_error: string | null
   [k: string]: unknown
+}
+
+/** Отзыв с ошибкой разбора — для модалки «Вернуть в очередь». */
+export interface FeedbackReviewError {
+  feedback_id: string
+  nm_id: number | null
+  rating: number | null
+  error: string | null
+  attempts: number | null
+  text: string | null
+  created_at: string | null
+  product_title: string | null
 }
 
 export interface FeedbackAnswersParams {
@@ -65,6 +83,43 @@ export const feedbackApi = {
   },
   async syncTags(): Promise<{ rows_scanned: number; unique_tags: number; new_tags: number; updated_tags: number }> {
     const { data } = await api.post('/api/feedback/tags/sync')
+    return data
+  },
+  /** Разобрать один отзыв через ИИ (синхронно). */
+  async reviewOne(feedbackId: string): Promise<{
+    ok: boolean; emotion: string; constructiveness: string; tone: string
+    summary?: string; topics?: string[]; model?: string
+  }> {
+    const { data } = await api.post(`/api/feedback/review/${encodeURIComponent(feedbackId)}`)
+    return data
+  },
+  /** Отзывы с ошибкой разбора. */
+  async reviewErrors(limit = 100): Promise<{ items: FeedbackReviewError[]; total: number }> {
+    const { data } = await api.get('/api/feedback/review/errors', { params: { limit } })
+    return data
+  },
+  /** Вернуть отзыв в очередь разбора. */
+  async reviewRetry(feedbackId: string): Promise<{ ok: boolean }> {
+    const { data } = await api.post(`/api/feedback/review/${encodeURIComponent(feedbackId)}/retry`)
+    return data
+  },
+  /** Промпт разбора отзыва (настройка компании). */
+  async reviewPrompt(): Promise<{ prompt: string }> {
+    const { data } = await api.get('/api/feedback/review/prompt')
+    return data
+  },
+  async saveReviewPrompt(prompt: string): Promise<{ ok: boolean; prompt: string }> {
+    const { data } = await api.put('/api/feedback/review/prompt', { prompt })
+    return data
+  },
+  /** Настройки авторазбора: включён ли, порция за прогон, промпт. */
+  async reviewSettings(): Promise<{ auto: boolean; batch: number; prompt: string }> {
+    const { data } = await api.get('/api/feedback/review/settings')
+    return data
+  },
+  async saveReviewSettings(settings: { auto?: boolean; batch?: number }):
+    Promise<{ auto: boolean; batch: number; prompt: string }> {
+    const { data } = await api.put('/api/feedback/review/settings', settings)
     return data
   },
 }

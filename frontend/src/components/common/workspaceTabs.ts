@@ -23,6 +23,27 @@ export const WORKSPACE_TABS: WorkspaceTab[] = [
   { id: 'queue', label: 'Очередь', to: '/queue' },
 ]
 
+/** Меню раздела «Отзывы» — одинаковое на всех страницах блока. */
+export const FEEDBACK_TABS: WorkspaceTab[] = [
+  { id: 'dashboard', label: 'Обзор', to: '/wb-feedback' },
+  { id: 'answers', label: 'Отзывы и ответы', to: '/wb-feedback-answers/index' },
+  { id: 'analysis', label: 'Разбор', to: '/wb-feedback-analysis' },
+  { id: 'insights', label: 'Инсайты', to: '/wb-feedback-insights' },
+  { id: 'review', label: 'Разбор отзывов', to: '/wb-feedback-review' },
+  { id: 'rules', label: 'Правила ответов', to: '/wb-feedback-reply-rules/index' },
+  { id: 'tags', label: 'Теги', to: '/wb-feedback-tags/index' },
+]
+
+/** Подменю раздела «Правила ответов» — на всех его страницах (как /seo/index). */
+export const FEEDBACK_RULES_SUB_TABS: SubTab[] = [
+  { id: 'rules', label: 'Правила', to: '/wb-feedback-reply-rules/index',
+    title: 'Список правил автоответа' },
+  { id: 'stop-words', label: 'Стоп-слова', to: '/wb-feedback-reply-rules/stop-words',
+    title: 'Слова, при которых автоответ не отправляется' },
+  { id: 'test', label: 'Тест генерации', to: '/wb-feedback-reply-rules/test-generation',
+    title: 'Пробная сборка ответов по последним отзывам' },
+]
+
 /** Подменю раздела (строка пилюль под заголовком рабочего места). */
 export interface SubTab {
   id: string

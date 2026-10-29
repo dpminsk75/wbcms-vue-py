@@ -20,6 +20,7 @@
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "ТОП товары", "url": "/wb-profit/top-products", "visibleIn": ["top", "side"]},
       {"label": "Маржа", "url": "/wb-profit", "visibleIn": ["top", "side"]},
+      {"label": "Маржа по линейкам", "url": "/wb-profit/products", "visibleIn": ["top", "side"]},
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Товары по складам", "url": "/wb-stock/top-warehouse-report", "visibleIn": ["top", "side"]},
       {"label": "Критичные остатки", "url": "/wb-stock/warehouse-analytics", "visibleIn": ["top", "side"]},
@@ -78,17 +79,17 @@
     ]
   },
   {
-    "label": "Отзывы",
+    "label": "Общение",
     "icon": "chat",
     "iconClass": "bi bi-chat",
     "url": "#",
     "visibleIn": ["top", "side"],
     "roles": ["viewReports", "admin"],
     "items": [
-      {"label": "Отзывы и ответы", "url": "/wb-feedback-answers/index", "visibleIn": ["top", "side"]},
+      {"label": "Отзывы", "url": "/wb-feedback", "visibleIn": ["top", "side"]},
       {"divider": true, "visibleIn": ["top", "side"]},
-      {"label": "Правила", "url": "/wb-reply-rules/index", "visibleIn": ["top", "side"]},
-      {"label": "Тэги", "url": "/wb-feedback-tags/index", "visibleIn": ["top", "side"]}
+      {"label": "Разбор отзывов", "url": "/wb-feedback-review", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
+      {"label": "Вопросы", "url": "#", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]}
     ]
   },
   {
@@ -116,13 +117,16 @@
     "roles": ["manageFbsStocks", "admin"],
     "items": [
       {"label": "FBS дашборд", "url": "/fbs-report", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
-      {"label": "Управление остатками", "url": "/wb-fbs-virtual/index", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
-      {"label": "Документы", "url": "/wb-doc/index", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
+      {"label": "Управление остатками", "url": "/wb-fbs-virtual", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
+      {"label": "Документы", "url": "/wb-doc", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
       {"divider": true, "visibleIn": ["top", "side"]},
-      {"label": "Наличие", "url": "/wb-doc-report/balance", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
-      {"label": "Оборотная ведомость", "url": "/wb-doc-report/turnover", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
-      {"label": "Карточка товара", "url": "/wb-doc-report/card", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
-      {"label": "Неликвиды", "url": "/wb-doc-report/nonliquid", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]}
+      {"label": "Наличие", "url": "/wb-stock-reports/balance", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
+      {"label": "Оборотная ведомость", "url": "/wb-stock-reports/turnover", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
+      {"label": "Карточка товара", "url": "/wb-stock-reports/card", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
+      {"label": "Неликвиды", "url": "/wb-stock-reports/nonliquid", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "Производство", "url": "/wb-production", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
+      {"label": "Смоленск", "url": "/wb-production/smolensk", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]}
     ]
   },
   {
@@ -134,12 +138,10 @@
     "roles": ["viewReports", "manageFbsStocks", "admin"],
     "items": [
       {"label": "Карточки WB", "url": "/wb/cards", "visibleIn": ["top", "side"], "roles": ["viewReports", "manageFbsStocks", "admin"]},
-      {"label": "Склады", "url": "/our-warehouse/index", "visibleIn": ["top", "side"], "roles": ["viewReports", "manageFbsStocks", "admin"]},
-      {"label": "Виртуальные склады", "url": "/wb-fbs-virtual/warehouse-list", "visibleIn": ["top", "side"], "roles": ["viewReports", "manageFbsStocks", "admin"]},
+      {"label": "Склады", "url": "/wb-warehouses", "visibleIn": ["top", "side"], "roles": ["viewReports", "manageFbsStocks", "admin"]},
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Теги", "url": "/tag/index", "visibleIn": ["top", "side"], "roles": ["viewReports", "admin"]},
-      {"label": "Товары", "url": "/product/index", "visibleIn": ["top", "side"], "roles": ["viewReports", "admin"]},
-      {"label": "Составные товары", "url": "/product-wb-card/index", "visibleIn": ["top", "side"], "roles": ["viewReports", "admin"]}
+      {"label": "Линейки товаров", "url": "/product-catalog", "visibleIn": ["top", "side"], "roles": ["viewReports", "admin"]}
     ]
   },
   {
@@ -150,9 +152,9 @@
     "visibleIn": ["top", "side"],
     "roles": ["admin", "manageUsers", "manageCompanyUsers"],
     "items": [
-      {"label": "Пользователи", "url": "/user/admin/index", "visibleIn": ["top", "side"], "roles": ["manageUsers"]},
+      {"label": "Пользователи", "url": "/admin/users", "visibleIn": ["top", "side"], "roles": ["manageUsers"]},
       {"label": "Роли", "url": "/admin/assignment", "visibleIn": ["top", "side"], "roles": ["admin"]},
-      {"label": "Компании", "url": "/company/index", "visibleIn": ["top", "side"], "roles": ["manageCompanies"]},
+      {"label": "Компании", "url": "/companies", "visibleIn": ["top", "side"], "roles": ["manageCompanies"]},
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Пользователи (SPA)", "url": "/admin/users", "visibleIn": ["top", "side"], "roles": ["manageUsers", "manageCompanyUsers"]},
       {"label": "Компании (SPA)", "url": "/companies", "visibleIn": ["top", "side"]},

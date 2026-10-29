@@ -1,6 +1,6 @@
 <template>
   <div class="container-xxl page-feedback-answers">
-    <h1 class="page-title">{{ $route.meta.title || 'Отзывы и ответы' }}</h1>
+    <FeedbackHead :title="$route.meta.title || 'Отзывы и ответы'" active="answers" />
     <div class="bg-light p-3 rounded mb-4 page-feedback-answers__filter">
       <div class="row g-3 mb-3">
         <div class="col-12 col-md-2">
@@ -57,8 +57,17 @@
           <button class="btn btn-primary" :disabled="isLoading" @click="onApply">Применить</button>
           <button class="btn btn-light" @click="onReset">Сбросить</button>
         </div>
-        <div class="col-12 col-md-4 text-end text-muted small">Всего: {{ total }}</div>
+        <div class="col-12 col-md-4 text-end text-muted small">
+          <button class="btn btn-sm btn-outline-secondary me-2" @click="openPrompt">
+            Промпт разбора
+          </button>
+          <button class="btn btn-sm btn-outline-warning me-2" @click="openErrors">
+            Ошибки разбора
+          </button>
+          Всего: {{ total }}
+        </div>
       </div>
+      <div v-if="reviewMsg" class="alert alert-info py-1 px-2 small mb-0 mt-2">{{ reviewMsg }}</div>
     </div>
     <div class="card">
       <div v-if="isLoading" class="text-center p-5">
@@ -118,6 +127,39 @@
                 <div v-if="fb.bables?.length" class="d-flex flex-wrap gap-1">
                   <span v-for="t in fb.bables" :key="t" class="badge" :class="tagClass(t)">{{ t }}</span>
                 </div>
+                <!-- разбор отзыва через ИИ: эмоциональность / конструктивность / тональность -->
+                <div class="mt-2 page-feedback-answers__ai">
+                  <template v-if="fb.ai_emotion || fb.ai_status === 'error'">
+                    <span class="badge page-feedback-answers__ai-badge"
+                          :class="aiClass('ai_emotion', fb)">
+                      Эмоциональность: {{ aiLabel('ai_emotion', fb) }}
+                    </span>
+                    <span class="badge page-feedback-answers__ai-badge"
+                          :class="aiClass('ai_constructiveness', fb)">
+                      Конструктивность: {{ aiLabel('ai_constructiveness', fb) }}
+                    </span>
+                    <span class="badge page-feedback-answers__ai-badge"
+                          :class="aiClass('ai_tone', fb)">
+                      Тональность: {{ aiLabel('ai_tone', fb) }}
+                    </span>
+                  </template>
+                  <span v-else-if="fb.text" class="text-muted small">Отзыв не разобран</span>
+                  <button v-if="fb.text" type="button"
+                          class="btn btn-sm btn-outline-secondary page-feedback-answers__ai-btn"
+                          :disabled="reviewingId === fb.id"
+                          @click="onReview(fb)">
+                    <span v-if="reviewingId === fb.id" class="spinner-border spinner-border-sm me-1"></span>
+                    {{ reviewingId === fb.id ? 'Разбираем...' : 'Разобрать' }}
+                  </button>
+                  <button v-if="fb.ai_status === 'error'" type="button"
+                          class="btn btn-sm btn-outline-warning page-feedback-answers__ai-btn"
+                          title="Вернуть отзыв в очередь разбора"
+                          @click="onRetry(fb)">
+                    Вернуть в очередь
+                  </button>
+                  <span v-if="fb.ai_status === 'error'" class="text-danger small"
+                        :title="fb.ai_error || ''">ошибка разбора</span>
+                </div>
               </td>
               <td v-if="!filters.hide_answers">
                 <div v-if="fb.answer_text">
@@ -142,6 +184,82 @@
       <span class="page-feedback-answers__pager-label">Стр. {{ page }} из {{ totalPages }}</span>
       <button class="btn btn-sm btn-light" :disabled="page >= totalPages" @click="goPage(page + 1)">Вперёд ›</button>
     </div>
+
+    <!-- Ошибки разбора отзывов — вернуть в очередь -->
+    <div v-if="errorsOpen" class="modal d-block page-feedback-answers__errors-modal" tabindex="-1"
+         @click.self="errorsOpen = false">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header py-2">
+            <h5 class="modal-title">Ошибки разбора отзывов ({{ reviewErrors.length }})</h5>
+            <button type="button" class="btn-close" @click="errorsOpen = false"></button>
+          </div>
+          <div class="modal-body">
+            <div v-if="!reviewErrors.length" class="text-muted">Ошибок нет.</div>
+            <table v-else class="table table-sm table-striped mb-0">
+              <thead>
+                <tr><th>Дата</th><th>Товар</th><th>Отзыв</th><th>Ошибка</th><th></th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="e in reviewErrors" :key="e.feedback_id">
+                  <td class="text-nowrap small">{{ e.created_at }}</td>
+                  <td class="small">{{ e.product_title || e.nm_id }}</td>
+                  <td class="small">{{ (e.text || '').slice(0, 140) }}</td>
+                  <td class="small text-danger" :title="e.error || ''">
+                    {{ (e.error || '').slice(0, 80) }}
+                  </td>
+                  <td class="text-end">
+                    <button class="btn btn-sm btn-outline-secondary" @click="onRetryError(e)">
+                      В очередь
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Промпт разбора отзыва (настройка компании) -->
+    <div v-if="promptOpen" class="modal d-block page-feedback-answers__errors-modal" tabindex="-1"
+         @click.self="promptOpen = false">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header py-2">
+            <h5 class="modal-title">Промпт разбора отзыва</h5>
+            <button type="button" class="btn-close" @click="promptOpen = false"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-muted small">
+              Промпт применяется к каждому отзыву отдельно. Модель — «Модель (сводка)».
+              Формат ответа: JSON с полями emotion, constructiveness, tone.
+            </p>
+            <div class="d-flex gap-3 align-items-end mb-2">
+              <div class="form-check">
+                <input id="fa-autoreview" v-model="autoReview" type="checkbox" class="form-check-input" />
+                <label for="fa-autoreview" class="form-check-label">
+                  Авторазбор в фоне (таймер, каждый час)
+                </label>
+              </div>
+              <div style="max-width:180px">
+                <label class="form-label small mb-0">Отзывов за прогон</label>
+                <input v-model.number="reviewBatch" type="number" min="1" max="500" class="form-control form-control-sm" />
+              </div>
+            </div>
+            <textarea v-model="promptText" class="form-control font-monospace" rows="18"></textarea>
+          </div>
+          <div class="modal-footer py-2">
+            <span v-if="promptMsg" class="me-auto small" :class="promptMsgOk ? 'text-success' : 'text-danger'">
+              {{ promptMsg }}
+            </span>
+            <button class="btn btn-light" @click="promptOpen = false">Закрыть</button>
+            <button class="btn btn-primary" :disabled="promptSaving" @click="onSavePrompt">
+              {{ promptSaving ? 'Сохраняем...' : 'Сохранить' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -149,8 +267,9 @@
 import '@/assets/css/pages/page-feedback-answers.css'
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { feedbackApi, type FeedbackAnswer } from '@/api/feedback'
+import { feedbackApi, type FeedbackAnswer, type FeedbackReviewError } from '@/api/feedback'
 import WbDateInput from '../components/common/WbDateInput.vue'
+import FeedbackHead from '../components/feedback/FeedbackHead.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -184,6 +303,127 @@ const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize))
 const isLoading = ref(false)
 const tagsSentiment = ref<Record<string, string>>({})
 const rulesById = ref<Record<string, string>>({})
+
+// --- разбор отзыва через ИИ ----------------------------------------------------
+const reviewingId = ref('')
+const reviewErrors = ref<FeedbackReviewError[]>([])
+const errorsOpen = ref(false)
+const reviewMsg = ref('')
+
+const AI_LABELS: Record<string, Record<string, string>> = {
+  ai_emotion: { low: 'низкая', mid: 'средняя', high: 'высокая' },
+  ai_constructiveness: { low: 'низкая', mid: 'средняя', high: 'высокая' },
+  ai_tone: { neg: 'негатив', pos: 'позитив', neutral: 'неопределён' },
+}
+
+function aiLabel(key: string, fb: FeedbackAnswer) {
+  const v = String((fb as any)[key] || '')
+  return AI_LABELS[key]?.[v] || v || '—'
+}
+
+function aiClass(key: string, fb: FeedbackAnswer) {
+  const v = String((fb as any)[key] || '')
+  if (key === 'ai_tone') {
+    if (v === 'pos') return 'bg-success'
+    if (v === 'neg') return 'bg-danger'
+    return 'bg-secondary'
+  }
+  if (v === 'high') return 'bg-primary'
+  if (v === 'mid') return 'bg-info text-dark'
+  return 'bg-light text-dark border'
+}
+
+/** Разобрать отзыв (синхронный вызов ИИ). */
+async function onReview(fb: FeedbackAnswer) {
+  reviewingId.value = fb.id
+  reviewMsg.value = ''
+  try {
+    await feedbackApi.reviewOne(fb.id)
+  } catch (e: any) {
+    reviewMsg.value = e?.response?.data?.detail || String(e)
+  } finally {
+    reviewingId.value = ''
+    await fetchData()
+  }
+}
+
+/** Вернуть отзыв в очередь разбора (после ошибки). */
+async function onRetry(fb: FeedbackAnswer) {
+  reviewMsg.value = ''
+  try {
+    await feedbackApi.reviewRetry(fb.id)
+    reviewMsg.value = 'Отзыв возвращён в очередь разбора'
+  } catch (e: any) {
+    reviewMsg.value = e?.response?.data?.detail || String(e)
+  }
+  await fetchData()
+  await loadReviewErrors()
+}
+
+async function loadReviewErrors() {
+  try {
+    const d = await feedbackApi.reviewErrors(100)
+    reviewErrors.value = d.items || []
+  } catch {
+    reviewErrors.value = []
+  }
+}
+
+async function openErrors() {
+  errorsOpen.value = true
+  await loadReviewErrors()
+}
+
+async function onRetryError(e: FeedbackReviewError) {
+  reviewMsg.value = ''
+  try {
+    await feedbackApi.reviewRetry(e.feedback_id)
+    reviewMsg.value = 'Отзыв возвращён в очередь разбора'
+  } catch (err: any) {
+    reviewMsg.value = err?.response?.data?.detail || String(err)
+  }
+  await loadReviewErrors()
+  await fetchData()
+}
+
+// --- промпт разбора отзыва ----------------------------------------------------
+const promptOpen = ref(false)
+const promptText = ref('')
+const promptSaving = ref(false)
+const promptMsg = ref('')
+const promptMsgOk = ref(true)
+const autoReview = ref(false)
+const reviewBatch = ref(100)
+
+async function openPrompt() {
+  promptMsg.value = ''
+  try {
+    const s = await feedbackApi.reviewSettings()
+    promptText.value = s.prompt || ''
+    autoReview.value = !!s.auto
+    reviewBatch.value = s.batch || 100
+    promptOpen.value = true
+  } catch (e: any) {
+    promptMsg.value = e?.response?.data?.detail || String(e)
+    promptMsgOk.value = false
+  }
+}
+
+async function onSavePrompt() {
+  promptSaving.value = true
+  promptMsg.value = ''
+  try {
+    await feedbackApi.saveReviewPrompt(promptText.value)
+    await feedbackApi.saveReviewSettings({ auto: autoReview.value, batch: reviewBatch.value })
+    promptMsg.value = 'Промпт и настройки сохранены'
+    promptMsgOk.value = true
+  } catch (e: any) {
+    promptMsg.value = e?.response?.data?.detail || String(e)
+    promptMsgOk.value = false
+  } finally {
+    promptSaving.value = false
+  }
+}
 
 function buildParams() {
   const p: Record<string, any> = {

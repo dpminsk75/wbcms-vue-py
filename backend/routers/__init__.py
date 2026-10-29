@@ -15,8 +15,20 @@ from .fbs_commission import router as fbs_commission_router
 from .fbs_pvz import router as fbs_pvz_router
 from .geo_sales import router as geo_sales_router
 from .penalty import router as penalty_router
+from .profit import profit_router, wb_profit_router
+from .profit_products import router as profit_products_router
+from .warehouse import router as warehouse_router
+from .stock_doc import router as stock_doc_router
+from .fbs_virtual import router as fbs_virtual_router
+from .stock_report import router as stock_report_router
+from .production import router as production_router
+from .smolensk_stock import router as smolensk_stock_router
+from .product_catalog import router as product_catalog_router
+from .wb_cards import router as wb_cards_router
 from .wb_sales import router as wb_sales_router
 from .feedback import router as feedback_router
+from .feedback_dashboard import router as feedback_dashboard_router
+from .feedback_insights import router as feedback_insights_router
 from .reply_rules import router as reply_rules_router
 from .wb_tokens import router as wb_tokens_router, expiring_router as wb_tokens_expiring_router
 from .competitor import router as competitor_router

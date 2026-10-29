@@ -1,11 +1,11 @@
 <template>
   <header id="header">
     <!-- мобильная панель -->
-    <div class="mobile-topbar d-md-none" style="background: linear-gradient(97.26deg,#ed3cca .49%,#df34d2 14.88%,#d02bd9 29.27%,#bf22e1 43.14%,#ae1ae8 57.02%,#9a10f0 70.89%,#8306f7 84.76%,#7c1af8 99.15%); padding:8px 12px; display:flex; align-items:center; gap:8px">
+    <div class="mobile-topbar bg-wb d-md-none" style="padding:8px 12px; display:flex; align-items:center; gap:8px">
       <button type="button" class="mobile-menu-toggle" @click="mobileOpen=!mobileOpen" style="background:transparent; border:none; display:flex; flex-direction:column; gap:4px">
         <span style="display:block; width:20px; height:2px; background:#fff"></span><span style="display:block; width:20px; height:2px; background:#fff"></span><span style="display:block; width:20px; height:2px; background:#fff"></span>
       </button>
-      <span class="mobile-topbar-brand" style="color:#fff; font-weight:700; font-family:'Segoe UI',Roboto,Arial,sans-serif; letter-spacing:.5px; display:inline-flex; align-items:center; gap:7px">
+      <span class="mobile-topbar-brand" style="color:#fff; font-weight:700; letter-spacing:.5px; display:inline-flex; align-items:center; gap:7px">
         <img src="/img/icons/logo-40.png" alt="SelBI" width="26" height="26" style="display:block; border-radius:7px" />
         SelBI
       </span>
@@ -29,7 +29,7 @@
     <!-- десктоп -->
     <div class="d-none d-md-block">
       <nav class="navbar navbar-expand-md bg-wb w-100" style="padding:10px 12px">
-        <a class="navbar-brand wb-navbar__brand d-flex align-items-center justify-content-center" href="/" style="color:#fff; font-weight:700; font-size:26px; font-family:'Segoe UI',Roboto,Arial,sans-serif; letter-spacing:.5px; gap:9px">
+        <a class="navbar-brand wb-navbar__brand d-flex align-items-center justify-content-center" href="/" style="color:#fff; font-weight:700; font-size:26px; letter-spacing:.5px; gap:9px">
           <img src="/img/icons/logo-40.png" alt="SelBI" width="34" height="34" style="display:block; border-radius:9px" />
           <span>SelBI</span>
         </a>
@@ -64,6 +64,12 @@
                 <a class="dropdown-item" :class="{ active: auth.companyId === c.id }" href="#" @click.prevent="pickCompany(c.id)">{{ c.name }}</a>
               </li>
             </ul>
+          </li>
+          <li class="nav-item ms-2 wb-menu__theme">
+            <router-link class="nav-link wb-theme-link" to="/settings/appearance" title="Настройки стилей">
+              <span class="wb-icon"><i class="bi bi-palette"></i></span>
+              <span class="wb-text">Стиль</span>
+            </router-link>
           </li>
           <li class="nav-item ms-2 wb-menu__logout">
             <!-- Компании/Пользователи идут из backend/config/menu.json (секция Админка), хардкода тут нет -->
@@ -109,15 +115,14 @@ const iconClassMap: Record<string,string> = {
 }
 
 const fallbackMenu = [
-  { label:'Отчеты', icon:'reports', iconClass:'bi bi-bar-chart', items:[ {label:'ТОП продаж', url:'/wb-sales-analysis/'},{label:'Карточка WB', url:'/wb/detail/'},{label:'Заказы', url:'/wb-order/feed-aggregated'},{label:'Тепловая карта', url:'#'},{label:'', divider:true},{label:'Реклама', url:'/wb-adv-report/'},{label:'По ГЕО', url:'#'},{label:'Возвраты', url:'#'},{label:'Воронка продаж', url:'#'},{label:'', divider:true},{label:'ТОП товары', url:'/wb-profit/top-products'},{label:'Маржа', url:'/wb-profit'},{label:'', divider:true},{label:'Товары по складам', url:'/wb-stock/top-warehouse-report'},{label:'Критичные остатки', url:'/wb-stock/warehouse-analytics'},{label:'Оборачиваемость', url:'/wb-stock/analytics'},{label:'Детализация', url:'/wb-detail-by-period/weekly-report-nmid'} ] },
+  { label:'Отчеты', icon:'reports', iconClass:'bi bi-bar-chart', items:[ {label:'ТОП продаж', url:'/wb-sales-analysis/'},{label:'Карточка WB', url:'/wb/detail/'},{label:'Заказы', url:'/wb-order/feed-aggregated'},{label:'Тепловая карта', url:'#'},{label:'', divider:true},{label:'Реклама', url:'/wb-adv-report/'},{label:'По ГЕО', url:'#'},{label:'Возвраты', url:'#'},{label:'Воронка продаж', url:'#'},{label:'', divider:true},{label:'ТОП товары', url:'/wb-profit/top-products'},{label:'Маржа', url:'/wb-profit'},{label:'Маржа по линейкам', url:'/wb-profit/products'},{label:'', divider:true},{label:'Товары по складам', url:'/wb-stock/top-warehouse-report'},{label:'Критичные остатки', url:'/wb-stock/warehouse-analytics'},{label:'Оборачиваемость', url:'/wb-stock/analytics'},{label:'Детализация', url:'/wb-detail-by-period/weekly-report-nmid'} ] },
   { label:'По фразам', icon:'by_search', iconClass:'bi bi-search', items:[ {label:'Карточка -> фразы', url:'/wb-search/card'},{label:'Фраза -> карточки', url:'/wb-search/phrase'},{label:'Анализ фраз', url:'/wb-search/trend'},{label:'', divider:true},{label:'SEO рекомендации', url:'/seo/index'},{label:'SEO просмотренные', url:'/seo/index'},{label:'', divider:true},{label:'Конкуренты (анализ)', url:'/competitor/index'},{label:'Конкуренты (новый товар)', url:'/competitor/new-cards'},{label:'Собранные карточки', url:'/competitor/captured'},{label:'Подбор конкурентов', url:'/competitor/pick'},{label:'Разбор фраз (фон)', url:'/competitor/phrase-miner'},{label:'Диагностика расширения', url:'/ext/diag'},{label:'Установка расширения', url:'/ext/install'},{label:'Фильтры расширения', url:'/ext/install?block=filters'} ] },
   { label:'По тегам', icon:'tag', iconClass:'bi bi-tag', items:[ {label:'Заказы', url:'/tag/view'},{label:'', divider:true},{label:'Список тегов', url:'/tag/index'} ] },
   { label:'По товарам', icon:'product', iconClass:'bi bi-box', items:[ {label:'Детализация', url:'/wb-detail-by-period/weekly-report'} ] },
-  { label:'Отзывы', icon:'chat', iconClass:'bi bi-chat', items:[ {label:'Отзывы и ответы', url:'/wb-feedback-answers/index'},{label:'', divider:true},{label:'Правила', url:'/wb-reply-rules/index'},{label:'Тэги', url:'/wb-feedback-tags/index'} ] },
   { label:'Данные', icon:'data', iconClass:'bi bi-pie-chart', items:[ {label:'Лента заказов', url:'/wb-order/feed'},{label:'', divider:true},{label:'Заказы', url:'/wb-order/index'},{label:'Продажи', url:'/wb-sales/index'},{label:'', divider:true},{label:'Себестоимость', url:'/cost-import/list'} ] },
-  { label:'Склад', icon:'warehouse', iconClass:'bi bi-box-seam', items:[ {label:'Управление остатками', url:'/wb-fbs-virtual/index'},{label:'Документы', url:'/wb-doc/index'},{label:'', divider:true},{label:'Наличие', url:'/wb-doc-report/balance'},{label:'Оборотная ведомость', url:'/wb-doc-report/turnover'},{label:'Карточка товара', url:'/wb-doc-report/card'},{label:'Неликвиды', url:'/wb-doc-report/nonliquid'} ] },
-  { label:'Справочники', icon:'book', iconClass:'bi bi-book', items:[ {label:'Карточки WB', url:'/wb/cards'},{label:'Склады', url:'/our-warehouse/index'},{label:'Виртуальные склады', url:'/wb-fbs-virtual/warehouse-list'},{label:'', divider:true},{label:'Теги', url:'/tag/index'},{label:'Товары', url:'/product/index'},{label:'Составные товары', url:'/product-wb-card/index'} ] },
-  { label:'Админка', icon:'gear', iconClass:'bi bi-gear', items:[ {label:'Пользователи', url:'/user/admin/index'},{label:'Роли', url:'/admin/assignment'},{label:'Компании', url:'/company/index'},{label:'', divider:true},{label:'Быстрые кнопки', url:'/admin/quick-buttons'},{label:'SEO-модели', url:'/admin/seo-models'},{label:'Меню', url:'/admin/menu'},{label:'Настройки профиля', url:'/user/profile'} ] },
+  { label:'Склад', icon:'warehouse', iconClass:'bi bi-box-seam', items:[ {label:'Управление остатками', url:'/wb-fbs-virtual'},{label:'Документы', url:'/wb-doc'},{label:'', divider:true},{label:'Наличие', url:'/wb-stock-reports/balance'},{label:'Оборотная ведомость', url:'/wb-stock-reports/turnover'},{label:'Карточка товара', url:'/wb-stock-reports/card'},{label:'Неликвиды', url:'/wb-stock-reports/nonliquid'},{label:'', divider:true},{label:'Производство', url:'/wb-production'} ] },
+  { label:'Справочники', icon:'book', iconClass:'bi bi-book', items:[ {label:'Карточки WB', url:'/wb/cards'},{label:'Склады', url:'/wb-warehouses'},{label:'Виртуальные склады', url:'/wb-fbs-virtual'},{label:'', divider:true},{label:'Теги', url:'/tag/index'},{label:'Товары', url:'/product/index'},{label:'Составные товары', url:'/product-wb-card/index'} ] },
+  { label:'Админка', icon:'gear', iconClass:'bi bi-gear', items:[ {label:'Пользователи', url:'/admin/users'},{label:'Роли', url:'/admin/assignment'},{label:'Компании', url:'/companies'},{label:'', divider:true},{label:'Быстрые кнопки', url:'/admin/quick-buttons'},{label:'SEO-модели', url:'/admin/seo-models'},{label:'Меню', url:'/admin/menu'},{label:'Настройки профиля', url:'/user/profile'} ] },
 ]
 
 const { data: menuRaw, isError } = useQuery({ queryKey: ['menu','top', computed(() => auth.user?.username || 'guest')], queryFn: ()=> (dashboardApi as any).menu('top'), initialData: fallbackMenu as any })
@@ -155,10 +160,29 @@ const spaMap: Record<string,string> = {
   '/admin/invites': '/admin/invites', 
   '/companies': '/companies', 
   '/admin/users': '/admin/users',
+  '/companies': '/companies',
   '/competitor/new-cards': '/competitor/new-cards',
   '/competitor/captured': '/competitor/captured',
   '/competitor/pick': '/competitor/pick',
-  '/wb-profit/top-products': '/wb-profit/top-products'
+  '/wb-profit': '/wb-profit',
+  '/wb-profit/products': '/wb-profit/products',
+  '/wb-profit/top-products': '/wb-profit/top-products',
+  '/wb-warehouses': '/wb-warehouses',
+  '/wb-doc': '/wb-doc',
+  '/wb-fbs-virtual': '/wb-fbs-virtual',
+  '/wb-stock-reports/balance': '/wb-stock-reports/balance',
+  '/wb-stock-reports/turnover': '/wb-stock-reports/turnover',
+  '/wb-stock-reports/card': '/wb-stock-reports/card',
+  '/wb-stock-reports/nonliquid': '/wb-stock-reports/nonliquid',
+  '/wb-production': '/wb-production',
+  // блок «Отзывы» — разделы переехали в /wb-feedback-*
+  '/wb-feedback': '/wb-feedback',
+  '/wb-feedback-review': '/wb-feedback-review',
+  '/wb-feedback-answers/index': '/wb-feedback-answers/index',
+  '/wb-feedback-analysis': '/wb-feedback-analysis',
+  '/wb-feedback-insights': '/wb-feedback-insights',
+  '/wb-feedback-reply-rules/index': '/wb-feedback-reply-rules/index',
+  '/wb-feedback-tags/index': '/wb-feedback-tags/index'
 }
 const toSpa = (url?: string): string | null => {
   if (!url || url==='#') return null

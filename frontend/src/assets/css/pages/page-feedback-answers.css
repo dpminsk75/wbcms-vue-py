@@ -16,3 +16,10 @@
 .page-feedback-answers__video { max-width: 100%; }
 .page-feedback-answers__pager { display: flex; gap: 8px; justify-content: center; margin: 12px 0; }
 .page-feedback-answers__pager-label { align-self: center; font-size: 12px; }
+
+/* Разбор отзыва через ИИ: метки + кнопки */
+.page-feedback-answers__ai { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.page-feedback-answers__ai-badge { font-weight: 500; }
+.page-feedback-answers__ai-btn { font-size: 11px; padding: 2px 8px; }
+/* Модалка ошибок разбора */
+.page-feedback-answers__errors-modal { background: rgba(0, 0, 0, .4); }

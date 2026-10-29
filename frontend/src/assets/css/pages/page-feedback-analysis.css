@@ -1,0 +1,193 @@
+/* Разбор отзывов по карточкам — свои стили страницы.
+   Всё, что есть в Bootstrap 5 (flex/ gap/ отступы/ таблицы/ бейджи),
+   не дублируем: ниже только ширины колонок, которые утилитами BS не задать,
+   и блок панели «о чём говорят покупатели». */
+
+.page-feedback-analysis__filter { border: 1px solid #e5e7eb; border-radius: 12px; }
+
+/* Ширины колонок — утилитами Bootstrap не задать */
+.page-feedback-analysis__col-check { width: 36px; }
+.page-feedback-analysis__col-num { width: 90px; text-align: center; }
+/* Карточка в таблице разборов — иначе название рвётся на 2 строки */
+.page-feedback-analysis__col-card { min-width: 280px; }
+
+.page-feedback-analysis__count { float: right; font-weight: 400; font-size: 12px; opacity: .85; }
+.page-feedback-analysis__copied { color: #1a7f37; font-weight: 600; }
+
+.page-feedback-analysis__title { font-weight: 600; }
+.page-feedback-analysis__sub {
+  font-size: 11px;
+  color: #6c757d;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+.page-feedback-analysis__row--picked { background-color: #eef4ff; }
+.page-feedback-analysis__expand-row td { background-color: #fafafa; }
+
+.page-feedback-analysis__reviews { display: flex; flex-direction: column; gap: 8px; }
+.page-feedback-analysis__review {
+  border-left: 3px solid #d8d8e0;
+  padding-left: 8px;
+}
+.page-feedback-analysis__review-date { font-size: 11px; color: #6c757d; margin-left: 6px; }
+.page-feedback-analysis__review-text { font-size: 13px; }
+.page-feedback-analysis__review-cons { font-size: 12px; color: #a33; }
+.page-feedback-analysis__review-pros { font-size: 12px; color: #467; }
+
+.page-feedback-analysis__pager { display: flex; gap: 8px; justify-content: center; align-items: center; }
+.page-feedback-analysis__pager-label { font-size: 12px; color: #6c757d; }
+
+/* Панель запуска — липкая сверху, чтобы кнопка не терялась под таблицей */
+.page-feedback-analysis__bar {
+  position: sticky;
+  top: 8px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border: 1px solid #d9d3ee;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(74, 58, 140, .12);
+}
+.page-feedback-analysis__bar-info { font-size: 13px; }
+.page-feedback-analysis__bar-hint { font-size: 11px; color: #6c757d; margin-left: 8px; }
+.page-feedback-analysis__bar-actions { display: flex; gap: 8px; }
+
+.page-feedback-analysis__job { margin-bottom: 12px; }
+.page-feedback-analysis__job-items {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+.page-feedback-analysis__job-items li { padding: 2px 0; }
+
+/* ---- Панель «о чём говорят покупатели» ---- */
+.page-feedback-analysis__panel {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 6px;
+}
+.page-feedback-analysis__panel-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.page-feedback-analysis__panel-title { font-size: 14px; font-weight: 700; }
+.page-feedback-analysis__panel-stat { font-size: 12.5px; color: #6c757d; }
+.page-feedback-analysis__panel-stat.panel-stat--pos { color: #1a7f37; font-weight: 600; }
+.page-feedback-analysis__panel-stat.panel-stat--neg { color: #a33; font-weight: 600; }
+
+.page-feedback-analysis__panel-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+@media (max-width: 900px) {
+  .page-feedback-analysis__panel-cols { grid-template-columns: 1fr; }
+}
+.page-feedback-analysis__col-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.page-feedback-analysis__group { margin-bottom: 15px; }
+.page-feedback-analysis__group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 13.5px;
+  margin-bottom: 4px;
+}
+.page-feedback-analysis__group-title .mk { font-weight: 700; font-size: 15px; }
+.page-feedback-analysis__group.group--pos .mk { color: #1a7f37; }
+.page-feedback-analysis__group.group--neg .mk { color: #a33; }
+.page-feedback-analysis__group ul { list-style: none; margin: 0 0 0 20px; padding: 0; }
+.page-feedback-analysis__group li {
+  position: relative;
+  padding: 3px 0 3px 14px;
+  font-size: 12.5px;
+  color: #333;
+}
+.page-feedback-analysis__group li::before {
+  content: "\2022";
+  position: absolute;
+  left: 0;
+  color: #8a8f98;
+}
+.page-feedback-analysis__group.group--pos li::before { color: #1a7f37; }
+.page-feedback-analysis__group.group--neg li::before { color: #a33; }
+
+/* ---- Блоки действий ---- */
+.page-feedback-analysis__h3 {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 22px 0 10px;
+  padding-bottom: 5px;
+  border-bottom: 2px solid #8A2BE0;
+}
+.page-feedback-analysis__act { border: 1px solid #e5e7eb; border-radius: 8px; padding: 11px 13px; }
+.page-feedback-analysis__act-issue { font-weight: 700; font-size: 14px; margin: 7px 0; }
+.page-feedback-analysis__act-fix { color: #1a7f37; font-size: 13px; margin-bottom: 9px; }
+.page-feedback-analysis__quote { font-style: italic; color: #555; font-size: 11.5px; margin: 3px 0; }
+.page-feedback-analysis__fix-head { font-weight: 700; font-size: 12px; margin: 11px 0 3px; color: #4a4a55; }
+.page-feedback-analysis__fix-list { margin: 0; padding-left: 18px; font-size: 12.5px; }
+.page-feedback-analysis__fix-list li { margin-bottom: 2px; }
+.page-feedback-analysis__change {
+  font-size: 12.5px;
+  margin-bottom: 3px;
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.page-feedback-analysis__change-was { text-decoration: line-through; color: #a33; }
+.page-feedback-analysis__change-now { color: #1a7f37; font-weight: 600; }
+.page-feedback-analysis__hl {
+  background: #f0f8f1;
+  border-left: 3px solid #1a7f37;
+  padding: 6px 9px;
+  border-radius: 0 6px 6px 0;
+  font-size: 12.5px;
+  margin-top: 9px;
+}
+.page-feedback-analysis__cap { font-size: 11px; color: #6c757d; margin-bottom: 4px; }
+.page-feedback-analysis__pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.5;
+  background: #f7f7fa;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 9px;
+  max-height: 190px;
+  overflow-y: auto;
+  margin: 3px 0 0;
+}
+
+/* Модалка промпта */
+.page-feedback-analysis__prompt-modal { max-width: 820px; width: 94vw; }
+/* Точка у кнопки «Промпт» — свой промпт задан */
+.page-feedback-analysis__bar-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #8A2BE0;
+  margin-left: 4px;
+  vertical-align: middle;
+}

@@ -114,6 +114,11 @@ ALLOWED: dict[str, dict] = {
         "default": "OnBootSec=1min OnUnitActiveSec=5min",
         "group": "day",
     },
+    "wbcms-feedback-sync": {
+        "title": "Синк отзывов WB (каждые 30 мин)",
+        "default": "*:00,30",
+        "group": "day",
+    },
 }
 
 _NAME_RE = re.compile(r"^wbcms-[a-z0-9-]+$")

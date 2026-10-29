@@ -1,0 +1,22 @@
+/* Дашборд «Отзывы» — стили страницы.
+   Компоненты (KPI, донаты, графики, таблица) со своими scoped-стилями.
+   Здесь только то, что относится к странице целиком. */
+
+/* Шапка дашборда — общая .wb-workspace-head (wb-ui.css): заголовок слева,
+   локальное меню раздела справа. */
+
+/* Доп. фильтр «Отзывы» — в блоке фильтров, справа от кнопок */
+.page-feedback-dashboard__rev-filter {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.page-feedback-dashboard__rev-filter .form-control { width: 200px; }
+
+.page-feedback-dashboard__products {
+  background: #fff;
+  border: 1px solid #d5dae1;
+  border-radius: 12px;
+  overflow: hidden;
+}

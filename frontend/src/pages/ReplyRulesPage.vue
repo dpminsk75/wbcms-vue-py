@@ -1,18 +1,19 @@
 <template>
   <div class="container-xxl page-reply-rules">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <h1 class="page-title mb-0">{{ $route.meta.title || 'Автоответы на отзывы' }}</h1>
-      <div class="d-flex gap-2">
-        <router-link to="/wb-reply-rules/stop-words" class="btn btn-outline-danger">
-          <i class="bi bi-slash-circle me-1"></i>Стоп-слова
-        </router-link>
-        <router-link to="/wb-reply-rules/test-generation" class="btn btn-outline-secondary">
-          <i class="bi bi-flask me-1"></i>Тест генерации
-        </router-link>
-        <router-link to="/wb-reply-rules/create" class="btn btn-primary">
-          <i class="bi bi-plus-lg me-1"></i>Добавить правило
-        </router-link>
-      </div>
+    <FeedbackHead :title="$route.meta.title || 'Автоответы на отзывы'" active="rules"
+                  :subtabs="FEEDBACK_RULES_SUB_TABS" />
+
+    <!-- кнопки страницы — отдельный блок, чтобы не ломать меню в шапке -->
+    <div class="d-flex justify-content-end gap-2 mb-3">
+      <router-link to="/wb-feedback-reply-rules/stop-words" class="btn btn-outline-danger">
+        <i class="bi bi-slash-circle me-1"></i>Стоп-слова
+      </router-link>
+      <router-link to="/wb-feedback-reply-rules/test-generation" class="btn btn-outline-secondary">
+        <i class="bi bi-flask me-1"></i>Тест генерации
+      </router-link>
+      <router-link to="/wb-feedback-reply-rules/create" class="btn btn-primary">
+        <i class="bi bi-plus-lg me-1"></i>Добавить правило
+      </router-link>
     </div>
 
     <div v-if="isLoading" class="text-center p-5">
@@ -62,7 +63,7 @@
                 <span v-else class="badge page-reply-rules__notext">Без текста</span>
               </td>
               <td class="text-nowrap text-end">
-                <router-link :to="`/wb-reply-rules/${r.id}/edit`" class="btn btn-sm btn-light page-reply-rules__action" title="Редактировать"><i class="bi bi-pencil"></i></router-link>
+                <router-link :to="`/wb-feedback-reply-rules/${r.id}/edit`" class="btn btn-sm btn-light page-reply-rules__action" title="Редактировать"><i class="bi bi-pencil"></i></router-link>
                 <button class="btn btn-sm btn-light" title="Удалить" @click="onDelete(r)"><i class="bi bi-trash"></i></button>
               </td>
             </tr>
@@ -84,6 +85,8 @@
 import '@/assets/css/pages/page-reply-rules.css'
 import { ref, computed, onMounted } from 'vue'
 import { replyRulesApi, type ReplyRuleItem } from '@/api/replyRules'
+import FeedbackHead from '@/components/feedback/FeedbackHead.vue'
+import { FEEDBACK_RULES_SUB_TABS } from '@/components/common/workspaceTabs'
 
 const rows = ref<ReplyRuleItem[]>([])
 const total = ref(0)

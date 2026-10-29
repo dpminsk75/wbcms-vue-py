@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import json as _json
 
-KINDS = ("competitor_analyze_all", "seo_process")
+KINDS = ("competitor_analyze_all", "seo_process", "review_analysis")
 
 
 def _parse_params(raw) -> dict | None:
@@ -91,7 +91,9 @@ async def run_job(job_id: int) -> None:
         handler_name = {"competitor_analyze_all": ("backend.services.competitor_service",
                                                   "execute_analyze_job"),
                           "seo_process": ("backend.services.seo_service",
-                                          "execute_process_job")}.get(job["kind"])
+                                          "execute_process_job"),
+                          "review_analysis": ("backend.services.feedback_insight_service",
+                                              "execute_review_job")}.get(job["kind"])
         if not handler_name:
             await _set(db, "UPDATE ai_job SET status='error', error='no handler' WHERE id=:j", {"j": job_id})
             return

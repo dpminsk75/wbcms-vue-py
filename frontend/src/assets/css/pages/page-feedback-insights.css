@@ -1,0 +1,138 @@
+/* Инсайты (просмотр разборов) — свои стили страницы.
+   Всё, что есть в Bootstrap 5 (flex/ gap/ отступы/ таблицы/ бейджи),
+   не дублируем: ниже только ширины колонок, которые утилитами BS не задать,
+   и блок панели «о чём говорят покупатели». */
+
+.page-feedback-insights__col-check { width: 36px; }
+.page-feedback-insights__col-num { width: 100px; text-align: center; }
+/* Карточка — иначе название рвётся на 2 строки */
+.page-feedback-insights__col-card { min-width: 300px; }
+
+.page-feedback-insights__count { float: right; font-weight: 400; font-size: 12px; opacity: .85; }
+.page-feedback-insights__spacer { display: inline-block; width: 40px; }
+.page-feedback-insights__copied { color: #1a7f37; font-weight: 600; }
+
+.page-feedback-insights__title { font-weight: 600; }
+.page-feedback-insights__sub {
+  font-size: 11px;
+  color: #6c757d;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 340px;
+}
+
+.page-feedback-insights__row--picked { background-color: #eef4ff; }
+.page-feedback-insights__expand-row td { background-color: #fafafa; }
+
+.page-feedback-insights__pager { display: flex; gap: 8px; justify-content: center; align-items: center; }
+.page-feedback-insights__pager-label { font-size: 12px; color: #6c757d; }
+
+.page-feedback-insights__job-note { font-size: 13px; }
+
+/* ---- Панель «о чём говорят покупатели» ---- */
+.page-feedback-insights__panel {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 6px;
+}
+.page-feedback-insights__panel-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.page-feedback-insights__panel-title { font-size: 14px; font-weight: 700; }
+.page-feedback-insights__panel-stat { font-size: 12.5px; color: #6c757d; }
+.page-feedback-insights__panel-stat.panel-stat--pos { color: #1a7f37; font-weight: 600; }
+.page-feedback-insights__panel-stat.panel-stat--neg { color: #a33; font-weight: 600; }
+
+.page-feedback-insights__panel-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+@media (max-width: 900px) {
+  .page-feedback-insights__panel-cols { grid-template-columns: 1fr; }
+}
+.page-feedback-insights__col-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.page-feedback-insights__group { margin-bottom: 15px; }
+.page-feedback-insights__group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 13.5px;
+  margin-bottom: 4px;
+}
+.page-feedback-insights__group-title .mk { font-weight: 700; font-size: 15px; }
+.page-feedback-insights__group.group--pos .mk { color: #1a7f37; }
+.page-feedback-insights__group.group--neg .mk { color: #a33; }
+.page-feedback-insights__group ul { list-style: none; margin: 0 0 0 20px; padding: 0; }
+.page-feedback-insights__group li {
+  position: relative;
+  padding: 3px 0 3px 14px;
+  font-size: 12.5px;
+  color: #333;
+}
+.page-feedback-insights__group li::before {
+  content: "\2022";
+  position: absolute;
+  left: 0;
+  color: #8a8f98;
+}
+.page-feedback-insights__group.group--pos li::before { color: #1a7f37; }
+.page-feedback-insights__group.group--neg li::before { color: #a33; }
+
+/* ---- Блоки действий ---- */
+.page-feedback-insights__h3 {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 22px 0 10px;
+  padding-bottom: 5px;
+  border-bottom: 2px solid #8A2BE0;
+}
+.page-feedback-insights__act { border: 1px solid #e5e7eb; border-radius: 8px; padding: 11px 13px; }
+.page-feedback-insights__act-issue { font-weight: 700; font-size: 14px; margin: 7px 0; }
+.page-feedback-insights__act-fix { color: #1a7f37; font-size: 13px; margin-bottom: 9px; }
+.page-feedback-insights__quote { font-style: italic; color: #555; font-size: 11.5px; margin: 3px 0; }
+.page-feedback-insights__fix-head { font-weight: 700; font-size: 12px; margin: 11px 0 3px; color: #4a4a55; }
+.page-feedback-insights__fix-list { margin: 0; padding-left: 18px; font-size: 12.5px; }
+.page-feedback-insights__fix-list li { margin-bottom: 2px; }
+.page-feedback-insights__change {
+  font-size: 12.5px;
+  margin-bottom: 3px;
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.page-feedback-insights__change-was { text-decoration: line-through; color: #a33; }
+.page-feedback-insights__change-now { color: #1a7f37; font-weight: 600; }
+.page-feedback-insights__hl {
+  background: #f0f8f1;
+  border-left: 3px solid #1a7f37;
+  padding: 6px 9px;
+  border-radius: 0 6px 6px 0;
+  font-size: 12.5px;
+  margin-top: 9px;
+}
+.page-feedback-insights__cap { font-size: 11px; color: #6c757d; margin-bottom: 4px; }
+.page-feedback-insights__pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.5;
+  background: #f7f7fa;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 9px;
+  max-height: 190px;
+  overflow-y: auto;
+  margin: 3px 0 0;
+}

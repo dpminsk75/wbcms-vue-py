@@ -1,5 +1,7 @@
 from fastapi import FastAPI, Depends, Query, Body, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,8 +10,8 @@ import logging
 import time
 from collections import deque
 from backend.database import get_db
-from backend.deps import get_current_user, get_optional_user, require_admin, get_current_company
-from backend.routers import auth_router, companies_router, dashboard_router, admin_router, admin_timers_router, news_router, tags_router, wb_search_router, cost_router, wb_orders_router, wb_sales_router, feedback_router, reply_rules_router, wb_tokens_router, wb_tokens_expiring_router, competitor_router, competitors_newcard_router, competitors_captured_router, competitors_pick_router, competitors_refresh_router, competitors_positions_router, ai_jobs_router, seo_router, seo_models_router, cms_router, ext_router, ext_tokens_admin_router, ext_diag_admin_router, ext_download_router, ext_filters_router, fbs_router, fbs_orders_router, fbs_cancels_router, fbs_commission_router, fbs_pvz_router, geo_sales_router, watch_router, queue_router, phrase_miner_router, penalty_router
+from backend.deps import get_current_user, get_optional_user, require_admin, require_seo, get_current_company
+from backend.routers import auth_router, companies_router, dashboard_router, admin_router, admin_timers_router, news_router, tags_router, wb_search_router, cost_router, wb_orders_router, wb_sales_router, feedback_router, feedback_dashboard_router, feedback_insights_router, reply_rules_router, wb_tokens_router, wb_tokens_expiring_router, competitor_router, competitors_newcard_router, competitors_captured_router, competitors_pick_router, competitors_refresh_router, competitors_positions_router, ai_jobs_router, seo_router, seo_models_router, cms_router, ext_router, ext_tokens_admin_router, ext_diag_admin_router, ext_download_router, ext_filters_router, fbs_router, fbs_orders_router, fbs_cancels_router, fbs_commission_router, fbs_pvz_router, geo_sales_router, watch_router, queue_router, phrase_miner_router, penalty_router, profit_router, wb_profit_router, profit_products_router, warehouse_router, stock_doc_router, fbs_virtual_router, stock_report_router, production_router, smolensk_stock_router, product_catalog_router, wb_cards_router
 from backend.services import auth_service as AuthService
 from backend.services.orders_service import OrdersService
 from backend.services.orders_aggregated_service import OrdersAggregatedService
@@ -69,8 +71,31 @@ app.include_router(fbs_commission_router)
 app.include_router(fbs_pvz_router)
 app.include_router(geo_sales_router)
 app.include_router(penalty_router)
+# Расшифровка колонок маржи + «Маржинальный учёт» (/wb-profit)
+app.include_router(profit_router)
+app.include_router(wb_profit_router)
+# Отчёт «Маржа по продуктам» (/wb-profit/products) — линейки product/product_wb_card
+app.include_router(profit_products_router)
+# Справочник своих складов (/wb-warehouses)
+app.include_router(warehouse_router)
+# Документы склада (/wb-doc)
+app.include_router(stock_doc_router)
+# Управление виртуальными складами FBS (/wb-fbs-virtual)
+app.include_router(fbs_virtual_router)
+# Отчеты склада: наличие / оборотка / карточка / неликвиды
+app.include_router(stock_report_router)
+# Производство: план печати + отчет «когда печатать»
+app.include_router(production_router)
+# Производство, ступень 2: Смоленск (снапшоты/движения/баланс/импорт)
+app.include_router(smolensk_stock_router)
+# Справочник линеек (В8): product / product_wb_card / product_type / brand
+app.include_router(product_catalog_router)
+# Витрина карточек WB (В11а, /wb/cards)
+app.include_router(wb_cards_router)
 app.include_router(wb_sales_router)
 app.include_router(feedback_router)
+app.include_router(feedback_dashboard_router)
+app.include_router(feedback_insights_router)
 app.include_router(reply_rules_router)
 app.include_router(wb_tokens_router)
 app.include_router(wb_tokens_expiring_router)
@@ -111,6 +136,13 @@ async def _recover_ai_jobs():
     try:
         from backend.services import phrase_miner_service as _miner
         _miner.start()
+    except Exception:
+        pass
+    # Фоновый ИИ-разбор отзывов: цикл внутри процесса (без systemd-таймера),
+    # пауза/старт — на странице /wb-feedback-review.
+    try:
+        from backend.services import feedback_review_service as _review
+        _review.start()
     except Exception:
         pass
 
@@ -284,6 +316,8 @@ async def orders_feed_aggregated(
     date_to: str = Query(default=None),
     sort_by: str = Query(default="count"),
     page: int = Query(default=1, ge=1),
+    brand: str | None = Query(default=None),
+    category: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     company_id: int | None = Depends(get_current_company),
 ):
@@ -291,7 +325,16 @@ async def orders_feed_aggregated(
     df = date_from or (_date.today() - timedelta(days=13)).isoformat()  # 14д включительно = 2 недели, было 6д как в WbOrderController.php:103
     dt = date_to or _date.today().isoformat()
     svc = OrdersAggregatedService(db, company_id=company_id)
-    return await svc.feed_aggregated(nm_id, df, dt, sort_by, page, 50)
+    return await svc.feed_aggregated(nm_id, df, dt, sort_by, page, 50, brand, category)
+
+@app.get("/api/orders/feed-aggregated/filters")
+async def orders_feed_aggregated_filters(
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Справочники брендов и категорий для фильтра сводки по заказам."""
+    svc = OrdersAggregatedService(db, company_id=company_id)
+    return await svc.get_filter_lists()
 
 @app.get("/api/orders/heatmap")
 async def orders_heatmap(
@@ -433,6 +476,85 @@ async def wb_card(nm_id: int, db: AsyncSession = Depends(get_db), company_id: in
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="card not found")
     return data
+
+@app.get("/api/wb/card/{nm_id}/shelves")
+async def wb_card_shelves(
+    nm_id: int,
+    date: str = Query(default=""),
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Полки и баджи НАШЕЙ карточки — модалка «Полки и баджи» на /wb/detail.
+
+    Полки пишет расширение пассивно (перехват ответов страницы WB), баджи и
+    цену — при сборе карточки (`/api/ext/result`). Пока карточку не собрали,
+    баджей нет — в ответе `collected=false`.
+
+    `date` — показать срез блоков за дату (по умолчанию — последний).
+    """
+    from backend.services.our_card_service import OurCardService
+    svc = OurCardService(db, company_id=company_id)
+    data = await svc.card(nm_id)
+    if date:
+        data["blocks"] = await svc.blocks(nm_id, date)
+    return data
+
+@app.get("/api/wb/card/{nm_id}/shelves/where")
+async def wb_card_shelves_where(
+    nm_id: int,
+    date_from: str = Query(default=""),
+    date_to: str = Query(default=""),
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    """«Где мы на полках»: конкуренты, в чьих блоках нас видели за период.
+
+    По каждому конкуренту — наша позиция в его полке и дата среза.
+    """
+    from datetime import date as _date, timedelta as _timedelta
+    from backend.services.our_card_service import OurCardService
+    svc = OurCardService(db, company_id=company_id)
+    today = _date.today()
+    d_to = date_to or today.isoformat()
+    d_from = date_from or (today - _timedelta(days=29)).isoformat()
+    items = await svc.where(nm_id, d_from, d_to)
+    return {"nm_id": nm_id, "date_from": d_from, "date_to": d_to, "items": items}
+
+@app.get("/api/wb/card/{nm_id}/shelves/block/{shelf_id}")
+async def wb_card_shelf_block(
+    nm_id: int,
+    shelf_id: int,
+    date: str = Query(default=""),
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Вся собранная полка конкурента (вложенная модалка «Полка у конкурента»)."""
+    from backend.services.our_card_service import OurCardService
+    svc = OurCardService(db, company_id=company_id)
+    return await svc.block_items(shelf_id, date)
+
+@app.get("/api/wb/card/{nm_id}/badges")
+async def wb_card_badges(nm_id: int, db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
+    """История бейджей карточки (снимки при смене набора)."""
+    from backend.services.our_card_service import OurCardService
+    svc = OurCardService(db, company_id=company_id)
+    return {"nm_id": nm_id, "items": await svc.badge_history(nm_id)}
+
+@app.post("/api/wb/card/{nm_id}/collect")
+async def wb_card_collect(nm_id: int, db: AsyncSession = Depends(get_db),
+                          _user: dict = Depends(require_seo),
+                          company_id: int | None = Depends(get_current_company)):
+    """Поставить нашу карточку в очередь сбора (общая куча enrich).
+
+    Явный запрос менеджера на конкретную карточку: правило 12 ч здесь не
+    действует — ждать сутки ради свежих баджей и полок смысла нет.
+    """
+    from backend.services.our_card_service import OurCardService
+    svc = OurCardService(db, company_id=company_id)
+    try:
+        return await svc.enqueue(nm_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 @app.get("/api/wb/detail/prices")
 async def wb_detail_prices(nm_id: int = Query(..., ge=1), db: AsyncSession = Depends(get_db), company_id: int | None = Depends(get_current_company)):
@@ -636,4 +758,9 @@ def get_menu(
             items.append(it)
         sec2["items"] = items
         out.append(sec2)
-    return out
+    # меню читается с диска на каждый запрос — запрещаем кеш браузера,
+    # иначе после правки menu.json фронт видит старый список
+    return JSONResponse(
+        content=jsonable_encoder(out),
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate",
+                 "Pragma": "no-cache"})

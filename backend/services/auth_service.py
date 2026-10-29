@@ -470,6 +470,7 @@ async def create_company(
     seo_newcard_prompt: str | None = None,
     seo_newcard_model: str | None = None,
     seo_phrases_prompt: str | None = None,
+    review_analysis_prompt: str | None = None,
 ) -> dict:
     name = name.strip()
     if not name:
@@ -481,13 +482,15 @@ async def create_company(
           seo_daily_limit, seo_desc_min, seo_desc_max, seo_anti_spam_days, seo_openrouter_key,
           seo_openrouter_referer, seo_openrouter_title, seo_prompt, seo_competitor_prompt,
           seo_summary_prompt, seo_newcard_prompt, seo_newcard_model, seo_phrases_prompt,
+          review_analysis_prompt,
           is_active, fbs_deduct_enabled, fbs_deduct_test
         )
         VALUES (
           :name, :abbreviation, :inn, NULL, :seo_model, :seo_summary_model, :seo_summary_max_tokens,
           :seo_daily_limit, :seo_desc_min, :seo_desc_max, :seo_anti_spam_days, :seo_openrouter_key,
           :seo_openrouter_referer, :seo_openrouter_title, :seo_prompt, :seo_competitor_prompt,
-          :seo_summary_prompt, :seo_newcard_prompt, :seo_newcard_model, :seo_phrases_prompt, 1, 0, 1
+          :seo_summary_prompt, :seo_newcard_prompt, :seo_newcard_model, :seo_phrases_prompt,
+          :review_analysis_prompt, 1, 0, 1
         )
     """), {
         "name": name,
@@ -509,6 +512,7 @@ async def create_company(
         "seo_newcard_prompt": seo_newcard_prompt,
         "seo_newcard_model": seo_newcard_model,
         "seo_phrases_prompt": seo_phrases_prompt,
+        "review_analysis_prompt": review_analysis_prompt,
     })
 
     company_id = (await db.execute(text("SELECT LAST_INSERT_ID()"))).scalar()
@@ -524,6 +528,10 @@ COMPANY_UPDATE_FIELDS = (
     "seo_openrouter_key", "seo_openrouter_referer", "seo_openrouter_title",
     "seo_prompt", "seo_competitor_prompt", "seo_summary_prompt",
     "seo_newcard_prompt", "seo_newcard_model", "seo_phrases_prompt",
+    # Разбор жалоб по отзывам (/wb-feedback-analysis)
+    "review_analysis_prompt",
+    # Разбор отзыва по меткам (эмоциональность/конструктивность/тональность)
+    "feedback_review_prompt", "feedback_auto_review", "feedback_review_batch",
     # провайдер ИИ: openrouter (текущие настройки) | custom (другой сервис)
     "seo_llm_provider", "seo_llm_format", "seo_llm_url", "seo_llm_api_key",
     "seo_llm_folder_id", "seo_llm_auth_header", "seo_llm_auth_prefix",
@@ -542,6 +550,10 @@ SEO_FIELDS = (
     "seo_openrouter_key", "seo_openrouter_referer", "seo_openrouter_title",
     "seo_prompt", "seo_competitor_prompt", "seo_summary_prompt",
     "seo_newcard_prompt", "seo_newcard_model", "seo_phrases_prompt",
+    # Разбор жалоб по отзывам (/wb-feedback-analysis)
+    "review_analysis_prompt",
+    # Разбор отзыва по меткам (эмоциональность/конструктивность/тональность)
+    "feedback_review_prompt", "feedback_auto_review", "feedback_review_batch",
     "seo_llm_provider", "seo_llm_format", "seo_llm_url", "seo_llm_api_key",
     "seo_llm_folder_id", "seo_llm_auth_header", "seo_llm_auth_prefix",
     "seo_llm_extra_headers", "seo_llm_extra_body", "seo_llm_timeout",

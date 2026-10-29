@@ -1,6 +1,6 @@
 <template>
   <div class="container-xxl page-reply-rules">
-    <h1 class="page-title">{{ title }}</h1>
+    <FeedbackHead :title="title" active="rules" :subtabs="FEEDBACK_RULES_SUB_TABS" />
     <form @submit.prevent="onSave">
       <div class="card mb-4 shadow-sm">
         <div class="card-header bg-light"><h5 class="card-title mb-0">Условия применения</h5></div>
@@ -85,7 +85,7 @@
       <div v-if="error" class="alert alert-danger">{{ error }}</div>
       <div class="d-flex gap-2 mb-4">
         <button type="submit" class="btn btn-success" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
-        <router-link to="/wb-reply-rules" class="btn btn-light">Отмена</router-link>
+        <router-link to="/wb-feedback-reply-rules" class="btn btn-light">Отмена</router-link>
       </div>
     </form>
   </div>
@@ -97,6 +97,8 @@ import '@/assets/css/pages/page-reply-rules.css'
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { replyRulesApi, type ReplyRulePayload } from '@/api/replyRules'
+import FeedbackHead from '@/components/feedback/FeedbackHead.vue'
+import { FEEDBACK_RULES_SUB_TABS } from '@/components/common/workspaceTabs'
 
 const route = useRoute()
 const router = useRouter()
@@ -189,7 +191,7 @@ async function onSave() {
   try {
     if (isEdit.value) await replyRulesApi.update(String(route.params.id), payload)
     else await replyRulesApi.create(payload)
-    router.push('/wb-reply-rules')
+    router.push('/wb-feedback-reply-rules')
   } catch (e: any) {
     error.value = e?.response?.data?.detail || String(e)
   } finally {

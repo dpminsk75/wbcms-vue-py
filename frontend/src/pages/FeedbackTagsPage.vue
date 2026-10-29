@@ -1,7 +1,9 @@
 <template>
   <div class="container-xxl page-feedback-tags">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <h1 class="page-title mb-0">{{ $route.meta.title || 'Разметка тегов отзывов' }}</h1>
+    <FeedbackHead :title="$route.meta.title || 'Разметка тегов отзывов'" active="tags" />
+
+    <!-- кнопки страницы — отдельный блок, чтобы не ломать меню в шапке -->
+    <div class="d-flex justify-content-end mb-3">
       <button class="btn btn-outline-secondary btn-sm" :disabled="syncing" @click="onSync">
         <i class="bi bi-arrow-repeat me-1"></i>{{ syncing ? 'Синхронизация...' : 'Синхронизировать' }}
       </button>
@@ -58,6 +60,7 @@ import '@/assets/css/pages/page-feedback-tags.css'
 import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { feedbackApi, type FeedbackTag } from '@/api/feedback'
+import FeedbackHead from '@/components/feedback/FeedbackHead.vue'
 
 const route = useRoute()
 const router = useRouter()

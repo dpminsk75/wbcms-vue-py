@@ -1,8 +1,11 @@
 <template>
   <div class="container-xxl page-reply-test">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-      <h1 class="page-title mb-0">{{ $route.meta.title || 'Тестирование генерации автоответов' }}</h1>
-      <router-link to="/wb-reply-rules" class="btn btn-outline-secondary">
+    <FeedbackHead :title="$route.meta.title || 'Тестирование генерации автоответов'" active="rules"
+                  :subtabs="FEEDBACK_RULES_SUB_TABS" />
+
+    <!-- кнопки страницы — отдельный блок, чтобы не ломать меню в шапке -->
+    <div class="d-flex justify-content-end mb-3">
+      <router-link to="/wb-feedback-reply-rules" class="btn btn-outline-secondary">
         <i class="bi bi-list me-1"></i>Вернуться к правилам
       </router-link>
     </div>
@@ -71,6 +74,8 @@
 import '@/assets/css/pages/page-reply-test.css'
 import { ref, onMounted } from 'vue'
 import { replyRulesApi, type ReplyTestItem } from '@/api/replyRules'
+import FeedbackHead from '@/components/feedback/FeedbackHead.vue'
+import { FEEDBACK_RULES_SUB_TABS } from '@/components/common/workspaceTabs'
 
 const rows = ref<ReplyTestItem[]>([])
 const isLoading = ref(false)

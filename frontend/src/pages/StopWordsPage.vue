@@ -1,8 +1,11 @@
 <template>
   <div class="container-xxl page-stop-words">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <h1 class="page-title mb-0">{{ $route.meta.title || 'Стоп-слова' }}</h1>
-      <router-link to="/wb-reply-rules" class="btn btn-outline-secondary">
+    <FeedbackHead :title="$route.meta.title || 'Стоп-слова'" active="rules"
+                  :subtabs="FEEDBACK_RULES_SUB_TABS" />
+
+    <!-- кнопки страницы — отдельный блок, чтобы не ломать меню в шапке -->
+    <div class="d-flex justify-content-end mb-3">
+      <router-link to="/wb-feedback-reply-rules" class="btn btn-outline-secondary">
         <i class="bi bi-list me-1"></i>К правилам
       </router-link>
     </div>
@@ -56,6 +59,8 @@
 import '@/assets/css/pages/page-stop-words.css'
 import { ref, onMounted } from 'vue'
 import { replyRulesApi, type StopWord } from '@/api/replyRules'
+import FeedbackHead from '@/components/feedback/FeedbackHead.vue'
+import { FEEDBACK_RULES_SUB_TABS } from '@/components/common/workspaceTabs'
 
 const rows = ref<StopWord[]>([])
 const newWord = ref('')
