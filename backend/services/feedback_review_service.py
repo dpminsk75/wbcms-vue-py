@@ -423,13 +423,13 @@ class FeedbackReviewService:
                 :emotion, :constructiveness, :tone, :topics, :summary,
                 :model, :pt, :ct, :cost,
                 'ok', NULL, 1, NOW(), NOW()
-            )
+            ) AS new
             ON DUPLICATE KEY UPDATE
-                nm_id = VALUES(nm_id), rating = VALUES(rating),
-                emotion = VALUES(emotion), constructiveness = VALUES(constructiveness),
-                tone = VALUES(tone), topics = VALUES(topics), summary = VALUES(summary),
-                model = VALUES(model), prompt_tokens = VALUES(prompt_tokens),
-                completion_tokens = VALUES(completion_tokens), cost = VALUES(cost),
+                nm_id = new.nm_id, rating = new.rating,
+                emotion = new.emotion, constructiveness = new.constructiveness,
+                tone = new.tone, topics = new.topics, summary = new.summary,
+                model = new.model, prompt_tokens = new.prompt_tokens,
+                completion_tokens = new.completion_tokens, cost = new.cost,
                 status = 'ok', error = NULL, attempts = attempts + 1, updated_at = NOW()
         """), {
             "company_id": company_id,
@@ -457,9 +457,9 @@ class FeedbackReviewService:
             ) VALUES (
                 :company_id, :feedback_id, :nm_id, :rating, 'error', :error, 1,
                 NOW(), NOW()
-            )
+            ) AS new
             ON DUPLICATE KEY UPDATE
-                status = 'error', error = VALUES(error),
+                status = 'error', error = new.error,
                 attempts = attempts + 1, updated_at = NOW()
         """), {
             "company_id": company_id,

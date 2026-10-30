@@ -213,13 +213,13 @@ async def save_check(db: AsyncSession, company_id: int, raw: str, out: dict, act
                   company_id, wb_token_id, sid, token_sha256, exp_at, days_left, s_mask,
                   is_test, is_readonly, token_type, categories, ping, last_check_at, last_error, is_active
                 )
-                VALUES (:c, :tid, :sid, :h, :exp, :days, :s, :t, :ro, :tt, :cats, :ping, NOW(), :err, :active)
+                VALUES (:c, :tid, :sid, :h, :exp, :days, :s, :t, :ro, :tt, :cats, :ping, NOW(), :err, :active) AS new
                 ON DUPLICATE KEY UPDATE
-                  wb_token_id=VALUES(wb_token_id), sid=VALUES(sid), exp_at=VALUES(exp_at),
-                  days_left=VALUES(days_left), s_mask=VALUES(s_mask), is_test=VALUES(is_test),
-                  is_readonly=VALUES(is_readonly), token_type=VALUES(token_type),
-                  categories=VALUES(categories), ping=VALUES(ping),
-                  last_check_at=NOW(), last_error=VALUES(last_error), is_active=VALUES(is_active),
+                  wb_token_id=new.wb_token_id, sid=new.sid, exp_at=new.exp_at,
+                  days_left=new.days_left, s_mask=new.s_mask, is_test=new.is_test,
+                  is_readonly=new.is_readonly, token_type=new.token_type,
+                  categories=new.categories, ping=new.ping,
+                  last_check_at=NOW(), last_error=new.last_error, is_active=new.is_active,
                   updated_at=NOW()
             """), {
                 "c": company_id,
@@ -364,13 +364,13 @@ async def save_profile(db: AsyncSession, company_id: int, sid: str | None, prof:
                   company_id, sid, seller_name, tin, trademark, seller_info, rating, reviews_count,
                   has_jam, jam, tariffs, fetched_at, last_error
                 )
-                VALUES (:c, :sid, :name, :tin, :tm, :info, :rating, :rc, :jam_flag, :jam, :tariffs, NOW(), :err)
+                VALUES (:c, :sid, :name, :tin, :tm, :info, :rating, :rc, :jam_flag, :jam, :tariffs, NOW(), :err) AS new
                 ON DUPLICATE KEY UPDATE
-                  sid=VALUES(sid), seller_name=VALUES(seller_name), tin=VALUES(tin),
-                  trademark=VALUES(trademark), seller_info=VALUES(seller_info),
-                  rating=VALUES(rating), reviews_count=VALUES(reviews_count),
-                  has_jam=VALUES(has_jam), jam=VALUES(jam), tariffs=VALUES(tariffs),
-                  fetched_at=NOW(), last_error=VALUES(last_error)
+                  sid=new.sid, seller_name=new.seller_name, tin=new.tin,
+                  trademark=new.trademark, seller_info=new.seller_info,
+                  rating=new.rating, reviews_count=new.reviews_count,
+                  has_jam=new.has_jam, jam=new.jam, tariffs=new.tariffs,
+                  fetched_at=NOW(), last_error=new.last_error
             """), {
                 "c": company_id,
                 "sid": sid,

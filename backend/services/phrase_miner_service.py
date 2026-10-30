@@ -182,6 +182,7 @@ async def refill(db: AsyncSession) -> int:
         WHERE q.source='watch' AND q.status='done'
           AND q.processed_at >= DATE_SUB(NOW(), INTERVAL :win HOUR)
           AND CHAR_LENGTH(COALESCE(d.description,'')) >= :minlen
+          AND COALESCE(d.is_resale, 0) = 0   -- ресейл: разбирать нечего
         LIMIT :lim
     """), {"win": WATCH_WINDOW_H, "minlen": MIN_DESC_LEN, "lim": PAIR_FILL_LIMIT})
     added += r.rowcount or 0
@@ -202,6 +203,7 @@ async def refill(db: AsyncSession) -> int:
             JOIN wb_competitor_details d ON d.nm_id = c.nm_id
             WHERE CHAR_LENGTH(COALESCE(d.description,'')) >= :minlen
               AND w.company_id IS NOT NULL
+              AND COALESCE(d.is_resale, 0) = 0   -- ресейл: разбирать нечего
         ) x
         WHERE NOT EXISTS (
             SELECT 1 FROM wb_competitor_phrase_comp pc
@@ -286,9 +288,9 @@ async def _save_comp_rows(db: AsyncSession, nm_id: int, company_id: int, cid: in
     await db.execute(text("""
         INSERT INTO wb_competitor_phrase_comp
           (company_id, source_nm_id, competitor_nm_id, phrase_id, phrase, model, content_hash)
-        VALUES (:c, :n, :cn, NULL, :p, :m, :h)
+        VALUES (:c, :n, :cn, NULL, :p, :m, :h) AS new
         ON DUPLICATE KEY UPDATE
-          phrase=VALUES(phrase), model=VALUES(model), content_hash=VALUES(content_hash)
+          phrase=new.phrase, model=new.model, content_hash=new.content_hash
     """), rows)
 
 

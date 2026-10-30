@@ -580,8 +580,8 @@ async def search_add(db: AsyncSession, cid: int, source: str, *,
         await db.execute(text("""
             INSERT INTO wb_competitor_query
               (source_nm_id, phrase, priority, is_active, company_id, status)
-            VALUES (:n, :p, :pr, 1, :cid, 'pending')
-            ON DUPLICATE KEY UPDATE is_active=1, priority=VALUES(priority),
+            VALUES (:n, :p, :pr, 1, :cid, 'pending') AS new
+            ON DUPLICATE KEY UPDATE is_active=1, priority=new.priority,
               status=IF(status IN ('done','error'), 'pending', status), updated_at=NOW()
         """), {"n": n, "p": ph, "pr": int(priority or 0), "cid": cid})
     else:

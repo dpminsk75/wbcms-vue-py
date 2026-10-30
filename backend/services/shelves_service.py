@@ -8,6 +8,11 @@
 Модуль идемпотентный: повторная отправка того же снимка обновляет строки
 (UNIQUE-ключи в 20261028_competitor_cards_shelves.sql), а не плодит дубли.
 Цены приходят уже в рублях (перевод из копеек — на границе парсера).
+
+Сырой ответ полок карточки (u-recom) тоже сохраняем файлом — тем же
+механизмом, что и поисковые ответы (`search_raw_service`): файл в
+`runtime/seo_search_raw/<company_id>/<YYYY-MM-DD>/`. Нужен, чтобы позже
+переразобрать блок без нового захода на карточку (WB меняет API).
 """
 
 from __future__ import annotations
@@ -20,6 +25,8 @@ from typing import Any, Iterable
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.services import search_raw_service
 
 MAX_SHELVES = 20
 MAX_ITEMS_PER_SHELF = 300
@@ -155,21 +162,21 @@ SHELF_SQL = text(
     VALUES
       (:company_id, :nm_id, :kind, :preset_id, :preset_type, :title, :title_source,
        :is_partial, :total_candidates, :pages_loaded, :shard_key, :shard_query, :imt_id,
-       :subject_id, :parent_subject_id, :dest, :spp, :route, :url_key, :created_by)
+       :subject_id, :parent_subject_id, :dest, :spp, :route, :url_key, :created_by) AS new
     ON DUPLICATE KEY UPDATE
       id = LAST_INSERT_ID(id),
-      preset_type = IF(VALUES(preset_type)='', preset_type, VALUES(preset_type)),
-      title = IF(VALUES(title)='', title, VALUES(title)),
-      title_source = IF(VALUES(title_source)='none', title_source, VALUES(title_source)),
-      is_partial = VALUES(is_partial),
-      total_candidates = COALESCE(VALUES(total_candidates), total_candidates),
-      pages_loaded = GREATEST(pages_loaded, VALUES(pages_loaded)),
-      shard_key = COALESCE(VALUES(shard_key), shard_key),
-      shard_query = COALESCE(VALUES(shard_query), shard_query),
-      imt_id = COALESCE(VALUES(imt_id), imt_id),
-      subject_id = COALESCE(VALUES(subject_id), subject_id),
-      parent_subject_id = COALESCE(VALUES(parent_subject_id), parent_subject_id),
-      spp = COALESCE(VALUES(spp), spp),
+      preset_type = IF(new.preset_type='', preset_type, new.preset_type),
+      title = IF(new.title='', title, new.title),
+      title_source = IF(new.title_source='none', title_source, new.title_source),
+      is_partial = new.is_partial,
+      total_candidates = COALESCE(new.total_candidates, total_candidates),
+      pages_loaded = GREATEST(pages_loaded, new.pages_loaded),
+      shard_key = COALESCE(new.shard_key, shard_key),
+      shard_query = COALESCE(new.shard_query, shard_query),
+      imt_id = COALESCE(new.imt_id, imt_id),
+      subject_id = COALESCE(new.subject_id, subject_id),
+      parent_subject_id = COALESCE(new.parent_subject_id, parent_subject_id),
+      spp = COALESCE(new.spp, spp),
       last_seen_at = CURRENT_TIMESTAMP
     """
 )
@@ -181,33 +188,35 @@ ITEM_SQL = text(
        cashback, seller_id, seller, seller_rating, brand_id, brand, subject_id, root_id,
        match_id, rating, review_rating, feedbacks, feedback_points, total_qty, time1, time2,
        wh, dist, volume, weight, pics, pics_update, option_id, is_new, is_own, promo_panel_id,
-       preset_type, semantic_id, sale_conditions, dtype_mask)
+       preset_type, semantic_id, sale_conditions, dtype_mask, image_url, badges)
     VALUES
       (:shelf_id, :nm_id, :snapshot_date, :page, :position, :sort_score, :name, :price, :price_basic,
        :cashback, :seller_id, :seller, :seller_rating, :brand_id, :brand, :subject_id, :root_id,
        :match_id, :rating, :review_rating, :feedbacks, :feedback_points, :total_qty, :time1, :time2,
        :wh, :dist, :volume, :weight, :pics, :pics_update, :option_id, :is_new, :is_own, :promo_panel_id,
-       :preset_type, :semantic_id, :sale_conditions, :dtype_mask)
+       :preset_type, :semantic_id, :sale_conditions, :dtype_mask, :image_url, :badges) AS new
     ON DUPLICATE KEY UPDATE
-      page = VALUES(page),
-      position = VALUES(position),
-      sort_score = VALUES(sort_score),
-      name = IF(VALUES(name)='', name, VALUES(name)),
-      price = COALESCE(VALUES(price), price),
-      price_basic = COALESCE(VALUES(price_basic), price_basic),
-      cashback = COALESCE(VALUES(cashback), cashback),
-      seller_id = COALESCE(VALUES(seller_id), seller_id),
-      seller = IF(VALUES(seller)='', seller, VALUES(seller)),
-      seller_rating = COALESCE(VALUES(seller_rating), seller_rating),
-      total_qty = COALESCE(VALUES(total_qty), total_qty),
-      time1 = COALESCE(VALUES(time1), time1),
-      time2 = COALESCE(VALUES(time2), time2),
-      rating = COALESCE(VALUES(rating), rating),
-      review_rating = COALESCE(VALUES(review_rating), review_rating),
-      feedbacks = COALESCE(VALUES(feedbacks), feedbacks),
-      is_new = VALUES(is_new),
-      is_own = VALUES(is_own),
-      match_id = COALESCE(VALUES(match_id), match_id),
+      page = new.page,
+      position = new.position,
+      sort_score = new.sort_score,
+      name = IF(new.name='', name, new.name),
+      price = COALESCE(new.price, price),
+      price_basic = COALESCE(new.price_basic, price_basic),
+      cashback = COALESCE(new.cashback, cashback),
+      seller_id = COALESCE(new.seller_id, seller_id),
+      seller = IF(new.seller='', seller, new.seller),
+      seller_rating = COALESCE(new.seller_rating, seller_rating),
+      total_qty = COALESCE(new.total_qty, total_qty),
+      time1 = COALESCE(new.time1, time1),
+      time2 = COALESCE(new.time2, time2),
+      rating = COALESCE(new.rating, rating),
+      review_rating = COALESCE(new.review_rating, review_rating),
+      feedbacks = COALESCE(new.feedbacks, feedbacks),
+      is_new = new.is_new,
+      is_own = new.is_own,
+      match_id = COALESCE(new.match_id, match_id),
+      image_url = IF(new.image_url='', image_url, new.image_url),
+      badges = IF(new.badges IS NULL, badges, new.badges),
       captured_at = CURRENT_TIMESTAMP
     """
 )
@@ -221,19 +230,19 @@ RUN_SQL = text(
     VALUES
       (:company_id, :match_id, :anchor_nm_id, :anchor_supplier_id, :anchor_price, :min_price,
        :min_price_nm_id, :offers_total, :benefit, :shard_key, :shard_query, :response_type,
-       :dest, :spp, :snapshot_date, :created_by)
+       :dest, :spp, :snapshot_date, :created_by) AS new
     ON DUPLICATE KEY UPDATE
       id = LAST_INSERT_ID(id),
-      anchor_supplier_id = COALESCE(VALUES(anchor_supplier_id), anchor_supplier_id),
-      anchor_price = COALESCE(VALUES(anchor_price), anchor_price),
-      min_price = COALESCE(VALUES(min_price), min_price),
-      min_price_nm_id = COALESCE(VALUES(min_price_nm_id), min_price_nm_id),
-      offers_total = COALESCE(VALUES(offers_total), offers_total),
-      benefit = IF(VALUES(benefit)='', benefit, VALUES(benefit)),
-      shard_key = COALESCE(VALUES(shard_key), shard_key),
-      shard_query = COALESCE(VALUES(shard_query), shard_query),
-      response_type = IF(VALUES(response_type)='', response_type, VALUES(response_type)),
-      spp = COALESCE(VALUES(spp), spp),
+      anchor_supplier_id = COALESCE(new.anchor_supplier_id, anchor_supplier_id),
+      anchor_price = COALESCE(new.anchor_price, anchor_price),
+      min_price = COALESCE(new.min_price, min_price),
+      min_price_nm_id = COALESCE(new.min_price_nm_id, min_price_nm_id),
+      offers_total = COALESCE(new.offers_total, offers_total),
+      benefit = IF(new.benefit='', benefit, new.benefit),
+      shard_key = COALESCE(new.shard_key, shard_key),
+      shard_query = COALESCE(new.shard_query, shard_query),
+      response_type = IF(new.response_type='', response_type, new.response_type),
+      spp = COALESCE(new.spp, spp),
       captured_at = CURRENT_TIMESTAMP
     """
 )
@@ -247,22 +256,22 @@ OFFER_SQL = text(
     VALUES
       (:run_id, :nm_id, :position, :name, :price, :price_basic, :seller_id, :seller, :seller_rating,
        :brand_id, :brand, :total_qty, :rating, :review_rating, :feedbacks, :time1, :time2, :wh, :dist,
-       :volume, :weight, :pics, :dtype_mask, :is_anchor, :is_min_price, :price_gap_pct, :is_own)
+       :volume, :weight, :pics, :dtype_mask, :is_anchor, :is_min_price, :price_gap_pct, :is_own) AS new
     ON DUPLICATE KEY UPDATE
-      position = VALUES(position),
-      name = IF(VALUES(name)='', name, VALUES(name)),
-      price = COALESCE(VALUES(price), price),
-      price_basic = COALESCE(VALUES(price_basic), price_basic),
-      seller_id = COALESCE(VALUES(seller_id), seller_id),
-      seller = IF(VALUES(seller)='', seller, VALUES(seller)),
-      seller_rating = COALESCE(VALUES(seller_rating), seller_rating),
-      total_qty = COALESCE(VALUES(total_qty), total_qty),
-      rating = COALESCE(VALUES(rating), rating),
-      feedbacks = COALESCE(VALUES(feedbacks), feedbacks),
-      is_anchor = VALUES(is_anchor),
-      is_min_price = VALUES(is_min_price),
-      price_gap_pct = VALUES(price_gap_pct),
-      is_own = VALUES(is_own),
+      position = new.position,
+      name = IF(new.name='', name, new.name),
+      price = COALESCE(new.price, price),
+      price_basic = COALESCE(new.price_basic, price_basic),
+      seller_id = COALESCE(new.seller_id, seller_id),
+      seller = IF(new.seller='', seller, new.seller),
+      seller_rating = COALESCE(new.seller_rating, seller_rating),
+      total_qty = COALESCE(new.total_qty, total_qty),
+      rating = COALESCE(new.rating, rating),
+      feedbacks = COALESCE(new.feedbacks, feedbacks),
+      is_anchor = new.is_anchor,
+      is_min_price = new.is_min_price,
+      price_gap_pct = new.price_gap_pct,
+      is_own = new.is_own,
       captured_at = CURRENT_TIMESTAMP
     """
 )
@@ -274,21 +283,21 @@ CLIP_SQL = text(
        author_slug, author_name, author_verified, author_code, preview_url, public_url, nm_count, extra)
     VALUES
       (:clip_id, :type, :slug, :name, :description, :duration_s, :publication_date, :author_id,
-       :author_slug, :author_name, :author_verified, :author_code, :preview_url, :public_url, :nm_count, :extra)
+       :author_slug, :author_name, :author_verified, :author_code, :preview_url, :public_url, :nm_count, :extra) AS new
     ON DUPLICATE KEY UPDATE
-      type = VALUES(type),
-      slug = IF(VALUES(slug)='', slug, VALUES(slug)),
-      name = IF(VALUES(name)='', name, VALUES(name)),
-      description = IF(VALUES(description)='', description, VALUES(description)),
-      duration_s = COALESCE(VALUES(duration_s), duration_s),
-      publication_date = COALESCE(VALUES(publication_date), publication_date),
-      author_name = IF(VALUES(author_name)='', author_name, VALUES(author_name)),
-      author_verified = VALUES(author_verified),
-      author_code = COALESCE(VALUES(author_code), author_code),
-      preview_url = IF(VALUES(preview_url)='', preview_url, VALUES(preview_url)),
-      public_url = IF(VALUES(public_url)='', public_url, VALUES(public_url)),
-      extra = COALESCE(VALUES(extra), extra),
-      nm_count = VALUES(nm_count),
+      type = new.type,
+      slug = IF(new.slug='', slug, new.slug),
+      name = IF(new.name='', name, new.name),
+      description = IF(new.description='', description, new.description),
+      duration_s = COALESCE(new.duration_s, duration_s),
+      publication_date = COALESCE(new.publication_date, publication_date),
+      author_name = IF(new.author_name='', author_name, new.author_name),
+      author_verified = new.author_verified,
+      author_code = COALESCE(new.author_code, author_code),
+      preview_url = IF(new.preview_url='', preview_url, new.preview_url),
+      public_url = IF(new.public_url='', public_url, new.public_url),
+      extra = COALESCE(new.extra, extra),
+      nm_count = new.nm_count,
       last_seen_at = CURRENT_TIMESTAMP
     """
 )
@@ -296,8 +305,8 @@ CLIP_SQL = text(
 CLIP_NM_SQL = text(
     """
     INSERT INTO wb_competitor_cards_clip_nm (clip_id, nm_id, cluster_idx)
-    VALUES (:clip_id, :nm_id, :cluster_idx)
-    ON DUPLICATE KEY UPDATE cluster_idx = VALUES(cluster_idx)
+    VALUES (:clip_id, :nm_id, :cluster_idx) AS new
+    ON DUPLICATE KEY UPDATE cluster_idx = new.cluster_idx
     """
 )
 
@@ -306,14 +315,14 @@ PRESET_SQL = text(
     INSERT INTO wb_competitor_cards_shelf_preset
       (preset_id, preset_type, title, title_norm, confidence, hits, first_nm_id, last_nm_id)
     VALUES
-      (:preset_id, :preset_type, :title, :title_norm, :confidence, 1, :nm_id, :nm_id)
+      (:preset_id, :preset_type, :title, :title_norm, :confidence, 1, :nm_id, :nm_id) AS new
     ON DUPLICATE KEY UPDATE
-      preset_type = IF(VALUES(preset_type)='', preset_type, VALUES(preset_type)),
-      title = IF(title='', VALUES(title), title),
-      title_norm = IF(title_norm='', VALUES(title_norm), title_norm),
-      confidence = GREATEST(confidence, VALUES(confidence)),
+      preset_type = IF(new.preset_type='', preset_type, new.preset_type),
+      title = IF(new.title='', title, IF(:src='dom', new.title, title)),
+      title_norm = IF(:src='dom' AND new.title<>'', new.title_norm, title_norm),
+      confidence = GREATEST(confidence, new.confidence),
       hits = hits + 1,
-      last_nm_id = VALUES(last_nm_id),
+      last_nm_id = new.last_nm_id,
       last_seen_at = CURRENT_TIMESTAMP
     """
 )
@@ -361,6 +370,12 @@ def _item_row(it: dict, shelf_id: int, day: date, own: set[int]) -> dict:
         "semantic_id": _json(it.get("semantic_id")),
         "sale_conditions": _int(it.get("sale_conditions")),
         "dtype_mask": _int(it.get("dtype_mask")),
+        # Фото товара в полке: в ответах WB его нет (проверено на сыром
+        # ответе каталога — только счётчик pics), поэтому расширение берёт
+        # его из DOM страницы и присылает сюда.
+        "image_url": _str(it.get("image_url"), 512),
+        # Бейджи позиции («−48%», «за отзыв 200») — тоже только из DOM.
+        "badges": _json(it.get("badges")),
     }
 
 
@@ -470,6 +485,7 @@ async def save_shelves(
                     "title_norm": _norm_title(title),
                     "confidence": 1.0 if title_source == "dom" else 0.5,
                     "nm_id": nm_id,
+                    "src": title_source,
                 },
             )
             n_presets += 1
@@ -635,6 +651,13 @@ async def save_shelves(
                 [{"clip_id": clip_id, "nm_id": v, "cluster_idx": gi} for v, gi in nms],
             )
 
+    # Блоки как мы их увидели в DOM → файл dom_*.json (рядом с сырыми ответами).
+    dom_file = save_dom_blocks(
+        company_id, nm_id, str(data.get("page_url") or ""),
+        [b for b in (data.get("dom_blocks") or []) if isinstance(b, dict)],
+        str(data.get("stamp") or ""),
+    )
+
     return {
         "nm_id": nm_id,
         "shelves": n_shelves,
@@ -643,4 +666,132 @@ async def save_shelves(
         "offers": n_offers,
         "clips": n_clips,
         "presets": n_presets,
+        "dom_file": dom_file,
     }
+
+
+# --------------------------------------------------------------------------
+# Сырой ответ полок карточки (u-recom) — файлом, как поисковые ответы
+# --------------------------------------------------------------------------
+
+def _stamp_now() -> str:
+    """Метка момента в формате search_stamp: 20261027_162147."""
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def save_dom_blocks(company_id: int, nm_id: int, page_url: str,
+                    blocks: list[dict], stamp: str = "") -> dict:
+    """Блоки полок, как мы их увидели в DOM → файл `dom_*.json` + `.meta.json`.
+
+    Сырой ответ API (`recom_*.json`) не содержит фото и бейджей — их нет в
+    ответе WB. DOM-снимок — то, что реально показал пользователю WB: подписи
+    блоков, фото, бейджи, цены, рейтинги. Рядом с сырыми ответами, в том же
+    каталоге `runtime/seo_search_raw/<company_id>/<YYYY-MM-DD>/`.
+
+    Файл пишется, только если скан что-то нашёл (иначе копим пустышки).
+    """
+    blocks = [b for b in (blocks or []) if isinstance(b, dict)]
+    cards = [c for b in blocks for c in (b.get("cards") or []) if isinstance(c, dict)]
+    if not cards:
+        return {"saved": False, "reason": "no_blocks"}
+    stamp = stamp or _stamp_now()
+    if not re.match(r"^\d{8}_\d{6}$", stamp):
+        stamp = _stamp_now()
+    day = datetime.now().strftime("%Y-%m-%d")
+    payload = {
+        "nm_id": int(nm_id or 0),
+        "page_url": str(page_url or "")[:500],
+        "collected_at": datetime.now().isoformat(timespec="seconds"),
+        "blocks": blocks,
+    }
+    raw = json.dumps(payload, ensure_ascii=False, indent=1)
+    with_photo = sum(1 for c in cards if c.get("image_url"))
+    meta = {
+        "kind": "dom",
+        "nm_id": int(nm_id or 0),
+        "url": str(page_url or "")[:500],
+        "collected_at": payload["collected_at"],
+        "size": len(raw),
+        "blocks": len(blocks),
+        "cards": len(cards),
+        "with_photo": with_photo,
+        "titles": [str(b.get("title") or "") for b in blocks][:10],
+    }
+    try:
+        rel = search_raw_service._write_file(
+            int(company_id), day, stamp, "dom", str(int(nm_id or 0)), raw, meta)
+    except OSError as exc:
+        return {"saved": False, "reason": str(exc)[:120]}
+    return {"saved": True, "file": rel, "blocks": len(blocks), "cards": len(cards)}
+
+
+async def save_shelf_raw(
+    db: AsyncSession,
+    company_id: int,
+    user_id: int | None,
+    data: dict,
+) -> dict:
+    """Сырой ответ WB по полкам карточки → файл + .meta.json.
+
+    Расширение присылает тело ответа u-recom «как пришло» (0,3–0,6 МБ на
+    блок). Файл нужен, чтобы позже переразобрать блок, не открывая карточку
+    заново: WB меняет ответы, а товары в полке меняются каждый день.
+
+    Сохраняем только по НАШИМ карточкам: у конкурентов сырых ответов было бы
+    30–60 МБ на прогон сбора, а нужны они для наших блоков.
+    """
+    raw = str((data or {}).get("raw") or "")
+    nm_id = _int((data or {}).get("nm_id")) or 0
+    if not raw or not nm_id:
+        raise ValueError("raw and nm_id required")
+    own = await _own_nms(db, company_id, [nm_id])
+    if not own:
+        return {"ok": True, "skipped": True, "reason": "not_ours", "nm_id": nm_id}
+
+    kind = _str(data.get("kind"), 16) or "recom"
+    stamp = _str(data.get("stamp"), 20) or _stamp_now()
+    if not re.match(r"^\d{8}_\d{6}$", stamp):
+        stamp = _stamp_now()
+    day = datetime.now().strftime("%Y-%m-%d")
+    url = _str(data.get("url"), 2000)
+
+    # Счётчики для meta — без открытия большого файла. Товары у WB лежат в
+    # корне ответа (не в data), id пресета — в metadata.catalog_value.
+    products_cnt = 0
+    preset = 0
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            for key in ("products", "items", "cards"):
+                v = parsed.get(key)
+                if isinstance(v, list):
+                    products_cnt = len(v)
+                    break
+            md = parsed.get("metadata") or {}
+            m = re.search(r"preset=(\d+)", str(md.get("catalog_value") or ""))
+            if m:
+                preset = int(m.group(1))
+    except (ValueError, TypeError):
+        parsed = None
+
+    # В имени файла — id пресета: два ответа в одну секунду (два блока) не
+    # должны перетирать друг друга.
+    slug = f"{nm_id}_{preset}" if preset else str(nm_id)
+
+    meta = {
+        "kind": kind,
+        "nm_id": nm_id,
+        "preset_id": preset,
+        "url": url,
+        "collected_at": datetime.now().isoformat(timespec="seconds"),
+        "size": len(raw),
+        "ext_token_id": data.get("ext_token_id"),
+        "created_by": user_id,
+        "products": products_cnt,
+    }
+    try:
+        rel = search_raw_service._write_file(
+            int(company_id), day, stamp, kind, slug, raw, meta)
+    except OSError as exc:
+        raise ValueError(f"Не удалось сохранить сырой ответ: {exc}") from exc
+    return {"ok": True, "file": rel, "nm_id": nm_id, "products": products_cnt}

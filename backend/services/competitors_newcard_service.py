@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database import SessionLocal
 from backend.services import openrouter_service as llm
 from backend.services import llm_provider
+from backend.services.like_mask import escape_like
 
 # Порог «описания нет»: короче 50 символов считаем пустым (как в §11.2 плана).
 DESC_MIN_LEN = 50
@@ -476,8 +477,12 @@ def _images(raw) -> list[str]:
 
 
 def _like(q: str) -> str:
-    """Экранируем % и _ в пользовательском вводе (иначе LIKE-инъекция по спецсимволам)."""
-    return "%" + re.sub(r"[%_]", lambda m: "\\" + m.group(0), q.strip()) + "%"
+    """Экранируем спецсимволы LIKE (% _ \\) в пользовательском вводе.
+
+    Общий хелпер — как в остальных сервисах (иначе '_' в артикуле/фразе
+    превращается в wildcard и поиск находит лишнее).
+    """
+    return f"%{escape_like(q.strip())}%"
 
 
 def _ints(raw, limit: int = MAX_COMPETITORS_PER_REQUEST) -> list[int]:
@@ -2252,7 +2257,7 @@ class CompetitorsNewcardService:
         row = (await self.db.execute(text("""
             SELECT nm_id, title, description, brand, seller, subject_name, url,
                    price, old_price, images, preview_image, characteristics,
-                   rating, feedbacks, questions, badges, sold_out,
+                   rating, feedbacks, questions, badges, sold_out, is_resale,
                    COALESCE(collected_at, first_collected_at) AS collected_at,
                    first_collected_at, full_collected_at
             FROM wb_competitor_details
@@ -2268,7 +2273,15 @@ class CompetitorsNewcardService:
             chars = _j(d.get("characteristics")) or []
             d["characteristics"] = chars if isinstance(chars, list) else []
             badges = _j(d.get("badges")) or []
-            d["badges"] = badges if isinstance(badges, list) else []
+            badges = badges if isinstance(badges, list) else []
+            # Ресейл (товар от частного лица): метка в бейджи — досье открывают
+            # чаще всего по карточке из выдачи, там бейдж уже есть; здесь
+            # добавляем по признаку в карточке (исторические строки бейдж не
+            # получили — их ставил бэкфилл только в выдаче).
+            if d.get("is_resale") and "ресейл" not in badges:
+                badges = badges + ["ресейл"]
+            d["badges"] = badges
+            d["is_resale"] = 1 if d.get("is_resale") else 0
         else:
             fb = (await self.db.execute(text("""
                 SELECT nm_id, MAX(title) AS title, MAX(brand) AS brand,
@@ -2365,7 +2378,7 @@ class CompetitorsNewcardService:
             rows = (await self.db.execute(text(f"""
                 SELECT s.nm_id AS anchor_nm, s.preset_id, s.preset_type, s.dest,
                        i.snapshot_date, i.position, i.price, i.seller,
-                       COALESCE(NULLIF(p.title, ''), NULLIF(s.title, ''),
+                       COALESCE(NULLIF(s.title, ''), NULLIF(p.title, ''),
                                 CONCAT('#', s.preset_id)) AS shelf_title
                 FROM wb_competitor_cards_shelf_item i
                 JOIN wb_competitor_cards_shelf s ON s.id = i.shelf_id
@@ -2396,7 +2409,7 @@ class CompetitorsNewcardService:
         try:
             rows = (await self.db.execute(text(f"""
                 SELECT s.preset_id, s.preset_type, s.dest,
-                       COALESCE(NULLIF(p.title, ''), NULLIF(s.title, ''),
+                       COALESCE(NULLIF(s.title, ''), NULLIF(p.title, ''),
                                 CONCAT('#', s.preset_id)) AS shelf_title,
                        s.total_candidates, s.pages_loaded, s.is_partial, s.last_seen_at,
                        (SELECT COUNT(*) FROM wb_competitor_cards_shelf_item i
@@ -2433,6 +2446,15 @@ class CompetitorsNewcardService:
                 "best_pos": min(positions) if positions else None,
             },
         }
+
+    async def card_shelves(self, nm_id: int) -> dict:
+        """Полки любой карточки — в том числе НАШЕЙ (модалка «Полки и баджи»).
+
+        Тот же company-scoped срез, что у досье конкурента, но без привязки к
+        «конкуренту»: полка лежит по nmID карточки, на которой её увидели.
+        """
+        return await self._shelves(nm_id)
+
 
     async def _clips(self, nm_id: int) -> dict:
         """Клипы, привязанные к карточке (`clip_nm.nm_id = nm`)."""
@@ -2801,9 +2823,9 @@ class CompetitorsNewcardService:
             await self.db.execute(text("""
                 INSERT INTO wb_competitor_run
                   (run_id, company_id, source_nm_id, kind, status, attempt, total, phase)
-                VALUES (:r, :c, :n, :k, 'running', 0, :t, :ph)
-                ON DUPLICATE KEY UPDATE status='running', attempt=0, total=VALUES(total),
-                  model=NULL, error=NULL, phase=VALUES(phase), done_ids=NULL
+                VALUES (:r, :c, :n, :k, 'running', 0, :t, :ph) AS new
+                ON DUPLICATE KEY UPDATE status='running', attempt=0, total=new.total,
+                  model=NULL, error=NULL, phase=new.phase, done_ids=NULL
             """), {"r": run_id[:64], "c": company_id, "n": nm_id, "k": kind, "t": total,
                    "ph": phase})
         except Exception:
@@ -2812,8 +2834,8 @@ class CompetitorsNewcardService:
             await self.db.execute(text("""
                 INSERT INTO wb_competitor_run
                   (run_id, company_id, source_nm_id, kind, status, attempt, total)
-                VALUES (:r, :c, :n, :k, 'running', 0, :t)
-                ON DUPLICATE KEY UPDATE status='running', attempt=0, total=VALUES(total),
+                VALUES (:r, :c, :n, :k, 'running', 0, :t) AS new
+                ON DUPLICATE KEY UPDATE status='running', attempt=0, total=new.total,
                   model=NULL, error=NULL
             """), {"r": run_id[:64], "c": company_id, "n": nm_id, "k": kind, "t": total})
         await self.db.commit()
@@ -3132,9 +3154,9 @@ class CompetitorsNewcardService:
         await self.db.execute(text("""
             INSERT INTO wb_competitor_phrase_comp
               (company_id, source_nm_id, competitor_nm_id, phrase_id, phrase, model, content_hash)
-            VALUES (:c, :n, :cn, NULL, :p, :m, :h)
+            VALUES (:c, :n, :cn, NULL, :p, :m, :h) AS new
             ON DUPLICATE KEY UPDATE
-              phrase=VALUES(phrase), model=VALUES(model), content_hash=VALUES(content_hash)
+              phrase=new.phrase, model=new.model, content_hash=new.content_hash
         """), rows)
         await self.db.commit()
 
@@ -3223,12 +3245,12 @@ class CompetitorsNewcardService:
                     INSERT INTO wb_competitor_phrase
                       (company_id, source_nm_id, phrase, source, hit_cnt, variants_cnt,
                        orders, freq, cards_cnt, in_db, model)
-                    VALUES (:c, :n, :p, 'ai', :h, :v, :o, :f, :cc, :indb, :m)
+                    VALUES (:c, :n, :p, 'ai', :h, :v, :o, :f, :cc, :indb, :m) AS new
                     ON DUPLICATE KEY UPDATE
-                      hit_cnt=VALUES(hit_cnt), variants_cnt=VALUES(variants_cnt),
-                      orders=VALUES(orders), freq=VALUES(freq), cards_cnt=VALUES(cards_cnt),
-                      in_db=VALUES(in_db),
-                      model=IF(:m IS NULL, model, VALUES(model))
+                      hit_cnt=new.hit_cnt, variants_cnt=new.variants_cnt,
+                      orders=new.orders, freq=new.freq, cards_cnt=new.cards_cnt,
+                      in_db=new.in_db,
+                      model=IF(:m IS NULL, model, new.model)
                 """), {"c": company_id, "n": nm_id, "p": canon, "h": len(comps_n),
                        "v": len(grp), "o": int(s.get("orders") or 0),
                        "f": int(s.get("freq") or 0), "cc": int(s.get("cards") or 0),
@@ -3506,10 +3528,10 @@ class CompetitorsNewcardService:
                 INSERT INTO wb_competitor_phrase
                   (company_id, source_nm_id, phrase, source, hit_cnt, orders, freq,
                    cards_cnt, in_db, is_selected)
-                VALUES (:c, :n, :p, 'manual', 0, :o, :f, :cc, :indb, 1)
+                VALUES (:c, :n, :p, 'manual', 0, :o, :f, :cc, :indb, 1) AS new
                 ON DUPLICATE KEY UPDATE
-                  is_selected=1, orders=VALUES(orders), freq=VALUES(freq),
-                  cards_cnt=VALUES(cards_cnt), in_db=VALUES(in_db)
+                  is_selected=1, orders=new.orders, freq=new.freq,
+                  cards_cnt=new.cards_cnt, in_db=new.in_db
             """), {"c": company_id, "n": nm_id, "p": p,
                    "o": int(s.get("orders") or 0), "f": int(s.get("freq") or 0),
                    "cc": int(s.get("cards") or 0), "indb": 1 if s else 0})
@@ -3701,11 +3723,11 @@ class CompetitorsNewcardService:
                 INSERT INTO wb_competitor_summary
                   (company_id, source_nm_id, result, raw_ai_response, suggested_title,
                    suggested_description, competitor_count, model)
-                VALUES (:c, :n, :r, :raw, :t, :d, :cnt, :m)
-                ON DUPLICATE KEY UPDATE company_id=VALUES(company_id), result=VALUES(result),
-                  raw_ai_response=VALUES(raw_ai_response), suggested_title=VALUES(suggested_title),
-                  suggested_description=VALUES(suggested_description),
-                  competitor_count=VALUES(competitor_count), model=VALUES(model)
+                VALUES (:c, :n, :r, :raw, :t, :d, :cnt, :m) AS new
+                ON DUPLICATE KEY UPDATE company_id=new.company_id, result=new.result,
+                  raw_ai_response=new.raw_ai_response, suggested_title=new.suggested_title,
+                  suggested_description=new.suggested_description,
+                  competitor_count=new.competitor_count, model=new.model
             """), {"c": company_id, "n": nm_id, "r": json.dumps(to_save, ensure_ascii=False),
                    "raw": raw, "t": title[:500], "d": description,
                    "cnt": len(comps), "m": used_model})

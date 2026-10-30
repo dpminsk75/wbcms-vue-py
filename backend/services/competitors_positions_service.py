@@ -674,10 +674,10 @@ class CompetitorsPositionsService:
             await self.db.execute(text("""
                 INSERT INTO wb_search_phrase_queue
                   (company_id, source_nm_id, query_phrase, phrase_raw, status, priority, source, created_by)
-                VALUES (:cid, :nm, :ph, :raw, 'pending', 10, :src, :uid)
+                VALUES (:cid, :nm, :ph, :raw, 'pending', 10, :src, :uid) AS new
                 ON DUPLICATE KEY UPDATE
-                  status='pending', source_nm_id=VALUES(source_nm_id),
-                  source=VALUES(source), updated_at=NOW(), last_error=NULL
+                  status='pending', source_nm_id=new.source_nm_id,
+                  source=new.source, updated_at=NOW(), last_error=NULL
             """), {"cid": cid, "nm": nm, "ph": ph,
                      "raw": raws.get(ph, ""), "src": str(source or "report")[:20],
                      "uid": user_id})

@@ -614,11 +614,11 @@ async def upsert_company_member(
         raise ValueError("invalid member status")
     await db.execute(text("""
         INSERT INTO company_members (company_id, user_id, role, status, invited_by, created_at, updated_at)
-        VALUES (:company_id, :user_id, :role, :status, :invited_by, NOW(), NOW())
+        VALUES (:company_id, :user_id, :role, :status, :invited_by, NOW(), NOW()) AS new
         ON DUPLICATE KEY UPDATE
-          role=VALUES(role),
-          status=VALUES(status),
-          invited_by=VALUES(invited_by),
+          role=new.role,
+          status=new.status,
+          invited_by=new.invited_by,
           updated_at=NOW()
     """), {
         "company_id": company_id,

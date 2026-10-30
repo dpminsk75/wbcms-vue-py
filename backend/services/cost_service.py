@@ -2,6 +2,8 @@
 from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.services.like_mask import escape_like
+
 
 class CostService:
     def __init__(self, db: AsyncSession):
@@ -58,7 +60,7 @@ class CostService:
 
     async def search_cards(self, q: str, limit: int = 50) -> list[dict]:
         """Все карточки (а не только с костами): nmID/vendorCode/title/sku из sizes-текста. Косты глобальные, скоупа нет."""
-        like = f"%{q}%"
+        like = f"%{escape_like(q.strip())}%"
         rows = (await self.db.execute(text("""
             SELECT w.nmID, w.vendorCode, w.title, w.sizes
             FROM wbcards w
@@ -103,8 +105,8 @@ class CostService:
             return 0
         await self.db.execute(
             text("""INSERT INTO wbcards_costs(load_date, nmID, chrtID, sku, price)
-                    VALUES(:d, :nm, :ch, :s, :p)
-                    ON DUPLICATE KEY UPDATE price = VALUES(price)"""),
+                    VALUES(:d, :nm, :ch, :s, :p) AS new
+                    ON DUPLICATE KEY UPDATE price = new.price"""),
             clean,
         )
         await self.db.commit()
@@ -215,7 +217,7 @@ class CostService:
         """Карточка по баркоду: ищем sku в sizes-тексте, точное совпадение проверяем в Python."""
         rows = (await self.db.execute(text(
             "SELECT nmID, vendorCode, title, sizes FROM wbcards WHERE sizes LIKE :p LIMIT 5"
-        ), {"p": f"%{sku}%"})).mappings().all()
+        ), {"p": f"%{escape_like(sku.strip())}%"})).mappings().all()
         for r in rows:
             d = dict(r)
             if any(s["sku"] == sku for s in self.parse_sizes(d.get("sizes"))):

@@ -47,8 +47,8 @@ async def cms_block_put(
     async with db.begin():
         await db.execute(text("""
             INSERT INTO cms_blocks (`key`, title, body_md, updated_by)
-            VALUES (:k, :t, :b, :u)
-            ON DUPLICATE KEY UPDATE title=VALUES(title), body_md=VALUES(body_md), updated_by=VALUES(updated_by)
+            VALUES (:k, :t, :b, :u) AS new
+            ON DUPLICATE KEY UPDATE title=new.title, body_md=new.body_md, updated_by=new.updated_by
         """), {"k": key, "t": title, "b": body, "u": user["id"]})
         row = (await db.execute(text("""
             SELECT `key`, title, body_md, updated_at FROM cms_blocks WHERE `key`=:k LIMIT 1

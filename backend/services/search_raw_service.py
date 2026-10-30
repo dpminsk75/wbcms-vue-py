@@ -513,28 +513,28 @@ async def _enrich_positions(
                         :time1, :time2, :wh, :dist, :volume, :weight, :pics, :is_new, :promo_id,
                         :sale_conditions, :dtype_mask, :semantic_id, :option_id,
                         :mtype, :supplier_flags, :view_flags,
-                        :uid, :tok, COALESCE(:day, CURDATE()), :slice_stamp)
+                        :uid, :tok, COALESCE(:day, CURDATE()), :slice_stamp) AS new
                 ON DUPLICATE KEY UPDATE
-                  position_api=VALUES(position_api),
-                  brand_id=VALUES(brand_id), subject_id=VALUES(subject_id), root_id=VALUES(root_id),
-                  match_id=VALUES(match_id),
-                  seller=IF(VALUES(seller)='', seller, VALUES(seller)),
-                  seller_id=VALUES(seller_id), seller_rating=VALUES(seller_rating),
-                  price=IF(price IS NULL OR price=0, VALUES(price), price),
-                  old_price=IF(old_price IS NULL OR old_price=0, VALUES(old_price), old_price),
-                  price_api=VALUES(price_api), old_price_api=VALUES(old_price_api),
-                  rating=IF(VALUES(rating)>0, VALUES(rating), rating),
-                  review_rating=IF(VALUES(review_rating)>0, VALUES(review_rating), review_rating),
-                  reviews=IF(VALUES(reviews)>0, VALUES(reviews), reviews),
-                  feedbacks=IF(VALUES(feedbacks)>0, VALUES(feedbacks), feedbacks),
-                  feedback_points=VALUES(feedback_points), total_qty=VALUES(total_qty),
-                  time1=VALUES(time1), time2=VALUES(time2), wh=VALUES(wh), dist=VALUES(dist),
-                  volume=VALUES(volume), weight=VALUES(weight), pics=VALUES(pics),
-                  is_new=VALUES(is_new), promo_id=VALUES(promo_id),
-                  sale_conditions=VALUES(sale_conditions), dtype_mask=VALUES(dtype_mask),
-                  semantic_id=VALUES(semantic_id), option_id=VALUES(option_id),
-                  mtype=VALUES(mtype), supplier_flags=VALUES(supplier_flags),
-                  view_flags=VALUES(view_flags)
+                  position_api=new.position_api,
+                  brand_id=new.brand_id, subject_id=new.subject_id, root_id=new.root_id,
+                  match_id=new.match_id,
+                  seller=IF(new.seller='', seller, new.seller),
+                  seller_id=new.seller_id, seller_rating=new.seller_rating,
+                  price=IF(price IS NULL OR price=0, new.price, price),
+                  old_price=IF(old_price IS NULL OR old_price=0, new.old_price, old_price),
+                  price_api=new.price_api, old_price_api=new.old_price_api,
+                  rating=IF(new.rating>0, new.rating, rating),
+                  review_rating=IF(new.review_rating>0, new.review_rating, review_rating),
+                  reviews=IF(new.reviews>0, new.reviews, reviews),
+                  feedbacks=IF(new.feedbacks>0, new.feedbacks, feedbacks),
+                  feedback_points=new.feedback_points, total_qty=new.total_qty,
+                  time1=new.time1, time2=new.time2, wh=new.wh, dist=new.dist,
+                  volume=new.volume, weight=new.weight, pics=new.pics,
+                  is_new=new.is_new, promo_id=new.promo_id,
+                  sale_conditions=new.sale_conditions, dtype_mask=new.dtype_mask,
+                  semantic_id=new.semantic_id, option_id=new.option_id,
+                  mtype=new.mtype, supplier_flags=new.supplier_flags,
+                  view_flags=new.view_flags
             """), {
                 "cid": cid, "src": src, "ph": _norm_phrase(phrase)[:500],
                 "pos": r["position_api"], "pos_api": r["position_api"],
@@ -573,17 +573,17 @@ async def _save_filters(
            sale_factions, countries, ages, delivery_types, flags, facets, created_by, ext_token_id)
         VALUES (:cid, :ph, :pn, COALESCE(:day, CURDATE()), NOW(), :fn, :total,
                 :pmin, :pmax, :dmin, :dmax, :brands, :sellers, :subjects,
-                :factions, :countries, :ages, :dtypes, :flags, :facets, :uid, :tok)
+                :factions, :countries, :ages, :dtypes, :flags, :facets, :uid, :tok) AS new
         ON DUPLICATE KEY UPDATE
-          phrase_norm=VALUES(phrase_norm), collected_at=NOW(), file_name=VALUES(file_name),
-          total=VALUES(total), price_min=VALUES(price_min), price_max=VALUES(price_max),
-          delivery_min=VALUES(delivery_min), delivery_max=VALUES(delivery_max),
-          brands=VALUES(brands), sellers=VALUES(sellers), subjects=VALUES(subjects),
-          sale_factions=VALUES(sale_factions), countries=VALUES(countries),
-          ages=VALUES(ages), delivery_types=VALUES(delivery_types), flags=VALUES(flags),
-          facets=VALUES(facets),
-          created_by=COALESCE(created_by, VALUES(created_by)),
-          ext_token_id=COALESCE(ext_token_id, VALUES(ext_token_id))
+          phrase_norm=new.phrase_norm, collected_at=NOW(), file_name=new.file_name,
+          total=new.total, price_min=new.price_min, price_max=new.price_max,
+          delivery_min=new.delivery_min, delivery_max=new.delivery_max,
+          brands=new.brands, sellers=new.sellers, subjects=new.subjects,
+          sale_factions=new.sale_factions, countries=new.countries,
+          ages=new.ages, delivery_types=new.delivery_types, flags=new.flags,
+          facets=new.facets,
+          created_by=COALESCE(created_by, new.created_by),
+          ext_token_id=COALESCE(ext_token_id, new.ext_token_id)
     """), {
         "cid": cid, "ph": _norm_phrase(phrase)[:500], "pn": _norm_phrase(phrase),
         "fn": file_name, "day": day,
@@ -614,14 +614,14 @@ async def _save_shelfs(
            banners, shelfs, banner_cnt, shelf_cnt, shelf_products_cnt, sellers, created_by,
            ext_token_id)
         VALUES (:cid, :ph, :pn, COALESCE(:day, CURDATE()), NOW(), :fn,
-                :banners, :shelfs, :bcnt, :scnt, :pcnt, :sellers, :uid, :tok)
+                :banners, :shelfs, :bcnt, :scnt, :pcnt, :sellers, :uid, :tok) AS new
         ON DUPLICATE KEY UPDATE
-          phrase_norm=VALUES(phrase_norm), collected_at=NOW(), file_name=VALUES(file_name),
-          banners=VALUES(banners), shelfs=VALUES(shelfs),
-          banner_cnt=VALUES(banner_cnt), shelf_cnt=VALUES(shelf_cnt),
-          shelf_products_cnt=VALUES(shelf_products_cnt), sellers=VALUES(sellers),
-          created_by=COALESCE(created_by, VALUES(created_by)),
-          ext_token_id=COALESCE(ext_token_id, VALUES(ext_token_id))
+          phrase_norm=new.phrase_norm, collected_at=NOW(), file_name=new.file_name,
+          banners=new.banners, shelfs=new.shelfs,
+          banner_cnt=new.banner_cnt, shelf_cnt=new.shelf_cnt,
+          shelf_products_cnt=new.shelf_products_cnt, sellers=new.sellers,
+          created_by=COALESCE(created_by, new.created_by),
+          ext_token_id=COALESCE(ext_token_id, new.ext_token_id)
     """), {
         "cid": cid, "ph": _norm_phrase(phrase)[:500], "pn": _norm_phrase(phrase),
         "fn": file_name, "day": day,

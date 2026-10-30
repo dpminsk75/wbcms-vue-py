@@ -504,11 +504,11 @@ class CompetitorService:
                 INSERT INTO wb_competitor_summary
                   (company_id, source_nm_id, result, raw_ai_response, suggested_title,
                    suggested_description, competitor_count, model)
-                VALUES (:c, :n, :r, :raw, :t, :d, :cnt, :m)
-                ON DUPLICATE KEY UPDATE company_id=VALUES(company_id), result=VALUES(result),
-                  raw_ai_response=VALUES(raw_ai_response), suggested_title=VALUES(suggested_title),
-                  suggested_description=VALUES(suggested_description),
-                  competitor_count=VALUES(competitor_count), model=VALUES(model)
+                VALUES (:c, :n, :r, :raw, :t, :d, :cnt, :m) AS new
+                ON DUPLICATE KEY UPDATE company_id=new.company_id, result=new.result,
+                  raw_ai_response=new.raw_ai_response, suggested_title=new.suggested_title,
+                  suggested_description=new.suggested_description,
+                  competitor_count=new.competitor_count, model=new.model
             """), {"c": company_id, "n": nm_id, "r": json.dumps(to_save, ensure_ascii=False),
                    "raw": raw_response, "t": (to_save.get("title") or "")[:500] if isinstance(to_save, dict) else None,
                    "d": to_save.get("description") if isinstance(to_save, dict) else None,
