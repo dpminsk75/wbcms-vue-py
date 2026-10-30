@@ -153,7 +153,7 @@
     "roles": ["admin", "manageUsers", "manageCompanyUsers"],
     "items": [
       {"label": "Пользователи", "url": "/admin/users", "visibleIn": ["top", "side"], "roles": ["manageUsers"]},
-      {"label": "Роли", "url": "/admin/assignment", "visibleIn": ["top", "side"], "roles": ["admin"]},
+      {"label": "Роли", "url": "/admin/roles", "visibleIn": ["top", "side"], "roles": ["admin"]},
       {"label": "Компании", "url": "/companies", "visibleIn": ["top", "side"], "roles": ["manageCompanies"]},
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Пользователи (SPA)", "url": "/admin/users", "visibleIn": ["top", "side"], "roles": ["manageUsers", "manageCompanyUsers"]},

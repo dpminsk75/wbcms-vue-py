@@ -9,6 +9,109 @@ from backend.services import auth_service
 
 logger = logging.getLogger(__name__)
 
+# --- v3: доступ по путям API ---
+# Единая таблица вместо правки каждого роута: (префикс пути, методы, требуемый перм).
+# Работает только при AUTH_V3=1; при 0 — поведение прежнее (жёсткие гарды роутов).
+# "__admins__" — доступ только админам (global или owner/admin компании).
+PATH_PERMS_V3: tuple[tuple[str, frozenset[str], str], ...] = (
+    # заказы/продажи/прочее коммерческое
+    ("/api/wb-orders", frozenset({"GET"}), "viewOrders"),
+    ("/api/wb-sales", frozenset({"GET"}), "viewOrders"),
+    # лента заказов/возвраты/воронка — inline-эндпоинты main.py
+    ("/api/orders", frozenset({"GET"}), "viewOrders"),
+    ("/api/unclaimed-orders", frozenset({"GET"}), "viewOrders"),
+    ("/api/sales-analysis", frozenset({"GET"}), "viewOrders"),
+    ("/api/wb-sales-funnel", frozenset({"GET"}), "viewOrders"),
+    ("/api/cost-import", frozenset({"GET", "POST", "DELETE"}), "viewOrders"),
+    ("/api/penalty", frozenset({"GET"}), "viewOrders"),
+    ("/api/geo", frozenset({"GET"}), "viewOrders"),
+    # финансы
+    ("/api/profit", frozenset({"GET"}), "viewFinance"),
+    ("/api/wb-profit", frozenset({"GET"}), "viewFinance"),
+    ("/api/dashboard/monthly-finance", frozenset({"GET"}), "viewFinance"),
+    ("/api/dashboard/finance-detail", frozenset({"GET"}), "viewFinance"),
+    ("/api/dashboard/finance-storage", frozenset({"GET"}), "viewFinance"),
+    ("/api/dashboard/finance-acceptance", frozenset({"GET"}), "viewFinance"),
+    ("/api/dashboard/finance-balance", frozenset({"GET"}), "viewFinance"),
+    # реклама (inline-эндпоинты main.py + блок дашборда)
+    ("/api/adv-report", frozenset({"GET"}), "viewAdv"),
+    ("/api/dashboard/adv", frozenset({"GET"}), "viewAdv"),
+    # склад FBS
+    ("/api/fbs", frozenset({"GET"}), "viewFbs"),
+    ("/api/fbs-virtual", frozenset({"GET"}), "viewFbs"),
+    ("/api/fbs-virtual", frozenset({"POST", "PUT", "PATCH", "DELETE"}), "manageFbs"),
+    ("/api/stock-reports", frozenset({"GET"}), "viewFbs"),
+    ("/api/stock-docs", frozenset({"GET"}), "viewFbs"),
+    ("/api/stock-docs", frozenset({"POST", "PUT", "PATCH", "DELETE"}), "manageFbs"),
+    # производство
+    ("/api/production", frozenset({"GET"}), "viewProduction"),
+    # теги и линейки
+    ("/api/tags", frozenset({"GET"}), "viewTags"),
+    ("/api/tags", frozenset({"POST", "PUT", "PATCH", "DELETE"}), "manageTags"),
+    ("/api/products", frozenset({"GET"}), "viewTags"),
+    ("/api/products", frozenset({"POST", "PUT", "PATCH", "DELETE"}), "manageTags"),
+    ("/api/product-types", frozenset({"GET"}), "viewTags"),
+    ("/api/product-types", frozenset({"POST", "PUT", "PATCH", "DELETE"}), "manageTags"),
+    ("/api/brands", frozenset({"GET"}), "viewTags"),
+    ("/api/brands", frozenset({"POST", "PUT", "PATCH", "DELETE"}), "manageTags"),
+    # отзывы и вопросы
+    ("/api/feedback", frozenset({"GET"}), "viewFeedback"),
+    ("/api/feedback", frozenset({"POST", "PUT", "PATCH", "DELETE"}), "manageFeedback"),
+    ("/api/feedback-insights", frozenset({"GET"}), "viewFeedback"),
+    ("/api/reply-rules", frozenset({"GET"}), "viewFeedback"),
+    ("/api/reply-rules", frozenset({"POST", "PUT", "PATCH", "DELETE"}), "manageFeedback"),
+    # SEO и конкуренты
+    ("/api/seo", frozenset({"GET"}), "viewSeo"),
+    ("/api/seo", frozenset({"POST", "PUT", "PATCH", "DELETE"}), "manageSeo"),
+    ("/api/seo-watch", frozenset({"GET"}), "viewSeo"),
+    ("/api/seo-watch", frozenset({"POST", "PUT", "PATCH", "DELETE"}), "manageSeo"),
+    ("/api/competitors", frozenset({"GET"}), "viewSeo"),
+    ("/api/competitors", frozenset({"POST", "PUT", "PATCH", "DELETE"}), "manageSeo"),
+    ("/api/wb-search", frozenset({"GET"}), "viewSeo"),
+    ("/api/phrases/miner", frozenset({"GET"}), "viewSeo"),
+    ("/api/phrases/miner", frozenset({"POST", "PUT", "PATCH", "DELETE"}), "manageSeo"),
+    # дашборд: блоки по доменам
+    ("/api/dashboard/top-metrics", frozenset({"GET"}), "viewOrders"),
+    ("/api/dashboard/top-metrics-day", frozenset({"GET"}), "viewFinance"),
+    ("/api/dashboard/today-stats", frozenset({"GET"}), "viewOrders"),
+    ("/api/dashboard/orders-summary", frozenset({"GET"}), "viewOrders"),
+    ("/api/dashboard/last-orders", frozenset({"GET"}), "viewOrders"),
+    ("/api/dashboard/last-sales", frozenset({"GET"}), "viewOrders"),
+    # новости и новые карточки — админам
+    ("/api/news", frozenset({"GET"}), "__admins__"),
+    ("/api/dashboard/new-cards", frozenset({"GET"}), "__admins__"),
+)
+
+
+def _match_path_rule(path: str, method: str) -> str | None:
+    """Наиболее специфичное правило для пути (самый длинный префикс)."""
+    best_perm: str | None = None
+    best_len = -1
+    for prefix, methods, perm in PATH_PERMS_V3:
+        if method not in methods:
+            continue
+        if path == prefix or path.startswith(prefix + "/"):
+            if len(prefix) > best_len:
+                best_len = len(prefix)
+                best_perm = perm
+    return best_perm
+
+
+async def _enforce_path_perm(request: Request, user: dict, db: AsyncSession) -> None:
+    """v3-гейт по таблице PATH_PERMS_V3 (вызывается из get_optional_user)."""
+    perm = _match_path_rule(request.url.path, request.method.upper())
+    if perm is None:
+        return
+    allowed = set(user.get("perms") or []) | set(user.get("roles") or [])
+    if "admin" in allowed or "global_admin" in allowed:
+        return
+    if perm == "__admins__":
+        if await auth_service.user_manages_company(db, user["id"]):
+            return
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admins only")
+    if perm not in allowed:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"{perm} required")
+
 
 async def get_optional_user(
     request: Request,
@@ -31,7 +134,19 @@ async def get_optional_user(
     pp = await auth_service.get_user_perms(db, user_id)
     user["roles"] = pp["roles"]
     user["perms"] = pp["all"]
+    if auth_service.AUTH_V3:
+        await _enforce_path_perm(request, user, db)
     return user
+
+
+def require_perm(perm: str):
+    """Гард на конкретный перм (v3). Использовать: user = Depends(require_perm('viewFeedback'))."""
+    async def _dep(user: dict = Depends(get_current_user)) -> dict:
+        allowed = set(user.get("perms") or []) | set(user.get("roles") or [])
+        if "admin" in allowed or "global_admin" in allowed or perm in allowed:
+            return user
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"{perm} required")
+    return _dep
 
 
 async def get_current_user(request: Request, user: dict | None = Depends(get_optional_user)) -> dict:
@@ -57,6 +172,24 @@ async def require_seo(
     if "viewSeo" in await auth_service.effective_perms(db, user["id"]):
         return user
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="seo access denied (need viewSeo)")
+
+
+async def require_manage_fbs_stocks(
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Управление складами FBS/документами/остатками.
+
+    v3: перм называется manageFbs (legacy — manageFbsStocks).
+    """
+    if await auth_service.is_global_admin(db, user["id"]):
+        return user
+    perms = await auth_service.effective_perms(db, user["id"])
+    need = "manageFbs" if auth_service.AUTH_V3 else "manageFbsStocks"
+    if need in perms or "admin" in perms:
+        return user
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"{need} access denied")
 
 
 async def _resolve_company_id(request: Request) -> int | None:

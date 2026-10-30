@@ -52,8 +52,8 @@ export const WB_TOKEN_CATS: Array<{ key: string; letter: string; name: string }>
 
 export const authApi = {
   login: (username: string, password: string) =>
-    api.post('/api/auth/login', { username, password }).then((r) => r.data as { token: string; user: AuthUser; roles: string[]; perms: string[] }),
-  me: () => api.get('/api/auth/me').then((r) => r.data as { user: AuthUser; roles: string[]; perms: string[] }),
+    api.post('/api/auth/login', { username, password }).then((r) => r.data as { token: string; user: AuthUser; roles: string[]; perms: string[]; auth_v3?: boolean }),
+  me: () => api.get('/api/auth/me').then((r) => r.data as { user: AuthUser; roles: string[]; perms: string[]; auth_v3?: boolean }),
   companies: () => api.get('/api/companies').then((r) => r.data as Company[]),
 
   register: (payload: { username: string; email: string; password: string; company_name?: string; abbreviation?: string; inn?: string; invite_token: string }) =>

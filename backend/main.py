@@ -25,6 +25,15 @@ from backend.services.adv_report_service import AdvReportService
 from backend.services.top_products_service import TopProductsService
 
 app = FastAPI(title="wbcms-py dashboard proto")
+
+
+def _menu_file():
+    """Файл меню: при AUTH_V3=1 — menu.v3.json (новое распределение по пермам),
+    иначе — текущий menu.json (старый режим, yii2-словарь пермов)."""
+    import pathlib
+    name = "menu.v3.json" if AuthService.AUTH_V3 else "menu.json"
+    return pathlib.Path(__file__).parent / "config" / name
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -237,6 +246,7 @@ async def login(payload: LoginIn, request: Request, db: AsyncSession = Depends(g
         "user": {"id": user["id"], "username": user["username"], "email": user.get("email")},
         "roles": pp["roles"],
         "perms": pp["all"],
+        "auth_v3": AuthService.AUTH_V3,
     }
 
 
@@ -674,7 +684,7 @@ def get_icons():
 def get_menu_raw():
     """Отдает raw backend/config/menu.json для визуального редактора AdminMenu.vue"""
     import json, pathlib
-    p = pathlib.Path(__file__).parent / "config" / "menu.json"
+    p = _menu_file()
     if not p.exists():
         return []
     try:
@@ -707,7 +717,7 @@ def put_menu_raw(payload: list[dict] = Body(...), _admin: dict = Depends(require
                 continue
             if not it.get("label") or not str(it["label"]).strip():
                 raise HTTPException(status_code=400, detail=f"section {si} item {ii}: label пуст (или поставьте divider)")
-    p = pathlib.Path(__file__).parent / "config" / "menu.json"
+    p = _menu_file()
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return {"ok": True, "count": len(payload)}
@@ -721,16 +731,16 @@ def get_menu(
     """Отдает menu.json с фильтрами visibleIn и roles — замена MenuHelper.php:40.
     Если есть JWT — фильтрует по perms из токена; ?role= оставлен для обратной совместимости."""
     import json, pathlib
-    p = pathlib.Path(__file__).parent / "config" / "menu.json"
+    p = _menu_file()
     if not p.exists():
-        return {"detail": f"menu.json not found: {p}", "hint": "scp backend/config/menu.json to backend/config/menu.json"}
+        return {"detail": f"menu file not found: {p}", "hint": "scp backend/config/menu.json to backend/config/menu.json"}
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"menu.json read error: {e}")
+        raise HTTPException(status_code=500, detail=f"menu read error: {e}")
     user_perms: set[str] | None = set(user.get("perms", [])) if user else None
-    if user_perms is not None and "admin" in user_perms:
-        user_perms = None  # admin видит всё, как Yii can('admin')
+    if user_perms is not None and ("admin" in user_perms or "global_admin" in user_perms):
+        user_perms = None  # admin/global_admin видят всё, как Yii can('admin')
     def visible(item):
         vi = item.get("visibleIn")
         if vi and menu_type not in vi:

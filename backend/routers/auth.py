@@ -186,6 +186,10 @@ async def grantable_perms(db: AsyncSession = Depends(get_db), user: dict = Depen
         allowed = [p for p in auth_service.GRANTABLE_PERMS if p in mine]
     if not allowed:
         return []
+    if auth_service.AUTH_V3:
+        # v3: описания берём из словаря perms.json, а не из yii2 auth_item.
+        return [{"name": p, "description": auth_service.PERMS_META.get(p, {}).get("label")}
+                for p in allowed]
     placeholders = ",".join(f":p{i}" for i in range(len(allowed)))
     rows = (await db.execute(
         text(f"SELECT name, description FROM auth_item WHERE name IN ({placeholders}) ORDER BY name"),
@@ -368,7 +372,9 @@ async def create_invite(payload: InviteCreateIn, db: AsyncSession = Depends(get_
 
 @router.get("/me")
 async def me(user: dict = Depends(get_current_user)):
-    return {"user": auth_service.public_user(user), "roles": user.get("roles", []), "perms": user.get("perms", [])}
+    # auth_v3 — фронт по нему включает доменные гейты (блоки дашборда, needPerm).
+    return {"user": auth_service.public_user(user), "roles": user.get("roles", []),
+            "perms": user.get("perms", []), "auth_v3": auth_service.AUTH_V3}
 
 
 @router.get("/memberships")

@@ -193,9 +193,18 @@ async def update_company(
     data = payload.model_dump(exclude_unset=True)
     if not await auth_service.is_global_admin(db, user["id"]):
         perms = await auth_service.effective_perms(db, user["id"])
-        if any(k in data and data[k] is not None for k in auth_service.FBS_FIELDS) and "manageFbsStocks" not in perms:
-            raise HTTPException(status_code=403, detail="fbs fields require manageFbsStocks")
-        if any(k in data and data[k] is not None for k in auth_service.SEO_FIELDS) and "viewSeo" not in perms:
+        v3 = auth_service.AUTH_V3
+        fbs_need = "manageFbs" if v3 else "manageFbsStocks"
+        if any(k in data and data[k] is not None for k in auth_service.FBS_FIELDS) and fbs_need not in perms:
+            raise HTTPException(status_code=403, detail=f"fbs fields require {fbs_need}")
+        # v3: ИИ-модель/ключи/лимиты и промпты — отдельный перм manageAi (деньги + секрет).
+        # В legacy-режиме эти поля шли под общим viewSeo — поведение прежнее.
+        ai_need = "manageAi" if v3 else "viewSeo"
+        if any(k in data and data[k] is not None for k in auth_service.AI_FIELDS) and ai_need not in perms:
+            raise HTTPException(status_code=403, detail=f"ai fields require {ai_need}")
+        seo_only = [k for k in auth_service.SEO_FIELDS
+                    if k in data and data[k] is not None and k not in auth_service.AI_FIELDS]
+        if seo_only and "viewSeo" not in perms:
             raise HTTPException(status_code=403, detail="seo fields require viewSeo")
     try:
         await db.rollback()  # сбрасываем autobegin от deps/gates перед begin (B6)
@@ -223,8 +232,9 @@ async def test_llm(
     payload = payload or {}
     if not await auth_service.is_global_admin(db, user["id"]):
         perms = await auth_service.effective_perms(db, user["id"])
-        if "viewSeo" not in perms:
-            raise HTTPException(status_code=403, detail="seo fields require viewSeo")
+        need = "manageAi" if auth_service.AUTH_V3 else "viewSeo"
+        if need not in perms:
+            raise HTTPException(status_code=403, detail=f"llm test requires {need}")
     from backend.services import llm_provider
     from backend.services import openrouter_service as llm
     row = await llm_provider.company_row(db, company_id)

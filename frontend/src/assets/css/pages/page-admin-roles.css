@@ -1,0 +1,19 @@
+/* page-admin-roles.css — чанк AdminRolesPage. Title: 'Роли и права'.
+ * Таблица — глобальная .wb-admin-table; модалки — .wb-modal-backdrop/.wb-modal-box.
+ */
+.page-admin-roles__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.page-admin-roles__title { margin: 0; }
+.page-admin-roles__note { font-size: 13px; color: #666; margin-bottom: 12px; }
+.page-admin-roles__note--staging { color: #8a6d3b; background: #fcf8e3; border: 1px solid #faebcc; border-radius: 8px; padding: 8px 12px; }
+.page-admin-roles__perm { display: inline-block; background: #f1f1f4; border-radius: 8px; padding: 1px 6px; margin: 0 4px 2px 0; font-size: 12px; }
+.page-admin-roles__perm--view { background: #e8f1fb; }
+.page-admin-roles__perm--manage { background: #e9f6ef; }
+.page-admin-roles__user { display: inline-block; background: #f6f2fb; border-radius: 8px; padding: 1px 6px; margin: 0 4px 2px 0; font-size: 12px; }
+.page-admin-roles__user-drop { margin-left: 4px; color: #c00; text-decoration: none; }
+.page-admin-roles__row-actions { white-space: nowrap; }
+.page-admin-roles__modal-title { margin: 0; }
+.page-admin-roles__perm-group { margin-bottom: 12px; }
+.page-admin-roles__perm-group-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.page-admin-roles__perm-list { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.page-admin-roles__perm-item { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.page-admin-roles__perm-hint { font-size: 12px; color: #888; }

@@ -11,9 +11,66 @@ from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+try:  # .env читаем сами — AUTH_V3 должен быть виден независимо от порядка импортов
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:  # pragma: no cover
+    pass
+
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
 ALGO = "HS256"
 EXPIRE_MIN = int(os.getenv("JWT_EXPIRE_MIN", "720"))
+
+# --- v3: собственная модель прав (role/role_perm/user_role/user_perm) вместо yii2 auth_* ---
+# Флаг переключает модель целиком: 0 — старое поведение (auth_*), 1 — новая (свои таблицы).
+# Фронт узнаёт режим из /api/auth/me (auth_v3) и переключает гейты интерфейса.
+AUTH_V3 = os.getenv("AUTH_V3", "0").strip().lower() in ("1", "true", "yes", "on")
+
+_CONFIG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config")
+
+
+def _load_perms_meta() -> dict[str, dict]:
+    """Словарь пермов из backend/config/perms.json — единственный источник имён."""
+    path = os.path.join(_CONFIG_DIR, "perms.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = json.load(f)
+    except Exception:
+        return {}
+    out: dict[str, dict] = {}
+    for item in raw or []:
+        name = str((item or {}).get("name") or "").strip()
+        if name:
+            out[name] = item
+    return out
+
+
+PERMS_META: dict[str, dict] = _load_perms_meta()
+PERM_NAMES: frozenset[str] = frozenset(PERMS_META)
+
+# Системные роли (не пермы) — назначаются только через user_role.
+V3_ROLE_NAMES: tuple[str, ...] = ("admin", "global_admin")
+
+LEGACY_GRANTABLE_PERMS = ("viewDashboard", "viewReports", "viewOrders", "viewSeo", "manageFbsStocks")
+LEGACY_PROTECTED_ITEMS = ("global_admin", "admin", "manageUsers", "manageCompanies")
+
+# Списки для UI выдачи прав: в v3 — из perms.json, в legacy — как было.
+GRANTABLE_PERMS: tuple[str, ...] = tuple(sorted(
+    n for n, m in PERMS_META.items() if not m.get("protected") and not m.get("derivedOnly")
+)) if AUTH_V3 else LEGACY_GRANTABLE_PERMS
+PROTECTED_ITEMS: tuple[str, ...] = tuple(sorted(
+    n for n, m in PERMS_META.items() if m.get("protected")
+)) if AUTH_V3 else LEGACY_PROTECTED_ITEMS
+
+# Перевод legacy-пермов в доменные: нужен, пока флаг AUTH_V3=0, а фронт уже с доменными гейтами.
+# viewReports в yii2 открывал и отчёты, и маржу, и склады, и теги — разносим по доменам.
+LEGACY_PERM_TRANSLATION: dict[str, tuple[str, ...]] = {
+    "viewReports": ("viewOrders", "viewFinance", "viewTags", "viewFbs", "viewProduction"),
+    "viewOrders": ("viewOrders",),
+    "viewDashboard": ("viewOrders",),
+    "viewSeo": ("viewSeo",),
+    "manageFbsStocks": ("manageFbs", "viewFbs"),
+}
 
 
 def normalize_email(email: str) -> str:
@@ -133,6 +190,44 @@ async def update_user_password(db: AsyncSession, user_id: int, password: str) ->
 
 
 async def get_user_perms(db: AsyncSession, user_id: int) -> dict:
+    """Эффективные права пользователя.
+
+    AUTH_V3=0 — старое чтение yii2-таблиц (auth_assignment/auth_item_child) + перевод
+    legacy-пермов в доменные (чтобы новый фронт работал до переключения флага).
+    AUTH_V3=1 — свои таблицы: user_role→role.name, user_role→role_perm.perm, user_perm.perm
+    + derived из company_members. Рекурсии по auth_item_child больше нет.
+    """
+    if AUTH_V3:
+        return await _get_user_perms_v3(db, user_id)
+    return await _get_user_perms_legacy(db, user_id)
+
+
+async def _get_user_perms_v3(db: AsyncSession, user_id: int) -> dict:
+    role_rows = (await db.execute(
+        text("SELECT r.name FROM user_role ur JOIN role r ON r.id = ur.role_id WHERE ur.user_id = :u"),
+        {"u": user_id},
+    )).all()
+    roles = sorted({r[0] for r in role_rows})
+    role_perm_rows = (await db.execute(
+        text("SELECT rp.perm FROM user_role ur JOIN role_perm rp ON rp.role_id = ur.role_id "
+             "WHERE ur.user_id = :u"),
+        {"u": user_id},
+    )).all()
+    direct_rows = (await db.execute(
+        text("SELECT perm FROM user_perm WHERE user_id = :u"), {"u": user_id},
+    )).all()
+    perms = {r[0] for r in role_perm_rows} | {r[0] for r in direct_rows}
+    derived = await get_derived_perms(db, user_id)
+    perms |= derived
+    return {
+        "roles": roles,
+        "perms": sorted(perms),
+        "all": sorted(set(roles) | perms),
+        "derived": sorted(derived),
+    }
+
+
+async def _get_user_perms_legacy(db: AsyncSession, user_id: int) -> dict:
     rows = (await db.execute(
         text("SELECT item_name FROM auth_assignment WHERE user_id=:u"), {"u": str(user_id)}
     )).all()
@@ -169,6 +264,13 @@ async def get_user_perms(db: AsyncSession, user_id: int) -> dict:
     derived = await get_derived_perms(db, user_id)
     all_names |= derived
     perms = sorted(set(perms) | derived)
+    # Перевод в доменные пермы для нового фронта (AUTH_V3=0).
+    domain: set[str] = set()
+    for name in list(all_names):
+        domain.update(LEGACY_PERM_TRANSLATION.get(name, ()))
+    if domain:
+        perms = sorted(set(perms) | domain)
+        all_names = sorted(set(all_names) | domain)
     return {"roles": roles, "perms": perms, "all": sorted(all_names), "derived": sorted(derived)}
 
 
@@ -181,10 +283,16 @@ COMPANY_ROLE_PERMS: dict[str, tuple[str, ...]] = {
     "viewer": ("viewDashboard",),
 }
 
-# Что вообще можно выдавать через инвайты/карточку компании (помимо базы).
+# v3: те же роли компании, но доменные пермы (viewReports/viewDashboard больше нет).
+COMPANY_ROLE_PERMS_V3: dict[str, tuple[str, ...]] = {
+    "owner": ("viewOrders", "viewFinance", "viewTags", "manageCompanyUsers"),
+    "admin": ("viewOrders", "viewFinance", "viewTags", "manageCompanyUsers"),
+    "member": ("viewOrders",),
+    "viewer": ("viewOrders",),
+}
+
+# Что вообще можно выдавать через инвайты/карточку компании (помимо базы) — см. GRANTABLE_PERMS:
 # admin/manageUsers/manageCompanies/global_admin и роли (type 1) — только global через /admin.
-GRANTABLE_PERMS = ("viewDashboard", "viewReports", "viewOrders", "viewSeo", "manageFbsStocks")
-PROTECTED_ITEMS = ("global_admin", "admin", "manageUsers", "manageCompanies")
 
 
 async def get_active_company_roles(db: AsyncSession, user_id: int) -> list[str]:
@@ -197,8 +305,9 @@ async def get_active_company_roles(db: AsyncSession, user_id: int) -> list[str]:
 
 async def get_derived_perms(db: AsyncSession, user_id: int) -> set[str]:
     out: set[str] = set()
+    table = COMPANY_ROLE_PERMS_V3 if AUTH_V3 else COMPANY_ROLE_PERMS
     for role in await get_active_company_roles(db, user_id):
-        out.update(COMPANY_ROLE_PERMS.get(role, ()))
+        out.update(table.get(role, ()))
     return out
 
 
@@ -207,12 +316,43 @@ async def effective_perms(db: AsyncSession, user_id: int) -> set[str]:
     return set(pp.get("all", []))
 
 
+def _check_requires(clean: list[str]) -> None:
+    # v3: manage-перм требует свой view-перм в том же наборе (perms.json: requires):
+    # manageFeedback без viewFeedback даёт действия без доступа к списку.
+    # Единое простое правило для инвайтов, карт. пользователя и ролей —
+    # выдающий отмечает и view, и manage вместе.
+    granted = set(clean)
+    for p in clean:
+        req = PERMS_META.get(p, {}).get("requires")
+        if req and req in PERM_NAMES and req not in granted:
+            raise ValueError(f"permission '{p}' requires '{req}' in the same set")
+
+
 async def validate_grant(db: AsyncSession, granter_id: int, perms: list[str]) -> list[str]:
     # Проверка выдачи пермов: существуют, не защищены, выдающий ими владеет
     # (global_admin — всеми кроме PROTECTED). Возвращает очищенный список.
     clean = sorted({(p or "").strip() for p in (perms or []) if (p or "").strip()})
     if not clean:
         return []
+    if AUTH_V3:
+        # v3: пермы только из perms.json; роли — через /admin/roles.
+        for p in clean:
+            if p in V3_ROLE_NAMES:
+                raise ValueError(f"'{p}' is a role — roles are assigned in /admin/roles")
+            if p in PROTECTED_ITEMS:
+                raise ValueError(f"permission '{p}' requires global_admin via /admin")
+            if p not in PERM_NAMES:
+                raise ValueError(f"unknown permission '{p}'")
+        # manage-перм требует свой view-перм в том же наборе (perms.json: requires):
+        # manageFeedback без viewFeedback даёт действия без доступа к списку.
+        _check_requires(clean)
+        if await is_global_admin(db, granter_id):
+            return clean
+        mine = await effective_perms(db, granter_id)
+        for p in clean:
+            if p not in GRANTABLE_PERMS or p not in mine:
+                raise ValueError(f"cannot grant '{p}' — not available to you")
+        return clean
     for p in clean:
         if p in PROTECTED_ITEMS:
             raise ValueError(f"permission '{p}' requires global_admin via /admin")
@@ -240,6 +380,11 @@ async def _existing_items(db: AsyncSession, perms: list[str]) -> list[str]:
     clean = sorted({(p or "").strip() for p in (perms or []) if (p or "").strip()})
     if not clean:
         return []
+    if AUTH_V3:
+        unknown = [p for p in clean if p not in PERM_NAMES]
+        if unknown:
+            raise ValueError(f"unknown permission '{unknown[0]}'")
+        return clean
     placeholders = ",".join(f":p{i}" for i in range(len(clean)))
     rows = (await db.execute(
         text(f"SELECT name FROM auth_item WHERE name IN ({placeholders})"),
@@ -259,8 +404,18 @@ async def grant_perms(db: AsyncSession, user_id: int, perms: list[str]) -> list[
     if not clean:
         return []
     now = int(time.time())
+    if AUTH_V3:
+        placeholders = ",".join(f"(:u{i}, :p{i}, :t)" for i in range(len(clean)))
+        params: dict = {"t": now}
+        params.update({f"u{i}": user_id for i in range(len(clean))})
+        params.update({f"p{i}": v for i, v in enumerate(clean)})
+        await db.execute(
+            text(f"INSERT IGNORE INTO user_perm (user_id, perm, created_at) VALUES {placeholders}"),
+            params,
+        )
+        return clean
     placeholders = ",".join(f"(:n{i}, :u, :t)" for i in range(len(clean)))
-    params: dict = {"u": str(user_id), "t": now}
+    params = {"u": str(user_id), "t": now}
     params.update({f"n{i}": v for i, v in enumerate(clean)})
     await db.execute(
         text(f"INSERT IGNORE INTO auth_assignment (item_name, user_id, created_at) VALUES {placeholders}"),
@@ -273,6 +428,15 @@ async def revoke_perms(db: AsyncSession, user_id: int, perms: list[str]) -> list
     clean = sorted({(p or "").strip() for p in (perms or []) if (p or "").strip()})
     if not clean:
         return []
+    if AUTH_V3:
+        placeholders = ",".join(f":p{i}" for i in range(len(clean)))
+        params: dict = {"u": user_id}
+        params.update({f"p{i}": v for i, v in enumerate(clean)})
+        await db.execute(
+            text(f"DELETE FROM user_perm WHERE user_id=:u AND perm IN ({placeholders})"),
+            params,
+        )
+        return clean
     placeholders = ",".join(f":p{i}" for i in range(len(clean)))
     params: dict = {"u": str(user_id)}
     params.update({f"p{i}": v for i, v in enumerate(clean)})
@@ -283,7 +447,32 @@ async def revoke_perms(db: AsyncSession, user_id: int, perms: list[str]) -> list
     return clean
 
 
+async def split_role_names(db: AsyncSession, names: list[str]) -> list[str]:
+    """Из списка имён вернуть те, что являются ролями (таблица role)."""
+    clean = sorted({(n or "").strip() for n in (names or []) if (n or "").strip()})
+    if not clean:
+        return []
+    ph = ",".join(f":n{i}" for i in range(len(clean)))
+    rows = (await db.execute(
+        text(f"SELECT name FROM role WHERE name IN ({ph})"), {f"n{i}": v for i, v in enumerate(clean)}
+    )).all()
+    known = {r[0] for r in rows}
+    return [n for n in clean if n in known]
+
+
 async def get_user_explicit_items(db: AsyncSession, user_id: int) -> list[dict]:
+    if AUTH_V3:
+        roles = (await db.execute(
+            text("SELECT r.name FROM user_role ur JOIN role r ON r.id = ur.role_id "
+                 "WHERE ur.user_id = :u ORDER BY r.name"), {"u": user_id}
+        )).all()
+        perms = (await db.execute(
+            text("SELECT perm FROM user_perm WHERE user_id=:u ORDER BY perm"), {"u": user_id}
+        )).all()
+        out = [{"name": r[0], "type": 1, "description": None} for r in roles]
+        out += [{"name": r[0], "type": 2,
+                 "description": PERMS_META.get(r[0], {}).get("label")} for r in perms]
+        return out
     rows = (await db.execute(
         text("SELECT a.item_name AS name, i.type AS type, i.description AS description "
              "FROM auth_assignment a LEFT JOIN auth_item i ON i.name=a.item_name "
@@ -294,6 +483,13 @@ async def get_user_explicit_items(db: AsyncSession, user_id: int) -> list[dict]:
 
 
 async def is_global_admin(db: AsyncSession, user_id: int) -> bool:
+    if AUTH_V3:
+        rows = (await db.execute(
+            text("SELECT r.name FROM user_role ur JOIN role r ON r.id = ur.role_id "
+                 "WHERE ur.user_id=:u AND r.name IN ('admin','global_admin')"),
+            {"u": user_id},
+        )).all()
+        return bool(rows)
     pp = await get_user_perms(db, user_id)
     return "global_admin" in pp["roles"] or "admin" in pp["roles"]
 
@@ -377,13 +573,27 @@ async def get_company_members(db: AsyncSession, company_id: int) -> list[dict]:
     if out:
         ids = [r["id"] for r in out]
         placeholders = ",".join(f":u{i}" for i in range(len(ids)))
-        pr = (await db.execute(
-            text(f"SELECT a.user_id AS uid, a.item_name AS name FROM auth_assignment a "
-                 f"WHERE a.user_id IN ({placeholders})"),
-            {f"u{i}": str(v) for i, v in enumerate(ids)},
-        )).mappings().all()
+        params = {f"u{i}": str(v) for i, v in enumerate(ids)}
+        if AUTH_V3:
+            # v3: роли из user_role, прямые права из user_perm.
+            pr = (await db.execute(
+                text(f"SELECT ur.user_id AS uid, r.name AS name FROM user_role ur "
+                     f"JOIN role r ON r.id = ur.role_id WHERE ur.user_id IN ({placeholders})"),
+                params,
+            )).mappings().all()
+            pp = (await db.execute(
+                text(f"SELECT user_id AS uid, perm AS name FROM user_perm WHERE user_id IN ({placeholders})"),
+                params,
+            )).mappings().all()
+            rows_all = list(pr) + list(pp)
+        else:
+            rows_all = (await db.execute(
+                text(f"SELECT a.user_id AS uid, a.item_name AS name FROM auth_assignment a "
+                     f"WHERE a.user_id IN ({placeholders})"),
+                params,
+            )).mappings().all()
         by_user: dict[int, list[str]] = {}
-        for r in pr:
+        for r in rows_all:
             by_user.setdefault(int(r["uid"]), []).append(r["name"])
         for r in out:
             r["perms"] = sorted(by_user.get(int(r["id"]), []))
@@ -544,6 +754,22 @@ COMPANY_UPDATE_FIELDS = (
 
 # Поля yii2 company/_form.php с ограниченным доступом (п.4 пользователя):
 FBS_FIELDS = ("fbs_deduct_enabled", "fbs_deduct_test")
+# v3: ИИ-модель, ключи, лимиты и промпты — отдельный перм manageAi (деньги + секрет).
+AI_FIELDS = (
+    # провайдер/модель/ключи
+    "seo_llm_provider", "seo_llm_format", "seo_llm_url", "seo_llm_api_key",
+    "seo_llm_folder_id", "seo_llm_auth_header", "seo_llm_auth_prefix",
+    "seo_llm_extra_headers", "seo_llm_extra_body", "seo_llm_timeout",
+    "seo_llm_model", "seo_llm_summary_model",
+    # openrouter-ключ и модели
+    "seo_openrouter_key", "seo_openrouter_referer", "seo_openrouter_title",
+    "seo_model", "seo_summary_model", "seo_summary_max_tokens", "seo_daily_limit",
+    # промпты
+    "seo_prompt", "seo_competitor_prompt", "seo_summary_prompt",
+    "seo_newcard_prompt", "seo_phrases_prompt",
+    "review_analysis_prompt", "feedback_review_prompt",
+    "feedback_auto_review", "feedback_review_batch",
+)
 SEO_FIELDS = (
     "seo_model", "seo_summary_model", "seo_summary_max_tokens",
     "seo_daily_limit", "seo_desc_min", "seo_desc_max", "seo_anti_spam_days",
@@ -829,3 +1055,226 @@ async def touch_login(db: AsyncSession, user_id: int, ip: str | None) -> None:
         await db.commit()
     except Exception:
         await db.rollback()
+
+
+# ---------------------------------------------------------------------------
+# v3: роли (role / role_perm / user_role) — CRUD для страницы «Роли»
+# ---------------------------------------------------------------------------
+
+async def list_roles(db: AsyncSession) -> list[dict]:
+    """Все роли с пермами и пользователями (для страницы «Роли»)."""
+    rows = (await db.execute(
+        text("SELECT id, name, description, is_system, created_at FROM role ORDER BY is_system DESC, name")
+    )).mappings().all()
+    out = [dict(r) for r in rows]
+    if not out:
+        return out
+    ids = [int(r["id"]) for r in out]
+    ph = ",".join(f":r{i}" for i in range(len(ids)))
+    params = {f"r{i}": v for i, v in enumerate(ids)}
+    perms = (await db.execute(
+        text(f"SELECT role_id, perm FROM role_perm WHERE role_id IN ({ph}) ORDER BY perm"), params
+    )).all()
+    by_perms: dict[int, list[str]] = {}
+    for rid, perm in perms:
+        by_perms.setdefault(int(rid), []).append(perm)
+    users = (await db.execute(
+        text(f"SELECT ur.role_id, ur.user_id, u.username FROM user_role ur "
+             f"JOIN `user` u ON u.id = ur.user_id WHERE ur.role_id IN ({ph}) "
+             f"ORDER BY u.username"),
+        params,
+    )).all()
+    by_users: dict[int, list[dict]] = {}
+    for rid, uid, uname in users:
+        by_users.setdefault(int(rid), []).append({"id": int(uid), "username": uname})
+    for r in out:
+        rid = int(r["id"])
+        r["perms"] = by_perms.get(rid, [])
+        r["users"] = by_users.get(rid, [])
+    return out
+
+
+async def get_role(db: AsyncSession, role_id: int) -> dict | None:
+    row = (await db.execute(
+        text("SELECT id, name, description, is_system, created_at FROM role WHERE id=:id"),
+        {"id": role_id},
+    )).mappings().first()
+    if not row:
+        return None
+    role = dict(row)
+    perms = (await db.execute(
+        text("SELECT perm FROM role_perm WHERE role_id=:id ORDER BY perm"), {"id": role_id}
+    )).all()
+    role["perms"] = [r[0] for r in perms]
+    return role
+
+
+async def get_role_by_name(db: AsyncSession, name: str) -> dict | None:
+    row = (await db.execute(
+        text("SELECT id, name, description, is_system FROM role WHERE name=:n"), {"n": name}
+    )).mappings().first()
+    if not row:
+        return None
+    role = dict(row)
+    perms = (await db.execute(
+        text("SELECT perm FROM role_perm WHERE role_id=:id ORDER BY perm"), {"id": int(role["id"])}
+    )).all()
+    role["perms"] = [r[0] for r in perms]
+    return role
+
+
+async def create_role(db: AsyncSession, name: str, description: str | None,
+                      perms: list[str] | None = None) -> dict:
+    """Создать роль. Пермы — только из словаря (perms.json), неизвестные → ошибка."""
+    name = (name or "").strip()
+    if not name:
+        raise ValueError("role name is required")
+    if len(name) > 64:
+        raise ValueError("role name is too long")
+    clean = sorted({(p or "").strip() for p in (perms or []) if (p or "").strip()})
+    for p in clean:
+        if p not in PERM_NAMES:
+            raise ValueError(f"unknown permission '{p}'")
+    _check_requires(clean)
+    exists = (await db.execute(text("SELECT id FROM role WHERE name=:n"), {"n": name})).first()
+    if exists:
+        raise ValueError("role already exists")
+    await db.execute(
+        text("INSERT INTO role (name, description, is_system) VALUES (:n, :d, 0)"),
+        {"n": name, "d": (description or "").strip() or None},
+    )
+    role_id = int((await db.execute(text("SELECT LAST_INSERT_ID()"))).scalar())
+    if clean:
+        placeholders = ",".join(f"(:r{i}, :p{i})" for i in range(len(clean)))
+        params = {f"r{i}": role_id for i in range(len(clean))}
+        params.update({f"p{i}": v for i, v in enumerate(clean)})
+        await db.execute(text(f"INSERT INTO role_perm (role_id, perm) VALUES {placeholders}"), params)
+    role = await get_role(db, role_id)
+    return role or {"id": role_id, "name": name}
+
+
+async def update_role(db: AsyncSession, role_id: int, name: str | None = None,
+                      description: str | None = None) -> dict:
+    role = await get_role(db, role_id)
+    if not role:
+        raise ValueError("role not found")
+    if name is not None:
+        new_name = name.strip()
+        if not new_name:
+            raise ValueError("role name is required")
+        if role["is_system"] and new_name != role["name"]:
+            raise ValueError("system role cannot be renamed")
+        if new_name != role["name"]:
+            dup = (await db.execute(
+                text("SELECT id FROM role WHERE name=:n AND id<>:i"), {"n": new_name, "i": role_id}
+            )).first()
+            if dup:
+                raise ValueError("role already exists")
+            await db.execute(text("UPDATE role SET name=:n WHERE id=:i"), {"n": new_name, "i": role_id})
+    if description is not None:
+        await db.execute(
+            text("UPDATE role SET description=:d WHERE id=:i"),
+            {"d": description.strip() or None, "i": role_id},
+        )
+    return await get_role(db, role_id) or {}
+
+
+async def set_role_perms(db: AsyncSession, role_id: int, perms: list[str]) -> list[str]:
+    """Полная замена набора пермов роли (из perms.json)."""
+    role = await get_role(db, role_id)
+    if not role:
+        raise ValueError("role not found")
+    clean = sorted({(p or "").strip() for p in (perms or []) if (p or "").strip()})
+    for p in clean:
+        if p not in PERM_NAMES:
+            raise ValueError(f"unknown permission '{p}'")
+    _check_requires(clean)
+    await db.execute(text("DELETE FROM role_perm WHERE role_id=:i"), {"i": role_id})
+    if clean:
+        placeholders = ",".join(f"(:r{i}, :p{i})" for i in range(len(clean)))
+        params = {f"r{i}": role_id for i in range(len(clean))}
+        params.update({f"p{i}": v for i, v in enumerate(clean)})
+        await db.execute(text(f"INSERT INTO role_perm (role_id, perm) VALUES {placeholders}"), params)
+    return clean
+
+
+async def delete_role(db: AsyncSession, role_id: int) -> None:
+    role = await get_role(db, role_id)
+    if not role:
+        raise ValueError("role not found")
+    if role["is_system"]:
+        raise ValueError("system role cannot be deleted")
+    await db.execute(text("DELETE FROM role WHERE id=:i"), {"i": role_id})
+
+
+async def set_user_roles_v3(db: AsyncSession, user_id: int, add: list[str] | None = None,
+                            remove: list[str] | None = None) -> list[str]:
+    """Назначить/снять роли пользователю. Возвращает итоговый список ролей."""
+    add = sorted({(r or "").strip() for r in (add or []) if (r or "").strip()})
+    remove = sorted({(r or "").strip() for r in (remove or []) if (r or "").strip()})
+    if add:
+        for name in add:
+            row = (await db.execute(text("SELECT id FROM role WHERE name=:n"), {"n": name})).first()
+            if not row:
+                raise ValueError(f"unknown role '{name}'")
+        names_ph = ",".join(f":n{i}" for i in range(len(add)))
+        params: dict = {"u": user_id}
+        params.update({f"n{i}": v for i, v in enumerate(add)})
+        await db.execute(
+            text(f"INSERT IGNORE INTO user_role (user_id, role_id) "
+                 f"SELECT :u, id FROM role WHERE name IN ({names_ph})"), params
+        )
+    if remove:
+        names_ph = ",".join(f":n{i}" for i in range(len(remove)))
+        params = {"u": user_id}
+        params.update({f"n{i}": v for i, v in enumerate(remove)})
+        await db.execute(
+            text(f"DELETE ur FROM user_role ur JOIN role r ON r.id = ur.role_id "
+                 f"WHERE ur.user_id = :u AND r.name IN ({names_ph})"), params
+        )
+    rows = (await db.execute(
+        text("SELECT r.name FROM user_role ur JOIN role r ON r.id = ur.role_id "
+             "WHERE ur.user_id = :u ORDER BY r.name"), {"u": user_id}
+    )).all()
+    return [r[0] for r in rows]
+
+
+async def get_user_roles(db: AsyncSession, user_id: int) -> list[str]:
+    rows = (await db.execute(
+        text("SELECT r.name FROM user_role ur JOIN role r ON r.id = ur.role_id "
+             "WHERE ur.user_id = :u ORDER BY r.name"), {"u": user_id}
+    )).all()
+    return [r[0] for r in rows]
+
+
+async def get_users_items_v3(db: AsyncSession, user_ids: list[int]) -> dict[int, list[dict]]:
+    """Роли + прямые права по списку пользователей (v3) — для таблицы /admin/users."""
+    if not user_ids:
+        return {}
+    ph = ",".join(f":u{i}" for i in range(len(user_ids)))
+    params = {f"u{i}": v for i, v in enumerate(user_ids)}
+    roles = (await db.execute(
+        text(f"SELECT ur.user_id AS uid, r.name AS name FROM user_role ur "
+             f"JOIN role r ON r.id = ur.role_id WHERE ur.user_id IN ({ph})"),
+        params,
+    )).all()
+    perms = (await db.execute(
+        text(f"SELECT user_id AS uid, perm AS name FROM user_perm WHERE user_id IN ({ph})"),
+        params,
+    )).all()
+    out: dict[int, list[dict]] = {}
+    for uid, name in roles:
+        out.setdefault(int(uid), []).append({"name": name, "type": 1})
+    for uid, name in perms:
+        out.setdefault(int(uid), []).append(
+            {"name": name, "type": 2, "description": PERMS_META.get(name, {}).get("label")})
+    return out
+
+
+async def user_manages_company(db: AsyncSession, user_id: int) -> bool:
+    """Есть ли у пользователя active-роль owner/admin хотя бы в одной компании."""
+    row = (await db.execute(
+        text("SELECT 1 FROM company_members WHERE user_id=:u AND status='active' "
+             "AND role IN ('owner','admin') LIMIT 1"), {"u": user_id}
+    )).first()
+    return bool(row)

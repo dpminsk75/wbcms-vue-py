@@ -17,18 +17,18 @@
         </div>
         <WbTokenAlert />
         <div class="dash-stack">
-          <NewsBlock />
-          <NewCards />
-          <TopMetrics :date-from="dateFrom" :date-to="dateTo" />
-          <AdvCampaigns :date-from="dateFrom" :date-to="dateTo" />
-          <OrdersSummary />
-          <TodayStatsWidget />
-          <LastOrders :date-from="dateFrom" :date-to="dateTo" />
-          <LastSales :date-from="dateFrom" :date-to="dateTo" />
+          <NewsBlock v-if="show.news" />
+          <NewCards v-if="show.newCards" />
+          <TopMetrics v-if="show.topMetrics" :date-from="dateFrom" :date-to="dateTo" />
+          <AdvCampaigns v-if="show.adv" :date-from="dateFrom" :date-to="dateTo" />
+          <OrdersSummary v-if="show.ordersSummary" />
+          <TodayStatsWidget v-if="show.today" />
+          <LastOrders v-if="show.lastOrders" :date-from="dateFrom" :date-to="dateTo" />
+          <LastSales v-if="show.lastSales" :date-from="dateFrom" :date-to="dateTo" />
         </div>
       </div>
-      <div class="col-12 mobile-hide-block" style="margin-top:16px; padding-left:0; padding-right:0">
-        <MonthlyFinance />
+      <div v-if="show.monthly" class="col-12 mobile-hide-block" style="margin-top:16px; padding-left:0; padding-right:0">
+        <MonthlyProfitTable @report="(ok) => report('monthly', ok)" />
       </div>
     </div>
   </div>
@@ -43,7 +43,7 @@ import OrdersSummary from '../components/dashboard/OrdersSummary.vue'
 import TodayStatsWidget from '../components/dashboard/TodayStatsWidget.vue'
 import LastOrders from '../components/dashboard/LastOrders.vue'
 import LastSales from '../components/dashboard/LastSales.vue'
-import MonthlyFinance from '../components/dashboard/MonthlyFinance.vue'
+import MonthlyProfitTable from '../components/profit/MonthlyProfitTable.vue'
 import NewCards from '../components/dashboard/NewCards.vue'
 import NewsBlock from '../components/dashboard/NewsBlock.vue'
 import SideMenu from '../components/dashboard/SideMenu.vue'
@@ -57,14 +57,37 @@ const dateTo = ref(new Date().toISOString().slice(0,10))
 // Пустые блоки: каждый виджет докладывает report(name, hasData) когда загрузка завершена.
 // v-if внутри виджетов убирает их из DOM, отступы dash-stack схлопываются сами.
 // Если данных нет нигде — показываем заглушку со ссылкой на свою компанию.
-const blockNames = ['news','new-cards','top-metrics','adv','orders-summary','today','last-orders','last-sales','monthly']
+// В v3 (AUTH_V3=1) блоки закрыты доменными пермами; список блоков считается по тем же гейтам,
+// иначе скрытые блоки не отчитаются и заглушка «данных нет» не появится.
+const auth = useAuthStore()
+// v3:news/new-cards закрыты на «админские»; isAnyAdmin для админа компании считаем
+// по memberships — на прямом заходе на дашборд они ещё не загружены (роутер грузит их
+// лениво только на /admin/*). Догружаем единожды, блоки появятся реактивно.
+if (auth.authV3 && !auth.memberships.length) auth.loadMemberships().catch(() => {})
+const show = computed(() => ({
+  news: !auth.authV3 || auth.isAnyAdmin,
+  newCards: !auth.authV3 || auth.isAnyAdmin,
+  topMetrics: auth.canDomain('viewOrders'),
+  adv: auth.canDomain('viewAdv'),
+  ordersSummary: auth.canDomain('viewOrders'),
+  today: auth.canDomain('viewOrders'),
+  lastOrders: auth.canDomain('viewOrders'),
+  lastSales: auth.canDomain('viewOrders'),
+  monthly: auth.canDomain('viewFinance'),
+}))
 const blocks = reactive<Record<string, boolean>>({})
+// Ключ блока в интерфейсе → имя, которым виджет отчитывается (dashReport).
+const REPORT_NAME: Record<string, string> = {
+  news: 'news', newCards: 'new-cards', topMetrics: 'top-metrics', adv: 'adv',
+  ordersSummary: 'orders-summary', today: 'today', lastOrders: 'last-orders',
+  lastSales: 'last-sales', monthly: 'monthly',
+}
 const report = (name: string, has: boolean) => { blocks[name] = has }
 provide('dashReport', report)
-const allLoaded = computed(() => blockNames.every((n) => blocks[n] !== undefined))
-const anyData = computed(() => blockNames.some((n) => blocks[n] === true))
+const blockNames = computed(() => Object.keys(show.value).map((k) => REPORT_NAME[k] || k))
+const allLoaded = computed(() => blockNames.value.every((n) => blocks[n] !== undefined))
+const anyData = computed(() => blockNames.value.some((n) => blocks[n] === true))
 
-const auth = useAuthStore()
 const companyEditLink = computed(() => typeof auth.companyId === 'number' ? `/companies/${auth.companyId}` : '/companies')
 </script>
 

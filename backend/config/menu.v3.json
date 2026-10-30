@@ -1,0 +1,173 @@
+[
+  {
+    "label": "Отчеты",
+    "icon": "reports",
+    "iconClass": "bi bi-bar-chart",
+    "url": "#",
+    "visibleIn": ["top", "side"],
+    "roles": ["viewOrders", "viewAdv", "viewFinance", "viewFbs"],
+    "items": [
+      {"label": "ТОП продаж", "url": "/wb-sales-analysis", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
+      {"label": "Карточка WB", "url": "/wb/detail/", "visibleIn": ["top", "side"]},
+      {"label": "Заказы", "url": "/wb-order/feed-aggregated", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
+      {"label": "Тепловая карта", "url": "/wb-order/heatmap", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "Реклама", "url": "/wb-adv-report/", "visibleIn": ["top", "side"], "roles": ["viewAdv"]},
+      {"label": "По ГЕО", "url": "/geo/sales-map", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
+      {"label": "Возвраты", "url": "/unclaimed-orders/", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
+      {"label": "Штрафы и потери", "url": "/wb-penalty/logistics", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
+      {"label": "Воронка продаж", "url": "/wb-get-sales-funnel/wbcard/", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "ТОП товары", "url": "/wb-profit/top-products", "visibleIn": ["top", "side"], "roles": ["viewFinance"]},
+      {"label": "Маржа", "url": "/wb-profit", "visibleIn": ["top", "side"], "roles": ["viewFinance"]},
+      {"label": "Маржа по линейкам", "url": "/wb-profit/products", "visibleIn": ["top", "side"], "roles": ["viewFinance"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "Товары по складам", "url": "/wb-stock/top-warehouse-report", "visibleIn": ["top", "side"], "roles": ["viewFbs"]},
+      {"label": "Критичные остатки", "url": "/wb-stock/warehouse-analytics", "visibleIn": ["top", "side"], "roles": ["viewFbs"]},
+      {"label": "Оборачиваемость", "url": "/wb-stock/analytics", "visibleIn": ["top", "side"], "roles": ["viewFbs"]},
+      {"label": "Детализация", "url": "/wb-detail-by-period/weekly-report-nmid", "visibleIn": ["top", "side"], "roles": ["viewFinance"]},
+      {"label": "Новости WB", "url": "/news", "visibleIn": ["top", "side"], "roles": ["admin", "global_admin"]}
+    ]
+  },
+  {
+    "label": "Поиск",
+    "icon": "by_search",
+    "iconClass": "bi bi-search",
+    "url": "#",
+    "visibleIn": ["top", "side"],
+    "roles": ["viewSeo"],
+    "items": [
+      {"label": "Карточка -> фразы", "url": "/wb-search/card", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
+      {"label": "Фраза -> карточки", "url": "/wb-search/phrase", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
+      {"label": "Анализ фраз", "url": "/wb-search/trend", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
+      {"label": "Частотность запросов", "url": "/wb-search/analytics", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "SEO-мониторинг", "url": "/seo-watch", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
+      {"label": "SEO рекомендации", "url": "/seo/index", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "Конкуренты", "url": "/competitor/new-cards", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
+      {"label": "Собранные карточки", "url": "/competitor/captured", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
+      {"label": "Поисковые запросы", "url": "/competitor/positions", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "Затраты ИИ", "url": "/seo/ai-usage", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
+      {"label": "Разбор фраз (фон)", "url": "/competitor/phrase-miner", "visibleIn": ["top", "side"], "roles": ["viewSeo"]}
+    ]
+  },
+  {
+    "label": "По тегам",
+    "icon": "tag",
+    "iconClass": "bi bi-tag",
+    "url": "#",
+    "visibleIn": ["top", "side"],
+    "roles": ["viewTags"],
+    "items": [
+      {"label": "Заказы", "url": "/tag/orders", "visibleIn": ["top", "side"], "roles": ["viewTags"]},
+      {"label": "Маржа", "url": "/tag/margin", "visibleIn": ["top", "side"], "roles": ["viewTags"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "Список тегов", "url": "/tag/index", "visibleIn": ["top", "side"], "roles": ["viewTags"]}
+    ]
+  },
+  {
+    "label": "По товарам",
+    "icon": "product",
+    "iconClass": "bi bi-box",
+    "url": "#",
+    "visibleIn": ["top", "side"],
+    "roles": ["viewFinance"],
+    "items": [
+      {"label": "Детализация", "url": "/wb-detail-by-period/weekly-report", "visibleIn": ["top", "side"], "roles": ["viewFinance"]}
+    ]
+  },
+  {
+    "label": "Общение",
+    "icon": "chat",
+    "iconClass": "bi bi-chat",
+    "url": "#",
+    "visibleIn": ["top", "side"],
+    "roles": ["viewFeedback"],
+    "items": [
+      {"label": "Отзывы", "url": "/wb-feedback", "visibleIn": ["top", "side"], "roles": ["viewFeedback"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "Разбор отзывов", "url": "/wb-feedback-review", "visibleIn": ["top", "side"], "roles": ["viewFeedback"]},
+      {"label": "Вопросы", "url": "#", "visibleIn": ["top", "side"], "roles": ["viewFeedback"]},
+      {"label": "Правила ответов", "url": "/wb-feedback-reply-rules", "visibleIn": ["top", "side"], "roles": ["manageFeedback"]}
+    ]
+  },
+  {
+    "label": "Данные",
+    "icon": "data",
+    "iconClass": "bi bi-pie-chart",
+    "url": "#",
+    "visibleIn": ["top", "side"],
+    "roles": ["viewOrders"],
+    "items": [
+      {"label": "Лента заказов", "url": "/wb-order/feed", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "Заказы", "url": "/wb-order/index", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
+      {"label": "Продажи", "url": "/wb-sales/index", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "Себестоимость", "url": "/cost-import/list", "visibleIn": ["top", "side"], "roles": ["viewOrders"]}
+    ]
+  },
+  {
+    "label": "Склад",
+    "icon": "warehouse",
+    "iconClass": "bi bi-box-seam",
+    "url": "#",
+    "visibleIn": ["top", "side"],
+    "roles": ["viewFbs", "viewProduction"],
+    "items": [
+      {"label": "FBS дашборд", "url": "/fbs-report", "visibleIn": ["top", "side"], "roles": ["viewFbs"]},
+      {"label": "Управление остатками", "url": "/wb-fbs-virtual", "visibleIn": ["top", "side"], "roles": ["manageFbs"]},
+      {"label": "Документы", "url": "/wb-doc", "visibleIn": ["top", "side"], "roles": ["manageFbs"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "Наличие", "url": "/wb-stock-reports/balance", "visibleIn": ["top", "side"], "roles": ["viewFbs"]},
+      {"label": "Оборотная ведомость", "url": "/wb-stock-reports/turnover", "visibleIn": ["top", "side"], "roles": ["viewFbs"]},
+      {"label": "Карточка товара", "url": "/wb-stock-reports/card", "visibleIn": ["top", "side"], "roles": ["viewFbs"]},
+      {"label": "Неликвиды", "url": "/wb-stock-reports/nonliquid", "visibleIn": ["top", "side"], "roles": ["viewFbs"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "Производство", "url": "/wb-production", "visibleIn": ["top", "side"], "roles": ["viewProduction"]},
+      {"label": "Смоленск", "url": "/wb-production/smolensk", "visibleIn": ["top", "side"], "roles": ["viewProduction"]}
+    ]
+  },
+  {
+    "label": "Справочники",
+    "icon": "book",
+    "iconClass": "bi bi-book",
+    "url": "#",
+    "visibleIn": ["top", "side"],
+    "items": [
+      {"label": "Карточки WB", "url": "/wb/cards", "visibleIn": ["top", "side"]},
+      {"label": "Склады", "url": "/wb-warehouses", "visibleIn": ["top", "side"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "Теги", "url": "/tag/index", "visibleIn": ["top", "side"], "roles": ["viewTags"]},
+      {"label": "Линейки товаров", "url": "/product-catalog", "visibleIn": ["top", "side"], "roles": ["viewTags"]}
+    ]
+  },
+  {
+    "label": "Админка",
+    "icon": "gear",
+    "iconClass": "bi bi-gear",
+    "url": "#",
+    "visibleIn": ["top", "side"],
+    "roles": ["admin", "global_admin", "manageUsers", "manageCompanies", "manageCompanyUsers"],
+    "items": [
+      {"label": "Пользователи", "url": "/admin/users", "visibleIn": ["top", "side"], "roles": ["manageUsers", "manageCompanyUsers"]},
+      {"label": "Компании", "url": "/companies", "visibleIn": ["top", "side"], "roles": ["manageCompanies"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "Роли", "url": "/admin/roles", "visibleIn": ["top", "side"], "roles": ["admin", "global_admin"]},
+      {"label": "Быстрые кнопки", "url": "/admin/quick-buttons", "visibleIn": ["top", "side"], "roles": ["admin", "global_admin"]},
+      {"label": "SEO-модели", "url": "/admin/seo-models", "visibleIn": ["top", "side"], "roles": ["admin", "global_admin"]},
+      {"label": "Тарифы FBS (SPA)", "url": "/admin/fbs-tariffs", "visibleIn": ["top", "side"], "roles": ["admin", "global_admin"]},
+      {"label": "Таймеры (SPA)", "url": "/admin/timers", "visibleIn": ["top", "side"], "roles": ["admin", "global_admin"]},
+      {"label": "Инвайты (SPA)", "url": "/admin/invites", "visibleIn": ["top", "side"], "roles": ["admin", "global_admin"]},
+      {"label": "Меню", "url": "/admin/menu", "visibleIn": ["top", "side"], "roles": ["admin", "global_admin"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "Диагностика расширения", "url": "/ext/diag", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
+      {"label": "Установка расширения", "url": "/ext/install", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
+      {"label": "Фильтры расширения", "url": "/ext/install?block=filters", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "Настройки профиля", "url": "/user/profile", "visibleIn": ["top", "side"]}
+    ]
+  }
+]

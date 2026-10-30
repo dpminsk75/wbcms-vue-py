@@ -11,6 +11,9 @@ export const useAuthStore = defineStore('auth', () => {
   const companies = ref<{ id: number; name: string }[]>([])
   const companyId = ref<number | 'all'>('all')
   const memberships = ref<Array<{ company_id: number; company_name: string; role: string; status: string }>>([])
+  // true — бэк работает на новой модели прав (AUTH_V3=1): доменные пермы, гейты по разделам.
+  // false — старый режим: доменные гейты выключены, поведение как было.
+  const authV3 = ref(false)
 
   try { token.value = localStorage.getItem(TOKEN_KEY) } catch { /* noop */ }
   try {
@@ -25,6 +28,10 @@ export const useAuthStore = defineStore('auth', () => {
   // админ хотя бы одной компании (owner/admin + active) — пускаем в /admin/users со скоупом своих
   const managesAny = computed(() => memberships.value.some((m) => m.status === 'active' && (m.role === 'owner' || m.role === 'admin')))
   const can = (p: string) => isAdmin.value || perms.value.includes(p)
+  // Гейт по доменному перму с учётом режима: в старом режиме (AUTH_V3=0) всё разрешено.
+  const canDomain = (p: string) => !authV3.value || can(p)
+  // Админский доступ к блокам «новости / новые карточки»: global или админ компании.
+  const isAnyAdmin = computed(() => isAdmin.value || managesAny.value)
 
   async function login(username: string, password: string) {
     const d = await authApi.login(username, password)
@@ -32,6 +39,7 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = d.user
     perms.value = d.perms || []
     roles.value = d.roles || []
+    authV3.value = !!d.auth_v3
     try { localStorage.setItem(TOKEN_KEY, d.token) } catch { /* noop */ }
     await loadCompanies().catch(() => {})
     return d
@@ -44,6 +52,7 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = d.user
       perms.value = d.perms || []
       roles.value = d.roles || []
+      authV3.value = !!d.auth_v3
       return true
     } catch {
       logout()
@@ -82,5 +91,5 @@ export const useAuthStore = defineStore('auth', () => {
     delete api.defaults.headers.common.Authorization
   }
 
-  return { token, user, perms, roles, companies, companyId, memberships, managesAny, isAuth, isAdmin, can, login, loadMe, loadCompanies, loadMemberships, setCompany, logout }
+  return { token, user, perms, roles, companies, companyId, memberships, managesAny, isAuth, isAdmin, isAnyAdmin, authV3, can, canDomain, login, loadMe, loadCompanies, loadMemberships, setCompany, logout }
 })

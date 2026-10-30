@@ -1,0 +1,19 @@
+[
+  {"name": "viewOrders",       "label": "Заказы и продажи",        "kind": "view"},
+  {"name": "viewAdv",          "label": "Реклама",                 "kind": "view"},
+  {"name": "viewFinance",      "label": "Финансовые отчёты",       "kind": "view"},
+  {"name": "viewFeedback",     "label": "Отзывы и вопросы",        "kind": "view"},
+  {"name": "viewFbs",          "label": "Склад FBS (просмотр)",    "kind": "view"},
+  {"name": "viewSeo",          "label": "SEO (просмотр)",          "kind": "view"},
+  {"name": "viewTags",         "label": "Теги и линейки",          "kind": "view"},
+  {"name": "viewProduction",   "label": "Производство",            "kind": "view"},
+  {"name": "manageFeedback",   "label": "Работа с отзывами",       "kind": "manage", "requires": "viewFeedback"},
+  {"name": "manageSeo",        "label": "Очереди SEO",             "kind": "manage", "requires": "viewSeo"},
+  {"name": "manageFbs",        "label": "Работа со складом FBS",   "kind": "manage", "requires": "viewFbs"},
+  {"name": "manageTags",       "label": "Правка тегов и линеек",   "kind": "manage", "requires": "viewTags"},
+  {"name": "manageAdv",        "label": "Управление рекламой",     "kind": "manage", "requires": "viewAdv"},
+  {"name": "manageAi",         "label": "ИИ: модель и промпты",    "kind": "manage", "requires": "viewSeo"},
+  {"name": "manageUsers",      "label": "Пользователи (глобально)", "kind": "manage", "protected": true},
+  {"name": "manageCompanies",  "label": "Компании (глобально)",    "kind": "manage", "protected": true},
+  {"name": "manageCompanyUsers","label": "Пользователи компании",  "kind": "manage", "derivedOnly": true}
+]

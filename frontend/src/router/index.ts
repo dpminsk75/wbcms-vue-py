@@ -70,6 +70,9 @@ const router = createRouter({
     { path: '/wb/detail/:nm_id', redirect: (to:any)=> ({ path:'/wb/detail', query:{ nm_id: to.params.nm_id, ...to.query }}) },
     { path: '/admin/quick-buttons', name: 'admin-quick-buttons', component: () => import('../pages/AdminQuickButtons.vue'), meta: { title: 'Быстрые кнопки — SelBI', needAdmin: true } },
     { path: '/admin/menu', name: 'admin-menu', component: () => import('../pages/AdminMenu.vue'), meta: { title: 'Меню — SelBI', needAdmin: true } },
+    { path: '/admin/roles', name: 'admin-roles', component: () => import('../pages/AdminRolesPage.vue'), meta: { title: 'Роли и права — SelBI', needAdmin: true, needPerm: 'manageUsers' } },
+    // legacy yii2-адрес: /admin/assignment переименовали в v3 (/admin/roles)
+    { path: '/admin/assignment', redirect: '/admin/roles' },
     { path: '/admin/seo-models', name: 'admin-seo-models', component: () => import('../pages/AdminSeoModelsPage.vue'), meta: { title: 'SEO-модели — SelBI', needAdmin: true } },
     { path: '/admin/fbs-tariffs', name: 'admin-fbs-tariffs', component: () => import('../pages/AdminFbsTariffsPage.vue'), meta: { title: 'Тарифы сборки FBS — SelBI', needAdmin: true } },
     { path: '/admin/timers', name: 'admin-timers', component: () => import('../pages/AdminTimersPage.vue'), meta: { title: 'Таймеры — SelBI', needAdmin: true } },
@@ -156,6 +159,9 @@ router.beforeEach(async (to) => {
     }
     if (!auth.managesAny) return { path: '/' }
   }
+  // Гейт по доменному перму (v3). В старом режиме (AUTH_V3=0) маршрут открыт всем.
+  const needPerm = (to.meta as any)?.needPerm as string | undefined
+  if (needPerm && auth.authV3 && !auth.can(needPerm)) return { path: '/' }
   return true
 })
 

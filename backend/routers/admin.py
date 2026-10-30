@@ -99,10 +99,131 @@ async def _need_global(db: AsyncSession, user: dict) -> None:
 @router.get("/rbac-items")
 async def rbac_items(db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
     await _need_global(db, user)
+    if auth_service.AUTH_V3:
+        # v3: словарь прав из perms.json + системные роли из таблицы role.
+        roles = (await db.execute(text("SELECT name, description FROM role ORDER BY name"))).mappings().all()
+        out = [{"name": r["name"], "type": 1, "description": r["description"]} for r in roles]
+        for name, meta in auth_service.PERMS_META.items():
+            out.append({"name": name, "type": 2, "description": meta.get("label")})
+        return out
     rows = (await db.execute(text(
         "SELECT name, type, description FROM auth_item ORDER BY type, name"
     ))).mappings().all()
     return [dict(r) for r in rows]
+
+
+# --- v3: роли (CRUD) — страница «Роли» ---
+
+class RoleCreateIn(BaseModel):
+    name: str
+    description: str | None = None
+    perms: list[str] = []
+
+
+class RoleUpdateIn(BaseModel):
+    name: str | None = None
+    description: str | None = None
+
+
+class RolePermsIn(BaseModel):
+    perms: list[str] = []
+
+
+class UserRolesIn(BaseModel):
+    add: list[str] = []
+    remove: list[str] = []
+
+
+@router.get("/perms")
+async def perms_catalog(db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+    """Словарь прав (perms.json) — для чекбоксов в админке. Список имён без секретов."""
+    # Только global_admin (потребитель — страница «Роли»); описания пермов для
+    # инвайтов/членств идут через /api/auth/grantable-perms (там свой скоуп).
+    await _need_global(db, user)
+    return [{"name": n, **{k: v for k, v in m.items() if k != "name"}}
+            for n, m in auth_service.PERMS_META.items()]
+
+
+@router.get("/roles")
+async def list_roles(db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+    await _need_global(db, user)
+    return await auth_service.list_roles(db)
+
+
+@router.post("/roles")
+async def create_role(payload: RoleCreateIn, db: AsyncSession = Depends(get_db),
+                      user: dict = Depends(get_current_user)):
+    await _need_global(db, user)
+    try:
+        role = await auth_service.create_role(db, payload.name, payload.description, payload.perms)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    await db.commit()
+    return role
+
+
+@router.patch("/roles/{role_id}")
+async def update_role(role_id: int = Path(..., ge=1), payload: RoleUpdateIn = Body(...),
+                      db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+    await _need_global(db, user)
+    try:
+        role = await auth_service.update_role(db, role_id, payload.name, payload.description)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    await db.commit()
+    return role
+
+
+@router.put("/roles/{role_id}/perms")
+async def set_role_perms(role_id: int = Path(..., ge=1), payload: RolePermsIn = Body(...),
+                          db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+    await _need_global(db, user)
+    try:
+        clean = await auth_service.set_role_perms(db, role_id, payload.perms)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    await db.commit()
+    return {"id": role_id, "perms": clean}
+
+
+@router.delete("/roles/{role_id}")
+async def delete_role(role_id: int = Path(..., ge=1), db: AsyncSession = Depends(get_db),
+                      user: dict = Depends(get_current_user)):
+    await _need_global(db, user)
+    try:
+        await auth_service.delete_role(db, role_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    await db.commit()
+    return {"id": role_id, "deleted": True}
+
+
+@router.post("/users/{user_id}/v3-roles")
+async def set_user_roles_v3(
+    user_id: int = Path(..., ge=1),
+    payload: UserRolesIn = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """Назначить/снять роли пользователю (v3). Только global_admin.
+
+    Роли раньше имели доступ админы компаний, но проверка «чьи пермы у роли»
+    не закрывала эскалацию (роль без пермов = global_admin), поэтому эндпоинт
+    ужесточён до global_admin — как и все остальные /api/admin/roles*.
+    """
+    await _need_global(db, user)
+    target = await auth_service.get_user_by_id(db, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="user not found")
+    # global_admin (как и раньше) управляется только через БД/seed, не через API.
+    if "global_admin" in (payload.add or []) or "global_admin" in (payload.remove or []):
+        raise HTTPException(status_code=400, detail="global_admin is managed only via DB")
+    try:
+        roles = await auth_service.set_user_roles_v3(db, user_id, payload.add, payload.remove)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    await db.commit()
+    return {"id": user_id, "roles": roles}
 
 
 @router.post("/users/{user_id}/roles")
@@ -120,6 +241,24 @@ async def set_user_roles(
     remove = sorted({(p or "").strip() for p in (payload.remove or []) if (p or "").strip()})
     if "global_admin" in add or "global_admin" in remove:
         raise HTTPException(status_code=400, detail="global_admin is managed only via DB")
+    if auth_service.AUTH_V3:
+        # v3: роли — в user_role, права — напрямую в user_perm.
+        add_roles = await auth_service.split_role_names(db, add)
+        remove_roles = await auth_service.split_role_names(db, remove)
+        add_perms = [p for p in add if p not in add_roles]
+        remove_perms = [p for p in remove if p not in remove_roles]
+        try:
+            if add_roles or remove_roles:
+                await auth_service.set_user_roles_v3(db, user_id, add_roles, remove_roles)
+            if add_perms:
+                await auth_service.grant_perms(db, user_id, add_perms)
+            if remove_perms:
+                await auth_service.revoke_perms(db, user_id, remove_perms)
+        except ValueError as exc:
+            await db.rollback()
+            raise HTTPException(status_code=400, detail=str(exc))
+        await db.commit()
+        return {"id": user_id, "items": await auth_service.get_user_explicit_items(db, user_id)}
     try:
         if add:
             await auth_service.grant_perms(db, user_id, add)
@@ -191,14 +330,18 @@ async def list_users(db: AsyncSession = Depends(get_db), user: dict = Depends(ge
             "role": r["role"],
             "status": r["status"],
         })
-    ai = (await db.execute(text(
-        "SELECT a.user_id AS uid, a.item_name AS name, i.type AS type "
-        "FROM auth_assignment a LEFT JOIN auth_item i ON i.name=a.item_name "
-        f"WHERE a.user_id IN ({placeholders})"
-    ), {f"i{i}": str(v) for i, v in enumerate(ids)})).mappings().all()
     items_by_user: dict[int, list[dict]] = {}
-    for r in ai:
-        items_by_user.setdefault(int(r["uid"]), []).append({"name": r["name"], "type": r["type"]})
+    if auth_service.AUTH_V3:
+        # v3: роли из user_role, прямые права из user_perm; auth_* не читаем.
+        items_by_user = await auth_service.get_users_items_v3(db, ids)
+    else:
+        ai = (await db.execute(text(
+            "SELECT a.user_id AS uid, a.item_name AS name, i.type AS type "
+            "FROM auth_assignment a LEFT JOIN auth_item i ON i.name=a.item_name "
+            f"WHERE a.user_id IN ({placeholders})"
+        ), {f"i{i}": str(v) for i, v in enumerate(ids)})).mappings().all()
+        for r in ai:
+            items_by_user.setdefault(int(r["uid"]), []).append({"name": r["name"], "type": r["type"]})
     out = []
     for r in rows:
         out.append({

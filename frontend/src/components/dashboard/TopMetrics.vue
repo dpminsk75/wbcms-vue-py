@@ -4,7 +4,7 @@
       <span style="font-size:20px; font-weight:700; color:#111827">Показатели</span>
     </div>
     <div class="row g-3 mb-4">
-      <div class="col-md-3 col-sm-6">
+      <div class="col-md-3 col-sm-6" :class="canFinance ? '' : 'col-md-6'">
         <div class="card shadow-sm border-0 bg-light text-dark h-100 p-3 page-dashboard__metric">
           <div class="page-dashboard__metric-head">
             <span>Выручка (30 дн)</span>
@@ -26,7 +26,7 @@
           </ul>
         </div>
       </div>
-      <div class="col-md-3 col-sm-6">
+      <div v-if="canFinance" class="col-md-3 col-sm-6">
         <div class="card shadow-sm border-0 bg-light text-dark h-100 p-3 page-dashboard__metric">
           <div class="page-dashboard__metric-head">
             <span>Все расходы (30 дн)</span>
@@ -46,7 +46,7 @@
           </ul>
         </div>
       </div>
-      <div class="col-md-3 col-sm-6">
+      <div v-if="canFinance" class="col-md-3 col-sm-6">
         <div class="card shadow-sm border-0 h-100 p-3 page-dashboard__metric" :class="netProfit < 0 ? 'bg-danger text-white' : 'bg-light text-dark'">
           <div class="page-dashboard__metric-head">
             <span>Итого к оплате (30 дн)</span>
@@ -66,7 +66,7 @@
           </ul>
         </div>
       </div>
-      <div class="col-md-3 col-sm-6">
+      <div v-if="canFinance" class="col-md-3 col-sm-6">
         <div class="d-flex flex-column gap-3 h-100">
           <div class="card shadow-sm border-0 bg-light text-dark p-3 text-center page-dashboard__margin-card">
             <div class="page-dashboard__metric-head page-dashboard__metric-head--light">
@@ -95,7 +95,7 @@
         </div>
       </div>
     </div>
-    <div class="card shadow-sm border-0 mb-4">
+    <div v-if="canFinance" class="card shadow-sm border-0 mb-4">
       <div class="card-body p-2">
         <VChart :option="chartOption" autoresize class="page-dashboard__metric-chart page-dashboard__metric-chart--click" @click="onChartClick" />
         <div class="page-dashboard__day-hint">Нажмите на столбец дня, чтобы открыть детализацию за этот день</div>
@@ -203,6 +203,8 @@ import { CanvasRenderer } from 'echarts/renderers'
 use([BarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
 const auth = useAuthStore()
+// Финансовые плитки (расходы, маржа, баланс, график) — только при viewFinance (v3).
+const canFinance = computed(() => auth.canDomain('viewFinance'))
 // companyId в ключе: смена компании обязана дёрнуть refetch, иначе покажем чужой кэш
 const { data, isLoading, isFetching, isError } = useQuery({ queryKey: computed(() => ['top-metrics', auth.companyId] as const), queryFn: dashboardApi.topMetrics })
 
@@ -319,7 +321,7 @@ const sppFmt = (v:any) => `${new Intl.NumberFormat('ru-RU',{minimumFractionDigit
 
 // Баланс ЛК WB: последний срез крона (wb_finance_balance), вид как виджет портала.
 // retry:1 — таблицы/крона может ещё не быть, не спамим 404.
-const { data: balData } = useQuery({ queryKey: computed(() => ['finance-balance', auth.companyId] as const), queryFn: dashboardApi.financeBalance, retry: 1 } as any)
+const { data: balData } = useQuery({ queryKey: computed(() => ['finance-balance', auth.companyId] as const), queryFn: dashboardApi.financeBalance, retry: 1, enabled: computed(() => canFinance.value) } as any)
 const balHas = computed(() => !!(balData.value as any)?.has_data)
 const showBal = ref(true)
 const fmt2 = (v:any) => new Intl.NumberFormat('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v)||0)

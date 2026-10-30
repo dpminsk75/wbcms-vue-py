@@ -50,7 +50,7 @@
                   <input type="checkbox" v-model="companyForm.is_active" class="form-check-input" id="cf-active" />
                   <label class="form-check-label text-danger" for="cf-active">Активна <small class="text-muted">(снятие скроет компанию из списков!)</small></label>
                 </div>
-                <template v-if="auth.can('manageFbsStocks')">
+                <template v-if="canFbs">
                   <div class="form-check">
                     <input type="checkbox" v-model="companyForm.fbs_deduct_enabled" class="form-check-input" id="cf-fbs" />
                     <label class="form-check-label" for="cf-fbs">Списание FBS</label>
@@ -140,7 +140,7 @@
             <div class="card h-100 page-company-detail__card-seo">
               <div class="card-header page-company-detail__seo-head">SEO <small class="page-company-detail__seo-note">пусто = из params.php</small></div>
               <div class="card-body">
-                <div class="mb-3 page-company-detail__llm">
+                <div v-if="canAi" class="mb-3 page-company-detail__llm">
                   <label class="form-label mb-1">ИИ-провайдер</label>
                   <div class="page-company-detail__llm-hint mb-1">
                     «Проверить» работает по значениям формы, а сценарии ИИ — по <b>сохранённым</b> настройкам: не забудьте «Сохранить компанию».
@@ -234,7 +234,7 @@
                     Работаем через OpenRouter: ключ, модель и пул бесплатных моделей — в блоках ниже.
                   </div>
                 </div>
-                <div class="mb-2" v-if="!isCustomLlm">
+                <div class="mb-2" v-if="canAi && !isCustomLlm">
                   <label class="form-label mb-1">OpenRouter API key
                     <span v-if="hasSeoKey" class="badge wb-key-badge">задан</span>
                     <span v-else class="badge bg-light text-muted border">из params</span>
@@ -244,7 +244,7 @@
                     <button type="button" @click="toggleSeo" class="btn btn-outline-secondary" title="Показать/скрыть"><i class="bi bi-eye"></i></button>
                   </div>
                 </div>
-                <div class="row g-2 mb-2" v-if="!isCustomLlm">
+                <div class="row g-2 mb-2" v-if="canAi && !isCustomLlm">
                   <div class="col-6">
                     <label class="form-label mb-1">Referer</label>
                     <input v-model="companyForm.seo_openrouter_referer" placeholder="https://selbi.local" class="form-control form-control-sm" />
@@ -254,12 +254,12 @@
                     <input v-model="companyForm.seo_openrouter_title" placeholder="SelBI SEO" class="form-control form-control-sm" />
                   </div>
                 </div>
-                <div class="mb-2" v-if="!isCustomLlm">
+                <div class="mb-2" v-if="canAi && !isCustomLlm">
                   <label class="form-label mb-1">SEO модель</label>
                   <input v-model="companyForm.seo_model" placeholder="openrouter/free" class="form-control form-control-sm" />
                   <div class="form-text">Команда: php yii seo/models — список :free</div>
                 </div>
-                <div class="row g-2 mb-2" v-if="!isCustomLlm">
+                <div class="row g-2 mb-2" v-if="canAi && !isCustomLlm">
                   <div class="col-6">
                     <label class="form-label mb-1">Модель сводки</label>
                     <input v-model="companyForm.seo_summary_model" class="form-control form-control-sm" />
@@ -271,7 +271,7 @@
                   </div>
                 </div>
                 <div class="row g-2 mb-2">
-                  <div class="col-4" v-if="!isCustomLlm">
+                  <div class="col-4" v-if="canAi && !isCustomLlm">
                     <label class="form-label mb-1">Лимит/день</label>
                     <input v-model="companyForm.seo_daily_limit" type="number" placeholder="20" class="form-control form-control-sm" />
                   </div>
@@ -288,31 +288,38 @@
                   <label class="form-label mb-1">Анти-спам дней</label>
                   <input v-model="companyForm.seo_anti_spam_days" type="number" placeholder="14" class="form-control form-control-sm" />
                 </div>
-                <div class="mb-2">
+                <div class="mb-2" v-if="canAi">
                   <label class="form-label mb-1">SEO промпт <small class="text-muted">({DESC_MIN}/{DESC_MAX} подставятся)</small></label>
                   <textarea v-model="companyForm.seo_prompt" rows="3" placeholder="Пусто = стандартный" class="form-control form-control-sm"></textarea>
                 </div>
-                <div class="mb-2">
+                <div class="mb-2" v-if="canAi">
                   <label class="form-label mb-1">Промпт конкурента</label>
                   <textarea v-model="companyForm.seo_competitor_prompt" rows="3" placeholder="Пусто = стандартный" class="form-control form-control-sm"></textarea>
                 </div>
-                <div class="mb-1">
+                <div class="mb-1" v-if="canAi">
                   <label class="form-label mb-1">Промпт сводки</label>
                   <textarea v-model="companyForm.seo_summary_prompt" rows="3" placeholder="Пусто = стандартный" class="form-control form-control-sm"></textarea>
                 </div>
-                <div class="mb-2">
+                <div class="mb-2" v-if="canAi">
                   <label class="form-label mb-1">
                     Промпт анализа фраз
                     <small class="text-muted">(описания конкурентов → список фраз; пусто = стандартный)</small>
                   </label>
                   <textarea v-model="companyForm.seo_phrases_prompt" rows="4" placeholder="Пусто = стандартный" class="form-control form-control-sm"></textarea>
                 </div>
-                <div class="mb-2">
+                <div class="mb-2" v-if="canAi">
                   <label class="form-label mb-1">
                     Промпт новой карточки
                     <small class="text-muted">(выбранные фразы → title/description; {DESC_MIN}/{DESC_MAX} подставятся)</small>
                   </label>
                   <textarea v-model="companyForm.seo_newcard_prompt" rows="4" placeholder="Пусто = стандартный" class="form-control form-control-sm"></textarea>
+                </div>
+                <div class="mb-2" v-if="canAi">
+                  <label class="form-label mb-1">
+                    Промпт разбора жалоб
+                    <small class="text-muted">(жалобы по отзывам → 2 рекомендации: карточка и товар)</small>
+                  </label>
+                  <PromptField label="Промпт разбора жалоб" />
                 </div>
                 <div class="mb-1 page-company-detail__llm-hint">
                   Модель для новых карточек: OpenRouter — из поля «Модель сводки», другой сервис — из поля «Модель (другой сервис)».
@@ -468,9 +475,14 @@ import { ref, reactive, watch, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { authApi, WB_TOKEN_CATS, type WbTokenState, type WbProfile } from '../api/auth'
 import ExtTokensBlock from '../components/ext/ExtTokensBlock.vue'
+import PromptField from '../components/cms/PromptField.vue'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
+// Права на блоки формы (v3): склад — manageFbs, ИИ/промпты — manageAi.
+// В старом режиме (AUTH_V3=0) — как было: manageFbsStocks и viewSeo.
+const canFbs = computed(() => (auth.authV3 ? auth.can('manageFbs') : auth.can('manageFbsStocks')))
+const canAi = computed(() => (auth.authV3 ? auth.can('manageAi') : auth.can('viewSeo')))
 const route = useRoute()
 const companyId = Number(route.params.id)
 // Табы: одна тема на экран вместо стены блоков (состояние форм — в companyForm, не теряется)
@@ -752,6 +764,8 @@ async function load() {
       companyForm.seo_summary_prompt = c.seo_summary_prompt || ''
       companyForm.seo_newcard_prompt = c.seo_newcard_prompt || ''
       companyForm.seo_phrases_prompt = c.seo_phrases_prompt || ''
+      // Промпт разбора жалоб правит PromptField отдельно (свой эндпоинт) —
+      // в общую форму компании он не входит.
       // ИИ-провайдер: openrouter | custom + настройки другого сервиса
       companyForm.seo_llm_provider = c.seo_llm_provider === 'custom' ? 'custom' : 'openrouter'
       const fmtKey = LLM_FORMATS.some(f => f.key === c.seo_llm_format) ? c.seo_llm_format : 'openai'
@@ -819,29 +833,17 @@ async function onSaveCompany() {
       is_active: companyForm.is_active,
     }
     if (companyForm.api_key) payload.api_key = companyForm.api_key
-    if (auth.can('manageFbsStocks')) {
+    if (canFbs.value) {
       payload.fbs_deduct_enabled = companyForm.fbs_deduct_enabled
       payload.fbs_deduct_test = companyForm.fbs_deduct_test
     }
     if (auth.can('viewSeo')) {
       const t = (v: any) => (v === '' ? undefined : v)
       Object.assign(payload, {
-        seo_model: t(companyForm.seo_model),
-        seo_summary_model: t(companyForm.seo_summary_model),
-        seo_summary_max_tokens: numOrUndef(companyForm.seo_summary_max_tokens),
-        seo_daily_limit: numOrUndef(companyForm.seo_daily_limit),
+        // Пороги мониторинга и объём описаний — под viewSeo.
         seo_desc_min: numOrUndef(companyForm.seo_desc_min),
         seo_desc_max: numOrUndef(companyForm.seo_desc_max),
         seo_anti_spam_days: numOrUndef(companyForm.seo_anti_spam_days),
-        seo_openrouter_referer: t(companyForm.seo_openrouter_referer),
-        seo_openrouter_title: t(companyForm.seo_openrouter_title),
-        seo_prompt: t(companyForm.seo_prompt),
-        seo_competitor_prompt: t(companyForm.seo_competitor_prompt),
-        seo_summary_prompt: t(companyForm.seo_summary_prompt),
-        seo_newcard_prompt: t(companyForm.seo_newcard_prompt),
-        seo_phrases_prompt: t(companyForm.seo_phrases_prompt),
-        // ИИ-провайдер: выбор всегда; настройки «другого сервиса» — только в режиме custom
-        seo_llm_provider: companyForm.seo_llm_provider,
         // SEO-мониторинг (/seo-watch): пороги companies.watch_*
         watch_top_cards_n: numOrUndef(companyForm.watch_top_cards_n),
         watch_top_phrases_n: numOrUndef(companyForm.watch_top_phrases_n),
@@ -850,20 +852,39 @@ async function onSaveCompany() {
         watch_phrases_limit: numOrUndef(companyForm.watch_phrases_limit),
         watch_card_stale_days: numOrUndef(companyForm.watch_card_stale_days),
       })
-      if (companyForm.seo_llm_provider === 'custom') {
-        payload.seo_llm_format = companyForm.seo_llm_format
-        payload.seo_llm_model = t(companyForm.seo_llm_model)
-        payload.seo_llm_summary_model = t(companyForm.seo_llm_summary_model)
-        payload.seo_llm_url = t(companyForm.seo_llm_url)
-        payload.seo_llm_folder_id = t(companyForm.seo_llm_folder_id)
-        payload.seo_llm_auth_header = companyForm.seo_llm_auth_header
-        payload.seo_llm_auth_prefix = companyForm.seo_llm_auth_prefix
-        payload.seo_llm_extra_headers = t(companyForm.seo_llm_extra_headers)
-        payload.seo_llm_extra_body = t(companyForm.seo_llm_extra_body)
-        payload.seo_llm_timeout = numOrUndef(companyForm.seo_llm_timeout)
-        if (companyForm.seo_llm_api_key) payload.seo_llm_api_key = companyForm.seo_llm_api_key
+      // ИИ-модель, ключи, лимиты и промпты — v3: отдельный перм manageAi (деньги + секрет).
+      // В старом режиме (AUTH_V3=0) canAi = viewSeo — поведение прежнее.
+      if (canAi.value) {
+        Object.assign(payload, {
+          seo_model: t(companyForm.seo_model),
+          seo_summary_model: t(companyForm.seo_summary_model),
+          seo_summary_max_tokens: numOrUndef(companyForm.seo_summary_max_tokens),
+          seo_daily_limit: numOrUndef(companyForm.seo_daily_limit),
+          seo_openrouter_referer: t(companyForm.seo_openrouter_referer),
+          seo_openrouter_title: t(companyForm.seo_openrouter_title),
+          seo_prompt: t(companyForm.seo_prompt),
+          seo_competitor_prompt: t(companyForm.seo_competitor_prompt),
+          seo_summary_prompt: t(companyForm.seo_summary_prompt),
+          seo_newcard_prompt: t(companyForm.seo_newcard_prompt),
+          seo_phrases_prompt: t(companyForm.seo_phrases_prompt),
+          // ИИ-провайдер: выбор всегда; настройки «другого сервиса» — только в режиме custom
+          seo_llm_provider: companyForm.seo_llm_provider,
+        })
+        if (companyForm.seo_llm_provider === 'custom') {
+          payload.seo_llm_format = companyForm.seo_llm_format
+          payload.seo_llm_model = t(companyForm.seo_llm_model)
+          payload.seo_llm_summary_model = t(companyForm.seo_llm_summary_model)
+          payload.seo_llm_url = t(companyForm.seo_llm_url)
+          payload.seo_llm_folder_id = t(companyForm.seo_llm_folder_id)
+          payload.seo_llm_auth_header = companyForm.seo_llm_auth_header
+          payload.seo_llm_auth_prefix = companyForm.seo_llm_auth_prefix
+          payload.seo_llm_extra_headers = t(companyForm.seo_llm_extra_headers)
+          payload.seo_llm_extra_body = t(companyForm.seo_llm_extra_body)
+          payload.seo_llm_timeout = numOrUndef(companyForm.seo_llm_timeout)
+          if (companyForm.seo_llm_api_key) payload.seo_llm_api_key = companyForm.seo_llm_api_key
+        }
+        if (companyForm.seo_openrouter_key) payload.seo_openrouter_key = companyForm.seo_openrouter_key
       }
-      if (companyForm.seo_openrouter_key) payload.seo_openrouter_key = companyForm.seo_openrouter_key
     }
     await authApi.updateCompany(companyId, payload)
     const hadNewKey = !!payload.api_key
