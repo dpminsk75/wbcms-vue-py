@@ -1,0 +1,54 @@
+/* Анализ остатков WB (/wb-stock) — только то, чего нет в Bootstrap и в теме.
+   Каркас (.wsp, .wsp__head, .wsp__title, .wsp__menu), таблицы (.tbl-card,
+   .card__hd, .tbl-wrap, .tbl, .tbl__total), плитки (.tile--N), чипы (.opt),
+   кнопки (.btn--brand/.btn--outline) и поля (.wb-input) — из темы. */
+
+.page-stock-wb__note {
+  font-size: calc(11.5px * var(--fs));
+  color: var(--ink-muted);
+  margin: 10px 0 0;
+  line-height: 1.5;
+}
+
+/* Сноска внутри карточки блока — свои отступы, чтобы не липло к краю. */
+.page-stock-wb__card-note {
+  font-size: calc(11.5px * var(--fs));
+  color: var(--ink-muted);
+  line-height: 1.5;
+  padding: 10px 14px 12px;
+  margin: 0;
+}
+
+/* Кнопка «Увидеть ещё» — .expand-btn-wrapper центрирует, свой отступ — чтобы
+   не было 30px пустоты внутри карточки. */
+.page-stock-wb__more {
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+
+/* Пустое состояние отчёта (нет данных за период). */
+.page-stock-wb__empty {
+  text-align: center;
+  padding: 34px 16px;
+}
+
+.page-stock-wb__empty-icon {
+  font-size: 26px;
+  color: var(--ink-muted);
+  margin-bottom: 8px;
+}
+
+.page-stock-wb__empty-title {
+  font-weight: 700;
+  font-size: calc(13.5px * var(--fs));
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+
+.page-stock-wb__empty-sub {
+  font-size: calc(12.5px * var(--fs));
+  color: var(--ink-soft);
+  max-width: 520px;
+  margin: 0 auto;
+  line-height: 1.55;
+}
