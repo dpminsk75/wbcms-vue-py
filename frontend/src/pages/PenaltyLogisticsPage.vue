@@ -18,33 +18,34 @@
 
     <div class="page-penalty-logistics__blocks">
       <!-- Итого за период, по причинам -->
-      <div class="card wb-grid-card page-penalty-logistics__block">
-        <div class="card-header text-white d-flex justify-content-between align-items-center wb-card-header">
+      <div class="tbl-card page-penalty-logistics__block">
+        <div class="card__hd">
           <span>Итого за период</span>
-          <span class="text-white-50">Записей: {{ totals.total_count }}</span>
+          <span class="spacer"></span>
+          <span class="hd-badge">Записей: {{ totals.total_count }}</span>
         </div>
-        <div class="wb-table-wrap">
-          <table class="table table-bordered table-striped table-hover mb-0">
+        <div class="tbl-wrap">
+          <table class="tbl">
             <thead>
               <tr>
-                <th class="page-penalty-logistics__th-reason">Причина</th>
-                <th class="page-penalty-logistics__th-num">Кол-во</th>
-                <th class="page-penalty-logistics__th-num">Сумма, ₽</th>
+                <th class="t-left">Причина</th>
+                <th class="num">Кол-во</th>
+                <th class="num">Сумма, ₽</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="!period.length"><td colspan="3" class="page-penalty-logistics__empty">Нет данных за период</td></tr>
               <tr v-for="r in period" :key="r.bonus_type_name">
-                <td class="page-penalty-logistics__reason">{{ r.bonus_type_name }}</td>
-                <td class="text-end">{{ r.items_count }}</td>
-                <td class="text-end page-penalty-logistics__sum">{{ fmt2(r.total_sum) }}</td>
+                <td class="t-left">{{ r.bonus_type_name }}</td>
+                <td class="num">{{ r.items_count }}</td>
+                <td class="num">{{ fmt2(r.total_sum) }}</td>
               </tr>
             </tbody>
             <tfoot v-if="period.length">
-              <tr class="page-penalty-logistics__total-row">
-                <td>Итого</td>
-                <td class="text-end">{{ totals.total_count }}</td>
-                <td class="text-end">{{ fmt2(totals.total_sum) }}</td>
+              <tr class="tbl__total">
+                <td class="t-left">Итого</td>
+                <td class="num">{{ totals.total_count }}</td>
+                <td class="num">{{ fmt2(totals.total_sum) }}</td>
               </tr>
             </tfoot>
           </table>
@@ -52,33 +53,34 @@
       </div>
 
       <!-- Штрафы WB (отдельная операция «Штраф») -->
-      <div class="card wb-grid-card page-penalty-logistics__block">
-        <div class="card-header text-white d-flex justify-content-between align-items-center wb-card-header">
+      <div class="tbl-card page-penalty-logistics__block">
+        <div class="card__hd">
           <span>Штрафы WB</span>
-          <span class="text-white-50">Записей: {{ penalties.total_count }}</span>
+          <span class="spacer"></span>
+          <span class="hd-badge">Записей: {{ penalties.total_count }}</span>
         </div>
-        <div class="wb-table-wrap">
-          <table class="table table-bordered table-striped table-hover mb-0">
+        <div class="tbl-wrap">
+          <table class="tbl">
             <thead>
               <tr>
-                <th class="page-penalty-logistics__th-reason">Причина</th>
-                <th class="page-penalty-logistics__th-num">Кол-во</th>
-                <th class="page-penalty-logistics__th-num">Сумма, ₽</th>
+                <th class="t-left">Причина</th>
+                <th class="num">Кол-во</th>
+                <th class="num">Сумма, ₽</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="!penalties.rows.length"><td colspan="3" class="page-penalty-logistics__empty">Штрафов WB за период нет</td></tr>
               <tr v-for="r in penalties.rows" :key="r.bonus_type_name">
-                <td class="page-penalty-logistics__reason">{{ r.bonus_type_name }}</td>
-                <td class="text-end">{{ r.items_count }}</td>
-                <td class="text-end page-penalty-logistics__sum">{{ fmt2(r.total_sum) }}</td>
+                <td class="t-left">{{ r.bonus_type_name }}</td>
+                <td class="num">{{ r.items_count }}</td>
+                <td class="num">{{ fmt2(r.total_sum) }}</td>
               </tr>
             </tbody>
             <tfoot v-if="penalties.rows.length">
-              <tr class="page-penalty-logistics__total-row">
-                <td>Итого</td>
-                <td class="text-end">{{ penalties.total_count }}</td>
-                <td class="text-end">{{ fmt2(penalties.total_sum) }}</td>
+              <tr class="tbl__total">
+                <td class="t-left">Итого</td>
+                <td class="num">{{ penalties.total_count }}</td>
+                <td class="num">{{ fmt2(penalties.total_sum) }}</td>
               </tr>
             </tfoot>
           </table>
@@ -87,56 +89,58 @@
     </div>
 
     <!-- Сводная по товарам -->
-    <div class="card wb-grid-card mt-3">
-      <div class="card-header text-white d-flex justify-content-between align-items-center wb-card-header">
+    <div class="tbl-card page-penalty-logistics__products">
+      <div class="card__hd">
         <span>Сводная по товарам</span>
-        <div class="d-flex align-items-center gap-2">
-          <button class="btn btn-sm btn-light wb-excel-btn" @click="exportExcel" :disabled="!products.rows.length">
-            <i class="bi bi-file-earmark-excel me-1"></i>Excel
-          </button>
-          <span class="text-white-50">Товаров: {{ products.total }} · Стр {{ page }} / {{ totalPages }}</span>
-        </div>
+        <span class="spacer"></span>
+        <span class="hd-badge">Товаров: {{ products.total }} · Стр {{ page }} / {{ totalPages }}</span>
+        <ExcelButton :disabled="!products.rows.length" @click="exportExcel" />
       </div>
       <div v-if="isLoading" class="p-4 text-center text-muted">Загрузка...</div>
       <div v-else-if="error" class="p-4 text-center text-danger">Не удалось загрузить данные.</div>
-      <div v-else class="wb-table-wrap">
-        <table class="table table-bordered table-striped table-hover mb-0">
+      <div v-else class="tbl-wrap">
+        <table class="tbl">
           <thead>
             <tr>
-              <th class="page-penalty-logistics__th-nm">Арт. WB</th>
-              <th class="page-penalty-logistics__th-card">Товар</th>
-              <th class="page-penalty-logistics__th-num">Кол-во</th>
-              <th class="page-penalty-logistics__th-num" title="Логистика К клиенту при отмене">Отмена (→)</th>
-              <th class="page-penalty-logistics__th-num" title="Логистика ОБРАТНО: клиент отменил заказ">Отмена (←)</th>
-              <th class="page-penalty-logistics__th-num" title="Возврат товара клиентом">Возврат (←)</th>
-              <th class="page-penalty-logistics__th-num" title="Возврат брака">Брак</th>
-              <th class="page-penalty-logistics__th-num" title="Прочие причины (корректировки и т.п.)">Прочее</th>
-              <th class="page-penalty-logistics__th-num">Итого</th>
+              <th class="t-left">Товар</th>
+              <th class="num">Кол-во</th>
+              <th class="num" title="Логистика К клиенту при отмене">Отмена (→)</th>
+              <th class="num" title="Логистика ОБРАТНО: клиент отменил заказ">Отмена (←)</th>
+              <th class="num" title="Возврат товара клиентом">Возврат (←)</th>
+              <th class="num" title="Возврат брака">Брак</th>
+              <th class="num" title="Прочие причины (корректировки и т.п.)">Прочее</th>
+              <th class="num">Итого</th>
+              <th class="t-center">Отчёт</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="!products.rows.length"><td colspan="9" class="page-penalty-logistics__empty">Нет данных за период</td></tr>
             <tr v-for="r in products.rows" :key="r.nm_id">
-              <td>
-                <a class="page-penalty-logistics__link" :href="detailUrl(r.nm_id)" target="_blank">{{ r.nm_id }}</a>
+              <td class="t-left">
+                <ProductCell
+                  :photo="r.photos"
+                  :title="r.card_name"
+                  :sub="subLine(r)"
+                  :vendor="r.vendorCode"
+                  :link="'/wb/detail?nm_id=' + r.nm_id"
+                  :link-label="'WB: ' + r.nm_id"
+                />
               </td>
-              <td class="page-penalty-logistics__card" :title="r.card_name || ''">{{ r.card_name || '—' }}</td>
-              <td class="text-end">{{ r.items_count }}</td>
-              <td class="text-end">{{ fmt2(r.sum_to_client_cancel) }}</td>
-              <td class="text-end">{{ fmt2(r.sum_from_client_cancel) }}</td>
-              <td class="text-end">{{ fmt2(r.sum_from_client_return) }}</td>
-              <td class="text-end">{{ fmt2(r.sum_defect) }}</td>
-              <td class="text-end">{{ fmt2(r.sum_other) }}</td>
-              <td class="text-end page-penalty-logistics__sum">{{ fmt2(r.total_sum) }}</td>
+              <td class="num">{{ r.items_count }}</td>
+              <td class="num">{{ fmt2(r.sum_to_client_cancel) }}</td>
+              <td class="num">{{ fmt2(r.sum_from_client_cancel) }}</td>
+              <td class="num">{{ fmt2(r.sum_from_client_return) }}</td>
+              <td class="num">{{ fmt2(r.sum_defect) }}</td>
+              <td class="num">{{ fmt2(r.sum_other) }}</td>
+              <td class="num">{{ fmt2(r.total_sum) }}</td>
+              <td class="t-center">
+                <a class="page-penalty-logistics__link" :href="detailUrl(r.nm_id)" target="_blank" title="Отчёт по штрафам товара"><i class="bi bi-file-earmark-text"></i></a>
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
-      <div v-if="products.total > pageSize" class="d-flex justify-content-center gap-2 p-2">
-        <button class="btn btn-sm btn-outline-secondary" :disabled="page <= 1" @click="goPage(page - 1)">‹ Назад</button>
-        <span class="align-self-center">{{ page }} / {{ totalPages }}</span>
-        <button class="btn btn-sm btn-outline-secondary" :disabled="page >= totalPages" @click="goPage(page + 1)">Вперёд ›</button>
-      </div>
+      <Pager :page="page" :total-pages="totalPages" :total="products.total" @change="goPage" />
     </div>
 
     <!-- «Статистика по дням» в Yii2 была недостижимым блоком (AJAX target=days, кнопки нет) —
@@ -150,18 +154,28 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import WbUniversalFilter from '../components/common/WbUniversalFilter.vue'
+import ProductCell from '../components/common/ProductCell.vue'
+import ExcelButton from '../components/common/ExcelButton.vue'
+import Pager from '../components/common/Pager.vue'
 
 const route = useRoute()
 const router = useRouter()
 
-const today = new Date()
-const y = new Date(today); y.setDate(today.getDate() - 7)
-const iso = (d: Date) => d.toISOString().slice(0, 10)
+// локальное время (toISOString даёт UTC и сдвигает сутки)
+// дефолт — ровно 7 суток (как пресет «7 дней» фильтра)
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const defaultDates = () => {
+  const to = new Date()
+  const from = new Date(to.getTime())
+  from.setDate(from.getDate() - 6)
+  return { date_from: iso(from), date_to: iso(to) }
+}
+const defaults = defaultDates()
 
 const filters = ref({
   product: '',
-  date_from: iso(y),
-  date_to: iso(today),
+  date_from: defaults.date_from,
+  date_to: defaults.date_to,
   office_name: '',
   bonus_type_name: '',
 })
@@ -179,6 +193,14 @@ const pageSize = 50
 const totalPages = computed(() => Math.max(1, Math.ceil((products.value.total || 0) / pageSize)))
 
 const fmt2 = (v: any) => new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v) || 0)
+
+/** Подпись под названием товара: предмет и бренд одной строкой (как на остальных страницах). */
+const subLine = (r: any) => {
+  const subject = String(r.subject || '')
+  const brandName = String(r.brand || '')
+  if (subject && brandName) return subject + ' • ' + brandName
+  return subject || brandName
+}
 
 const detailUrl = (nmId: number) =>
   `/wb-penalty/detail?nm_id=${nmId}&date_from=${filters.value.date_from}&date_to=${filters.value.date_to}`
@@ -255,7 +277,8 @@ const onApply = async () => {
   fetchFilterLists()
 }
 const onReset = () => {
-  filters.value = { product: '', date_from: iso(y), date_to: iso(today), office_name: '', bonus_type_name: '' }
+  const d = defaultDates()
+  filters.value = { product: '', date_from: d.date_from, date_to: d.date_to, office_name: '', bonus_type_name: '' }
   page.value = 1
   syncRoute('')
   fetchData('')

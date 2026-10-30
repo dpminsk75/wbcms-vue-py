@@ -46,6 +46,8 @@ class UnclaimedOrdersService:
         sort_dir: str,
         page: int,
         page_size: int,
+        brand: str | None = None,
+        category: str | None = None,
     ) -> dict:
         defaults = self.default_params()
         date_from = date_from or defaults["date_from"]
@@ -68,12 +70,22 @@ class UnclaimedOrdersService:
         if nm_id is not None and nm_id != '':
             where.append("o.nm_id = :nm_id")
             params["nm_id"] = nm_id
+        # бренд и предмет — из wbcards (join в запросе уже есть, новых joins не добавляем)
+        if brand:
+            where.append("c.brand = :brand")
+            params["brand"] = brand
+        if category:
+            where.append("c.subjectName = :category")
+            params["category"] = category
 
         base_query = f"""
             SELECT
                 o.nm_id,
                 c.title AS card_name,
                 c.vendorCode,
+                MAX(c.brand) AS brand,
+                MAX(c.subjectName) AS subject,
+                MAX(c.photos) AS photos,
                 SUM(o.is_realization) AS alls,
                 SUM(o.finished_price) AS sLO,
                 SUM(o.is_cancel) AS cancel,
@@ -124,3 +136,15 @@ class UnclaimedOrdersService:
                 "dir": sort_dir.lower(),
             },
         }
+
+    async def filters(self) -> dict:
+        """Бренды + предметы для селектов фильтра (из wbcards, как в geo/options)."""
+        comp = "" if self.company_id is None else " AND company_id = :cid"
+        p = {} if self.company_id is None else {"cid": self.company_id}
+        br = (await self.db.execute(text(
+            f"SELECT DISTINCT brand FROM wbcards WHERE brand IS NOT NULL AND brand <> ''{comp} "
+            f"ORDER BY brand LIMIT 500"), p)).scalars().all()
+        ct = (await self.db.execute(text(
+            f"SELECT DISTINCT subjectName FROM wbcards WHERE subjectName IS NOT NULL AND subjectName <> ''{comp} "
+            f"ORDER BY subjectName LIMIT 500"), p)).scalars().all()
+        return {"brands": [str(x) for x in br if x], "categories": [str(x) for x in ct if x]}

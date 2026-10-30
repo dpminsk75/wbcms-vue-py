@@ -8,26 +8,26 @@
     </div>
 
     <div class="card page-geo-sales-map__map-card">
-      <div class="card-header text-white d-flex justify-content-between align-items-center wb-card-header">
+      <div class="card__hd">
         <span>Карта: {{ levelLabel }} ({{ items.length }} точек · зум {{ zoom }})</span>
-        <span class="page-geo-sales-map__map-tools">
-          <span class="page-geo-sales-map__metric">
-            <button class="page-geo-sales-map__metric-btn" :class="{'is-active': metric==='qty'}" @click="metric='qty'; fetchData()">Штуки</button>
-            <button class="page-geo-sales-map__metric-btn" :class="{'is-active': metric==='sum'}" @click="metric='sum'; fetchData()">Сумма</button>
-          </span>
-          <select v-model="levelMode" class="form-select form-select-sm page-geo-sales-map__level" title="Фикс уровня: Авто меняет разрез с зумом" @change="fetchData()">
-            <option value="auto">Авто</option>
-            <option value="country">Страны</option>
-            <option value="okrug">Округа</option>
-            <option value="region">Регионы</option>
-            <option value="city">Города</option>
-            <option value="pvz">ПВЗ</option>
-          </select>
-          <span class="page-geo-sales-map__map-hint">Клик по кругу — провалиться глубже</span>
-          <button class="btn btn-sm btn-light" @click="toggleFull" :title="isFull ? 'Свернуть карту' : 'Карта на весь экран'">
-            <i class="bi" :class="isFull ? 'bi-fullscreen-exit' : 'bi-arrows-fullscreen'"></i>
-          </button>
-        </span>
+        <span class="spacer"></span>
+        <button class="hd-btn" @click="toggleFull" :title="isFull ? 'Свернуть карту' : 'Карта на весь экран'">
+          <i class="bi" :class="isFull ? 'bi-fullscreen-exit' : 'bi-arrows-fullscreen'"></i>
+        </button>
+      </div>
+      <!-- Управление картой — на токенах темы, отдельной строкой под шапкой -->
+      <div class="page-geo-sales-map__toolbar">
+        <button class="btn btn--sm" :class="metric==='qty' ? 'btn--brand' : 'btn--outline'" @click="metric='qty'; fetchData()">Штуки</button>
+        <button class="btn btn--sm" :class="metric==='sum' ? 'btn--brand' : 'btn--outline'" @click="metric='sum'; fetchData()">Сумма</button>
+        <select v-model="levelMode" class="wb-input page-geo-sales-map__level" title="Фикс уровня: Авто меняет разрез с зумом" @change="fetchData()">
+          <option value="auto">Авто</option>
+          <option value="country">Страны</option>
+          <option value="okrug">Округа</option>
+          <option value="region">Регионы</option>
+          <option value="city">Города</option>
+          <option value="pvz">ПВЗ</option>
+        </select>
+        <span class="page-geo-sales-map__map-hint">Клик по кругу — провалиться глубже</span>
       </div>
         <div id="geo-map" class="page-geo-sales-map__map"></div>
         <div v-if="isLoading" class="page-geo-sales-map__map-loader">
@@ -38,22 +38,22 @@
 
     <div class="page-geo-sales-map__body">
       <div class="page-geo-sales-map__crumbs">
-        <button class="page-geo-sales-map__crumb" :class="{'is-current': !crumbs.country}" @click="goWorld()">Мир</button>
+        <button class="opt" :aria-pressed="!crumbs.country" @click="goWorld()">Мир</button>
         <template v-if="crumbs.country">
           <span class="page-geo-sales-map__crumb-sep">›</span>
-          <button class="page-geo-sales-map__crumb" :class="{'is-current': crumbs.country && !crumbs.okrug}" @click="goCountry()">{{ crumbs.country }}</button>
+          <button class="opt" :aria-pressed="crumbs.country && !crumbs.okrug" @click="goCountry()">{{ crumbs.country }}</button>
         </template>
         <template v-if="crumbs.okrug">
           <span class="page-geo-sales-map__crumb-sep">›</span>
-          <button class="page-geo-sales-map__crumb" :class="{'is-current': crumbs.okrug && !crumbs.region}" @click="goOkrug()">{{ crumbs.okrug }}</button>
+          <button class="opt" :aria-pressed="crumbs.okrug && !crumbs.region" @click="goOkrug()">{{ crumbs.okrug }}</button>
         </template>
         <template v-if="crumbs.region">
           <span class="page-geo-sales-map__crumb-sep">›</span>
-          <button class="page-geo-sales-map__crumb" :class="{'is-current': crumbs.region && !crumbs.city}" @click="goRegion()">{{ crumbs.region }}</button>
+          <button class="opt" :aria-pressed="crumbs.region && !crumbs.city" @click="goRegion()">{{ crumbs.region }}</button>
         </template>
         <template v-if="crumbs.city">
           <span class="page-geo-sales-map__crumb-sep">›</span>
-          <button class="page-geo-sales-map__crumb is-current">{{ crumbs.city }}</button>
+          <button class="opt" aria-pressed="true">{{ crumbs.city }}</button>
         </template>
       </div>
 
@@ -65,41 +65,46 @@
       </div>
       <div v-if="hint && !isLoading" class="alert alert-warning page-geo-sales-map__hint">{{ hint }}</div>
 
-      <div class="card">
-        <div class="card-header text-white d-flex justify-content-between align-items-center wb-card-header">
+      <div class="tbl-card page-geo-sales-map__table-card">
+        <div class="card__hd">
           <span>{{ tableTitle }}</span>
-          <span class="page-geo-sales-map__table-tools">
-            <label class="page-geo-sales-map__world page-geo-sales-map__world--light"><input type="checkbox" v-model="world" @change="fetchData()" /> Весь мир</label>
-            <button class="btn btn-sm btn-light wb-excel-btn" :disabled="!items.length" @click="exportExcel"><i class="bi bi-file-earmark-excel me-1"></i> Excel</button>
-          </span>
+          <span class="spacer"></span>
+          <label class="page-geo-sales-map__world"><input type="checkbox" v-model="world" @change="fetchData()" /> Весь мир</label>
+          <ExcelButton :disabled="!items.length" @click="exportExcel" />
         </div>
         <div v-if="isLoading" class="p-4 text-center text-muted">Загрузка...</div>
-        <div v-else class="page-geo-sales-map__table-wrap">
-          <table class="table table-bordered table-striped table-hover kv-grid-table mb-0 page-geo-sales-map__table">
+        <div v-else class="tbl-wrap">
+          <table class="tbl page-geo-sales-map__table">
             <thead>
               <tr>
-                <th>{{ nameCol }}</th>
-                <th>{{ subCol }}</th>
-                <th>Кол-во</th>
-                <th>Сумма, ₽</th>
-                <th>Цена со ск, ₽</th>
-                <th>СПП, %</th>
-                <th>К оплате, ₽</th>
+                <th class="t-left">{{ nameCol }}</th>
+                <th class="t-left">{{ subCol }}</th>
+                <th class="num">Кол-во</th>
+                <th class="num">Сумма, ₽</th>
+                <th class="num">Цена со ск, ₽</th>
+                <th class="num">СПП, %</th>
+                <th class="num">К оплате, ₽</th>
+              </tr>
+              <!-- Итоги сверху (POS_TOP), без слова «Итого» -->
+              <tr class="tbl__total tbl__total--top">
+                <td></td>
+                <td></td>
+                <td>{{ fmt0(sumQty) }}</td>
+                <td>{{ fmt2(sumRetail) }}</td>
+                <td>{{ fmt2(sumAmount) }}</td>
+                <td>{{ fmt2(avgSpp) }}</td>
+                <td>{{ fmt2(sumPay) }}</td>
               </tr>
             </thead>
             <tbody>
-              <tr class="kv-totals">
-                <td></td><td></td>
-                <td>{{ fmt0(sumQty) }}</td><td>{{ fmt2(sumRetail) }}</td><td>{{ fmt2(sumAmount) }}</td><td>{{ fmt2(avgSpp) }}</td><td>{{ fmt2(sumPay) }}</td>
-              </tr>
               <tr v-for="r in tableRows" :key="r.key" class="page-geo-sales-map__row" @click="focusRow(r)" @mouseenter="hlName(level === 'city' ? r.sub : r.name)" @mouseleave="unhl()" :title="'Показать на карте: ' + r.name">
-                <td>{{ r.name }}</td>
-                <td class="page-geo-sales-map__addr">{{ r.sub }}</td>
-                <td>{{ fmt0(r.qty) }}</td>
-                <td>{{ fmt2(r.sum_retail) }}</td>
-                <td>{{ fmt2(r.sum_amount) }}</td>
-                <td>{{ fmt2(r.spp) }}</td>
-                <td class="page-geo-sales-map__pay">{{ fmt2(r.sum_for_pay) }}</td>
+                <td class="t-left">{{ r.name }}</td>
+                <td class="t-left page-geo-sales-map__addr">{{ r.sub }}</td>
+                <td class="num">{{ fmt0(r.qty) }}</td>
+                <td class="num">{{ fmt2(r.sum_retail) }}</td>
+                <td class="num">{{ fmt2(r.sum_amount) }}</td>
+                <td class="num">{{ fmt2(r.spp) }}</td>
+                <td class="num">{{ fmt2(r.sum_for_pay) }}</td>
               </tr>
             </tbody>
           </table>
@@ -117,6 +122,18 @@ import 'leaflet/dist/leaflet.css'
 import { fetchGeoSales, geoStem, okrugStems, gadmCanon, visualCenter } from '../api/geoSales'
 import { api } from '../api/client'
 import WbUniversalFilter from '../components/common/WbUniversalFilter.vue'
+import ExcelButton from '../components/common/ExcelButton.vue'
+
+/** Цвет маркеров карты — токен темы --info (синий, как «клики» в отчётах по рекламе).
+ *  Leaflet рисует SVG-атрибуты, где var(--*) не работает — берём значение токена из CSS. */
+const mapMark = (): string => {
+  try {
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--info').trim()
+    return v || 'currentColor'
+  } catch {
+    return 'currentColor'
+  }
+}
 
 const fmt0 = (v: any) => new Intl.NumberFormat('ru-RU').format(Math.round(Number(v) || 0))
 const fmt2 = (v: any) => new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v) || 0)
@@ -230,7 +247,7 @@ function hlName(name: string) {
       const list = (geoFeats || []).filter((x: any) => set.has(x._canon))
       if (!list.length) return
       hlPoly = L.geoJSON(list as any, {
-        style: { color: '#7c1af8', weight: 2, fillColor: '#7c1af8', fillOpacity: 0.08 },
+        style: { color: mapMark(), weight: 2, fillColor: mapMark(), fillOpacity: 0.08 },
         interactive: false,
       } as any).addTo(map)
       return
@@ -239,7 +256,7 @@ function hlName(name: string) {
     const f = (geoFeats || []).find((x: any) => x._canon === key)
     if (!f) return
     hlPoly = L.geoJSON(f as any, {
-      style: { color: '#7c1af8', weight: 3, fillColor: '#7c1af8', fillOpacity: 0.12 },
+      style: { color: mapMark(), weight: 3, fillColor: mapMark(), fillOpacity: 0.12 },
       interactive: false,
     } as any).addTo(map)
   })()
@@ -383,7 +400,7 @@ const renderMarkers = () => {
       // микро-джиттер по хешу wb_id: дубли ПВЗ на одном адресе видно раздельно
       const h = [...r.key].reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7)
       const jl: L.LatLngExpression = [Number(r.lat) + ((h % 7) - 3) * 0.0004, Number(r.lon) + ((Math.floor(h / 7) % 7) - 3) * 0.0004]
-      L.circleMarker(jl, { radius: rad, color: '#7c1af8', weight: 2, fillColor: '#7c1af8', fillOpacity: 0.55 }).bindTooltip(tip, { sticky: true, direction: 'top' }).bindPopup(popup).addTo(layer)
+      L.circleMarker(jl, { radius: rad, color: mapMark(), weight: 2, fillColor: mapMark(), fillOpacity: 0.55 }).bindTooltip(tip, { sticky: true, direction: 'top' }).bindPopup(popup).addTo(layer)
     } else {
       const icon = L.divIcon({ className: 'geo-bubble-wrap', html: `<div class="geo-bubble ${bubbleCls(valOf(r), max)}">${metric.value === 'qty' ? fmt0(valOf(r)) : fmt0(valOf(r) / 1000) + 'к'}</div>`, iconSize: [70, 70], iconAnchor: [35, 35] })
       L.marker(ll, { icon, zIndexOffset: zOff }).bindTooltip(tip, { sticky: true, direction: 'top' }).bindPopup(popup)

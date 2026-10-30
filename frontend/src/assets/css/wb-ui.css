@@ -26,13 +26,24 @@
   gap: 12px;
 }
 
+/* Стандартная панель фильтров отчётов: карточка + ряд кнопок внизу.
+   Эталон — .wb-universal-filter (WbUniversalFilter.vue, тепловая карта): те же токены и размеры.
+   Правило темы: в каждом отчёте новой схемы внизу панели фильтров есть
+   «Применить»/«Сформировать» и «Сбросить» — всегда видны, независимо от загрузки данных. */
+.wb-filter-panel {
+  padding: 14px; margin-bottom: 14px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md);
+}
+.wb-filter-panel__btns { margin-top: 12px; display: flex; gap: 8px; align-items: flex-end; }
+.wb-filter-panel__apply { width: 120px; }
+
 /* Широкие таблицы 10+ колонок: внутренняя обёртка, не смена контейнера */
 .wb-table-wrap { overflow-x: auto; }
 .wb-table-wrap table { font-size: 12px; width: 100%; }
 
 /* Градиент шапок карточек (бывший инлайн-копипаст, ~20 мест) */
 .wb-card-header {
-  background: linear-gradient(97.26deg,#ed3cca .49%,#df34d2 14.88%,#d02bd9 29.27%,#bf22e1 43.14%,#ae1ae8 57.02%,#9a10f0 70.89%,#8306f7 84.76%,#7c1af8 99.15%);
+  background: var(--grad);
   font-weight: 700;
   font-size: 13px;
 }
@@ -148,7 +159,7 @@ body.wb-modal-drag-active { user-select: none; cursor: move; }
 .wb-confirm__hint { font-size: 12px; line-height: 1.5; color: #6b7280; }
 
 /* Фирменная кнопка #4A3A8C (дедуп ~10 мест в админках/регистрации) */
-.wb-btn-brand { background: #4A3A8C; color: #fff; border: none; }
+.wb-btn-brand { background: var(--brand); color: var(--brand-ink); border: none; }
 .wb-btn-brand--sm { padding: 4px 10px; border-radius: 6px; }
 .wb-btn-brand--md { padding: 6px 12px; border-radius: 6px; }
 .wb-btn-brand--lg { padding: 8px 14px; border-radius: 6px; }

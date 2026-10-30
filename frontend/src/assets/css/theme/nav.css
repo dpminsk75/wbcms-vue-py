@@ -1,0 +1,104 @@
+/* ============================================================
+   SelBI — навигация
+   1) шапка приложения (.bg-wb — существующий класс TopNavbar,
+      перекрашивается на токены; градиент — ось data-gradbar)
+   2) .appbar* — новый каркас шапки (для витрины и следующих этапов)
+   3) меню рабочих мест — пилюли (.mn)
+   4) подменю раздела — подчёркивание (.stab--line)
+   ============================================================ */
+
+/* ---------- шапка приложения (legacy-класс .bg-wb) ---------- */
+.bg-wb {
+  background-color: var(--bar-bg) !important;
+  background-image: var(--bar-grad) !important;
+  color: #fff;
+}
+
+/* ---------- новый каркас шапки ---------- */
+.appbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 9px 16px;
+  border-radius: var(--radius-md);
+  background-color: var(--bar-bg);
+  background-image: var(--bar-grad);
+  border: 1px solid transparent;
+  box-shadow: var(--shadow-1);
+  transition: background .18s ease;
+}
+.appbar__brand,
+.appbar__link,
+.appbar__company { color: #fff; }
+.appbar__brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: calc(17px * var(--fs)); letter-spacing: -.02em; text-decoration: none; }
+.appbar__logo { width: 30px; height: 30px; border-radius: 8px; display: block; flex: none; box-shadow: 0 0 0 1px rgba(255,255,255,.4), 0 1px 3px rgba(0,0,0,.25); }
+.appbar__nav { display: flex; gap: 2px; flex-wrap: wrap; }
+.appbar__link {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 10px; border-radius: var(--radius-sm);
+  font-size: calc(12.5px * var(--fs)); font-weight: 500;
+  opacity: .86; text-decoration: none; cursor: pointer;
+  transition: all .14s ease;
+}
+.appbar__link:hover { opacity: 1; background: rgba(255,255,255,.14); color: #fff; }
+.appbar__link.is-active { background: rgba(255,255,255,.2); color: #fff; }
+.appbar__company {
+  margin-left: auto; display: flex; align-items: center; gap: 7px;
+  font-size: calc(12.5px * var(--fs)); padding: 6px 10px;
+  border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,.32);
+}
+
+/* ============================================================
+   МЕНЮ РАБОЧИХ МЕСТ — пилюли (решение заказчика)
+   ============================================================ */
+.wsp { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 14px 16px; }
+.wsp__head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.wsp__title { margin: 0; font-size: calc(20px * var(--fs)); font-weight: 700; letter-spacing: -.012em; color: var(--ink); white-space: nowrap; }
+.wsp__menu { margin-left: auto; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.wsp__sub { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+
+.mn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px; border-radius: 99px; border: 1px solid transparent;
+  background: transparent; color: var(--ink-soft);
+  font-size: calc(12px * var(--fs)); font-weight: 600;
+  white-space: nowrap; cursor: pointer; font-family: inherit;
+  text-decoration: none; transition: background .15s, color .15s;
+}
+.mn:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--ink); }
+.mn--on, .mn--on:hover { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+.mn--off { color: var(--ink-muted); background: transparent; cursor: default; }
+.mn--off:hover { background: transparent; color: var(--ink-muted); }
+
+/* альтернатива: подчёркивание (оставлена как резерв) */
+.mn--line { border-radius: 0; padding: 6px 2px; border-bottom: 2px solid transparent; background: none; }
+.mn--line:hover { background: none; color: var(--ink); }
+.mn--line.mn--on { background: none; border-color: transparent; border-bottom-color: var(--brand); color: var(--ink); }
+
+/* ============================================================
+   ПОДМЕНЮ РАЗДЕЛА — подчёркивание (решение заказчика)
+   ============================================================ */
+.stab {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: 99px; border: 1px solid transparent;
+  font-size: calc(12.5px * var(--fs)); font-weight: 600;
+  color: var(--brand-deep); background: var(--brand-tint);
+  text-decoration: none; transition: background .15s, color .15s;
+}
+.stab:hover { background: color-mix(in srgb, var(--brand) 16%, transparent); }
+.stab--on, .stab--on:hover { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+
+.stab--line {
+  background: none; border: none; border-radius: 0;
+  padding: 6px 4px; border-bottom: 2px solid transparent;
+  color: var(--ink-soft);
+}
+.stab--line:hover { background: none; color: var(--ink); }
+.stab--line.stab--on { background: none; color: var(--ink); border-bottom-color: var(--brand); }
+
+.stab__count {
+  min-width: 18px; padding: 0 5px; border-radius: 9px;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  font-size: calc(10.5px * var(--fs)); font-weight: 700;
+  font-variant-numeric: tabular-nums; text-align: center;
+}

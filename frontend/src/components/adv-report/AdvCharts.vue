@@ -1,54 +1,86 @@
 <template>
   <div>
     <div class="row mb-3">
-      <div class="col-md-7 div-chart">
-        <div class="card p-0 panel panel-default" style="border:1px solid #e5e7eb; border-radius:10px; overflow:hidden;">
-          <div class="panel-heading d-flex align-items-center p-3" style="justify-content:center; min-height:40px;">
-            <span class="mx-auto"><b>Расходы и показатели компании</b></span>
-            <div class="btn-group btn-group-sm ms-2" role="group">
-              <button v-for="u in ['day','week','month']" :key="u" class="btn btn-outline-secondary" :class="{active: tlUnit===u}" @click="tlUnit=(u as any)">{{ u==='day'?'D':u==='week'?'W':'M' }}</button>
-              <button class="btn ms-2" :class="showTl?'btn-secondary active':'btn-outline-secondary'" title="Подписи" @click="showTl=!showTl"><i class="bi bi-tag"></i></button>
+      <div :class="expanded===0 ? 'col-12' : 'col-md-7'" v-show="expanded===null || expanded===0" class="div-chart">
+        <div class="wb-panel">
+          <div class="card__hd">
+            <span>Расходы и показатели компании</span>
+            <span class="spacer"></span>
+            <div class="ch-seg">
+              <button type="button" class="ch-seg__btn" :class="{ 'is-on': tlUnit==='day' }" @click="tlUnit='day'">D</button>
+              <button type="button" class="ch-seg__btn" :class="{ 'is-on': tlUnit==='week' }" @click="tlUnit='week'">W</button>
+              <button type="button" class="ch-seg__btn" :class="{ 'is-on': tlUnit==='month' }" @click="tlUnit='month'">M</button>
             </div>
+            <button type="button" class="ch-icon-btn" @click="showTl=!showTl" :title="showTl ? 'Скрыть значения' : 'Показать значения'">
+              <i :class="showTl ? 'bi bi-eye' : 'bi bi-eye-slash'"></i>
+            </button>
+            <button type="button" class="ch-icon-btn" @click="toggleExpand(0)" :title="expanded===0 ? 'Свернуть' : 'На всю строку'">
+              <i :class="expanded===0 ? 'bi bi-fullscreen-exit' : 'bi bi-arrows-fullscreen'"></i>
+            </button>
           </div>
-          <div class="panel-body"><VChart :option="tlOption" autoresize style="height:400px" /></div>
+          <div class="wb-panel__bd"><VChart :option="tlOption" autoresize style="height:400px" /></div>
         </div>
       </div>
-      <div class="col-md-5 div-chart" v-if="appChart.length">
-        <div class="card ms-3 me-0 p-0 panel panel-default" style="border:1px solid #e5e7eb; border-radius:10px; overflow:hidden;">
-          <div class="panel-heading d-flex align-items-center p-3" style="justify-content:center; min-height:40px;">
-            <span class="mx-auto"><b>Устр-ва: заказы, корзины, показы</b></span>
-            <div class="btn-group btn-group-sm ms-2" role="group">
-              <button v-for="u in ['day','week','month']" :key="u" class="btn btn-outline-secondary" :class="{active: appUnit===u}" @click="appUnit=(u as any)">{{ u==='day'?'D':u==='week'?'W':'M' }}</button>
-              <button class="btn ms-2" :class="showApp?'btn-secondary active':'btn-outline-secondary'" title="Подписи" @click="showApp=!showApp"><i class="bi bi-tag"></i></button>
+      <div :class="expanded===1 ? 'col-12' : 'col-md-5'" v-if="appChart.length" v-show="expanded===null || expanded===1" class="div-chart">
+        <div class="wb-panel">
+          <div class="card__hd">
+            <span>Устр-ва: заказы, корзины, показы</span>
+            <span class="spacer"></span>
+            <div class="ch-seg">
+              <button type="button" class="ch-seg__btn" :class="{ 'is-on': appUnit==='day' }" @click="appUnit='day'">D</button>
+              <button type="button" class="ch-seg__btn" :class="{ 'is-on': appUnit==='week' }" @click="appUnit='week'">W</button>
+              <button type="button" class="ch-seg__btn" :class="{ 'is-on': appUnit==='month' }" @click="appUnit='month'">M</button>
             </div>
+            <button type="button" class="ch-icon-btn" @click="showApp=!showApp" :title="showApp ? 'Скрыть значения' : 'Показать значения'">
+              <i :class="showApp ? 'bi bi-eye' : 'bi bi-eye-slash'"></i>
+            </button>
+            <button type="button" class="ch-icon-btn" @click="toggleExpand(1)" :title="expanded===1 ? 'Свернуть' : 'На всю строку'">
+              <i :class="expanded===1 ? 'bi bi-fullscreen-exit' : 'bi bi-arrows-fullscreen'"></i>
+            </button>
           </div>
-          <div class="panel-body"><VChart :option="appOption" autoresize style="height:400px" /></div>
+          <div class="wb-panel__bd"><VChart :option="appOption" autoresize style="height:400px" /></div>
         </div>
       </div>
     </div>
     <div class="row mb-3">
-      <div class="col-md-6 div-chart">
-        <div class="card p-0 panel panel-default" style="border:1px solid #e5e7eb; border-radius:10px; overflow:hidden;">
-          <div class="panel-heading d-flex align-items-center p-3" style="justify-content:center; min-height:40px;">
-            <span class="mx-auto"><b>Показатели: CPM, CPO</b></span>
-            <div class="btn-group btn-group-sm ms-2">
-              <button v-for="u in ['day','week','month']" :key="u" class="btn btn-outline-secondary" :class="{active: cpmUnit===u}" @click="cpmUnit=(u as any)">{{ u==='day'?'D':u==='week'?'W':'M' }}</button>
-              <button class="btn ms-2" :class="showCpm?'btn-secondary active':'btn-outline-secondary'" title="Подписи" @click="showCpm=!showCpm"><i class="bi bi-tag"></i></button>
+      <div :class="expanded===2 ? 'col-12' : 'col-md-6'" v-show="expanded===null || expanded===2" class="div-chart">
+        <div class="wb-panel">
+          <div class="card__hd">
+            <span>Показатели: CPM, CPO</span>
+            <span class="spacer"></span>
+            <div class="ch-seg">
+              <button type="button" class="ch-seg__btn" :class="{ 'is-on': cpmUnit==='day' }" @click="cpmUnit='day'">D</button>
+              <button type="button" class="ch-seg__btn" :class="{ 'is-on': cpmUnit==='week' }" @click="cpmUnit='week'">W</button>
+              <button type="button" class="ch-seg__btn" :class="{ 'is-on': cpmUnit==='month' }" @click="cpmUnit='month'">M</button>
             </div>
+            <button type="button" class="ch-icon-btn" @click="showCpm=!showCpm" :title="showCpm ? 'Скрыть значения' : 'Показать значения'">
+              <i :class="showCpm ? 'bi bi-eye' : 'bi bi-eye-slash'"></i>
+            </button>
+            <button type="button" class="ch-icon-btn" @click="toggleExpand(2)" :title="expanded===2 ? 'Свернуть' : 'На всю строку'">
+              <i :class="expanded===2 ? 'bi bi-fullscreen-exit' : 'bi bi-arrows-fullscreen'"></i>
+            </button>
           </div>
-          <div class="panel-body"><VChart :option="cpmOption" autoresize style="height:400px" /></div>
+          <div class="wb-panel__bd"><VChart :option="cpmOption" autoresize style="height:400px" /></div>
         </div>
       </div>
-      <div class="col-md-6 div-chart">
-        <div class="card ms-3 me-0 p-0 panel panel-default" style="border:1px solid #e5e7eb; border-radius:10px; overflow:hidden;">
-          <div class="panel-heading d-flex align-items-center p-3" style="justify-content:center; min-height:40px;">
-            <span class="mx-auto"><b>Показатели: CTR, CR</b></span>
-            <div class="btn-group btn-group-sm ms-2">
-              <button v-for="u in ['day','week','month']" :key="u" class="btn btn-outline-secondary" :class="{active: ctrUnit===u}" @click="ctrUnit=(u as any)">{{ u==='day'?'D':u==='week'?'W':'M' }}</button>
-              <button class="btn ms-2" :class="showCtr?'btn-secondary active':'btn-outline-secondary'" title="Подписи" @click="showCtr=!showCtr"><i class="bi bi-tag"></i></button>
+      <div :class="expanded===3 ? 'col-12' : 'col-md-6'" v-show="expanded===null || expanded===3" class="div-chart">
+        <div class="wb-panel">
+          <div class="card__hd">
+            <span>Показатели: CTR, CR</span>
+            <span class="spacer"></span>
+            <div class="ch-seg">
+              <button type="button" class="ch-seg__btn" :class="{ 'is-on': ctrUnit==='day' }" @click="ctrUnit='day'">D</button>
+              <button type="button" class="ch-seg__btn" :class="{ 'is-on': ctrUnit==='week' }" @click="ctrUnit='week'">W</button>
+              <button type="button" class="ch-seg__btn" :class="{ 'is-on': ctrUnit==='month' }" @click="ctrUnit='month'">M</button>
             </div>
+            <button type="button" class="ch-icon-btn" @click="showCtr=!showCtr" :title="showCtr ? 'Скрыть значения' : 'Показать значения'">
+              <i :class="showCtr ? 'bi bi-eye' : 'bi bi-eye-slash'"></i>
+            </button>
+            <button type="button" class="ch-icon-btn" @click="toggleExpand(3)" :title="expanded===3 ? 'Свернуть' : 'На всю строку'">
+              <i :class="expanded===3 ? 'bi bi-fullscreen-exit' : 'bi bi-arrows-fullscreen'"></i>
+            </button>
           </div>
-          <div class="panel-body"><VChart :option="ctrOption" autoresize style="height:400px" /></div>
+          <div class="wb-panel__bd"><VChart :option="ctrOption" autoresize style="height:400px" /></div>
         </div>
       </div>
     </div>
@@ -61,12 +93,28 @@ import { use } from 'echarts/core'
 import { LineChart, BarChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent, DatasetComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import { useNumFmt } from '@/composables/useNumFmt'
 use([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, DatasetComponent, CanvasRenderer])
 
 // Данные 1в1 WbAdvReportController: ChartStats (odate/views/clicks/atbs/orders/sum/CPM/CPC/CPO/CTR/CR)
 // + ChartAppStats flat(date, clicks|orders|atbs|views|sum_price _1|_32|_64). Группировка W/M суммой,
 // производные CPM/CPC/CPO/CTR/CR пересчетом из сумм (точнее чем AmCharts average).
 const props = defineProps<{ chart: any[], appChart: any[] }>()
+
+/* Палитра серий — фиксированная (не зависит от акцента темы, как решили для /wb/detail).
+   Вариант «ПВ — современные» (выбран заказчиком 2026-10-29):
+   синий #2563EB · розовый #DB2777 · зелёный #059669 · оранжевый #EA580C. */
+const P = {
+  clicks: '#2563EB',
+  atbs:   '#059669',
+  orders: '#DB2777',
+  sum:    '#EA580C',
+  views:  '#2563EB',
+  cpm:    '#2563EB',
+  cpo:    '#059669',
+  ctr:    '#DB2777',
+  cr:     '#2563EB',
+}
 
 // Стартовый интервал 1в1 php, по длине ряда (сброс только при смене кампании/периода, ручной выбор не трогаем):
 // timeline/cpm/ctr — week, длина>28 → month (_linechart.php:261-266, day по дефолту не бывает);
@@ -85,8 +133,15 @@ const showApp = ref(false) // бары + подписи шумят, по деф�
 const showCpm = ref(true)
 const showCtr = ref(true)
 
-const fmt0 = (v:any)=> new Intl.NumberFormat('ru-RU').format(Math.round(Number(v)||0))
-const fmt2 = (v:any)=> new Intl.NumberFormat('ru-RU',{minimumFractionDigits:2, maximumFractionDigits:2}).format(Number(v)||0)
+/* Разворот графика на всю строку — как на /wb/detail (DetailCharts.vue):
+   карточка растягивается (col-12), соседняя в этой строке скрывается. */
+const expanded = ref<number|null>(null)
+const toggleExpand = (i:number)=>{ expanded.value = expanded.value===i ? null : i }
+
+const { fmt0, fmt2 } = useNumFmt()
+
+/** Цвета текста осей и легенды — из токенов темы. */
+const cssVar = (n:string)=> (typeof document!=='undefined' ? getComputedStyle(document.documentElement).getPropertyValue(n).trim() : '')
 
 function groupByInterval(data:any[], unit:string){
   if(unit==='day' || !data.length) return data
@@ -98,7 +153,7 @@ function groupByInterval(data:any[], unit:string){
     else { const w = new Date(d); const day = (w.getDay()+6)%7; w.setDate(w.getDate()-day); key = w.toISOString().slice(0,10) }
     if(!buckets[key]) buckets[key] = {odate:key, views:0, clicks:0, atbs:0, orders:0, shks:0, sum:0, sum_price:0, canceled:0, CPM:0, CPC:0, CPO:0, CTR:0, CR:0, cnt:0}
     const b = buckets[key]
-    b.views += Number(r.views)||0; b.clicks+=Number(r.clicks)||0; b.atbs+=Number(r.atbs)||0; b.orders+=Number(r.orders)||0; b.sum+=Number(r.sum)||0; b.sum_price+=Number(r.sum_price||r.sum)||0; b.canceled+=Number(r.canceled)||0
+    b.views += Number(r.views)||0; b.clicks += Number(r.clicks)||0; b.atbs += Number(r.atbs)||0; b.orders += Number(r.orders)||0; b.sum += Number(r.sum)||0; b.sum_price += Number(r.sum_price||r.sum)||0; b.canceled += Number(r.canceled)||0
     b.cnt++
   }
   const out = Object.values(buckets).sort((a:any,b:any)=> a.odate.localeCompare(b.odate))
@@ -133,44 +188,63 @@ const cpmData = computed(()=> groupByInterval(props.chart||[], cpmUnit.value))
 const ctrData = computed(()=> groupByInterval(props.chart||[], ctrUnit.value))
 
 // Оформление осей как в DetailCharts.vue: легенда снизу, сетка 50/50/40/90,
-// x rotate 30 interval 0 margin 16 11px #333, y 11px в цвет серии + ru-RU формат,
+// x rotate 30 interval 0 margin 16 11px, y 11px в цвет серии + ru-RU формат,
 // подписи серий с белым фоном/рамкой (иначе голые цифры наезжают друг на друга).
-const lbl = (color:string, show:boolean)=> show ? {
+const lbl = (color:string, show:boolean, money=false)=> show ? {
   show:true, position:'top', distance:10, fontSize:11, fontWeight:700, color,
   backgroundColor:'#ffffff', borderColor:color, borderWidth:1.5, borderRadius:6, padding:[3,6],
+  formatter: money ? (p:any)=> fmt0(p.value) + ' ₽' : undefined,
 } : { show:false }
 const lblLayout = { hideOverlap:false, moveOverlap:'shiftY', minMargin:3 }
 const axQtyFmt = (v:any)=> fmt0(v)
 const axMoneyFmt = (v:any)=> fmt0(v)
 
+/** Тултип: у денежных серий добавляем знак рубля. */
+const moneyNames = ['Расходы','Сумма','Расход']
+const tooltipRows = (params:any)=>{
+  const arr = Array.isArray(params) ? params : [params]
+  if(!arr.length) return ''
+  const head = arr[0]?.axisValueLabel ?? arr[0]?.name ?? ''
+  const body = arr.map((p:any)=>{
+    const val = (p.value === null || p.value === undefined) ? '—' : fmt0(p.value)
+    const money = moneyNames.includes(String(p.seriesName))
+    return `${p.marker || ''}${p.seriesName}: ${money ? val + ' ₽' : val}`
+  }).join('<br/>')
+  return head ? `${head}<br/>${body}` : body
+}
+/** Запас по оси: линия расхода не должна накладываться на «клики» — увеличиваем максимум оси. */
+const axisMax = (k = 1.3)=> (v:any)=> Math.ceil((Number(v?.max) || 0) * k)
+
 const tlOption = computed(()=>{
   const d = tlData.value; if(!d.length) return {}
   const cats = d.map((r:any)=> r.odate)
+  const axis = cssVar('--ink-muted') || '#969CA1'
   return {
-    tooltip:{trigger:'axis', valueFormatter:(v:any)=> fmt0(v)},
-    legend:{data:['Клики','Корзины','Заказы','Расходы'], bottom:20, itemGap:16, padding:[0,0,0,0], textStyle:{fontSize:11}},
+    tooltip:{trigger:'axis', formatter: tooltipRows},
+    legend:{data:['Клики','Корзины','Заказы','Расходы'], bottom:20, itemGap:16, padding:[0,0,0,0], textStyle:{fontSize:11, color: cssVar('--ink') || '#111315'}},
     grid:{left:50, right:50, top:40, bottom:60, containLabel:true},
-    xAxis:{type:'category', data:cats, axisLabel:{rotate:30, interval:0, margin:16, fontSize:11, color:'#333'}},
+    xAxis:{type:'category', data:cats, axisLabel:{rotate:30, interval:0, margin:16, fontSize:11, color:axis}},
     yAxis:[
-      {type:'value', name:'Кол-во (шт)', min:0, axisLabel:{color:'#5067de', fontSize:11, formatter:axQtyFmt}, splitLine:{show:false}},
-      {type:'value', name:'Сумма (₽)', min:0, opposite:true, axisLabel:{color:'#f96666', fontSize:11, formatter:axMoneyFmt}},
+      {type:'value', name:'Кол-во (шт)', min:0, axisLabel:{color:axis, fontSize:11, formatter:axQtyFmt}, nameTextStyle:{color:axis}, splitLine:{show:false}},
+      {type:'value', name:'Сумма (₽)', min:0, opposite:true, max: axisMax(1.3), axisLabel:{color:axis, fontSize:11, formatter:axMoneyFmt}, nameTextStyle:{color:axis}},
     ],
     series:[
-      {name:'Клики', type:'line', smooth:true, data:d.map((r:any)=> r.clicks), lineStyle:{width:2}, itemStyle:{color:'#f965cf'}, yAxisIndex:0, z:10, symbol:'circle', symbolSize:6, label:lbl('#f965cf', showTl.value), labelLayout:lblLayout},
-      {name:'Корзины', type:'line', smooth:true, data:d.map((r:any)=> r.atbs), lineStyle:{width:2}, itemStyle:{color:'#660ec8'}, yAxisIndex:0, z:10, symbol:'circle', symbolSize:6, label:lbl('#660ec8', showTl.value), labelLayout:lblLayout},
-      {name:'Заказы', type:'line', data:d.map((r:any)=> r.orders), lineStyle:{width:2}, itemStyle:{color:'#5067de'}, yAxisIndex:0, z:11, symbol:'circle', symbolSize:6, label:lbl('#5067de', showTl.value), labelLayout:lblLayout},
-      {name:'Расходы', type:'line', smooth:true, data:d.map((r:any)=> Math.round(Number(r.sum)||0)), lineStyle:{width:3}, itemStyle:{color:'#f96666'}, yAxisIndex:1, z:12, symbol:'circle', symbolSize:6, label:lbl('#f96666', showTl.value), labelLayout:lblLayout},
+      {name:'Клики', type:'line', smooth:true, data:d.map((r:any)=> r.clicks), lineStyle:{width:2}, itemStyle:{color:P.clicks}, yAxisIndex:0, z:10, symbol:'circle', symbolSize:6, label:lbl(P.clicks, showTl.value), labelLayout:lblLayout},
+      {name:'Корзины', type:'line', smooth:true, data:d.map((r:any)=> r.atbs), lineStyle:{width:2}, itemStyle:{color:P.atbs}, yAxisIndex:0, z:10, symbol:'circle', symbolSize:6, label:lbl(P.atbs, showTl.value), labelLayout:lblLayout},
+      {name:'Заказы', type:'line', data:d.map((r:any)=> r.orders), lineStyle:{width:2}, itemStyle:{color:P.orders}, yAxisIndex:0, z:11, symbol:'circle', symbolSize:6, label:lbl(P.orders, showTl.value), labelLayout:lblLayout},
+      {name:'Расходы', type:'line', smooth:true, data:d.map((r:any)=> Math.round(Number(r.sum)||0)), lineStyle:{width:3}, itemStyle:{color:P.sum}, yAxisIndex:1, z:12, symbol:'circle', symbolSize:6, label:lbl(P.sum, showTl.value, true), labelLayout:lblLayout},
     ]
   }
 })
 const appOption = computed(()=>{
   const d = appData.value; if(!d.length) return {}
   const cats = d.map((r:any)=> r.date)
+  const axis = cssVar('--ink-muted') || '#969CA1'
   // _appchart.php:137-141 — заказы/корзины на левой оси, показы на правой; агрегация sum
   const groups = [
-    {label:'Заказы', key:'orders', color:'#660ec8', axis:0},
-    {label:'Кор-ны', key:'atbs', color:'#f96666', axis:0},
-    {label:'Показы', key:'views', color:'#f965cf', axis:1},
+    {label:'Заказы', key:'orders', color:P.orders, axis:0},
+    {label:'Кор-ны', key:'atbs', color:P.atbs, axis:0},
+    {label:'Показы', key:'views', color:P.views, axis:1},
   ]
   const series:any[] = []
   const types=[1,32,64]
@@ -188,50 +262,64 @@ const appOption = computed(()=>{
     }
   }
   return {tooltip:{trigger:'axis', valueFormatter:(v:any)=> fmt0(v)},
-    legend:{data:series.map(s=>s.name), bottom:15, itemGap:8, padding:[0,0,0,0], textStyle:{fontSize:10}, width:320},
+    legend:{data:series.map(s=>s.name), bottom:15, itemGap:8, padding:[0,0,0,0], textStyle:{fontSize:10, color: cssVar('--ink') || '#111315'}, width:320},
     grid:{left:50, right:50, top:40, bottom:85, containLabel:true},
-    xAxis:{type:'category', data:cats, axisLabel:{rotate:30, interval:0, margin:16, fontSize:11, color:'#333'}},
+    xAxis:{type:'category', data:cats, axisLabel:{rotate:30, interval:0, margin:16, fontSize:11, color:axis}},
     yAxis:[
-      {type:'value', name:'Заказы/Корзины', min:0, axisLabel:{color:'#660ec8', fontSize:11, formatter:axQtyFmt}, splitLine:{show:false}},
-      {type:'value', name:'Показы', min:0, opposite:true, axisLabel:{color:'#f965cf', fontSize:11, formatter:axQtyFmt}},
+      {type:'value', name:'Заказы/Корзины', min:0, axisLabel:{color:axis, fontSize:11, formatter:axQtyFmt}, nameTextStyle:{color:axis}, splitLine:{show:false}},
+      {type:'value', name:'Показы', min:0, opposite:true, max: axisMax(1.3), axisLabel:{color:axis, fontSize:11, formatter:axQtyFmt}, nameTextStyle:{color:axis}},
     ], series}
 })
 const cpmOption = computed(()=>{
   const d=cpmData.value; if(!d.length) return {}
   const cats=d.map((r:any)=> r.odate)
+  const axis = cssVar('--ink-muted') || '#969CA1'
   return {
-    tooltip:{trigger:'axis', valueFormatter:(v:any)=> fmt2(v)},
-    legend:{data:['CPM, ₽','CPO, ₽','Расходы'], bottom:20, itemGap:16, padding:[0,0,0,0], textStyle:{fontSize:11}},
+    tooltip:{trigger:'axis', formatter: tooltipRows},
+    legend:{data:['CPM, ₽','CPO, ₽','Расходы'], bottom:20, itemGap:16, padding:[0,0,0,0], textStyle:{fontSize:11, color: cssVar('--ink') || '#111315'}},
     grid:{left:50, right:50, top:40, bottom:60, containLabel:true},
-    xAxis:{type:'category', data:cats, axisLabel:{rotate:30, interval:0, margin:16, fontSize:11, color:'#333'}},
+    xAxis:{type:'category', data:cats, axisLabel:{rotate:30, interval:0, margin:16, fontSize:11, color:axis}},
     yAxis:[
-      {type:'value', name:'Показатель (₽)', min:0, axisLabel:{color:'#2196f3', fontSize:11, formatter:(v:any)=> fmt2(v)}, splitLine:{show:false}},
-      {type:'value', name:'Сумма (₽)', min:0, opposite:true, axisLabel:{color:'#f44336', fontSize:11, formatter:axMoneyFmt}},
+      {type:'value', name:'Показатель (₽)', min:0, axisLabel:{color:axis, fontSize:11, formatter:(v:any)=> fmt2(v)}, nameTextStyle:{color:axis}, splitLine:{show:false}},
+      {type:'value', name:'Сумма (₽)', min:0, opposite:true, max: axisMax(1.3), axisLabel:{color:axis, fontSize:11, formatter:axMoneyFmt}, nameTextStyle:{color:axis}},
     ],
     series:[
-      {name:'CPM, ₽', type:'line', smooth:true, data:d.map((r:any)=> +(Number(r.CPM)||0).toFixed(2)), itemStyle:{color:'#2196f3'}, yAxisIndex:0, z:10, symbol:'circle', symbolSize:6, label:lbl('#2196f3', showCpm.value), labelLayout:lblLayout},
-      {name:'CPO, ₽', type:'line', smooth:true, data:d.map((r:any)=> +(Number(r.CPO)||0).toFixed(2)), itemStyle:{color:'#c767dc'}, yAxisIndex:0, z:10, symbol:'circle', symbolSize:6, label:lbl('#c767dc', showCpm.value), labelLayout:lblLayout},
-      {name:'Расходы', type:'line', smooth:true, data:d.map((r:any)=> Math.round(Number(r.sum)||0)), itemStyle:{color:'#f44336'}, lineStyle:{width:3}, yAxisIndex:1, z:11, symbol:'circle', symbolSize:6, label:lbl('#f44336', showCpm.value), labelLayout:lblLayout},
+      {name:'CPM, ₽', type:'line', smooth:true, data:d.map((r:any)=> +(Number(r.CPM)||0).toFixed(2)), itemStyle:{color:P.cpm}, yAxisIndex:0, z:10, symbol:'circle', symbolSize:6, label:lbl(P.cpm, showCpm.value), labelLayout:lblLayout},
+      {name:'CPO, ₽', type:'line', smooth:true, data:d.map((r:any)=> +(Number(r.CPO)||0).toFixed(2)), itemStyle:{color:P.cpo}, yAxisIndex:0, z:10, symbol:'circle', symbolSize:6, label:lbl(P.cpo, showCpm.value), labelLayout:lblLayout},
+      {name:'Расходы', type:'line', smooth:true, data:d.map((r:any)=> Math.round(Number(r.sum)||0)), itemStyle:{color:P.sum}, lineStyle:{width:3}, yAxisIndex:1, z:11, symbol:'circle', symbolSize:6, label:lbl(P.sum, showCpm.value, true), labelLayout:lblLayout},
     ]
   }
 })
 const ctrOption = computed(()=>{
   const d=ctrData.value; if(!d.length) return {}
   const cats=d.map((r:any)=> r.odate)
+  const axis = cssVar('--ink-muted') || '#969CA1'
   return {
-    tooltip:{trigger:'axis', valueFormatter:(v:any)=> fmt2(v)},
-    legend:{data:['CTR, %','CR, %','Расходы'], bottom:20, itemGap:16, padding:[0,0,0,0], textStyle:{fontSize:11}},
+    tooltip:{trigger:'axis', formatter: tooltipRows},
+    legend:{data:['CTR, %','CR, %','Расходы'], bottom:20, itemGap:16, padding:[0,0,0,0], textStyle:{fontSize:11, color: cssVar('--ink') || '#111315'}},
     grid:{left:50, right:50, top:40, bottom:60, containLabel:true},
-    xAxis:{type:'category', data:cats, axisLabel:{rotate:30, interval:0, margin:16, fontSize:11, color:'#333'}},
+    xAxis:{type:'category', data:cats, axisLabel:{rotate:30, interval:0, margin:16, fontSize:11, color:axis}},
     yAxis:[
-      {type:'value', name:'Показатель (%)', min:0, axisLabel:{color:'#660ec8', fontSize:11, formatter:(v:any)=> fmt2(v)}, splitLine:{show:false}},
-      {type:'value', name:'Сумма (₽)', min:0, opposite:true, axisLabel:{color:'#f44336', fontSize:11, formatter:axMoneyFmt}},
+      {type:'value', name:'Показатель (%)', min:0, axisLabel:{color:axis, fontSize:11, formatter:(v:any)=> fmt2(v)}, nameTextStyle:{color:axis}, splitLine:{show:false}},
+      {type:'value', name:'Сумма (₽)', min:0, opposite:true, max: axisMax(1.3), axisLabel:{color:axis, fontSize:11, formatter:axMoneyFmt}, nameTextStyle:{color:axis}},
     ],
     series:[
-      {name:'CTR, %', type:'line', smooth:true, data:d.map((r:any)=> +(Number(r.CTR)||0).toFixed(2)), itemStyle:{color:'#9c27b0'}, yAxisIndex:0, z:10, symbol:'circle', symbolSize:6, label:lbl('#9c27b0', showCtr.value), labelLayout:lblLayout},
-      {name:'CR, %', type:'line', smooth:true, data:d.map((r:any)=> +(Number(r.CR)||0).toFixed(2)), itemStyle:{color:'#660ec8'}, yAxisIndex:0, z:10, symbol:'circle', symbolSize:6, label:lbl('#660ec8', showCtr.value), labelLayout:lblLayout},
-      {name:'Расходы', type:'line', smooth:true, data:d.map((r:any)=> Math.round(Number(r.sum)||0)), itemStyle:{color:'#f44336'}, lineStyle:{width:3}, yAxisIndex:1, z:11, symbol:'circle', symbolSize:6, label:lbl('#f44336', showCtr.value), labelLayout:lblLayout},
+      {name:'CTR, %', type:'line', smooth:true, data:d.map((r:any)=> +(Number(r.CTR)||0).toFixed(2)), itemStyle:{color:P.ctr}, yAxisIndex:0, z:10, symbol:'circle', symbolSize:6, label:lbl(P.ctr, showCtr.value), labelLayout:lblLayout},
+      {name:'CR, %', type:'line', smooth:true, data:d.map((r:any)=> +(Number(r.CR)||0).toFixed(2)), itemStyle:{color:P.cr}, yAxisIndex:0, z:10, symbol:'circle', symbolSize:6, label:lbl(P.cr, showCtr.value), labelLayout:lblLayout},
+      {name:'Расходы', type:'line', smooth:true, data:d.map((r:any)=> Math.round(Number(r.sum)||0)), itemStyle:{color:P.sum}, lineStyle:{width:3}, yAxisIndex:1, z:11, symbol:'circle', symbolSize:6, label:lbl(P.sum, showCtr.value, true), labelLayout:lblLayout},
     ]
   }
 })
 </script>
+<style scoped>
+/* сегментный переключатель и кнопка-иконка — как на /wb/detail */
+.ch-seg{display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid color-mix(in srgb, currentColor 45%, transparent)}
+.ch-seg__btn{border:0;background:transparent;color:inherit;font:inherit;font-size:11px;font-weight:700;padding:3px 9px;cursor:pointer;line-height:1.5}
+.ch-seg__btn.is-on{background:#ffffff;color:#111111}
+.ch-icon-btn{
+  border:1px solid color-mix(in srgb, currentColor 45%, transparent); background:transparent; color:inherit;
+  border-radius:6px; width:26px; height:24px; line-height:1; cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:center; padding:0;
+}
+.ch-icon-btn:hover{background:color-mix(in srgb, currentColor 18%, transparent)}
+</style>

@@ -39,7 +39,7 @@ const router = createRouter({
     { path: '/wb-get-sales-funnel/wbcard', name: 'sales-funnel-wb-card', component: () => import('../pages/SalesFunnelWbCard.vue'), alias: '/wb-get-sales-funnel/wbcard/', meta: { title: 'Воронка продаж: Карточка WB — SelBI' } },
     { path: '/news', name: 'news', component: () => import('../pages/NewsListPage.vue'), meta: { title: 'Новости WB — SelBI' } },
     { path: '/feed', name: 'feed', component: () => import('../pages/OrdersFeed.vue'), meta: { title: 'Лента заказов — SelBI' } },
-    { path: '/unclaimed-orders', name: 'unclaimed-orders', component: () => import('../pages/UnclaimedOrdersPage.vue'), alias: '/unclaimed-orders/', meta: { title: 'Невыкупленные товары (Unclaimed)' } },
+    { path: '/unclaimed-orders', name: 'unclaimed-orders', component: () => import('../pages/UnclaimedOrdersPage.vue'), alias: '/unclaimed-orders/', meta: { title: 'Возвраты' } },
     { path: '/wb-order/feed', redirect: feedRedirect },
     { path: '/wb-order/feed/', redirect: feedRedirect },
     { path: '/wb-order/feed-aggregated', name: 'feed-aggregated', component: () => import('../pages/OrdersFeedAggregated.vue'), meta: { title: 'Сводка по товарам (заказы) — SelBI' } },

@@ -295,11 +295,24 @@ async def unclaimed_orders(
     sort_dir: str = Query(default="DESC", alias="dir"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
+    brand: str | None = Query(default=None),
+    category: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     company_id: int | None = Depends(get_current_company),
 ):
     svc = UnclaimedOrdersService(db, company_id=company_id)
-    return await svc.search(date_from, date_to, nm_id, percent, min_orders, sort, sort_dir, page, page_size)
+    return await svc.search(date_from, date_to, nm_id, percent, min_orders, sort, sort_dir,
+                            page, page_size, brand, category)
+
+
+@app.get("/api/unclaimed-orders/filters")
+async def unclaimed_orders_filters(
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Бренды + предметы для селектов фильтра."""
+    svc = UnclaimedOrdersService(db, company_id=company_id)
+    return await svc.filters()
 
 
 @app.get("/api/orders/feed/options")

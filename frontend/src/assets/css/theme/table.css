@@ -1,0 +1,176 @@
+/* ============================================================
+   SelBI — таблицы
+   Один стиль: тень + рамка 1px --line-strong + радиус 8 + зебра.
+   7 зафиксированных опций (классы на .tbl-card):
+     --compact        плотные строки и колонки
+     .tbl__total--top итог сверху (строка в thead)
+     .tbl__total--plain итог без заливки
+     --nozebra        зебра off
+     --sticky         липкая шапка (нужен .tbl-wrap со скроллом)
+     --stickycol      липкая первая колонка
+     .tbl-wrap        горизонтальный скролл
+   ============================================================ */
+
+.tbl-card {
+  border-radius: var(--tbl-radius);
+  background: var(--tbl-bg);
+  border: 1px solid var(--tbl-bd);
+  box-shadow: var(--tbl-sh);
+  overflow: hidden;
+  transition: background .18s, border-color .18s, box-shadow .18s;
+}
+
+/* заголовок блока (цвет задаёт ось data-head) */
+.card__hd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  font-size: calc(13px * var(--fs));
+  font-weight: 700;
+  background-color: var(--hd-bg);
+  background-image: var(--hd-grad);
+  color: var(--hd-fg);
+  border-bottom: 1px solid var(--hd-bd);
+  transition: background .18s ease, color .18s ease;
+}
+.card__hd .spacer { margin-left: auto; }
+
+.hd-badge {
+  background: color-mix(in srgb, currentColor 18%, transparent);
+  color: inherit;
+  padding: 1px 8px;
+  border-radius: 99px;
+  font-size: calc(11px * var(--fs));
+  font-weight: 600;
+}
+
+.hd-btn {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: calc(11.5px * var(--fs));
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.hd-btn:hover { background: color-mix(in srgb, currentColor 20%, transparent); }
+.hd-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ---------- сама таблица ---------- */
+.tbl { width: 100%; border-collapse: collapse; font-size: calc(12.5px * var(--fs)); }
+
+.tbl thead th {
+  text-align: right;
+  font-weight: 700;
+  font-size: calc(11px * var(--fs));
+  color: var(--ink);
+  background: transparent;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line-strong);
+  /* заголовки переносятся по словам — широкие таблицы (14 колонок) вписываются
+     в контейнер без горизонтальной прокрутки (как в PHP-оригинале) */
+  white-space: normal;
+}
+.tbl thead th:first-child,
+.tbl td:first-child { text-align: left; }
+
+.tbl td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.tbl tbody tr:last-child td { border-bottom: none; }
+.tbl tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+.tbl tbody tr:hover td { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+
+/* выравнивание ячеек (правила ниже — после first-child, поэтому побеждают по порядку при равной специфичности) */
+.tbl td.t-left, .tbl th.t-left { text-align: left; font-variant-numeric: normal; }
+.tbl td.t-center, .tbl th.t-center { text-align: center; }
+.tbl td.t-right, .tbl th.t-right { text-align: right; }
+.tbl .t-neg { color: var(--bad); }
+.tbl .t-pos { color: var(--good); }
+
+/* Числа не переносятся — иначе «28 664,13 ₽» ломается на две строки
+   и колонка выглядит неопрятно (в оригинале числа были одной строкой). */
+.tbl td.num, .tbl th.num { white-space: nowrap; }
+
+/* ---------- строка итогов ---------- */
+.tbl tfoot td,
+.tbl .tbl__total td {
+  background: var(--brand-tint);
+  color: var(--brand-deep);
+  font-weight: 700;
+  border-top: 1px solid var(--brand);
+  border-bottom: none;
+}
+.tbl .tbl__total--top td { border-top: none; border-bottom: 1px solid var(--brand); }
+.tbl .tbl__total--plain td { background: var(--surface); color: var(--ink); border-top: 2px solid var(--line-strong); }
+.tbl .tbl__total--plain.tbl__total--top td { border-top: none; border-bottom: 2px solid var(--line-strong); }
+.tbl .tbl__total .t-neg { color: var(--bad); }
+.tbl .tbl__total .t-pos { color: var(--good); }
+
+/* ---------- товар в ячейке ---------- */
+.prod { display: flex; align-items: center; gap: 9px; }
+.prod__img {
+  width: 30px; height: 38px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  border: 1px solid var(--line);
+  flex: none;
+}
+.prod__name { font-size: calc(12.5px * var(--fs)); font-weight: 600; line-height: 1.3; }
+.prod__sku { font-size: calc(10.5px * var(--fs)); color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+
+/* ============================================================
+   ОПЦИИ
+   ============================================================ */
+.tbl-wrap { overflow-x: auto; }
+
+/* компакт: плотные и строки, и колонки */
+.tbl-card--compact .tbl td { padding: 3px 6px; font-size: calc(11px * var(--fs)); }
+.tbl-card--compact .tbl thead th { padding: 4px 6px; font-size: calc(10px * var(--fs)); }
+.tbl-card--compact .card__hd { padding: 6px 10px; font-size: calc(12px * var(--fs)); }
+.tbl-card--compact .prod { gap: 6px; }
+.tbl-card--compact .prod__img { width: 20px; height: 26px; }
+
+/* зебра off */
+.tbl-card--nozebra .tbl tbody tr:nth-child(even) td { background: transparent; }
+.tbl-card--nozebra .tbl tbody tr:hover td { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+
+/* липкая шапка: скроллится тело, шапка стоит */
+.tbl-card--sticky .tbl-wrap { max-height: 250px; overflow: auto; }
+.tbl-card--sticky .tbl thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+  box-shadow: inset 0 -1px 0 var(--line-strong);
+}
+
+/* липкая первая колонка (имеет смысл вместе с горизонтальным скроллом) */
+.tbl-card--stickycol .tbl th:first-child,
+.tbl-card--stickycol .tbl td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+  box-shadow: inset -1px 0 0 var(--line);
+}
+.tbl-card--stickycol .tbl tbody tr:nth-child(even) td:first-child {
+  background: color-mix(in srgb, var(--ink) 4%, var(--surface));
+}
+.tbl-card--stickycol.tbl-card--sticky .tbl thead th:first-child { z-index: 3; }
+
+/* ресайзер ширины колонки — в цвете темы */
+.tbl th .col-resizer:hover { background: var(--brand); opacity: .2; }
+
+/* глобальная плотность (ось data-table) — действует на все .tbl-card */
+[data-table="compact"] .tbl-card .tbl td { padding: 3px 6px; font-size: calc(11px * var(--fs)); }
+[data-table="compact"] .tbl-card .tbl thead th { padding: 4px 6px; font-size: calc(10px * var(--fs)); }

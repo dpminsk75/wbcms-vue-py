@@ -1,29 +1,38 @@
 <template>
-  <div class="wb-range-filter">
+  <div class="wb-range-filter" :class="{ 'wb-range-filter--bare': props.bare || props.compact }">
     <div class="wb-range-filter__presets">
       <button
         v-for="p in presets"
         :key="p.id"
         class="btn btn-sm"
-        :class="activePreset === p.id ? 'btn-primary' : 'btn-outline-secondary'"
+        :class="activePreset === p.id ? 'btn--brand' : 'btn--outline'"
         @click="applyPreset(p.id)"
       >
         {{ p.label }}
       </button>
     </div>
-    <div class="row g-2 align-items-end">
+    <div class="row g-2 align-items-end" :class="{ 'wb-range-filter__row--inline': !!$slots.inline }">
       <div class="col-auto">
-        <label class="form-label mb-1 wb-range-filter__label">Дата с</label>
+        <label class="wb-field__label">Дата с</label>
         <WbDateInput v-model="draftFrom" />
       </div>
       <div class="col-auto">
-        <label class="form-label mb-1 wb-range-filter__label">Дата по</label>
+        <label class="wb-field__label">Дата по</label>
         <WbDateInput v-model="draftTo" />
       </div>
-      <div class="col-auto wb-range-filter__btns">
-        <button class="btn btn-primary btn-sm" @click="applyManual">Применить</button>
-        <button class="btn btn-light btn-sm" @click="applyPreset(defaultPreset)">Сбросить</button>
+      <!-- Поля страницы — в одну горизонталь с датами (слот #inline).
+           Выравнивание по верху: подписи на одной высоте, поля одинаковой высоты. -->
+      <div v-if="$slots.inline" class="col-auto flex-grow-1 wb-range-filter__inline">
+        <slot name="inline" />
       </div>
+      <div v-if="!props.bare" class="col-auto wb-range-filter__btns">
+        <button class="btn btn--brand btn-sm" @click="applyManual">Применить</button>
+        <button class="btn btn--outline btn-sm" @click="applyPreset(defaultPreset)">Сбросить</button>
+      </div>
+    </div>
+    <!-- доп. поле страницы (например, выбор кампании) -->
+    <div class="wb-range-filter__extra">
+      <slot name="extra" />
     </div>
   </div>
 </template>
@@ -38,12 +47,25 @@ import WbDateInput from './WbDateInput.vue'
  *
  * Родитель держит применённый диапазон (props from/to), компонент —
  * черновик (draft). Пресет применяется сразу, ручные даты — по кнопке.
+ *
+ * Период всегда заканчивается сегодня.
  */
 const props = withDefaults(defineProps<{
-  from: string
-  to: string
   defaultPreset?: string
-}>(), { defaultPreset: '30' })
+  /** Компактный вид: без белой плашки с рамкой (для модалок). */
+  compact?: boolean
+  /** Без своей плашки — когда блок лежит внутри панели фильтров страницы. */
+  bare?: boolean
+}>(), { defaultPreset: '30', compact: false, bare: false })
+
+/**
+ * Диапазон дат — двусторонняя модель (v-model:from / v-model:to).
+ * Раньше было только props from/to + событие apply: в режиме bare (кнопок у компонента нет)
+ * введённые вручную даты до страницы не доходили, и кнопка отчёта «Применить»
+ * применяла старые даты. Теперь черновик отдаётся наружу сразу.
+ */
+const fromModel = defineModel<string>('from', { default: '' })
+const toModel = defineModel<string>('to', { default: '' })
 
 const emit = defineEmits<{ apply: [payload: { from: string, to: string }] }>()
 
@@ -56,8 +78,8 @@ const presets = [
   { id: 'ytd', label: 'С начала года' },
 ]
 
-const draftFrom = ref(props.from)
-const draftTo = ref(props.to)
+const draftFrom = ref(fromModel.value)
+const draftTo = ref(toModel.value)
 const activePreset = ref(props.defaultPreset)
 
 // локальное время (toISOString даёт UTC и сдвигает сутки)
@@ -97,21 +119,55 @@ function matchPreset(from: string, to: string): string {
   return ''
 }
 
-function onReset() {
-  applyPreset(props.defaultPreset)
-}
-
-// внешнее изменение применённого диапазона (например, из URL) — синхронизируем черновик
-watch(() => [props.from, props.to], ([f, t]) => {
+// внешнее изменение применённого диапазона (например, из URL или по «Сбросить») — синхронизируем черновик
+watch(() => [fromModel.value, toModel.value], ([f, t]) => {
   if (f && f !== draftFrom.value) draftFrom.value = f
   if (t && t !== draftTo.value) draftTo.value = t
   activePreset.value = matchPreset(f, t)
 })
-</script>
 
+// ручной ввод дат — наружу сразу (в bare режиме своей кнопки «Применить» у компонента нет)
+watch(draftFrom, (v) => { if (v !== fromModel.value) fromModel.value = v })
+watch(draftTo, (v) => { if (v !== toModel.value) toModel.value = v })
+</script>
 <style scoped>
-.wb-range-filter { padding: 12px 14px; margin-bottom: 12px; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; }
+.wb-range-filter {
+  padding: 14px;
+  margin-bottom: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+/* Без своей плашки: bare (в панели фильтров страницы) и compact (в модалках). */
+.wb-range-filter--bare {
+  padding: 0;
+  margin-bottom: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
 .wb-range-filter__presets { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
-.wb-range-filter__label { font-size: 12px; font-weight: 600; }
 .wb-range-filter__btns { display: flex; gap: 8px; }
+/* Поля страницы в строке с датами: выравнивание по верху, иначе поле с подписью
+   «Выбрано: …» (ниже контрола) поднимает остальные поля ряда. */
+.wb-range-filter__row--inline { align-items: flex-start; }
+.wb-range-filter__inline { min-width: 0; }
+.wb-range-filter__extra:not(:empty) { margin-top: 12px; display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+
+/* Поля дат — на токенах темы (внутри компонента Bootstrap form-control). */
+.wb-range-filter :deep(.form-control) {
+  height: 38px;
+  font-size: calc(12.5px * var(--fs));
+  color: var(--ink);
+  background: var(--surface);
+  border-color: var(--line-strong);
+}
+.wb-range-filter :deep(.form-control:focus) {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-tint);
+}
+.wb-range-filter :deep(.wb-date-input__cal) {
+  border-color: var(--line-strong);
+  color: var(--ink-soft);
+}
 </style>

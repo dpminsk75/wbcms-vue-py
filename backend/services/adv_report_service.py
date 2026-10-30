@@ -51,7 +51,7 @@ class AdvReportService:
 
             # stats per date+nm_id (для таблицы Общая статистика по дням)
             stats_sql = text(f"""
-                SELECT c.campaign_id, i.nm_id, s.date, w.title, w.vendorCode,
+                SELECT c.campaign_id, i.nm_id, s.date, w.title, w.vendorCode, MAX(w.photos) AS photos,
                        SUM(n.views) as views, SUM(n.clicks) as clicks, SUM(n.atbs) as atbs,
                        SUM(n.orders) as orders, SUM(n.shks) as shks, SUM(n.sum) as sum,
                        SUM(n.sum_price) as sum_price, SUM(n.canceled) as canceled
@@ -68,7 +68,7 @@ class AdvReportService:
 
             # ShortStats per nm_id (Сводные показатели)
             short_sql = text(f"""
-                SELECT c.campaign_id, i.nm_id, w.title, w.vendorCode,
+                SELECT c.campaign_id, i.nm_id, w.title, w.vendorCode, MAX(w.photos) AS photos,
                        SUM(n.views) as views, SUM(n.clicks) as clicks, SUM(n.atbs) as atbs,
                        SUM(n.orders) as orders, SUM(n.shks) as shks, SUM(n.sum) as sum,
                        SUM(n.sum_price) as sum_price, SUM(n.canceled) as canceled
@@ -85,7 +85,7 @@ class AdvReportService:
 
             # AnotherGoods — товары в заказах но не в кампании, только с orders>0 и i.nm_id IS NULL left join
             another_sql = text(f"""
-                SELECT c.campaign_id, n.nm_id, w.title, w.vendorCode,
+                SELECT c.campaign_id, n.nm_id, w.title, w.vendorCode, MAX(w.photos) AS photos,
                        SUM(n.views) as views, SUM(n.clicks) as clicks, SUM(n.atbs) as atbs,
                        SUM(n.orders) as orders, SUM(n.shks) as shks, SUM(n.sum) as sum,
                        SUM(n.sum_price) as sum_price, SUM(n.canceled) as canceled

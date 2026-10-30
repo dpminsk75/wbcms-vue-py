@@ -70,6 +70,10 @@
         </div>
       </template>
     </div>
+    <!-- поля страницы — своей строкой над кнопками (слот #fields) -->
+    <div v-if="$slots.fields" class="wb-universal-filter__fields">
+      <slot name="fields" />
+    </div>
     <div class="wb-universal-filter__btns">
       <button class="btn btn--brand wb-universal-filter__apply" @click="emit('apply')">Применить</button>
       <button class="btn btn--outline wb-universal-filter__apply" @click="onReset">Сбросить</button>
@@ -301,6 +305,15 @@ onBeforeUnmount(() => { if (searchTimer) clearTimeout(searchTimer); reqSeq++ })
 .wb-universal-filter__label { font-size: calc(12px * var(--fs)); font-weight: 600; color: var(--ink-soft); }
 .wb-universal-filter__btns { margin-top: 12px; display: flex; gap: 8px; align-items: flex-end; }
 .wb-universal-filter__apply { width: 120px; }
+
+/* Поля страницы (слот #fields) — отдельная строка над кнопками, сетка с равными колонками */
+.wb-universal-filter__fields {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 190px));
+  gap: 10px;
+  align-items: start;
+}
 
 /* Поля фильтра — на токенах темы */
 .wb-universal-filter :deep(.form-control) {

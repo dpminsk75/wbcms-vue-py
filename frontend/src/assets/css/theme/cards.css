@@ -1,0 +1,75 @@
+/* ============================================================
+   SelBI — карточки
+   KPI-плитки .tile (12 фонов) и нейтральная панель .wb-panel.
+   ВАЖНО: класс .card в приложении занят Bootstrap, поэтому
+   аналог панели из мокапа здесь называется .wb-panel.
+   ============================================================ */
+
+.tile {
+  padding: 13px 15px;
+  border-radius: var(--radius-lg);
+  background: var(--tile-bg);
+  color: var(--tile-fg);
+  border: 1px solid var(--tile-bd);
+  box-shadow: var(--tile-sh);
+  transition: background .18s, border-color .18s, box-shadow .18s, color .18s;
+}
+.tile__label { font-size: calc(11.5px * var(--fs)); opacity: .72; margin-bottom: 6px; }
+.tile__value { font-size: calc(23px * var(--fs)); font-weight: 700; letter-spacing: -.025em; line-height: 1.1; }
+.tile__foot { margin-top: 7px; font-size: calc(11.5px * var(--fs)); opacity: .7; display: flex; align-items: center; gap: 6px; }
+.tile__delta {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 1px 6px; border-radius: 99px;
+  font-size: calc(11px * var(--fs)); font-weight: 600;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  color: inherit;
+}
+.tile__delta--down { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
+
+/* разбитая метрика: два значения рядом (например FBS / FBO) */
+.tile__split { display: flex; gap: 14px; align-items: baseline; margin-top: 2px; flex-wrap: wrap; }
+.tile__split-item {
+  display: inline-flex; align-items: baseline; gap: 5px;
+  font-size: calc(19px * var(--fs)); font-weight: 700; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.tile--1  { --tile-bg: var(--surface);    --tile-fg: var(--ink);        --tile-bd: var(--line);        --tile-sh: var(--shadow-1); }
+.tile--2  { --tile-bg: var(--surface);    --tile-fg: var(--ink);        --tile-bd: var(--line-strong); --tile-sh: none; }
+.tile--3  { --tile-bg: var(--brand-tint); --tile-fg: var(--brand-deep); --tile-bd: var(--brand);       --tile-sh: none; }
+.tile--4  { --tile-bg: var(--brand);      --tile-fg: #fff;              --tile-bd: transparent;        --tile-sh: var(--shadow-1); }
+.tile--5  { --tile-bg: var(--grad);       --tile-fg: #fff;              --tile-bd: transparent;        --tile-sh: var(--shadow-1); }
+.tile--6  { --tile-bg: var(--ink);        --tile-fg: #fff;              --tile-bd: transparent;        --tile-sh: none; }
+.tile--7  { --tile-bg: var(--good);       --tile-fg: #fff;              --tile-bd: transparent;        --tile-sh: var(--shadow-1); }
+.tile--8  { --tile-bg: var(--good-tint);  --tile-fg: var(--good-deep);  --tile-bd: var(--good);        --tile-sh: none; }
+.tile--9  { --tile-bg: var(--bad);        --tile-fg: #fff;              --tile-bd: transparent;        --tile-sh: var(--shadow-1); }
+.tile--10 { --tile-bg: var(--bad-tint);   --tile-fg: var(--bad-deep);   --tile-bd: var(--bad);         --tile-sh: none; }
+.tile--11 { --tile-bg: var(--info);       --tile-fg: #fff;              --tile-bd: transparent;        --tile-sh: var(--shadow-1); }
+.tile--12 { --tile-bg: var(--info-tint);  --tile-fg: var(--info-deep);  --tile-bd: var(--info);        --tile-sh: none; }
+
+/* нейтральная панель (аналог .card из мокапа) */
+.wb-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+.wb-panel__bd { padding: 14px; }
+.wb-panel__bd--flush { padding: 0; }
+
+/* сетки */
+.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.grid-6 { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+.grid-auto { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+@media (max-width: 1200px) { .grid-6 { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 900px) {
+  .grid-3, .grid-auto { grid-template-columns: repeat(2, 1fr); }
+  .grid-4 { grid-template-columns: repeat(2, 1fr); }
+  .grid-6 { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 880px) {
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+}

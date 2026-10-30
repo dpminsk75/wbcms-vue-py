@@ -156,6 +156,10 @@ class PenaltyService:
         sql = f"""SELECT t.*, COUNT(*) OVER () AS total_rows FROM (
                      SELECT d.nm_id AS nm_id,
                             MAX(c.title) AS card_name,
+                            MAX(c.brand) AS brand,
+                            MAX(c.subjectName) AS subject,
+                            MAX(c.vendorCode) AS vendorCode,
+                            MAX(c.photos) AS photos,
                             COUNT(DISTINCT d.srid) AS items_count,
                             ROUND(SUM(CASE WHEN d.bonus_type_name LIKE 'К клиенту при отмене%'
                                            THEN d.delivery_rub ELSE 0 END), 2) AS sum_to_client_cancel,

@@ -1,0 +1,221 @@
+/* ============================================================
+   SelBI — токены темы
+   Подключается в main.ts последним, поэтому перекрывает legacy
+   (site.css, menu.css, wb-ui.css). Сами legacy-файлы не трогаем.
+   Оси: data-base, data-accent, data-preset, data-font, data-size,
+        data-head, data-tile, data-gradbar, data-gradhead
+   ============================================================ */
+
+:root {
+  /* радиусы и тени */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-1: 0 1px 2px rgba(15, 23, 42, .06), 0 1px 3px rgba(15, 23, 42, .04);
+
+  /* статусы */
+  --good: #0F8A5F; --good-tint: #E7F5EF; --good-deep: #0B5F49;
+  --bad: #C62828;  --bad-tint: #FBECEC;  --bad-deep: #8E1E1E;
+  --warn: #C2830B; --warn-tint: #FDF3E0; --warn-deep: #7A4A08;
+  --info: #2563EB; --info-tint: #E9F0FE; --info-deep: #1A4C9E;
+
+  /* масштаб шрифта (ось data-size) */
+  --fs: 1;
+
+  /* база по умолчанию — neutral: значения продублированы, чтобы
+     страница выглядела правильно даже без JS (до applyTheme) */
+  --bg: #F3F4F5;
+  --surface: #FFFFFF;
+  --surface-2: #F8F9FA;
+  --surface-3: #EDEFF1;
+  --ink: #111315;
+  --ink-soft: #4C5257;
+  --ink-muted: #969CA1;
+  --line: #E1E3E6;
+  --line-strong: #CBD0D4;
+
+  /* акцент по умолчанию — graphite */
+  --brand: #283445;
+  --brand-hover: #1B2532;
+  --brand-active: #111823;
+  --brand-tint: #EDF0F4;
+  --brand-deep: #1B2532;
+  --brand-ink: #FFFFFF;
+  --brand-2: #B45309;
+  --grad: linear-gradient(100deg, #1B2532 0%, #46566E 100%);
+
+  /* шапки таблиц: значения по умолчанию (ось data-head) */
+  --hd-bg: var(--brand);
+  --hd-grad: var(--grad);
+  --hd-fg: #FFFFFF;
+  --hd-bd: transparent;
+
+  /* шапка приложения */
+  --bar-bg: var(--brand);
+  --bar-grad: var(--grad);
+
+  /* шрифт */
+  --font-ui: 'Source Sans 3', system-ui, sans-serif;
+
+  /* таблицы и плитки */
+  --tbl-bg: var(--surface);
+  --tbl-bd: var(--line-strong);
+  --tbl-radius: 10px;
+  --tbl-sh: var(--shadow-1);
+
+  --tile-bg: var(--surface);
+  --tile-fg: var(--ink);
+  --tile-bd: var(--line);
+  --tile-sh: var(--shadow-1);
+}
+
+/* ---------- ось: шрифт ---------- */
+[data-font="wix"]     { --font-ui: 'Wix Madefor Text', system-ui, sans-serif; }
+[data-font="manrope"] { --font-ui: 'Manrope', system-ui, sans-serif; }
+[data-font="onest"]   { --font-ui: 'Onest', system-ui, sans-serif; }
+[data-font="selbi"]   { --font-ui: 'Source Sans 3', system-ui, sans-serif; }
+[data-font="golos"]   { --font-ui: 'Golos Text', system-ui, sans-serif; }
+
+/* ---------- ось: размер шрифта ---------- */
+[data-size="s"] { --fs: .9; }
+[data-size="m"] { --fs: 1; }
+[data-size="l"] { --fs: 1.12; }
+[data-size="xl"] { --fs: 1.25; }
+
+/* ---------- ось: база ---------- */
+[data-base="cool"] {
+  --bg: #F4F7F9;
+  --surface: #FFFFFF;
+  --surface-2: #F8FAFC;
+  --surface-3: #EAF1F5;
+  --ink: #0F1A22;
+  --ink-soft: #4A5C68;
+  --ink-muted: #93A5AF;
+  --line: #DEE7EC;
+  --line-strong: #C4D3DC;
+}
+[data-base="neutral"] {
+  --bg: #F3F4F5;
+  --surface: #FFFFFF;
+  --surface-2: #F8F9FA;
+  --surface-3: #EDEFF1;
+  --ink: #111315;
+  --ink-soft: #4C5257;
+  --ink-muted: #969CA1;
+  --line: #E1E3E6;
+  --line-strong: #CBD0D4;
+}
+[data-base="warm"] {
+  --bg: #FAF7F4;
+  --surface: #FFFFFF;
+  --surface-2: #FCF9F6;
+  --surface-3: #F2EAE3;
+  --ink: #1F1917;
+  --ink-soft: #63534C;
+  --ink-muted: #A8978F;
+  --line: #EADFD8;
+  --line-strong: #D6C6BC;
+}
+
+/* ---------- ось: акцент ---------- */
+[data-accent="graphite"] {
+  --brand: #283445;
+  --brand-hover: #1B2532;
+  --brand-active: #111823;
+  --brand-tint: #EDF0F4;
+  --brand-deep: #1B2532;
+  --brand-ink: #FFFFFF;
+  --brand-2: #B45309;
+  --grad: linear-gradient(100deg, #1B2532 0%, #46566E 100%);
+}
+[data-accent="steel"] {
+  --brand: #0E7490;
+  --brand-hover: #0B6079;
+  --brand-active: #0A4E63;
+  --brand-tint: #E6F2F7;
+  --brand-deep: #0A4E63;
+  --brand-ink: #FFFFFF;
+  --brand-2: #C2830B;
+  --grad: linear-gradient(100deg, #0E7490 0%, #17A2C2 100%);
+}
+[data-accent="terracotta"] {
+  --brand: #A94E3E;
+  --brand-hover: #8F4033;
+  --brand-active: #7A362B;
+  --brand-tint: #F9EBE7;
+  --brand-deep: #7A362B;
+  --brand-ink: #FFFFFF;
+  --brand-2: #4A7C59;
+  --grad: linear-gradient(100deg, #A94E3E 0%, #C9715F 100%);
+}
+[data-accent="petrol"] {
+  --brand: #1E4E5A;
+  --brand-hover: #173E48;
+  --brand-active: #12323A;
+  --brand-tint: #E5EFF1;
+  --brand-deep: #12323A;
+  --brand-ink: #FFFFFF;
+  --brand-2: #C2830B;
+  --grad: linear-gradient(100deg, #1E4E5A 0%, #34748A 100%);
+}
+[data-accent="amber"] {
+  --brand: #B45309;
+  --brand-hover: #96450A;
+  --brand-active: #7C3908;
+  --brand-tint: #FDF0DF;
+  --brand-deep: #7C3908;
+  --brand-ink: #FFFFFF;
+  --brand-2: #1E4E5A;
+  --grad: linear-gradient(100deg, #B45309 0%, #DA8A1E 100%);
+}
+
+/* ---------- пресет «как было» (WB, фиолетовый) ----------
+   Идёт последним: при data-preset="wb" перекрывает базу и акцент */
+[data-preset="wb"] {
+  --bg: #F7F5FA;
+  --surface: #FFFFFF;
+  --surface-2: #FAF8FC;
+  --surface-3: #F4F0F9;
+  --ink: #1D1B2A;
+  --ink-soft: #6E6A80;
+  --ink-muted: #9C97AC;
+  --line: #E6E4EE;
+  --line-strong: #D5D0E2;
+  --brand: #8A2BE0;
+  --brand-hover: #7A1FD0;
+  --brand-active: #5A1C9C;
+  --brand-tint: #F2E9FB;
+  --brand-deep: #5A1C9C;
+  --brand-ink: #FFFFFF;
+  --brand-2: #ED3CCA;
+  --good: #1E9E7C; --good-tint: #E4F5EF; --good-deep: #0B5F49;
+  --bad: #E0525C;  --bad-tint: #FBEBEC;  --bad-deep: #8E1E1E;
+  --warn: #C77C1E; --warn-tint: #FBF0E1; --warn-deep: #7A4A08;
+  --info: #1F6FD0; --info-tint: #E7F0FB; --info-deep: #1A4C9E;
+  --grad: linear-gradient(97.26deg, #ED3CCA .49%, #DF34D2 14.88%, #D02BD9 29.27%, #BF22E1 43.14%, #AE1AE8 57.02%, #9A10F0 70.89%, #8306F7 84.76%, #7C1AF8 99.15%);
+}
+
+/* ---------- ось: цвет шапок таблиц ---------- */
+[data-head="accent"] { --hd-bg: var(--brand);      --hd-grad: var(--grad); --hd-fg: #fff;              --hd-bd: transparent; }
+[data-head="dark"]   { --hd-bg: var(--brand-deep); --hd-grad: linear-gradient(100deg, var(--brand-deep) 0%, var(--brand) 100%); --hd-fg: #fff; --hd-bd: transparent; }
+[data-head="light"]  { --hd-bg: var(--brand-tint); --hd-grad: linear-gradient(100deg, var(--brand-tint) 0%, color-mix(in srgb, var(--brand) 22%, #fff) 100%); --hd-fg: var(--brand-deep); --hd-bd: var(--brand); }
+[data-head="pair"]   { --hd-bg: var(--brand-2);    --hd-grad: linear-gradient(100deg, var(--brand-2) 0%, color-mix(in srgb, var(--brand-2) 65%, #fff) 100%); --hd-fg: #fff; --hd-bd: transparent; }
+
+/* ---------- ось: фон KPI-карточки по умолчанию ---------- */
+[data-tile="k1"]  { --tile-bg: var(--surface);    --tile-fg: var(--ink);       --tile-bd: var(--line);        --tile-sh: var(--shadow-1); }
+[data-tile="k2"]  { --tile-bg: var(--surface);    --tile-fg: var(--ink);       --tile-bd: var(--line-strong); --tile-sh: none; }
+[data-tile="k3"]  { --tile-bg: var(--brand-tint); --tile-fg: var(--brand-deep); --tile-bd: var(--brand);      --tile-sh: none; }
+[data-tile="k4"]  { --tile-bg: var(--brand);      --tile-fg: #fff;             --tile-bd: transparent;        --tile-sh: var(--shadow-1); }
+[data-tile="k5"]  { --tile-bg: var(--grad);       --tile-fg: #fff;             --tile-bd: transparent;        --tile-sh: var(--shadow-1); }
+[data-tile="k6"]  { --tile-bg: var(--ink);        --tile-fg: #fff;             --tile-bd: transparent;        --tile-sh: none; }
+[data-tile="k7"]  { --tile-bg: var(--good);       --tile-fg: #fff;             --tile-bd: transparent;        --tile-sh: var(--shadow-1); }
+[data-tile="k8"]  { --tile-bg: var(--good-tint);  --tile-fg: var(--good-deep); --tile-bd: var(--good);        --tile-sh: none; }
+[data-tile="k9"]  { --tile-bg: var(--bad);        --tile-fg: #fff;             --tile-bd: transparent;        --tile-sh: var(--shadow-1); }
+[data-tile="k10"] { --tile-bg: var(--bad-tint);   --tile-fg: var(--bad-deep);  --tile-bd: var(--bad);         --tile-sh: none; }
+[data-tile="k11"] { --tile-bg: var(--info);       --tile-fg: #fff;             --tile-bd: transparent;        --tile-sh: var(--shadow-1); }
+[data-tile="k12"] { --tile-bg: var(--info-tint);  --tile-fg: var(--info-deep); --tile-bd: var(--info);        --tile-sh: none; }
+
+/* ---------- градиенты: две независимые настройки ----------
+   Выключение не убирает цвет, а заменяет градиент сплошной заливкой */
+[data-gradbar="off"]  { --bar-grad: none; }
+[data-gradhead="off"] { --hd-grad: none; }
