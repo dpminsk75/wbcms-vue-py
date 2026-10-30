@@ -7,7 +7,9 @@ export interface MarginTotals {
   amount: number
   commission: number
   f_acquiring_fee: number
+  f_acceptance: number
   f_delivery: number
+  f_storage_fee: number
   f_penalty: number
   f_otziv: number
   f_adv: number
@@ -22,9 +24,9 @@ export interface MarginTotals {
 
 export function marginTotals(rows: any[]): MarginTotals {
   const keys: (keyof MarginTotals)[] = [
-    'qnt', 'amount', 'commission', 'f_acquiring_fee', 'f_delivery', 'f_penalty',
-    'f_otziv', 'f_adv', 'f_cashback', 'net_profit', 'total_nds', 'total_cost',
-    'profit_before_tax', 'tax_amount', 'clean_margin',
+    'qnt', 'amount', 'commission', 'f_acquiring_fee', 'f_acceptance', 'f_delivery',
+    'f_storage_fee', 'f_penalty', 'f_otziv', 'f_adv', 'f_cashback', 'net_profit',
+    'total_nds', 'total_cost', 'profit_before_tax', 'tax_amount', 'clean_margin',
   ]
   const out = {} as MarginTotals
   for (const k of keys) out[k] = sumCol(rows, k)
@@ -46,7 +48,9 @@ export async function exportMarginExcel(rows: any[], fileName: string, sheet: st
     'Выручка': r.amount,
     'Ком. WB': r.commission,
     'Экв.': r.f_acquiring_fee,
+    'Приёмка': r.f_acceptance,
     'Лог-ка': r.f_delivery,
+    'Хранение': r.f_storage_fee,
     'Штрафы': r.f_penalty,
     'Отзывы': r.f_otziv,
     'Реклама': r.f_adv,
@@ -55,7 +59,7 @@ export async function exportMarginExcel(rows: any[], fileName: string, sheet: st
     'НДС': r.total_nds,
     'Себ-ть': r.total_cost,
     'Прибыль': r.profit_before_tax,
-    'Налог (7%)': r.tax_amount,
+    'Налог 7%': r.tax_amount,
     'Маржа': r.clean_margin,
     'Цена/шт': r.amount_per_item,
     'Итог/шт': r.profit_per_item,
@@ -65,10 +69,11 @@ export async function exportMarginExcel(rows: any[], fileName: string, sheet: st
   data.push({
     '#': '', 'Арт WB': '', 'Артикул': '', 'Наименование': 'ИТОГО', 'Бренд': '',
     'Кол-во': t.qnt, 'Выручка': t.amount, 'Ком. WB': t.commission, 'Экв.': t.f_acquiring_fee,
-    'Лог-ка': t.f_delivery, 'Штрафы': t.f_penalty, 'Отзывы': t.f_otziv, 'Реклама': t.f_adv,
-    'Кэшбек': t.f_cashback, 'Итого': t.net_profit, 'НДС': t.total_nds, 'Себ-ть': t.total_cost,
-    'Прибыль': t.profit_before_tax, 'Налог (7%)': t.tax_amount, 'Маржа': t.clean_margin,
-    'Цена/шт': null, 'Итог/шт': null, 'Маржа/шт': null,
+    'Приёмка': t.f_acceptance, 'Лог-ка': t.f_delivery, 'Хранение': t.f_storage_fee,
+    'Штрафы': t.f_penalty, 'Отзывы': t.f_otziv, 'Реклама': t.f_adv,
+    'Кэшбек': t.f_cashback, 'Итого': t.net_profit, 'НДС': t.total_nds,
+    'Себ-ть': t.total_cost, 'Прибыль': t.profit_before_tax, 'Налог 7%': t.tax_amount,
+    'Маржа': t.clean_margin, 'Цена/шт': null, 'Итог/шт': null, 'Маржа/шт': null,
     ...(showStock ? { 'Остаток': null } : {}),
   } as any)
   const ws = XLSX.utils.json_to_sheet(data)

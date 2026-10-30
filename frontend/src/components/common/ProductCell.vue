@@ -95,12 +95,12 @@ watch(() => props.photo, () => { broken.value = false })
   /* перенос по словам + обрезка с многоточием (как .product-name / .cart-item-title
      в оригинале): колонка не раздувает таблицу, длинное название не ломает строку */
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
-  overflow: hidden; overflow-wrap: anywhere;
+  overflow: hidden;
 }
 .prod-cell__sub {
   font-size: calc(11px * var(--fs)); color: var(--ink-muted);
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1;
-  overflow: hidden; overflow-wrap: anywhere;
+  overflow: hidden;
 }
 .prod-cell__link {
   font-size: calc(11px * var(--fs)); font-weight: 600;

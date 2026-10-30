@@ -1,0 +1,82 @@
+/* ============================================================
+   margin-table.css — общие стили таблиц маржи
+   Компоненты: components/profit/MarginTable.vue (карточки товаров),
+                components/profit/ProductMarginTable.vue (линейки).
+   Правила общие для обеих таблиц — вынесены из scoped-стилей
+   компонентов, чтобы не дублировать их в двух файлах (AGENTS.md:29).
+
+   ИМПОРТ: из <script setup> компонента (НЕ из main.ts до темы).
+   Тема подключается в main.ts последней, а .margin-table.tbl td равно
+   по специфичности .tbl-card--compact .tbl td — при равенстве побеждает
+   ПОРЯДОК подключения. Из компонента файл идёт в чанк страницы, то есть
+   ПОСЛЕ темы ✓. Селекторы ниже взяты с запасом по специфичности
+   (`.margin-table.tbl tr td.num` = 3 класса + 2 элемента), поэтому
+   правило не зависит от порядка и не ломается от глобальной плотности
+   `[data-table="compact"]` темы.
+
+   ШИРИНА ТАБЛИЦЫ. При table-layout:auto used width = max(100% родителя,
+   сумма МИНИМАЛЬНЫХ ширин колонок). Пока сумма минимумов больше родителя —
+   не ужимается ни одна колонка, последняя уходит за карточку (было
+   1298px против 1290px доступных). Минимум числовой колонки = самое
+   длинное число (не переносится, .num { white-space: nowrap }) + отступы,
+   поэтому отступы числовых ячеек 2px, а числовых заголовков 3px:
+   −4px на ячейку и −2px на заголовок по каждой из 20 числовых колонок.
+   Первая и вторая ячейки (номер, товар) по ширине не трогаем.
+   ============================================================ */
+
+/* --- отступы: все ячейки 3px, числовые 2px (иначе пол колонки больше) --- */
+.margin-table.tbl tr td { padding-left: 3px; padding-right: 3px; }
+.margin-table.tbl tr td.num { padding-left: 2px; padding-right: 2px; }
+.margin-table.tbl thead tr th { padding-left: 4px; padding-right: 4px; }
+.margin-table.tbl thead tr th.num { padding-left: 3px; padding-right: 3px; }
+
+/* --- Первая и вторая ячейки (номер, товар/линейка) — 3px независимо от
+   глобальной плотности темы `[data-table="compact"]` (она перебила бы
+   базовое правило по числу классов). --- */
+.margin-table.tbl tr td.margin-table__cell-product { padding-left: 3px; padding-right: 3px; }
+
+/* --- Правая крайняя колонка — 5px справа: значения не липнут к краю.
+   По последней ячейке строки, а не по классу колонки: с фильтром
+   «Остаток» последней становится колонка остатка. --- */
+.margin-table.tbl > thead > tr > th:last-child { padding-right: 5px; }
+.margin-table.tbl > tbody > tr > td:last-child { padding-right: 5px; }
+
+/* --- колонка номера — фиксированная ширина --- */
+.margin-table__th--num { width: 25px; min-width: 25px; }
+
+/* --- колонка товара/линейки — потолок ширины. max-width у td в auto-layout
+   совещательный: контент может оказаться шире (в ProductMarginTable
+   ширину колонки держит ещё и .margin-table__th--product). --- */
+.margin-table__cell-product { max-width: 240px; }
+
+/* --- Первая колонка: номер — по центру ячейки (по вертикали и по
+   горизонтали), глаз «структура затрат» / шеврон — absolute от низа.
+   Номер центрируем абсолютно (top:50% + translateY), иначе он
+   центрируется по контент-боксу и уезжает вверх на половину нижнего
+   паддинга под глазом. Селектор составной с .tbl: тема задаёт
+   .tbl td { text-align: right }, обычный .margin-table__pos её не
+   перебивал (номер уезжал вбок). --- */
+.margin-table.tbl td.margin-table__pos {
+  position: relative; vertical-align: middle; text-align: center; padding: 3px;
+}
+.margin-table__num {
+  position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+  line-height: 1.1;
+}
+.margin-table__eye {
+  position: absolute; left: 0; right: 0; bottom: 2px;
+  text-align: center; border: 0; background: transparent; color: var(--ink-muted);
+  padding: 0; font-size: 12px; line-height: 1; cursor: pointer;
+}
+.margin-table__eye:hover { color: var(--brand); }
+
+/* --- Тон колонок: итоговые ячейки выделены фоном темы (не легаси-жёлтым) --- */
+.margin-table__net-cell { background: color-mix(in srgb, var(--info) 8%, transparent); }
+.margin-table__profit-cell { background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.margin-table__margin-cell { background: color-mix(in srgb, var(--good) 10%, transparent); }
+.margin-table__per-item { font-style: italic; background: var(--surface-2); }
+
+/* --- Фото компактной карточки не липнет к верху строки — отступ 7px.
+   Правило локальное для таблиц маржи: общий ProductCell не трогаем
+   (compact-вариант карточки используется только в MarginTable). --- */
+.margin-table .prod-cell--compact .prod-cell__img { margin-top: 7px; }
