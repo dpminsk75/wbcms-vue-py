@@ -8,6 +8,7 @@
     "roles": ["viewOrders", "viewAdv", "viewFinance", "viewFbs"],
     "items": [
       {"label": "ТОП продаж", "url": "/wb-sales-analysis", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
+      {"label": "Сравнение по годам", "url": "/wb-reports/year-compare", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
       {"label": "Карточка WB", "url": "/wb/detail/", "visibleIn": ["top", "side"]},
       {"label": "Заказы", "url": "/wb-order/feed-aggregated", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
       {"label": "Тепловая карта", "url": "/wb-order/heatmap", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
@@ -22,9 +23,7 @@
       {"label": "Маржа", "url": "/wb-profit", "visibleIn": ["top", "side"], "roles": ["viewFinance"]},
       {"label": "Маржа по линейкам", "url": "/wb-profit/products", "visibleIn": ["top", "side"], "roles": ["viewFinance"]},
       {"divider": true, "visibleIn": ["top", "side"]},
-      {"label": "Товары по складам", "url": "/wb-stock/top-warehouse-report", "visibleIn": ["top", "side"], "roles": ["viewFbs"]},
-      {"label": "Критичные остатки", "url": "/wb-stock/warehouse-analytics", "visibleIn": ["top", "side"], "roles": ["viewFbs"]},
-      {"label": "Оборачиваемость", "url": "/wb-stock/analytics", "visibleIn": ["top", "side"], "roles": ["viewFbs"]},
+      {"label": "Анализ остатков", "url": "/wb-stock", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
       {"label": "Детализация", "url": "/wb-detail-by-period/weekly-report-nmid", "visibleIn": ["top", "side"], "roles": ["viewFinance"]},
       {"label": "Новости WB", "url": "/news", "visibleIn": ["top", "side"], "roles": ["admin", "global_admin"]}
     ]
@@ -41,6 +40,7 @@
       {"label": "Фраза -> карточки", "url": "/wb-search/phrase", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
       {"label": "Анализ фраз", "url": "/wb-search/trend", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
       {"label": "Частотность запросов", "url": "/wb-search/analytics", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
+      {"label": "Каннибализация запросов", "url": "/wb-search/cannibalization", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "SEO-мониторинг", "url": "/seo-watch", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
       {"label": "SEO рекомендации", "url": "/seo/index", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},

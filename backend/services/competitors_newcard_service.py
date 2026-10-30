@@ -3250,7 +3250,7 @@ class CompetitorsNewcardService:
                       hit_cnt=new.hit_cnt, variants_cnt=new.variants_cnt,
                       orders=new.orders, freq=new.freq, cards_cnt=new.cards_cnt,
                       in_db=new.in_db,
-                      model=IF(:m IS NULL, model, new.model)
+                      model=IF(:m IS NULL, wb_competitor_phrase.model, new.model)
                 """), {"c": company_id, "n": nm_id, "p": canon, "h": len(comps_n),
                        "v": len(grp), "o": int(s.get("orders") or 0),
                        "f": int(s.get("freq") or 0), "cc": int(s.get("cards") or 0),

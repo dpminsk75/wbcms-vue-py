@@ -4,6 +4,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 import calendar
 
+from backend.services.like_mask import escape_like
+
 class DashboardService:
     def __init__(self, db: AsyncSession, company_id: int | None = None):
         self.db = db
@@ -314,7 +316,7 @@ class DashboardService:
             # Один ввод ищет по названию, артикулу продавца и nmID (задача 2026-10-05).
             title_clause = (" AND (title LIKE :title OR vendorCode LIKE :title"
                             " OR CAST(nmID AS CHAR) LIKE :title)")
-            params["title"] = f"%{title}%"
+            params["title"] = f"%{escape_like(title.strip())}%"
         order_map = {
             'created_desc': "created_at DESC",
             'created_asc': "created_at ASC",

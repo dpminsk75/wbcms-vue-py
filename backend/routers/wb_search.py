@@ -98,3 +98,26 @@ async def search_analytics(
         sort if sort in ("freq", "day", "delta", "goods", "pos", "best",
                          "orders") else "freq",
         page, page_size)
+
+
+@router.get("/cannibalization")
+async def search_cannibalization(
+    date_from: str = Query(...),
+    date_to: str = Query(...),
+    q: str | None = Query(default=None),
+    nm_id: int | None = Query(default=None, ge=1),
+    brand: str | None = Query(default=None),
+    category: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Каннибализация запросов: фразы, по которым ранжируются ≥2 наших карточек.
+
+    Фильтр по карточке (nm_id) не меняет условие «≥2 карточек» — он отбирает
+    фразы, в которых эта карточка участвует.
+    """
+    svc = WbSearchService(db, company_id=company_id)
+    return await svc.cannibalization(
+        date_from, date_to, q, nm_id, brand, category, page, page_size)

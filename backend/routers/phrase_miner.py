@@ -134,9 +134,18 @@ async def miner_log(
 @router.post("/pause")
 async def miner_pause(
     payload: dict | None = None,
-    _user: dict = Depends(require_seo),
+    company_id: int | None = Query(default=None, ge=1),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_seo),
+    company_id_from_selector: int | None = Depends(get_current_company),
 ):
-    """Пауза/запуск фонового обхода (флаг in-memory — рестарта нет)."""
+    """Пауза/запуск фонового обхода (флаг in-memory — рестарта нет).
+
+    Снятие паузы (paused=false) снимает и паузу «нет токенов» у компании —
+    админ нажал «Возобновить», значит токены есть. Глобальный админ без
+    фильтра по компании снимает паузы у всех.
+    """
     want = bool((payload or {}).get("paused"))
-    miner.set_paused(want)
+    scope, _is_global = await _scope(db, user, company_id_from_selector, company_id)
+    miner.set_paused(want, company_id=scope)
     return {"ok": True, "paused": want}

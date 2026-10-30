@@ -10,6 +10,8 @@ date — DateRange BETWEEN (в Yii2 хрупкий LIKE по datetime, здес�
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.services.like_mask import escape_like
+
 SORT_MAP = {
     "date": "o.date",
     "nm_id": "o.nm_id",
@@ -71,22 +73,22 @@ class WbOrdersService:
             params["is_cancel"] = is_cancel
         if g_number:
             where.append("o.g_number LIKE :g_number")
-            params["g_number"] = f"%{g_number}%"
+            params["g_number"] = f"%{escape_like(str(g_number).strip())}%"
         if srid:
             where.append("o.srid LIKE :srid")
-            params["srid"] = f"%{srid}%"
+            params["srid"] = f"%{escape_like(str(srid).strip())}%"
         if supplier_article:
             where.append("o.supplier_article LIKE :supplier_article")
-            params["supplier_article"] = f"%{supplier_article}%"
+            params["supplier_article"] = f"%{escape_like(str(supplier_article).strip())}%"
         if brand:
             where.append("o.brand LIKE :brand")
-            params["brand"] = f"%{brand}%"
+            params["brand"] = f"%{escape_like(str(brand).strip())}%"
         if category:
             where.append("o.category LIKE :category")
-            params["category"] = f"%{category}%"
+            params["category"] = f"%{escape_like(str(category).strip())}%"
         if card_title:
             where.append("c.title LIKE :card_title")
-            params["card_title"] = f"%{card_title}%"
+            params["card_title"] = f"%{escape_like(str(card_title).strip())}%"
         return " AND ".join(where), params
 
     @staticmethod

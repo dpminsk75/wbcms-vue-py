@@ -5,6 +5,8 @@
 Матчинг/генерация — в feedback_reply_service (shared с test-generation и кроном).
 """
 
+from backend.services.like_mask import escape_like
+
 
 class ReplyRulesService:
     def __init__(self, db, company_id=None):
@@ -196,7 +198,7 @@ class ReplyRulesService:
         if not (q or "").strip():
             return []
         cscope = "" if self.company_id is None else " AND (company_id = :cid OR company_id IS NULL)"
-        params: dict = {"q": f"%{q.strip()}%"}
+        params: dict = {"q": f"%{escape_like(q.strip())}%"}
         if self.company_id is not None:
             params["cid"] = self.company_id
         rows = (await self.db.execute(text(
@@ -212,7 +214,7 @@ class ReplyRulesService:
         if not (q or "").strip():
             return []
         cscope = "" if self.company_id is None else " AND (company_id = :cid OR company_id IS NULL)"
-        params: dict = {"q": f"%{q.strip()}%"}
+        params: dict = {"q": f"%{escape_like(q.strip())}%"}
         if self.company_id is not None:
             params["cid"] = self.company_id
         rows = (await self.db.execute(text(

@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.services import openrouter_service as llm
 from backend.services import llm_provider
+from backend.services.like_mask import escape_like
 
 PAGE_SIZE = 20
 FALLBACK_MODELS = ["z-ai/glm-5.2:free", "minimax/minimax-m3:free",
@@ -79,10 +80,10 @@ class SeoService:
             join = "JOIN wbcards w ON w.nmID=r.nmID"
             if q.isdigit():
                 cond = "AND (r.nmID=:qn OR w.vendorCode LIKE :ql OR w.title LIKE :ql)"
-                p.update({"qn": int(q), "ql": f"%{q}%"})
+                p.update({"qn": int(q), "ql": f"%{escape_like(q.strip())}%"})
             else:
                 cond = "AND (w.title LIKE :ql OR w.vendorCode LIKE :ql OR w.subjectName LIKE :ql)"
-                p["ql"] = f"%{q}%"
+                p["ql"] = f"%{escape_like(q.strip())}%"
         # 'all' — тот же индекс по status (idx_seo_rec_status), не «без фильтра»:
         # фильтр по статсу обязателен, иначе ORDER BY created_at без подходящего плана
         if status in ("new", "viewed"):
@@ -141,10 +142,10 @@ class SeoService:
         if q:
             if q.isdigit():
                 cond = "AND (w.nmID=:qn OR w.vendorCode LIKE :ql OR LOWER(w.title) LIKE LOWER(:ql))"
-                p.update({"qn": int(q), "ql": f"%{q}%"})
+                p.update({"qn": int(q), "ql": f"%{escape_like(q.strip())}%"})
             else:
                 cond = "AND (LOWER(w.title) LIKE LOWER(:ql) OR LOWER(w.vendorCode) LIKE LOWER(:ql) OR LOWER(w.subjectName) LIKE LOWER(:ql))"
-                p["ql"] = f"%{q}%"
+                p["ql"] = f"%{escape_like(q.strip())}%"
         scope = ""
         if self.company_id is not None:
             scope = "AND w.company_id=:cid"
@@ -176,10 +177,10 @@ class SeoService:
         p: dict = {"spam": spam_days}
         if q.isdigit():
             cond = "(w.nmID=:qn OR w.vendorCode LIKE :ql OR w.title LIKE :ql)"
-            p.update({"qn": int(q), "ql": f"%{q}%"})
+            p.update({"qn": int(q), "ql": f"%{escape_like(q.strip())}%"})
         else:
             cond = "(w.title LIKE :ql OR w.vendorCode LIKE :ql OR w.subjectName LIKE :ql)"
-            p["ql"] = f"%{q}%"
+            p["ql"] = f"%{escape_like(q.strip())}%"
         # Как в yii: глобально без company/is_active (иначе "заготов" не находится) —
         # но по wbcards фильтруем по компании: чужие карточки искать нельзя.
         cscope = "" if self.company_id is None else " AND (w.company_id=:cid OR w.company_id IS NULL)"

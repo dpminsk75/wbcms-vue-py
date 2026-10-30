@@ -51,7 +51,7 @@ COMPANY_SQL_FULL = """
            seo_model, seo_summary_model, seo_summary_max_tokens,
            seo_desc_min, seo_desc_max, seo_prompt, seo_competitor_prompt, seo_summary_prompt,
            seo_anti_spam_days, seo_daily_limit, seo_newcard_prompt, seo_newcard_model,
-           seo_phrases_prompt,
+           seo_phrases_prompt, review_analysis_prompt,
            seo_llm_provider, seo_llm_format, seo_llm_url, seo_llm_api_key,
            seo_llm_folder_id, seo_llm_auth_header, seo_llm_auth_prefix,
            seo_llm_extra_headers, seo_llm_extra_body, seo_llm_timeout,
@@ -559,7 +559,10 @@ async def chat(cfg: LlmConfig, messages: list[dict], temperature: float | None =
             if parsed.get("error"):
                 ai_log("bad-response", model, messages, str(body)[:500], http, resp_headers, note,
                        provider=cfg.provider)
-                return {"error": parsed["error"], "http": http}
+                # provider_status прокидываем: по нему видно «нет баланса» (1008)
+                return {"error": parsed["error"], "http": http,
+                        "provider_status": parsed.get("provider_status"),
+                        "provider_message": parsed.get("provider_message")}
             content = (parsed.get("content") or "").strip()
             from_reasoning = False
             if not content:

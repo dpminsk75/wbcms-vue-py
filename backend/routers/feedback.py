@@ -125,6 +125,53 @@ async def feedback_tags_sync(
 
 
 # --- разбор отзыва через ИИ (эмоциональность / конструктивность / тональность) ---
+#
+# ВАЖНО, порядок регистрации: литеральные пути (/review/pause, /review/run,
+# /review/retry-all) объявлены ПЕРЕД /review/{feedback_id}. FastAPI берёт первый
+# подошедший маршрут, а {feedback_id} матчит любой сегмент — иначе «Вернуть все
+# в очередь» уходило бы в разбор одного отзыва («отзыв не найден»).
+
+
+@router.post("/review/pause")
+async def feedback_review_pause(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Пауза/снятие паузы фонового разбора (в памяти процесса).
+
+    Снятие паузы (paused=false) снимает и паузу «нет токенов» у компании.
+    """
+    from backend.services import feedback_review_service as svc_mod
+    paused = bool((payload or {}).get("paused"))
+    svc_mod.set_paused(paused, company_id=company_id)
+    return svc_mod.status_flags(company_id)
+
+
+@router.post("/review/run")
+async def feedback_review_run(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Разобрать порцию отзывов (кнопка «Разобрать порцию») — ЗАПУСК В ФОНЕ.
+
+    Синхронно ждать нельзя: батч из 100 отзывов по 30-60 с каждый держит
+    HTTP-запрос дольше таймаута nginx. Ответ — сразу, прогресс в журнале.
+    """
+    svc = FeedbackReviewService(db, company_id=company_id)
+    limit = max(1, min(int((payload or {}).get("limit") or 20), 500))
+    return await svc.start_run(limit=limit)
+
+
+@router.post("/review/retry-all")
+async def feedback_review_retry_all(
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Вернуть все отзывы с ошибкой разбора в очередь."""
+    svc = FeedbackReviewService(db, company_id=company_id)
+    return await svc.retry_all()
 
 
 @router.post("/review/{feedback_id}")
@@ -267,38 +314,3 @@ async def feedback_review_log(
     """Журнал фонового разбора."""
     svc = FeedbackReviewService(db, company_id=company_id)
     return await svc.get_log(limit=limit, offset=offset, level=level)
-
-
-@router.post("/review/pause")
-async def feedback_review_pause(
-    payload: dict,
-    db: AsyncSession = Depends(get_db),
-    company_id: int | None = Depends(get_current_company),
-):
-    """Пауза/снятие паузы фонового разбора (в памяти процесса)."""
-    from backend.services import feedback_review_service as svc_mod
-    paused = bool((payload or {}).get("paused"))
-    svc_mod.set_paused(paused)
-    return svc_mod.status_flags()
-
-
-@router.post("/review/run")
-async def feedback_review_run(
-    payload: dict,
-    db: AsyncSession = Depends(get_db),
-    company_id: int | None = Depends(get_current_company),
-):
-    """Разобрать порцию отзывов прямо сейчас (кнопка «Разобрать порцию»)."""
-    svc = FeedbackReviewService(db, company_id=company_id)
-    limit = max(1, min(int((payload or {}).get("limit") or 20), 200))
-    return await svc.run_now(limit=limit)
-
-
-@router.post("/review/retry-all")
-async def feedback_review_retry_all(
-    db: AsyncSession = Depends(get_db),
-    company_id: int | None = Depends(get_current_company),
-):
-    """Вернуть все отзывы с ошибкой разбора в очередь."""
-    svc = FeedbackReviewService(db, company_id=company_id)
-    return await svc.retry_all()

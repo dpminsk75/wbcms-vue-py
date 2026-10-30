@@ -11,7 +11,7 @@ import time
 from collections import deque
 from backend.database import get_db
 from backend.deps import get_current_user, get_optional_user, require_admin, require_seo, get_current_company
-from backend.routers import auth_router, companies_router, dashboard_router, admin_router, admin_timers_router, news_router, tags_router, wb_search_router, cost_router, wb_orders_router, wb_sales_router, feedback_router, feedback_dashboard_router, feedback_insights_router, reply_rules_router, wb_tokens_router, wb_tokens_expiring_router, competitor_router, competitors_newcard_router, competitors_captured_router, competitors_pick_router, competitors_refresh_router, competitors_positions_router, ai_jobs_router, seo_router, seo_models_router, cms_router, ext_router, ext_tokens_admin_router, ext_diag_admin_router, ext_download_router, ext_filters_router, fbs_router, fbs_orders_router, fbs_cancels_router, fbs_commission_router, fbs_pvz_router, geo_sales_router, watch_router, queue_router, phrase_miner_router, penalty_router, profit_router, wb_profit_router, profit_products_router, warehouse_router, stock_doc_router, fbs_virtual_router, stock_report_router, production_router, smolensk_stock_router, product_catalog_router, wb_cards_router
+from backend.routers import auth_router, companies_router, dashboard_router, admin_router, admin_timers_router, news_router, tags_router, wb_search_router, cost_router, wb_orders_router, wb_sales_router, feedback_router, feedback_dashboard_router, feedback_insights_router, reply_rules_router, wb_tokens_router, wb_tokens_expiring_router, competitor_router, competitors_newcard_router, competitors_captured_router, competitors_pick_router, competitors_refresh_router, competitors_positions_router, reports_router, ai_jobs_router, seo_router, seo_models_router, cms_router, ext_router, ext_tokens_admin_router, ext_diag_admin_router, ext_download_router, ext_filters_router, fbs_router, fbs_orders_router, fbs_cancels_router, fbs_commission_router, fbs_pvz_router, geo_sales_router, watch_router, queue_router, phrase_miner_router, penalty_router, profit_router, wb_profit_router, profit_products_router, warehouse_router, stock_doc_router, fbs_virtual_router, stock_report_router, stock_analytics_router, production_router, smolensk_stock_router, product_catalog_router, wb_cards_router
 from backend.services import auth_service as AuthService
 from backend.services.orders_service import OrdersService
 from backend.services.orders_aggregated_service import OrdersAggregatedService
@@ -93,6 +93,7 @@ app.include_router(stock_doc_router)
 app.include_router(fbs_virtual_router)
 # Отчеты склада: наличие / оборотка / карточка / неликвиды
 app.include_router(stock_report_router)
+app.include_router(stock_analytics_router)
 # Производство: план печати + отчет «когда печатать»
 app.include_router(production_router)
 # Производство, ступень 2: Смоленск (снапшоты/движения/баланс/импорт)
@@ -111,6 +112,7 @@ app.include_router(wb_tokens_expiring_router)
 # «Выдача WB» — до competitor_router: у него маршрут /api/competitors/{nm_id}/phrases,
 # и без порядка наш /api/competitors/positions/phrases уходил в него как nm_id="positions"
 app.include_router(competitors_positions_router)
+app.include_router(reports_router)
 app.include_router(competitor_router)
 app.include_router(competitors_newcard_router)
 app.include_router(competitors_captured_router)
@@ -152,6 +154,30 @@ async def _recover_ai_jobs():
     try:
         from backend.services import feedback_review_service as _review
         _review.start()
+    except Exception:
+        pass
+
+
+@app.on_event("shutdown")
+async def _shutdown():
+    """Аккуратная остановка: отменяем фоновые циклы и закрываем пул БД.
+
+    Без этого uvicorn на рестарте ждёт фоновых задач и keep-alive соединений —
+    рестарт виснет до TimeoutStopSec, systemd убивает SIGKILL.
+    """
+    try:
+        from backend.services import feedback_review_service as _review
+        _review.stop()
+    except Exception:
+        pass
+    try:
+        from backend.services import phrase_miner_service as _miner
+        _miner.stop()
+    except Exception:
+        pass
+    try:
+        from backend.database import engine
+        await engine.dispose()
     except Exception:
         pass
 

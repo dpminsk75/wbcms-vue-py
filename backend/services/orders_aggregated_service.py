@@ -15,14 +15,48 @@ class OrdersAggregatedService:
     def _company_params(self) -> dict:
         return {} if self.company_id is None else {"company_id": self.company_id}
 
+    def _card_filters_where(self, brand: str | None = None, category: str | None = None) -> tuple[str, dict]:
+        """Фильтр по бренду и категории карточки (как в sales-analysis).
+        Бренд — wbcards.brand, категория — родительская категория wb_subject_catalog.parent_name.
+        Через EXISTS, чтобы не ломать GROUP BY в основном запросе."""
+        parts: list[str] = []
+        params: dict = dict(self._company_params())
+        cid = "" if self.company_id is None else " AND cb.company_id = :company_id"
+        if brand:
+            parts.append(f"EXISTS (SELECT 1 FROM wbcards cb WHERE cb.nmID = o.nm_id{cid} AND cb.brand = :f_brand)")
+            params["f_brand"] = brand
+        if category:
+            parts.append(
+                "EXISTS (SELECT 1 FROM wbcards cb JOIN wb_subject_catalog sc ON sc.subject_id = cb.subjectID "
+                f"WHERE cb.nmID = o.nm_id{cid} AND sc.parent_name = :f_category)"
+            )
+            params["f_category"] = category
+        return (" AND " + " AND ".join(parts) if parts else ""), params
+
+    async def get_filter_lists(self) -> dict:
+        """Справочники брендов и категорий для фильтра (как /api/sales-analysis/filters)."""
+        cid = "" if self.company_id is None else " AND c.company_id = :company_id"
+        params = self._company_params()
+        brands = [r[0] for r in (await self.db.execute(text(
+            "SELECT DISTINCT c.brand FROM wbcards c WHERE c.brand IS NOT NULL AND c.brand <> ''"
+            f"{cid} ORDER BY c.brand"), params)).all()]
+        categories = [r[0] for r in (await self.db.execute(text(
+            "SELECT DISTINCT sc.parent_name FROM wbcards c "
+            "JOIN wb_subject_catalog sc ON sc.subject_id = c.subjectID "
+            "WHERE sc.parent_name IS NOT NULL AND sc.parent_name <> ''"
+            f"{cid} ORDER BY sc.parent_name"), params)).all()]
+        return {"brands": brands, "categories": categories}
+
     # --- summary карточки над таблицей ---
-    async def get_summary_stats(self, nm_id: int | None, date_from: str, date_to: str) -> dict:
+    async def get_summary_stats(self, nm_id: int | None, date_from: str, date_to: str, brand: str | None = None, category: str | None = None) -> dict:
         where = ["o.date BETWEEN :d1 AND :d2" + self._company_where()]
         params: dict = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59", **self._company_params()}
         if nm_id:
             where.append("o.nm_id = :nm_id")
             params["nm_id"] = nm_id
-        where_sql = " AND ".join(where)
+        card_sql, card_params = self._card_filters_where(brand, category)
+        params.update(card_params)
+        where_sql = " AND ".join(where) + card_sql
         sql = text(f"""
             SELECT COUNT(*) AS cnt,
                    SUM(o.price_with_disc) AS sum_price_with_disc,
@@ -41,13 +75,15 @@ class OrdersAggregatedService:
         }
 
     # --- воронка заказов ---
-    async def get_funnel_stats(self, nm_id: int | None, date_from: str, date_to: str) -> dict:
+    async def get_funnel_stats(self, nm_id: int | None, date_from: str, date_to: str, brand: str | None = None, category: str | None = None) -> dict:
         where = ["o.date BETWEEN :d1 AND :d2" + self._company_where()]
         params: dict = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59", **self._company_params()}
         if nm_id:
             where.append("o.nm_id = :nm_id")
             params["nm_id"] = nm_id
-        where_sql = " AND ".join(where)
+        card_sql, card_params = self._card_filters_where(brand, category)
+        params.update(card_params)
+        where_sql = " AND ".join(where) + card_sql
         sql = text(f"""
             SELECT
                 COUNT(*) AS total_cnt,
@@ -94,13 +130,15 @@ class OrdersAggregatedService:
         }
 
     # --- ежедневная разбивка для stacked-Bar ---
-    async def get_daily_status_chart_data(self, nm_id: int | None, date_from: str, date_to: str) -> list:
+    async def get_daily_status_chart_data(self, nm_id: int | None, date_from: str, date_to: str, brand: str | None = None, category: str | None = None) -> list:
         where = ["o.date BETWEEN :d1 AND :d2" + self._company_where()]
         params: dict = {"d1": f"{date_from} 00:00:00", "d2": f"{date_to} 23:59:59", **self._company_params()}
         if nm_id:
             where.append("o.nm_id = :nm_id")
             params["nm_id"] = nm_id
-        where_sql = " AND ".join(where)
+        card_sql, card_params = self._card_filters_where(brand, category)
+        params.update(card_params)
+        where_sql = " AND ".join(where) + card_sql
         sql = text(f"""
             SELECT DATE(o.date) AS d,
                    COUNT(*) AS total_cnt,
@@ -148,7 +186,7 @@ class OrdersAggregatedService:
         return result
 
     # --- главный запрос: GROUP BY nm_id ---
-    async def search(self, nm_id: int | None, date_from: str, date_to: str, sort_by: str = "count", page: int = 1, page_size: int = 50) -> dict:
+    async def search(self, nm_id: int | None, date_from: str, date_to: str, sort_by: str = "count", page: int = 1, page_size: int = 50, brand: str | None = None, category: str | None = None) -> dict:
         if sort_by not in ("count", "sum"):
             sort_by = "count"
         where = ["o.date BETWEEN :d1 AND :d2" + self._company_where()]
@@ -156,7 +194,9 @@ class OrdersAggregatedService:
         if nm_id:
             where.append("o.nm_id = :nm_id")
             params["nm_id"] = nm_id
-        where_sql = " AND ".join(where)
+        card_sql, card_params = self._card_filters_where(brand, category)
+        params.update(card_params)
+        where_sql = " AND ".join(where) + card_sql
         order_sql = "orders_cnt DESC" if sort_by == "count" else "sum_price_with_disc DESC"
         forecast_base = "COALESCE(o.price_with_disc, o.finished_price, 0)"
         sql = text(f"""
@@ -212,9 +252,9 @@ class OrdersAggregatedService:
         return {"items": items, "total": total, "page": page, "page_size": page_size}
 
     # --- комбинированный ответ для фронта (как php рендер) ---
-    async def feed_aggregated(self, nm_id: int | None, date_from: str, date_to: str, sort_by: str = "count", page: int = 1, page_size: int = 50) -> dict:
-        summary = await self.get_summary_stats(nm_id, date_from, date_to)
-        funnel = await self.get_funnel_stats(nm_id, date_from, date_to)
-        chart = await self.get_daily_status_chart_data(nm_id, date_from, date_to)
-        data = await self.search(nm_id, date_from, date_to, sort_by, page, page_size)
+    async def feed_aggregated(self, nm_id: int | None, date_from: str, date_to: str, sort_by: str = "count", page: int = 1, page_size: int = 50, brand: str | None = None, category: str | None = None) -> dict:
+        summary = await self.get_summary_stats(nm_id, date_from, date_to, brand, category)
+        funnel = await self.get_funnel_stats(nm_id, date_from, date_to, brand, category)
+        chart = await self.get_daily_status_chart_data(nm_id, date_from, date_to, brand, category)
+        data = await self.search(nm_id, date_from, date_to, sort_by, page, page_size, brand, category)
         return {**data, "summary": summary, "funnel": funnel, "chart": chart}

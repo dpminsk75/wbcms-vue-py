@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.services.geo_names import (
     COUNTRY_NAMES, STEM2OKRUG, _stem, okrug_of,
 )
+from backend.services.like_mask import escape_like
 
 LEVELS = ("country", "okrug", "region", "city", "pvz")
 
@@ -264,7 +265,7 @@ class GeoSalesService:
             # маска — буквальная подстрока: экранируем спецсимволы LIKE (% _ \).
             # ESCAPE-клаузу не пишем: бэкслэш внутри '...' сам экранирует кавычку (1064),
             # а по умолчанию LIKE уже понимает \-экранирование.
-            mask = str(q).strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            mask = escape_like(str(q).strip())
             conds.append("(CAST(nmID AS CHAR) LIKE :q OR vendorCode LIKE :q OR title LIKE :q)")
             params["q"] = f"%{mask}%"
         if brand:

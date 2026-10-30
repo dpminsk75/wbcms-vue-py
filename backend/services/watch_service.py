@@ -20,6 +20,7 @@ import json
 import statistics
 import time
 from datetime import date, datetime, timedelta
+from typing import NamedTuple
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -124,6 +125,25 @@ def _warn(tag: str, company_id: int | None, exc: Exception) -> None:
         pass
 
 
+def _log_own_collect(date_from: str, top: int, pool: int, assigned: int,
+                     skipped: int, skipped_queued: int, note: str = "") -> None:
+    """Лог «Собрать наши карточки» в stdout (journalctl).
+
+    Карточки часто уже есть в очереди (строка от сентября) — при перестановке
+    `created_at` не меняется, и в БД их «не видно». По журналу видно, что
+    кнопка сработала: сколько поставили и сколько пропустили.
+    """
+    try:
+        print(json.dumps({
+            "seo_watch_own_collect": True,
+            "date_from": date_from, "top": top, "pool": pool,
+            "assigned": assigned, "skipped": skipped,
+            "skipped_queued": skipped_queued, "note": note,
+        }, ensure_ascii=False), flush=True)
+    except Exception:
+        pass
+
+
 def _norm_rank(rank_by: str) -> str:
     """Ранг фраз: 'freq' (по частотности) или 'orders' (по заказам, по умолчанию)."""
     r = (rank_by or "").strip().lower()
@@ -140,6 +160,28 @@ def _period_days(date_from: str, date_to: str) -> int:
         return 30
 
 
+class ContentState(NamedTuple):
+    """Состояние контента карточки — для кнопок сбора и правила «12 ч»."""
+    has: bool                   # описание есть (не короче DESC_MIN_LEN)
+    full_at: str                # дата полного сбора 'YYYY-MM-DD'
+    first_at: str               # дата первого сбора (легаси-строки)
+    full_dt: datetime | None    # момент полного сбора (часы нужны для RECOLLECT_MIN_HOURS)
+
+
+# Контента нет — заглушка вместо кортежа-заплатки.
+EMPTY_STATE = ContentState(False, "", "", None)
+
+
+def _hours_since(dt: datetime | None, now: datetime | None = None) -> int | None:
+    """Сколько часов прошло с момента `dt`; None — момента нет (не собирали)."""
+    if not dt:
+        return None
+    try:
+        return int(((now or datetime.now()) - dt).total_seconds() // 3600)
+    except TypeError:
+        return None
+
+
 class WatchService:
     # Не больше стольких фраз берём в одну очередь enrich (расширение обходит
     # очередь по одной — много карточек = долго и капча).
@@ -152,6 +194,10 @@ class WatchService:
     DESC_MIN_LEN = 50
     # Глубины, для которых матрица считает корзины карточек (селектор «из:»).
     DEPTH_BUCKETS = (10, 20, 40)
+    # Не пересобирать карточку, если её полный сбор был меньше N часов назад
+    # (2026-10-27: «визуально парсятся те же товары, что и утром» — кнопки
+    # сбора возвращали в pending даже только что собранную карточку).
+    RECOLLECT_MIN_HOURS = 12
     # Код состояния контента в `pool` строки матрицы (лерды карточек окна фронт
     # дедупит сам — счётчик кнопки должен быть ровно тем, что уйдёт в очередь).
     POOL_CODE = {"fresh": 0, "stale": 1, "missing": 2}
@@ -207,6 +253,10 @@ class WatchService:
             v = row3.get("watch_card_stale_days")
             if isinstance(v, int) and v > 0:
                 d["card_stale_days"] = v
+        # Порог «не пересобирать недавно собранное» — константа кода (не настройка
+        # компании): отдаём его фронту, чтобы тот не показывал такие карточки
+        # в счётчиках кнопок.
+        d["recollect_hours"] = self.RECOLLECT_MIN_HOURS
         return d
 
     # ---------------------------------------------------------------- watch set
@@ -439,6 +489,8 @@ class WatchService:
                        p.title, p.brand, p.seller, p.position, p.position_api,
                        p.price, p.price_api, p.old_price, p.old_price_api,
                        p.rating, p.review_rating, p.reviews, p.feedbacks, p.badges,
+                       p.sale_conditions, p.dtype_mask, p.mtype, p.supplier_flags, p.view_flags,
+                       p.is_resale,
                        -- срез хранит превью из DOM выдачи не всегда (лейзи-лоад
                        -- в момент захода) → дубль из сборов контента
                        COALESCE(NULLIF(p.image_url, ''), d.preview_image) AS image_url,
@@ -480,6 +532,8 @@ class WatchService:
                 "badges": _json_list(r["badges"]),
                 "image_url": r["image_url"] or "",
                 "source_nm_id": int(r["source_nm_id"] or 0),
+                # ресейл (товар от частного лица) — парсить нечего
+                "is_resale": 1 if r["is_resale"] else 0,
                 "_pos": pos,
             })
         for lst in slices.values():
@@ -592,8 +646,8 @@ class WatchService:
                 out[nm] = str(u) if str(u).startswith("http") else ("https:" + str(u))
         return out
 
-    async def _content_state(self, nm_ids: list[int]) -> dict[int, tuple[bool, str, str]]:
-        """nm → (есть описание, дата полного сбора, дата первого сбора).
+    async def _content_state(self, nm_ids: list[int]) -> dict[int, ContentState]:
+        """nm → состояние контента (есть описание, даты сбора, момент сбора).
 
         «Контент есть» = описание не короче `DESC_MIN_LEN` символов. Лёгкие строки,
         которые создаёт наблюдение выдачи (`ext.py:634-662`: цена/рейтинг/превью),
@@ -609,7 +663,7 @@ class WatchService:
         Чанки по 400 — больших IN не делаем (сервер 1 ГБ).
         """
         ids = sorted({int(n) for n in nm_ids if n})
-        out: dict[int, tuple[bool, str, str]] = {}
+        out: dict[int, ContentState] = {}
         for i in range(0, len(ids), 400):
             ch = ids[i:i + 400]
             cph, cp = self._inlist("c", ch)
@@ -621,10 +675,13 @@ class WatchService:
                 FROM wb_competitor_details WHERE nm_id IN ({cph}) GROUP BY nm_id
             """), cp)).mappings().all()
             for r in rows:
-                full_at = _d(r["full_at"]) if r["full_at"] else ""
-                first_at = _d(r["first_at"]) if r["first_at"] else ""
-                has = int(r["dlen"] or 0) >= self.DESC_MIN_LEN
-                out[int(r["nm_id"] or 0)] = (has, full_at, first_at)
+                full_dt = r["full_at"] if isinstance(r["full_at"], datetime) else None
+                out[int(r["nm_id"] or 0)] = ContentState(
+                    has=int(r["dlen"] or 0) >= self.DESC_MIN_LEN,
+                    full_at=_d(full_dt) if full_dt else "",
+                    first_at=_d(r["first_at"]) if r["first_at"] else "",
+                    full_dt=full_dt,
+                )
         return out
 
     async def matrix(self, date_from: str, date_to: str,
@@ -743,9 +800,20 @@ class WatchService:
                 (решение менеджера 2026-10-25: «кнопку "Собрать новые и изм."
                 жмёшь, а там снова те же 21»).
                 """
-                has, full_at, first_at = content_state.get(int(nm), (False, "", ""))
-                at = full_at or first_at
-                return bool(has and at and prev_d and at >= prev_d)
+                cs = content_state.get(int(nm)) or EMPTY_STATE
+                at = cs.full_at or cs.first_at
+                return bool(cs.has and at and prev_d and at >= prev_d)
+            now = datetime.now()
+
+            def _evt_hours(nm: int) -> int | None:
+                """Часов с последнего полного сбора карточки (None — не собирали).
+
+                Фронт по этому числу прячет из счётчика «Собрать новые и изм.»
+                карточки, собранные меньше `recollect_hours` назад: повторный
+                сбор ничего не даст, а в очередь они попадать не должны.
+                """
+                cs = content_state.get(int(nm)) or EMPTY_STATE
+                return _hours_since(cs.full_dt, now)
 
             # Топ-часть выдачи — окно анализа: вид покупателя (первые 40 позиций).
             top_items = [it for it in last_slice
@@ -826,7 +894,9 @@ class WatchService:
                         moves.append({"nm_id": it["nm_id"], "title": it["title"],
                                       "from": p_old_f, "to": p_now_f,
                                       "pct": round(pct, 1),
-                                      "fresh": _evt_fresh(it["nm_id"])})
+                                      "fresh": _evt_fresh(it["nm_id"]),
+                                      "hours": _evt_hours(it["nm_id"]),
+                                      "is_resale": int(it.get("is_resale") or 0)})
 
             days_old = (today - date.fromisoformat(last_d)).days if last_d else None
             fresh = bool(days_old is not None and days_old <= st["stale_days"])
@@ -855,22 +925,28 @@ class WatchService:
                 nm = int(it["nm_id"] or 0)
                 if not nm:
                     continue
-                has, full_at, first_at = content_state.get(nm, (False, "", ""))
-                at = full_at or first_at
-                if not has:
+                cs = content_state.get(nm) or EMPTY_STATE
+                at = cs.full_at or cs.first_at
+                if not cs.has:
                     kind = "missing"
                 elif at and at >= cutoff:
                     kind = "fresh"
                 else:
                     kind = "stale"
+                pos = int(it["position"] or 0)
+                # 4-й элемент пула — ресейл: такие карточки не наши конкуренты
+                # (товар от частного лица), их не собираем и не показываем в
+                # счётчиках кнопок.
+                resale = int(it.get("is_resale") or 0)
+                pool_cards.append([nm, pos, self.POOL_CODE[kind], resale])
+                if resale:
+                    continue
                 if kind == "fresh":
                     cards_fresh += 1
                 elif kind == "stale":
                     cards_stale += 1
                 else:
                     cards_missing += 1
-                pos = int(it["position"] or 0)
-                pool_cards.append([nm, pos, self.POOL_CODE[kind]])
                 for d in self.DEPTH_BUCKETS:
                     if pos <= d:
                         depth_buckets[str(d)][kind] += 1
@@ -907,7 +983,11 @@ class WatchService:
                                "position": it["position"],
                                "price": it["price"] or it["price_api"],
                                # «свежее события» — пересбор не нужен, см. _evt_fresh
-                               "fresh": _evt_fresh(it["nm_id"])}
+                               "fresh": _evt_fresh(it["nm_id"]),
+                               # часов с последнего полного сбора (None — не собирали)
+                               "hours": _evt_hours(it["nm_id"]),
+                               # ресейл — не наш конкурент, не собираем
+                               "is_resale": int(it.get("is_resale") or 0)}
                               for it in new_items[:50]],
                 "price_moves": moves[:50],
                 "price_moves_cnt": len(moves),
@@ -1165,28 +1245,27 @@ class WatchService:
             if not sl:
                 continue
             for it in slices.get((ph, sl[0]), []):
-                if int(it["position"] or 999) <= top:
+                # ресейл не обновляем: описания у таких карточек нет
+                if int(it["position"] or 999) <= top and not it.get("is_resale"):
                     cand.add(int(it["nm_id"] or 0))
         cand = {n for n in cand if n > 0}
         if not cand:
             return {"requested": len(norm), "assigned": 0, "skipped": 0,
                     "candidates": 0, "top": top, "overflow": len(overflow),
                     "phrases_cnt": len(norm), "skipped_today": 0,
+                    "skipped_fresh": 0, "skipped_queued": 0,
                     "stale_days": st["stale_days"]}
 
-        # «Собрано сегодня» (полный сбор) — такие не трогаем.
-        today_iso = date.today().isoformat()
-        state = await self._content_state(sorted(cand))
-        skipped_today = {n for n in cand
-                          if (state.get(n) or (False, "", ""))[1] == today_iso}
-        cand -= skipped_today
-
-        assigned, skipped = await self._enqueue_watch(cand)
+        # «Собрано недавно» — не пересобираем. Раньше здесь было правило «собрано
+        # сегодня»; теперь общее правило 12 ч живёт в _enqueue_watch (для всех
+        # кнопок сбора) и знает часы, а не дату.
+        assigned, skipped, skipped_fresh, skipped_queued = await self._enqueue_watch(cand)
         _cache_drop_company(self.company_id)
         await self.db.commit()
         return {"requested": len(norm), "assigned": assigned, "skipped": skipped,
                 "candidates": len(cand), "top": top, "overflow": len(overflow),
-                "phrases_cnt": len(norm), "skipped_today": len(skipped_today),
+                "phrases_cnt": len(norm), "skipped_today": skipped_fresh,
+                "skipped_fresh": skipped_fresh, "skipped_queued": skipped_queued,
                 "stale_days": st["stale_days"]}
 
     async def collect_nm_ids(self, nm_ids: list[int]) -> dict:
@@ -1221,21 +1300,94 @@ class WatchService:
         excluded = set(int(x) for x in rows)
 
         cand = [n for n in norm if n not in excluded]
-        assigned, skipped = await self._enqueue_watch(set(cand))
+        assigned, skipped, skipped_fresh, skipped_queued = await self._enqueue_watch(set(cand))
         await self.db.commit()
         return {"requested": len(norm), "assigned": assigned,
-                "skipped": skipped, "excluded": len(excluded)}
+                "skipped": skipped, "excluded": len(excluded),
+                "skipped_fresh": skipped_fresh, "skipped_queued": skipped_queued}
 
-    async def _enqueue_watch(self, cand: set[int]) -> tuple[int, int]:
+    async def collect_own_cards(self, date_from: str, top: int = 20) -> dict:
+        """Наши ТОП-N карточек → очередь сбора enrich (source='watch').
+
+        Очередь SEO-мониторинга: в «Очередь» наши карточки видны под фильтром
+        «Из SEO-мониторинга», расширение забирает их в своём одноимённом
+        режиме (сбор карточки там полный — режим влияет только на выбор
+        строк).
+
+        Расширение открывает карточку и собирает контент: описание,
+        характеристики, бейджи, цену. Полки приезжают пассивно — перехват
+        ответов самой страницы WB (`/api/ext/shelves`), поэтому после сбора у
+        карточки появляются и полки.
+
+        Правило 12 ч ЗДЕСЬ НЕ действует: наши карточки пересобираем тогда,
+        когда решит менеджер (решение 2026-10-28). Пропускаются только те, что
+        уже в очереди или в работе, и исключённые из сбора (`is_hidden`).
+        """
+        top = max(1, min(int(top or 20), 100))
+        cards = await self.top_cards(date_from, top)
+        nms = {int(c["nm_id"]) for c in cards if int(c.get("nm_id") or 0) > 0}
+        if not nms:
+            _log_own_collect(date_from, top, 0, 0, 0, 0, "пустой ТОП карточек")
+            return {"requested": 0, "assigned": 0, "skipped": 0, "candidates": 0,
+                    "top": top, "skipped_fresh": 0, "skipped_queued": 0, "cards": []}
+        titles = await self._own_titles(sorted(nms))
+        assigned, skipped, skipped_fresh, skipped_queued = await self._enqueue_watch(
+            nms, source="watch", ignore_recent=True)
+        await self.db.commit()
+        _log_own_collect(date_from, top, len(nms), assigned, skipped,
+                         skipped_queued, "")
+        return {
+            "requested": len(cards), "assigned": assigned, "skipped": skipped,
+            "candidates": len(nms), "top": top,
+            "skipped_fresh": skipped_fresh, "skipped_queued": skipped_queued,
+            "cards": [{"nm_id": int(c["nm_id"]), "orders": int(c.get("orders") or 0),
+                       "title": titles.get(int(c["nm_id"]), "")} for c in cards],
+        }
+
+    async def _own_titles(self, nm_ids: list[int]) -> dict[int, str]:
+        """nm → название нашей карточки (для ответа «Собрать наши карточки»)."""
+        ids = sorted({int(n) for n in nm_ids if n})
+        out: dict[int, str] = {}
+        for i in range(0, len(ids), 400):
+            ch = ids[i:i + 400]
+            cph, cp = self._inlist("t", ch)
+            try:
+                rows = (await self.db.execute(text(f"""
+                    SELECT nmID, MAX(title) AS title FROM wbcards WHERE nmID IN ({cph}) GROUP BY nmID
+                """), cp)).mappings().all()
+            except Exception:
+                await self.db.rollback()
+                continue
+            for r in rows:
+                out[int(r["nmID"] or 0)] = r.get("title") or ""
+        return out
+
+    async def _enqueue_watch(self, cand: set[int], source: str = "watch",
+                             ignore_recent: bool = False) -> tuple[int, int, int, int]:
         """Карточки → `wb_enrich_queue` (pending, source='watch').
 
-        Возвращает (assigned, skipped). Карточки в работе (`processing`) не
-        трогаем — их уже собрало расширение; остальные возвращаем в pending.
+        `source` — в какую очередь кладём: 'watch' (режим расширения
+        «SEO-мониторинг») или '' (общая куча «Обновление»).
+        `ignore_recent` — не применять правило 12 ч (собираем, даже если
+        карточку брали час назад). Для НАШИХ карточек правило не действует:
+        менеджер сам решает, когда пересобрать (решение 2026-10-28). Для
+        конкурентов правило остаётся — иначе один и тот же товар пересобирается
+        по кнопке снова и снова.
+
+        Возвращает (assigned, skipped, skipped_fresh, skipped_queued):
+        - `skipped` — карточка в работе (`processing`), её уже собирает расширение;
+        - `skipped_fresh` — полный сбор был меньше `RECOLLECT_MIN_HOURS` назад
+          (не пересобираем: 2026-10-27 — «визуально парсятся те же товары, что
+          и утром», а карточка уже собрана);
+        - `skipped_queued` — карточка уже стоит в очереди (переставлять нечего;
+          раньше UPDATE её сбрасывал в pending и она уходила в повторный сбор).
         """
         assigned = 0
         skipped = 0
+        skipped_fresh = 0
+        skipped_queued = 0
         if not cand:
-            return 0, 0
+            return 0, 0, 0, 0
         cl = sorted(n for n in cand if isinstance(n, int) and n > 0)
         # Исключённые из сбора (is_hidden, §19.4) в очередь не возвращаем:
         # /next их всё равно не отдаст, а строка зря висела бы «в очереди».
@@ -1253,30 +1405,43 @@ class WatchService:
             """), cp)).mappings().all()
             for r in rows:
                 cur[int(r["nm_id"] or 0)] = str(r["status"] or "")
+        # Свежесть контента — правило «не пересобирать недавно собранное».
+        state = await self._content_state(cl) if not ignore_recent else {}
+        now = datetime.now()
         for n in cl:
-            if cur.get(n, "") == "processing":
+            status = cur.get(n, "")
+            if status == "processing":
                 skipped += 1
                 continue
+            if status == "pending":
+                # уже в очереди: переставлять нечего
+                skipped_queued += 1
+                continue
+            if not ignore_recent:
+                hours = _hours_since((state.get(n) or EMPTY_STATE).full_dt, now)
+                if hours is not None and hours < self.RECOLLECT_MIN_HOURS:
+                    skipped_fresh += 1
+                    continue
             if cur.get(n):
                 # своя строка уже есть: возвращаем её в pending и помечаем
-                # источником watch (в общей куче она больше не числится)
+                # источником (в общей куче она больше не числится)
                 await self.db.execute(text("""
                     UPDATE wb_enrich_queue
-                    SET status='pending', source='watch', requested_at=NOW(),
+                    SET status='pending', source=:src, requested_at=NOW(),
                         claimed_at=NULL, company_id=COALESCE(company_id, :cid)
                     WHERE nm_id=:n
-                """), {"n": n, "cid": self.company_id})
+                """), {"n": n, "cid": self.company_id, "src": source})
             else:
                 await self.db.execute(text("""
                     INSERT INTO wb_enrich_queue
                       (nm_id, company_id, status, source, requested_at)
-                    VALUES (:n, :cid, 'pending', 'watch', NOW())
+                    VALUES (:n, :cid, 'pending', :src, NOW())
                     ON DUPLICATE KEY UPDATE
-                      status='pending', source='watch', requested_at=NOW(),
+                      status='pending', source=:src, requested_at=NOW(),
                       claimed_at=NULL, company_id=COALESCE(company_id, :cid)
-                """), {"n": n, "cid": self.company_id})
+                """), {"n": n, "cid": self.company_id, "src": source})
             assigned += 1
-        return assigned, skipped
+        return assigned, skipped, skipped_fresh, skipped_queued
 
     # ------------------------------------------------- сбор карточек (enrich)
 
@@ -1325,10 +1490,11 @@ class WatchService:
             m = await self.matrix(date_from, date_to, card_nm, rank_by, queries_n)
             for it in m["items"]:
                 for n in it["new_items"]:
-                    if not n.get("fresh"):
+                    # ресейл (товар от частного лица) — не наш конкурент, не собираем
+                    if not n.get("fresh") and not n.get("is_resale"):
                         cand.add(int(n["nm_id"] or 0))
                 for mv in it["price_moves"]:
-                    if not mv.get("fresh"):
+                    if not mv.get("fresh") and not mv.get("is_resale"):
                         cand.add(int(mv["nm_id"] or 0))
         else:
             # «устаревшие»/«отсутствующие»: ТОП-top карточек последнего захода каждой фразы
@@ -1355,7 +1521,8 @@ class WatchService:
                 if not sl:
                     continue
                 for it in slices.get((ph, sl[0]), []):
-                    if int(it["position"] or 999) <= top:
+                    # ресейл не собираем: описания у таких карточек нет
+                    if int(it["position"] or 999) <= top and not it.get("is_resale"):
                         cand.add(int(it["nm_id"] or 0))
 
         cand = {n for n in cand if n > 0}
@@ -1369,23 +1536,24 @@ class WatchService:
             if mode == "stale":
                 # берём тех, у кого контента нет ИЛИ он старше порога
                 fresh = {n for n in cand
-                         if (state.get(n) or (False, "", ""))[0]
+                         if (state.get(n) or EMPTY_STATE)[0]
                          and _content_at(state.get(n)) >= cutoff}
                 skipped += len(fresh)
                 cand -= fresh
             else:
                 # missing: только те, у кого описания нет вовсе
-                have = {n for n in cand if (state.get(n) or (False, "", ""))[0]}
+                have = {n for n in cand if (state.get(n) or EMPTY_STATE)[0]}
                 skipped += len(have)
                 cand -= have
 
-        assigned, skipped_q = await self._enqueue_watch(cand)
+        assigned, skipped_q, skipped_fresh, skipped_queued = await self._enqueue_watch(cand)
         skipped += skipped_q
         _cache_drop_company(self.company_id)
         await self.db.commit()
         return {"mode": mode, "requested": len(cand) + skipped, "assigned": assigned,
                 "skipped": skipped, "candidates": len(cand), "top": top,
                 "phrases_cnt": len(phrases_used),
+                "skipped_fresh": skipped_fresh, "skipped_queued": skipped_queued,
                 "stale_days": st["card_stale_days"]}
 
 

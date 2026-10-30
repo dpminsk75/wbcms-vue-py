@@ -21,6 +21,10 @@
 Защиты: пауза между вызовами, отдых после серии, пропуск тика при активном ручном
 run (wb_competitor_run), backoff при ошибках. Учет затрат — ai_log через llm.chat
 (scenario='newcard_phrases_miner'), виден на /seo/ai-usage как «Фразы (фон-разбор)».
+
+Если у провайдера кончились токены (insufficient_balance / 402) — компания встаёт
+на паузу на 3 часа (llm_balance): дело возвращается в очередь без ошибки, модели
+не выбывают, остальные компании продолжают разбор.
 """
 
 import asyncio
@@ -32,6 +36,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import SessionLocal
+from backend.services import llm_balance
+from backend.services import llm_quota
 from backend.services import openrouter_service as llm
 from backend.services import llm_provider
 from backend.services.competitors_newcard_service import (
@@ -122,9 +128,12 @@ def status_flags() -> dict:
     }
 
 
-def set_paused(v: bool) -> None:
+def set_paused(v: bool, company_id: int | None = None) -> None:
+    """Пауза фонового обхода. Снятие (v=False) снимает и паузу «нет токенов»."""
     global _paused
     _paused = bool(v)
+    if not _paused:
+        llm_balance.clear(company_id)
 
 
 def start() -> None:
@@ -135,6 +144,12 @@ def start() -> None:
     _started = True
     _task = asyncio.create_task(_loop())
     log.info("phrase_miner: started")
+
+
+def stop() -> None:
+    """Остановить фоновый цикл (shutdown процесса) — иначе uvicorn ждёт его."""
+    if _task is not None and not _task.done():
+        _task.cancel()
 
 
 # --- очередь: готовность, пополнение, claim ---
@@ -221,7 +236,10 @@ async def refill(db: AsyncSession) -> int:
 
 async def _claim_next(db: AsyncSession) -> dict | None:
     """Взять одно дело. Бытовой ремонт: зависший processing → pending; error с
-    истёкшим отложением → pending. Кандидаты с активным backoff не выдаём."""
+    истёкшим отложением → pending. Кандидаты с активным backoff не выдаём.
+
+    Компании на паузе «нет токенов» (llm_balance) пропускаем — их дела ждут.
+    """
     await db.execute(text("""
         UPDATE wb_phrase_miner_queue
         SET status='pending', processed_at=NULL
@@ -232,14 +250,22 @@ async def _claim_next(db: AsyncSession) -> dict | None:
         SET status='pending', error_until=NULL
         WHERE status='error' AND error_until IS NOT NULL AND error_until <= NOW()
     """))
-    rows = (await db.execute(text("""
+    paused = llm_balance.paused_companies()
+    params: dict = {}
+    not_in = ""
+    if paused:
+        names = ", ".join(f":p{i}" for i in range(len(paused)))
+        not_in = f" AND company_id NOT IN ({names})"
+        params = {f"p{i}": cid for i, cid in enumerate(paused)}
+    rows = (await db.execute(text(f"""
         SELECT id, company_id, source_nm_id, competitor_nm_id, content_hash, priority
         FROM wb_phrase_miner_queue
         WHERE status='pending'
           AND (error_until IS NULL OR error_until <= NOW())
+          {not_in}
         ORDER BY priority, id
         LIMIT 20
-    """))).mappings().all()
+    """), params)).mappings().all()
     for row in rows:
         job = dict(row)
         upd = await db.execute(text("""
@@ -295,10 +321,11 @@ async def _save_comp_rows(db: AsyncSession, nm_id: int, company_id: int, cid: in
 
 
 async def _phrases_for_competitor(comp: dict, model: str, company_id: int,
-                                  prompt: str) -> tuple[list[str], str | None, int]:
+                                  prompt: str) -> tuple[list[str], str | None, int, str]:
     """Один LLM-вызов на конкурента (аналог _phrases_for_competitor ручного анализа,
     своя сессия — SessionLocal оборачивает вызов, как в ручном анализе).
-    Возвращает (фразы|null, ошибка|null, длительность мс). Затраты пишет ai_log."""
+    Возвращает (фразы|null, ошибка|null, длительность мс, метка «нет токенов»|'').
+    Затраты пишет ai_log."""
     cid = comp.get("nm_id")
     up = (f"=== КОНКУРЕНТ nmID {cid} ===\n"
           f"Название: {(comp.get('title') or '')[:200]}\n"
@@ -315,17 +342,19 @@ async def _phrases_for_competitor(comp: dict, model: str, company_id: int,
                                  note=f"miner конкурент {cid}",
                                  scenario=SCENARIO, user_id=None, nm_id=None)
     except Exception as exc:
-        return [], f"{type(exc).__name__}: {exc}", int((time.monotonic() - t0) * 1000)
+        return [], f"{type(exc).__name__}: {exc}", int((time.monotonic() - t0) * 1000), ""
     ms = int((time.monotonic() - t0) * 1000)
+    # «нет токенов» — метим ДО проверки error: у провайдера это и есть error.
+    balance = llm_balance.reason_of(res) or ""
     if res.get("error"):
         detail = str(res.get("error"))
         if res.get("finish_reason") and "finish_reason" not in detail:
             detail += f", finish_reason={res['finish_reason']}"
-        return [], detail, ms
+        return [], detail, ms, balance
     raw = res.get("content") or ""
     phrases = _phrases_from_parsed(_parse_json(raw))
     if not isinstance(phrases, list) or not phrases:
-        return [], f"не удалось разобрать список фраз ({' '.join(raw.split())[:120]!r})", ms
+        return [], f"не удалось разобрать список фраз ({' '.join(raw.split())[:120]!r})", ms, balance
     out: list[str] = []
     for item in phrases:
         if isinstance(item, dict):
@@ -334,8 +363,8 @@ async def _phrases_for_competitor(comp: dict, model: str, company_id: int,
         if 3 <= len(p) <= 200 and p not in out:
             out.append(p)
     if not out:
-        return [], "нет пригодных фраз", ms
-    return out, None, ms
+        return [], "нет пригодных фраз", ms, balance
+    return out, None, ms, balance
 
 
 async def _delay_job(db: AsyncSession, cid: int, content_hash: str, err: str,
@@ -358,6 +387,17 @@ async def _delay_job(db: AsyncSession, cid: int, content_hash: str, err: str,
     await _log(db, "error", f"конкурент {cid}: {err}", competitor_nm_id=cid,
                company_id=company_id, source_nm_id=source_nm_id, action=action,
                queue_id=queue_id, priority=priority)
+
+
+async def _release_job(db: AsyncSession, job: dict) -> None:
+    """Вернуть дело в очередь (пауза «нет токенов»): ошибкой не считаем,
+    attempts не растёт — после паузы разберём заново."""
+    await db.execute(text("""
+        UPDATE wb_phrase_miner_queue
+        SET status='pending', processed_at=NULL, last_error=NULL
+        WHERE id=:id AND status='processing'
+    """), {"id": int(job["id"])})
+    await db.commit()
 
 
 async def _process(db: AsyncSession, job: dict) -> dict:
@@ -409,10 +449,17 @@ async def _process(db: AsyncSession, job: dict) -> dict:
     phrases: list[str] = []
     model_used: str | None = None
     err: str | None = None
+    balance = ""
     ms_total = 0
     for mc in cands:
-        ph, e, ms = await _phrases_for_competitor(comp, mc, company_id, prompt)
+        ph, e, ms, br = await _phrases_for_competitor(comp, mc, company_id, prompt)
         ms_total += ms
+        if br:
+            # У провайдера кончились токены: модель ни при чём, дальше не пробуем.
+            # Дело не травим ошибкой — возвращаем в очередь и встаём на паузу.
+            balance = br
+            err = e
+            break
         try:
             await llm.mark_model(db, mc, bool(ph), e or "")
             await db.commit()
@@ -424,6 +471,16 @@ async def _process(db: AsyncSession, job: dict) -> dict:
         err = e
 
     _current = None
+    if balance:
+        llm_balance.pause(company_id, balance)
+        await _release_job(db, job)
+        await _log(db, "warn",
+                   f"нет токенов ({balance}) — пауза разбора компании {company_id} "
+                   f"на {int(llm_balance.pause_seconds() // 60)} мин",
+                   competitor_nm_id=cid, company_id=company_id, source_nm_id=our_nm,
+                   action="balance-pause", queue_id=queue_id, priority=priority)
+        return {"done": False, "phrases": 0, "balance": balance,
+                "model": str(cands[0]), "ms": ms_total}
     if not phrases:
         await _delay_job(db, cid, content_hash, err or "нет фраз",
                          company_id, our_nm, queue_id, priority)
@@ -496,6 +553,23 @@ async def _tick(db: AsyncSession) -> tuple[float, bool]:
     if not job:
         _current = None
         return IDLE_SLEEP, False
+    # Остаток лимита у провайдера (тот же ключ, что у разбора отзывов): мало —
+    # дело возвращаем в очередь и встаём на паузу до сброса окна.
+    jcid = int(job.get("company_id") or 0)
+    if jcid and not llm_balance.is_paused(jcid):
+        q = await llm_quota.check(db, jcid)
+        if llm_quota.is_low(q) and q.get("pause_until"):
+            reason = f"лимит ИИ {q.get('percent')}% · сброс {str(q.get('reset_at') or '')[:16]}"
+            llm_balance.pause_until(jcid, q["pause_until"], reason=reason)
+            await _release_job(db, job)
+            await _log(db, "warn",
+                       f"лимит ИИ почти исчерпан ({q.get('percent')}%) — пауза до "
+                       f"{q.get('reset_at')} ({q.get('reset_left') or ''})",
+                       company_id=jcid, action="quota-pause",
+                       competitor_nm_id=job.get("competitor_nm_id"),
+                       queue_id=job.get("id"))
+            _current = None
+            return IDLE_SLEEP, False
     try:
         res = await _process(db, job)
         _last_error = None  # прошлый сбой отработали
@@ -584,6 +658,8 @@ async def get_status(db: AsyncSession, *, company_id: int | None = None) -> dict
     except Exception:
         pass
     return {**flags,
+            "balance": llm_balance.scope_state(company_id),
+            "quota": await llm_quota.check_fast(db, company_id),
             "queue": {"counts": counts, "pending_by_priority": by_priority},
             "log_counts": log_counts}
 

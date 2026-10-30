@@ -20,11 +20,9 @@
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "ТОП товары", "url": "/wb-profit/top-products", "visibleIn": ["top", "side"]},
       {"label": "Маржа", "url": "/wb-profit", "visibleIn": ["top", "side"]},
-      {"label": "Маржа по линейкам", "url": "/wb-profit/products", "visibleIn": ["top", "side"]},
+      {"label": "Сравнение по годам", "url": "/wb-reports/year-compare", "visibleIn": ["top", "side"]},
       {"divider": true, "visibleIn": ["top", "side"]},
-      {"label": "Товары по складам", "url": "/wb-stock/top-warehouse-report", "visibleIn": ["top", "side"]},
-      {"label": "Критичные остатки", "url": "/wb-stock/warehouse-analytics", "visibleIn": ["top", "side"]},
-      {"label": "Оборачиваемость", "url": "/wb-stock/analytics", "visibleIn": ["top", "side"]},
+      {"label": "Анализ остатков", "url": "/wb-stock", "visibleIn": ["top", "side"]},
       {"label": "Детализация", "url": "/wb-detail-by-period/weekly-report-nmid", "visibleIn": ["top", "side"]},
       {"label": "Новости WB", "url": "/news", "visibleIn": ["top", "side"]}
     ]
@@ -41,6 +39,7 @@
       {"label": "Фраза -> карточки", "url": "/wb-search/phrase", "visibleIn": ["top", "side"]},
       {"label": "Анализ фраз", "url": "/wb-search/trend", "visibleIn": ["top", "side"]},
       {"label": "Частотность запросов", "url": "/wb-search/analytics", "visibleIn": ["top", "side"]},
+      {"label": "Каннибализация запросов", "url": "/wb-search/cannibalization", "visibleIn": ["top", "side"]},
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "SEO-мониторинг", "url": "/seo-watch", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
       {"label": "SEO рекомендации", "url": "/seo/index", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
@@ -75,7 +74,9 @@
     "visibleIn": ["top", "side"],
     "roles": ["viewReports", "admin"],
     "items": [
+      {"label": "Маржа по линейкам", "url": "/wb-profit/products", "visibleIn": ["top", "side"]},
       {"label": "Детализация", "url": "/wb-detail-by-period/weekly-report", "visibleIn": ["top", "side"]}
+
     ]
   },
   {

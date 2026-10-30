@@ -518,15 +518,17 @@ async def _enrich_positions(
                   position_api=new.position_api,
                   brand_id=new.brand_id, subject_id=new.subject_id, root_id=new.root_id,
                   match_id=new.match_id,
-                  seller=IF(new.seller='', seller, new.seller),
+                  seller=IF(new.seller='', wb_competitor_position.seller, new.seller),
                   seller_id=new.seller_id, seller_rating=new.seller_rating,
-                  price=IF(price IS NULL OR price=0, new.price, price),
-                  old_price=IF(old_price IS NULL OR old_price=0, new.old_price, old_price),
+                  price=IF(wb_competitor_position.price IS NULL OR wb_competitor_position.price=0,
+                           new.price, wb_competitor_position.price),
+                  old_price=IF(wb_competitor_position.old_price IS NULL OR wb_competitor_position.old_price=0,
+                               new.old_price, wb_competitor_position.old_price),
                   price_api=new.price_api, old_price_api=new.old_price_api,
-                  rating=IF(new.rating>0, new.rating, rating),
-                  review_rating=IF(new.review_rating>0, new.review_rating, review_rating),
-                  reviews=IF(new.reviews>0, new.reviews, reviews),
-                  feedbacks=IF(new.feedbacks>0, new.feedbacks, feedbacks),
+                  rating=IF(new.rating>0, new.rating, wb_competitor_position.rating),
+                  review_rating=IF(new.review_rating>0, new.review_rating, wb_competitor_position.review_rating),
+                  reviews=IF(new.reviews>0, new.reviews, wb_competitor_position.reviews),
+                  feedbacks=IF(new.feedbacks>0, new.feedbacks, wb_competitor_position.feedbacks),
                   feedback_points=new.feedback_points, total_qty=new.total_qty,
                   time1=new.time1, time2=new.time2, wh=new.wh, dist=new.dist,
                   volume=new.volume, weight=new.weight, pics=new.pics,
@@ -582,8 +584,8 @@ async def _save_filters(
           sale_factions=new.sale_factions, countries=new.countries,
           ages=new.ages, delivery_types=new.delivery_types, flags=new.flags,
           facets=new.facets,
-          created_by=COALESCE(created_by, new.created_by),
-          ext_token_id=COALESCE(ext_token_id, new.ext_token_id)
+          created_by=COALESCE(wb_seo_search_filters.created_by, new.created_by),
+          ext_token_id=COALESCE(wb_seo_search_filters.ext_token_id, new.ext_token_id)
     """), {
         "cid": cid, "ph": _norm_phrase(phrase)[:500], "pn": _norm_phrase(phrase),
         "fn": file_name, "day": day,
@@ -620,8 +622,8 @@ async def _save_shelfs(
           banners=new.banners, shelfs=new.shelfs,
           banner_cnt=new.banner_cnt, shelf_cnt=new.shelf_cnt,
           shelf_products_cnt=new.shelf_products_cnt, sellers=new.sellers,
-          created_by=COALESCE(created_by, new.created_by),
-          ext_token_id=COALESCE(ext_token_id, new.ext_token_id)
+          created_by=COALESCE(wb_seo_search_shelfs.created_by, new.created_by),
+          ext_token_id=COALESCE(wb_seo_search_shelfs.ext_token_id, new.ext_token_id)
     """), {
         "cid": cid, "ph": _norm_phrase(phrase)[:500], "pn": _norm_phrase(phrase),
         "fn": file_name, "day": day,

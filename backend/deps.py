@@ -21,6 +21,7 @@ PATH_PERMS_V3: tuple[tuple[str, frozenset[str], str], ...] = (
     ("/api/orders", frozenset({"GET"}), "viewOrders"),
     ("/api/unclaimed-orders", frozenset({"GET"}), "viewOrders"),
     ("/api/sales-analysis", frozenset({"GET"}), "viewOrders"),
+    ("/api/reports", frozenset({"GET"}), "viewOrders"),
     ("/api/wb-sales-funnel", frozenset({"GET"}), "viewOrders"),
     ("/api/cost-import", frozenset({"GET", "POST", "DELETE"}), "viewOrders"),
     ("/api/penalty", frozenset({"GET"}), "viewOrders"),

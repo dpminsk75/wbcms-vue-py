@@ -2,6 +2,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 import json
 
+from backend.services.like_mask import escape_like
+
+
 class WbCardService:
     def __init__(self, db: AsyncSession, company_id: int | None = None):
         self.db = db
@@ -10,12 +13,16 @@ class WbCardService:
     async def list_cards(self, q: str | None = None, limit: int = 50):
         # как в WbCard::getListForSelect + фильтр по q; скоуп по wbcards.company_id
         # (синк карточек идёт по компаниям — чужие строки не отдаём).
+        # Маска экранируется: иначе «_» в артикуле («ДС_СВ_Амигуруми_25$») — это
+        # wildcard LIKE и подсказки расходятся с самим фильтром отзывов.
         sql = "SELECT nmID, vendorCode, title, brand, photos FROM wbcards"
         params: dict = {}
         conds: list[str] = []
         if q:
-            conds.append("(CAST(nmID AS CHAR) LIKE :q OR vendorCode LIKE :q OR title LIKE :q)")
-            params["q"] = f"%{q}%"
+            conds.append("(CAST(nmID AS CHAR) LIKE :q ESCAPE '\\\\' "
+                         "OR vendorCode LIKE :q ESCAPE '\\\\' "
+                         "OR title LIKE :q ESCAPE '\\\\')")
+            params["q"] = f"%{escape_like(q.strip())}%"
         if self.company_id is not None:
             conds.append("company_id = :company_id")
             params["company_id"] = self.company_id

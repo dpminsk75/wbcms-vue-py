@@ -7,8 +7,16 @@
 Ошибка разбора пишется status='error' и больше автоматически не обрабатывается —
 вернуть в очередь может админ (status='pending').
 
+Если у провайдера кончились токены (insufficient_balance / 402) — компания
+встаёт на паузу на 3 часа (llm_balance), отзыв остаётся в очереди и разбирается
+после паузы. Такие ошибки НЕ пишутся в status='error'.
+
 Промпт — настройка компании (companies.feedback_review_prompt); в коде его нет.
 Модель — «Модель (сводка)» (kind=summary).
+
+MySQL 8 + алиас строки `AS new`: unqualified-ссылка на колонку, КОТОРАЯ входит
+в список INSERT, неоднозначна → 1052 "Column 'x' in field list is ambiguous".
+Старое значение берём только с префиксом таблицы (wb_feedback_ai_review.col).
 """
 from __future__ import annotations
 
@@ -20,6 +28,8 @@ import re
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.services import llm_balance
+from backend.services import llm_quota
 from backend.services import openrouter_service as llm
 
 log = logging.getLogger("feedback_review")
@@ -104,21 +114,41 @@ _started = False
 _task: asyncio.Task | None = None
 _paused = False
 _log_tail = 0
+_manual_task: asyncio.Task | None = None
+_manual_company: int | None = None
 
 
-def status_flags() -> dict:
-    """Состояние цикла для экрана: работает ли, на паузе ли."""
+def manual_running() -> bool:
+    """Идёт ли ручной запуск разбора (кнопка «Разобрать порцию»)."""
+    return _manual_task is not None and not _manual_task.done()
+
+
+def status_flags(company_id: int | None = None) -> dict:
+    """Состояние цикла для экрана: работает ли, на паузе ли (ручной/по токенам)."""
+    bal = llm_balance.scope_state(company_id)
     return {
         "running": bool(_started and _task is not None and not _task.done()),
         "paused": _paused,
         "interval_sec": IDLE_SLEEP,
+        "balance_paused": bal["paused"],
+        "balance_pause_until": bal["until"],
+        "balance_pause_left_sec": bal["left_sec"],
+        "balance_pause_reason": bal["reason"],
+        "balance_companies": bal["companies"],
+        "manual_running": manual_running(),
     }
 
 
-def set_paused(v: bool) -> None:
-    """Пауза/снятие паузы фонового разбора (глобально, в памяти процесса)."""
+def set_paused(v: bool, company_id: int | None = None) -> None:
+    """Пауза/снятие паузы фонового разбора (глобально, в памяти процесса).
+
+    Снятие ручной паузы (v=False) снимает и паузу «нет токенов» у компании:
+    админ нажал «Возобновить» — значит токены есть.
+    """
     global _paused
     _paused = bool(v)
+    if not _paused:
+        llm_balance.clear(company_id)
 
 
 def start() -> None:
@@ -129,6 +159,13 @@ def start() -> None:
     _started = True
     _task = asyncio.create_task(_loop())
     log.info("feedback_review: started")
+
+
+def stop() -> None:
+    """Остановить фоновые задачи (shutdown процесса) — иначе uvicorn ждёт их."""
+    for t in (_task, _manual_task):
+        if t is not None and not t.done():
+            t.cancel()
 
 
 async def _log(db: AsyncSession, level: str, message: str, *,
@@ -171,6 +208,23 @@ async def _tick(db: AsyncSession) -> tuple[float, int]:
     done = 0
     for comp in companies:
         cid = int(comp["id"])
+        if llm_balance.is_paused(cid):
+            # у компании кончились токены — ждём (пауза снимется сама или вручную)
+            continue
+        if _manual_company is not None and _manual_company == cid:
+            # эту компанию сейчас разбирает ручной запуск — не дублируем
+            continue
+        # Остаток лимита у провайдера: мало (или окно не активно) → пауза до сброса.
+        # Ловим ДО батча, иначе получим сотни 402-ошибок.
+        q = await llm_quota.check(db, cid)
+        if llm_quota.is_low(q) and q.get("pause_until"):
+            reason = (f"лимит ИИ {q.get('percent')}% · сброс {str(q.get('reset_at') or '')[:16]}")
+            llm_balance.pause_until(cid, q["pause_until"], reason=reason)
+            await _log(db, "warn",
+                       f"лимит ИИ почти исчерпан ({q.get('percent')}%) — пауза до "
+                       f"{q.get('reset_at')} ({q.get('reset_left') or ''})",
+                       action="quota-pause", company_id=cid)
+            continue
         try:
             batch = max(1, min(int(comp["feedback_review_batch"] or 100), 500))
         except (TypeError, ValueError):
@@ -178,6 +232,9 @@ async def _tick(db: AsyncSession) -> tuple[float, int]:
         svc = FeedbackReviewService(db, company_id=cid)
         st = await svc.review_pending(limit=batch)
         done += st["ok"]
+        if st.get("balance_error"):
+            # паузу уже поставил review_one (журнал пишет он) — идём к следующей компании
+            continue
         if st["ok"] or st["errors"]:
             await _log(db, "info",
                        f"разобрано {st['ok']}, ошибок {st['errors']} (взято {st['taken']})",
@@ -372,15 +429,27 @@ class FeedbackReviewService:
             return {"ok": False, "error": "нет доступных моделей", "fatal": True}
 
         last_err = "все модели не ответили"
+        balance_reason = ""
         for try_model in cands:
             res = await llm.chat(
                 self.db, messages, fb_company,
                 temperature=0.2, max_tokens=600, model=try_model,
                 note=f"feedback_review, id {feedback_id}",
-                scenario=SCENARIO, nm_id=fb.get("nm_id"), timeout=60)
+                scenario=SCENARIO, nm_id=fb.get("nm_id"), timeout=60,
+                # разбор = JSON-метки, глубокое thinking не нужно: без low
+                # reasoning-модель думает по максимуму и отзыв уходит в таймаут
+                reasoning_effort="low")
             if res.get("error"):
-                await llm.mark_model(self.db, try_model, False, res["error"])
-                last_err = f"model {try_model}: {res['error']}"
+                err = str(res["error"])
+                reason = llm_balance.reason_of(res)
+                if reason:
+                    # У провайдера кончились токены: модель тут ни при чём, следующие
+                    # не пробуем — встаём на паузу (3 ч) и ждём.
+                    balance_reason = reason
+                    last_err = f"model {try_model}: {err}"
+                    break
+                await llm.mark_model(self.db, try_model, False, err)
+                last_err = f"model {try_model}: {err}"
                 continue
             content = (res.get("content") or "").strip()
             if not content:
@@ -402,6 +471,18 @@ class FeedbackReviewService:
                            action="manual", company_id=fb_company)
                 await self.db.commit()
             return {"ok": True, **parsed, "model": try_model}
+
+        if balance_reason:
+            # Отзыв НЕ помечаем ошибкой — он остаётся в очереди и разберётся
+            # после паузы. Модель не трогаем: она не сломана, кончились токены.
+            llm_balance.pause(fb_company, balance_reason)
+            await _log(self.db, "warn",
+                       f"отзыв {feedback_id}: {balance_reason} — нет токенов, "
+                       f"пауза {int(llm_balance.pause_seconds() // 60)} мин",
+                       action="balance-pause", company_id=fb_company)
+            await self.db.commit()
+            return {"ok": False, "error": last_err, "balance_error": True,
+                    "balance_reason": balance_reason}
 
         await self._save_error(fb, fb_company, last_err)
         await _log(self.db, "error", f"отзыв {feedback_id}: {last_err}",
@@ -430,7 +511,8 @@ class FeedbackReviewService:
                 tone = new.tone, topics = new.topics, summary = new.summary,
                 model = new.model, prompt_tokens = new.prompt_tokens,
                 completion_tokens = new.completion_tokens, cost = new.cost,
-                status = 'ok', error = NULL, attempts = attempts + 1, updated_at = NOW()
+                status = 'ok', error = NULL,
+                attempts = wb_feedback_ai_review.attempts + 1, updated_at = NOW()
         """), {
             "company_id": company_id,
             "feedback_id": str(fb.get("id")),
@@ -460,7 +542,7 @@ class FeedbackReviewService:
             ) AS new
             ON DUPLICATE KEY UPDATE
                 status = 'error', error = new.error,
-                attempts = attempts + 1, updated_at = NOW()
+                attempts = wb_feedback_ai_review.attempts + 1, updated_at = NOW()
         """), {
             "company_id": company_id,
             "feedback_id": str(fb.get("id")),
@@ -472,10 +554,12 @@ class FeedbackReviewService:
 
     # --- очередь ------------------------------------------------------------
 
-    def _cid_where(self, alias: str = "f") -> tuple[str, dict]:
+    def _cid_where(self, alias: str | None = "f") -> tuple[str, dict]:
+        """Условие по компании. alias=None — колонка без префикса (UPDATE без алиаса)."""
         if self.company_id is None:
             return "", {}
-        return f" AND {alias}.company_id = :cid", {"cid": self.company_id}
+        col = f"{alias}.company_id" if alias else "company_id"
+        return f" AND {col} = :cid", {"cid": self.company_id}
 
     async def review_pending(self, limit: int = 100,
                              date_from: str | None = None,
@@ -500,16 +584,28 @@ class FeedbackReviewService:
         done = 0
         errors = 0
         fatal = ""
+        balance = ""
         for r in rows:
             res = await self.review_one(str(r["id"]), source="batch")
             if res.get("ok"):
                 done += 1
-                continue
-            if res.get("fatal"):
+            elif res.get("fatal"):
                 fatal = str(res.get("error") or "")
                 break
-            errors += 1
-        return {"taken": len(rows), "ok": done, "errors": errors, "fatal": fatal}
+            elif res.get("balance_error"):
+                # нет токенов: батч прерываем, остальные отзывы остаются в очереди
+                balance = str(res.get("balance_reason") or "insufficient_balance")
+                break
+            else:
+                errors += 1
+            # прогресс в журнал — батч идёт минуты, без строк видно «зависло»
+            if (done + errors) % 10 == 0:
+                await _log(self.db, "info",
+                           f"прогресс: разобрано {done}, ошибок {errors} (взято {len(rows)})",
+                           action="progress", company_id=self.company_id)
+        return {"taken": len(rows), "ok": done, "errors": errors, "fatal": fatal,
+                "balance_error": bool(balance), "balance_reason": balance,
+                "paused": False}
 
     async def queue_preview(self, limit: int = 50,
                             date_from: str | None = None,
@@ -545,8 +641,9 @@ class FeedbackReviewService:
 
     async def retry(self, feedback_id: str) -> dict:
         """Вернуть отзыв в очередь (после ошибки разбора)."""
-        cid_where, params = self._cid_where("r")
-        # UPDATE без алиаса: в MySQL в SET нельзя указывать алиас таблицы.
+        # UPDATE без алиаса: в MySQL в SET нельзя указывать алиас таблицы,
+        # поэтому и в WHERE колонка без префикса (иначе 1054 Unknown column).
+        cid_where, params = self._cid_where(None)
         res = await self.db.execute(text(f"""
             UPDATE wb_feedback_ai_review
             SET status = 'pending', error = NULL, updated_at = NOW()
@@ -617,14 +714,16 @@ class FeedbackReviewService:
 
         settings = await self.get_settings()
         q = await self.queue_preview(limit=1)
+        quota = await llm_quota.check_fast(self.db, cid)
         return {
-            "flags": status_flags(),
+            "flags": status_flags(cid),
             "counts": {"done": done, "error": err, "pending": pending,
                        "queue_count": queue_count,
                        "queue_has_more": bool(q.get("has_more"))},
             "settings": {"auto": settings["auto"], "batch": settings["batch"]},
             "prompt_set": bool(settings["prompt"]),
             "scenario": SCENARIO,
+            "quota": quota,
         }
 
     async def get_log(self, limit: int = 50, offset: int = 0,
@@ -661,8 +760,18 @@ class FeedbackReviewService:
 
     async def run_now(self, limit: int = 20,
                       company_id: int | None = None) -> dict:
-        """Разобрать порцию прямо сейчас (кнопка «Разобрать порцию»)."""
+        """Разобрать порцию прямо сейчас — СИНХРОННО (воркер).
+
+        Кнопка «Разобрать порцию» в UI идёт через start_run(): батч из 100
+        отзывов по 30-60 с каждый нельзя держать в HTTP-запросе (nginx отрежет).
+        """
         cid = company_id if company_id is not None else self.company_id
+        if llm_balance.is_paused(cid):
+            # токены кончились — не жжём очередь, а говорим когда ждать
+            st = llm_balance.state(cid)
+            return {"taken": 0, "ok": 0, "errors": 0, "fatal": "",
+                    "paused": True, "pause_until": st["until"],
+                    "pause_reason": st["reason"]}
         svc = FeedbackReviewService(self.db, company_id=cid)
         st = await svc.review_pending(limit=limit)
         if st["ok"] or st["errors"]:
@@ -671,6 +780,49 @@ class FeedbackReviewService:
                        action="manual", company_id=cid)
             await self.db.commit()
         return st
+
+    async def start_run(self, limit: int = 20, company_id: int | None = None) -> dict:
+        """Запустить разбор порции В ФОНЕ — HTTP-запрос не блокируется.
+
+        Прогресс — в журнале разбора (строка каждые 10 отзывов), итог — в конце.
+        """
+        global _manual_task, _manual_company
+        cid = company_id if company_id is not None else self.company_id
+        if manual_running():
+            return {"started": False, "reason": "разбор уже идёт"}
+        if llm_balance.is_paused(cid):
+            st = llm_balance.state(cid)
+            return {"started": False, "paused": True, "pause_until": st["until"],
+                    "pause_reason": st["reason"]}
+        # остаток лимита у провайдера — мало → пауза до сброса окна
+        q = await llm_quota.check(self.db, cid)
+        if llm_quota.is_low(q) and q.get("pause_until"):
+            reason = f"лимит ИИ {q.get('percent')}% · сброс {str(q.get('reset_at') or '')[:16]}"
+            llm_balance.pause_until(cid, q["pause_until"], reason=reason)
+            return {"started": False, "paused": True, "pause_until": q["pause_until"],
+                    "pause_reason": reason}
+        limit = max(1, min(int(limit or 20), 500))
+
+        async def _work() -> None:
+            global _manual_company
+            _manual_company = cid
+            try:
+                from backend.database import SessionLocal
+                async with SessionLocal() as db:
+                    svc = FeedbackReviewService(db, company_id=cid)
+                    st = await svc.review_pending(limit=limit)
+                    await _log(db, "info",
+                               f"ручной запуск: разобрано {st['ok']}, ошибок {st['errors']} "
+                               f"(взято {st['taken']})", action="manual", company_id=cid)
+                    await db.commit()
+            except Exception as exc:
+                log.warning("feedback_review: ручной запуск упал (%s: %s)",
+                            type(exc).__name__, exc)
+            finally:
+                _manual_company = None
+
+        _manual_task = asyncio.create_task(_work())
+        return {"started": True, "limit": limit}
 
     async def retry_all(self, company_id: int | None = None) -> dict:
         """Вернуть ВСЕ отзывы с ошибкой в очередь разбора."""

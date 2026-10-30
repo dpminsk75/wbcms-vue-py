@@ -254,3 +254,32 @@ async def watch_collect_nms(
         return await svc.collect_nm_ids(nm_ids)
     except Exception as exc:
         raise _fail("collect-nms", exc)
+
+
+@router.post("/collect-own")
+async def watch_collect_own(
+    payload: dict = Body(...),
+    date_from: str = Query(default=""),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Собрать НАШИ ТОП-N карточек → очередь enrich (source='' — общая куча).
+
+    Расширение в общем режиме («Обновление») открывает карточку и собирает
+    контент: описание, характеристики, бейджи, цену; полки приезжают пассивно
+    (перехват ответов страницы WB).
+
+    `top` — глубина: 20/50/100 наших карточек по заказам за период `date_from`
+    (куб `agg_orders_daily_sku`). Правило 12 ч то же, что у кнопок мониторинга:
+    недавно собранные карточки в очередь не возвращаются (в ответе — счётчик
+    `skipped_fresh`).
+    """
+    top = int(payload.get("top") or 20)
+    svc = WatchService(db, company_id)
+    try:
+        return await svc.collect_own_cards(date_from or _d1(), top)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise _fail("collect-own", exc)

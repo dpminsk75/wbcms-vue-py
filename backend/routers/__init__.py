@@ -21,6 +21,7 @@ from .warehouse import router as warehouse_router
 from .stock_doc import router as stock_doc_router
 from .fbs_virtual import router as fbs_virtual_router
 from .stock_report import router as stock_report_router
+from .stock_analytics import router as stock_analytics_router
 from .production import router as production_router
 from .smolensk_stock import router as smolensk_stock_router
 from .product_catalog import router as product_catalog_router
@@ -39,6 +40,7 @@ from .competitors_newcard import (
     refresh_router as competitors_refresh_router,
 )
 from .competitors_positions import router as competitors_positions_router
+from .reports import router as reports_router
 from .ai_jobs import router as ai_jobs_router
 from .seo import router as seo_router
 from .seo_models import router as seo_models_router

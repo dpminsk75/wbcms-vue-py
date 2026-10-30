@@ -76,6 +76,10 @@ async def run(args) -> int:
                                               date_from=args.date_from,
                                               date_to=args.date_to)
                 print(f"  взято={st['taken']} разобрано={st['ok']} ошибок={st['errors']}", flush=True)
+                if st.get("balance_error"):
+                    print(f"  STOP: нет токенов у ИИ ({st.get('balance_reason')}) — "
+                          f"батч остановлен, разбор продолжится после паузы", flush=True)
+                    break
                 if st.get("fatal"):
                     print(f"  STOP: {st['fatal']} — батч остановлен, "
                           f"проверь промпт и модель компании", flush=True)

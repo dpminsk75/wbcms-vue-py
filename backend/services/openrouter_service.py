@@ -18,6 +18,7 @@ import time
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.services import llm_balance
 from backend.services import llm_provider
 
 BASE_URL = "https://openrouter.ai/api/v1"
@@ -76,6 +77,12 @@ async def chat(db: AsyncSession, messages: list[dict], company_id: int | None,
     if journal:
         await _record_usage(db, res, company_id=company_id, user_id=user_id, scenario=scenario,
                             nm_id=nm_id, job_id=job_id, model=model)
+    # У провайдера кончились токены → компания встаёт на паузу (3 ч): фоновые
+    # разборы не должны долбить ключ, пока не откроется окно. Правило одно на
+    # всех вызовов (фоновые и ручные) — см. backend/services/llm_balance.py.
+    reason = llm_balance.reason_of(res)
+    if reason:
+        llm_balance.pause(company_id, reason)
     return res
 
 

@@ -7,8 +7,11 @@
   DRY_RUN=1 python3 backend/workers/feedback_auto_reply.py ...  # только sync+select+match+build, без POST
 
 Цикл по активным компаниям с api_key (как processPeriod:84-97):
-sync (wb_feedbacks/sync — отдельно, см. feedback_sync_service) уже должен
-прогнать отзывы; воркер делает: select_pending → match+build → send → verify → mark.
+  DRY_RUN=1 python3 backend/workers/feedback_auto_reply.py --date 2026-09-18 --sync
+sync: по умолчанию НЕ вызывается (wb_feedbacks/sync — отдельный воркер,
+см. feedback_sync_service). С флагом --sync перед select_pending синкнутся
+отзывы за период узким upsert'ом (порт WbAutoReplyController::syncTodayFeedbacks,
+без архива). Воркер делает: [sync] → select_pending → match+build → send → verify → mark.
 Идемпотентность: повторный прогон видит is_auto_replied=1/answer и пропускает.
 """
 import argparse
@@ -99,6 +102,26 @@ async def run(args) -> int:
             return 0 if res["ok"] else 1
         total = {"pending": 0, "sent": 0, "skipped": 0, "errors": 0}
         for comp in companies:
+            if args.sync:
+                # Порт WbAutoReplyController::syncTodayFeedbacks (узкий upsert,
+                # без архива): answer обновляется всегда — защита от повторного ответа.
+                from backend.services.feedback_sync_service import FeedbackSyncService
+                cid = int(comp["id"])
+                try:
+                    st = await FeedbackSyncService(db, company_id=cid).sync(
+                        date_from=args.date_from, date_to=args.date_to,
+                        include_current=True, include_archive=False,
+                        narrow_update=True)
+                except Exception as e:
+                    print(f"[{comp['name']}] sync ERROR: {e}", flush=True)
+                    total["errors"] += 1
+                    continue
+                if st.get("skipped"):
+                    print(f"[{comp['name']}] sync SKIP: {st['skipped']}", flush=True)
+                else:
+                    cur = st.get("current") or {}
+                    print(f"[{comp['name']}] sync: fetched={cur.get('fetched')} "
+                          f"saved={cur.get('saved')} стр.{cur.get('pages')}", flush=True)
             st = await process_company(
                 db, dict(comp), args.date_from, args.date_to, args.dry_run)
             for k in total:
@@ -115,6 +138,9 @@ def main() -> None:
     ap.add_argument("--company-id", type=int, default=None)
     ap.add_argument("--feedback-id", default=None)
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--sync", action="store_true",
+                    help="перед select_pending синкнуть отзывы за период "
+                         "(узкий upsert, без архива)")
     ap.add_argument("--dry-run", action="store_true",
                     default=bool(os.environ.get("DRY_RUN")))
     args = ap.parse_args()

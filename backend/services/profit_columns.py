@@ -16,6 +16,9 @@ MARGIN_DIMENSIONS = [
     "c.title",
     "c.brand",
     "c.vendorCode as vendor_code",
+    # фото и предмет карточки — для общего ProductCell (те же агрегаты, что в отчёте по рекламе)
+    "MAX(c.subjectName) as subject",
+    "MAX(c.photos) as photos",
 ]
 
 # Хранение по позициям (отчёт WB) — и в колонке, и в вычете прибыли

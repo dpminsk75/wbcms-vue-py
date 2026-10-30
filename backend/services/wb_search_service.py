@@ -313,3 +313,129 @@ class WbSearchService:
             chart.append(point)
             cur += timedelta(days=1)
         return chart, {nm: names[nm] for nm in top5}
+
+    # ------------------------------------------------------------------ каннибализация
+
+    async def cannibalization(self, date_from: str, date_to: str, q: str | None = None,
+                              nm_id: int | None = None, brand: str | None = None,
+                              category: str | None = None, page: int = 1,
+                              page_size: int = 50) -> dict:
+        """Порт actionCannibalization (WbSearchController.php:192) — фразы, по которым
+        в выдаче WB ранжируются ≥2 наших карточек.
+
+        Отличия от PHP:
+          * **нет N+1** — карточки и позиции берутся ОДНИМ запросом по отобранным фразам
+            (в PHP на каждую строку был отдельный SELECT в wbcards);
+          * **есть LIMIT/OFFSET и счётчик** — в PHP пагинации не было, весь результат
+            попадал в память, а GROUP_CONCAT резался на 1024 байтах;
+          * добавлены **средняя и лучшая позиция** карточки (в PHP позиций не было);
+          * фильтры по бренду и категории — через wbcards (в отчёте WB их нет).
+
+        Фильтр по карточке (nm_id) НЕ меняет условие «≥2 карточек» — он лишь отбирает
+        фразы, в которых эта карточка участвует (EXISTS по тому же отчёту WB).
+        """
+        where = "p.date BETWEEN :d1 AND :d2"
+        params: dict = {"d1": date_from, "d2": date_to, **self._company_params()}
+        if self.company_id is not None:
+            where = "p.company_id = :company_id AND " + where
+        if q and q.strip():
+            where += " AND p.phrase LIKE :q"
+            params["q"] = f"%{q.strip()}%"
+        if nm_id:
+            where += (" AND EXISTS (SELECT 1 FROM wb_sr_report_item_phrases p2"
+                      " WHERE p2.phrase = p.phrase AND p2.nmID = :nm"
+                      " AND p2.date BETWEEN :d1 AND :d2)")
+            params["nm"] = int(nm_id)
+        if brand and str(brand).strip():
+            where += (" AND EXISTS (SELECT 1 FROM wbcards c2"
+                      " WHERE c2.nmID = p.nmID AND c2.brand = :brand)")
+            params["brand"] = str(brand).strip()
+        if category and str(category).strip():
+            where += (" AND EXISTS (SELECT 1 FROM wbcards c3"
+                      " WHERE c3.nmID = p.nmID AND c3.subjectName = :category)")
+            params["category"] = str(category).strip()
+
+        # Только фразы с ≥2 карточками — общий кусок для выборки и счётчика.
+        base = f"""
+            FROM wb_sr_report_item_phrases p
+            WHERE {where}
+            GROUP BY p.phrase
+            HAVING COUNT(DISTINCT p.nmID) > 1
+        """
+
+        lim = max(1, min(int(page_size or 50), 200))
+        off = max(0, (int(page or 1) - 1) * lim)
+
+        rows_sql = text(f"""
+            SELECT p.phrase,
+                   COUNT(DISTINCT p.nmID) AS cards_count,
+                   SUM(p.clicks) AS total_clicks,
+                   SUM(p.orders) AS total_orders,
+                   AVG(p.week_frequency) AS avg_freq
+            {base}
+            ORDER BY total_orders DESC, p.phrase ASC
+            LIMIT :lim OFFSET :off
+        """)
+        rows = (await self.db.execute(
+            rows_sql, {**params, "lim": lim, "off": off})).mappings().all()
+
+        total = 0
+        cnt_sql = text(f"SELECT COUNT(*) FROM (SELECT p.phrase {base}) x")
+        total = int((await self.db.execute(cnt_sql, params)).scalar() or 0)
+
+        # Карточки и позиции по отобранным фразам — один запрос (вместо N+1).
+        cards_by_phrase: dict[str, list[dict]] = {}
+        phrases = [str(r["phrase"]) for r in rows]
+        if phrases:
+            ph = ",".join(f":p{i}" for i in range(len(phrases)))
+            ph_params = {f"p{i}": v for i, v in enumerate(phrases)}
+            detail_sql = text(f"""
+                SELECT p.phrase, p.nmID, c.title, c.vendorCode, c.brand, c.subjectName AS subject,
+                       AVG(NULLIF(p.avg_position, 0)) AS avg_pos,
+                       MIN(NULLIF(p.avg_position, 0)) AS best_pos,
+                       MAX(p.week_frequency) AS max_freq,
+                       SUM(p.clicks) AS clicks, SUM(p.orders) AS orders
+                FROM wb_sr_report_item_phrases p
+                LEFT JOIN wbcards c ON c.nmID = p.nmID
+                WHERE p.date BETWEEN :d1 AND :d2{self._company_where()}
+                  AND p.phrase IN ({ph})
+                GROUP BY p.phrase, p.nmID, c.title, c.vendorCode, c.brand, c.subjectName
+            """)
+            detail = (await self.db.execute(
+                detail_sql, {"d1": date_from, "d2": date_to, **ph_params, **self._company_params()}
+            )).mappings().all()
+            for r in detail:
+                cards_by_phrase.setdefault(str(r["phrase"]), []).append({
+                    "nm_id": int(r["nmID"] or 0),
+                    "title": r["title"] or "",
+                    "vendor_code": r["vendorCode"] or "",
+                    "brand": r["brand"] or "",
+                    "subject": r["subject"] or "",
+                    "avg_pos": round(float(r["avg_pos"]), 1) if r["avg_pos"] is not None else None,
+                    "best_pos": int(r["best_pos"]) if r["best_pos"] is not None else None,
+                    "max_freq": int(r["max_freq"] or 0),
+                    "clicks": int(r["clicks"] or 0),
+                    "orders": int(r["orders"] or 0),
+                })
+            for lst in cards_by_phrase.values():
+                lst.sort(key=lambda c: (c["avg_pos"] is None, c["avg_pos"] or 0))
+
+        models = []
+        for r in rows:
+            ph = str(r["phrase"])
+            models.append({
+                "phrase": ph,
+                "cards_count": int(r["cards_count"] or 0),
+                "total_clicks": int(r["total_clicks"] or 0),
+                "total_orders": int(r["total_orders"] or 0),
+                "avg_freq": round(float(r["avg_freq"] or 0), 1),
+                "cards": cards_by_phrase.get(ph, []),
+            })
+        return {
+            "models": models,
+            "total": total,
+            "page": int(page or 1),
+            "page_size": lim,
+            "date_from": date_from,
+            "date_to": date_to,
+        }
