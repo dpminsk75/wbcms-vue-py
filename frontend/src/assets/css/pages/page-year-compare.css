@@ -1,0 +1,26 @@
+/* Страница «Сравнение по годам» (/wb-reports/year-compare).
+   Тема: .wb-panel / .tbl-card / .tile / .wb-filter-panel — свои стили почти не нужны.
+   Здесь только то, чего в Bootstrap нет: ширины колонок и отступы блоков. */
+
+/* Между блоками страницы — 14px (theme.md 5.5: карточки не «склеиваются») */
+.page-year-compare > .mt-3 { margin-top: 14px !important; }
+
+/* Колонка «Товар» — фиксированная ширина: карточка с длинным названием
+   не должна раздувать таблицу (Bootstrap-утилиты ширину колонки не задают). */
+.page-year-compare .tbl th:first-child,
+.page-year-compare .tbl td:first-child { width: 280px; }
+
+/* Подзаголовки колонок («Кол-во», «Сумма») — по правому краю.
+   Тема красит первый th каждого ряда влево, а из-за rowspan у «Отчётный период»
+   это как раз «Кол-во». */
+.page-year-compare .tbl thead tr:nth-child(2) th { text-align: right; }
+
+/* Заголовки не переносятся: «Кол-во» не должно ломаться на «Кол-/во». */
+.page-year-compare .tbl thead th { white-space: nowrap; }
+
+/* Последняя ячейка — отступ от правого края таблицы. */
+.page-year-compare .tbl th:last-child,
+.page-year-compare .tbl td:last-child { padding-right: 14px; }
+
+/* Ряд с кнопкой «Увидеть ещё» — своя отбивка страницы. */
+.page-year-compare__more { text-align: center; margin: 10px 0 8px; }

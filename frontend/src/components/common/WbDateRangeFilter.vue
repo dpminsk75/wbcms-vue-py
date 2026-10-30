@@ -11,7 +11,7 @@
         {{ p.label }}
       </button>
     </div>
-    <div class="row g-2 align-items-end" :class="{ 'wb-range-filter__row--inline': !!$slots.inline }">
+    <div class="row g-2" :class="$slots.inline ? 'align-items-start' : 'align-items-end'">
       <div class="col-auto">
         <label class="wb-field__label">Дата с</label>
         <WbDateInput v-model="draftFrom" />
@@ -21,7 +21,8 @@
         <WbDateInput v-model="draftTo" />
       </div>
       <!-- Поля страницы — в одну горизонталь с датами (слот #inline).
-           Выравнивание по верху: подписи на одной высоте, поля одинаковой высоты. -->
+           Ряд выравнивается по верху, иначе поле с подписью под контролом
+           (например «Выбрано: …») поднимает остальные поля ряда. -->
       <div v-if="$slots.inline" class="col-auto flex-grow-1 wb-range-filter__inline">
         <slot name="inline" />
       </div>
@@ -39,6 +40,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { DEFAULT_PRESETS } from '@/constants/presets'
 import WbDateInput from './WbDateInput.vue'
 
 /**
@@ -56,7 +58,9 @@ const props = withDefaults(defineProps<{
   compact?: boolean
   /** Без своей плашки — когда блок лежит внутри панели фильтров страницы. */
   bare?: boolean
-}>(), { defaultPreset: '30', compact: false, bare: false })
+  /** Свой набор пресетов (по умолчанию — DEFAULT_PRESETS). */
+  presets?: { id: string; label: string }[]
+}>(), { defaultPreset: '30', compact: false, bare: false, presets: () => DEFAULT_PRESETS })
 
 /**
  * Диапазон дат — двусторонняя модель (v-model:from / v-model:to).
@@ -68,15 +72,6 @@ const fromModel = defineModel<string>('from', { default: '' })
 const toModel = defineModel<string>('to', { default: '' })
 
 const emit = defineEmits<{ apply: [payload: { from: string, to: string }] }>()
-
-const presets = [
-  { id: '7', label: '7 дней' },
-  { id: '14', label: '14 дней' },
-  { id: '30', label: '30 дней' },
-  { id: '90', label: '90 дней' },
-  { id: '365', label: '365 дней' },
-  { id: 'ytd', label: 'С начала года' },
-]
 
 const draftFrom = ref(fromModel.value)
 const draftTo = ref(toModel.value)
@@ -112,7 +107,7 @@ function applyManual() {
 
 /** Подсветка пресета — только если даты точно совпадают с пресетом. */
 function matchPreset(from: string, to: string): string {
-  for (const p of presets) {
+  for (const p of props.presets) {
     const r = rangeOf(p.id)
     if (r && r[0] === from && r[1] === to) return p.id
   }
@@ -148,9 +143,8 @@ watch(draftTo, (v) => { if (v !== toModel.value) toModel.value = v })
 }
 .wb-range-filter__presets { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
 .wb-range-filter__btns { display: flex; gap: 8px; }
-/* Поля страницы в строке с датами: выравнивание по верху, иначе поле с подписью
-   «Выбрано: …» (ниже контрола) поднимает остальные поля ряда. */
-.wb-range-filter__row--inline { align-items: flex-start; }
+/* Поля страницы в строке с датами (слот #inline): ряд выравнивается по верху
+   в шаблоне — иначе поле с подписью «Выбрано: …» (ниже контрола) поднимает остальные. */
 .wb-range-filter__inline { min-width: 0; }
 .wb-range-filter__extra:not(:empty) { margin-top: 12px; display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
 

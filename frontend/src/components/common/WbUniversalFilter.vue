@@ -85,6 +85,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { api } from '@/api/client'
+import { DEFAULT_PRESETS_UNIVERSAL } from '@/constants/presets'
 import WbDateInput from './WbDateInput.vue'
 
 // Общий фильтр в духе fbs-report: пресеты + даты + Товар-маска + Бренд + Категория.
@@ -103,12 +104,15 @@ const props = withDefaults(defineProps<{
   listId?: string
   showQuick?: boolean
   quickButtonsProp?: any[] | null
+  /** Свой набор пресетов (по умолчанию — DEFAULT_PRESETS). */
+  presets?: { id: string; label: string }[]
 }>(), {
   brands: () => [], categories: () => [],
   showProduct: true, showBrandCategory: true,
   defaultPreset: '30', presetEnd: 'today',
   categoryLabel: 'Категория', brandLabel: 'Бренд', listId: 'wbuf-product-list',
   showQuick: true, quickButtonsProp: null,
+  presets: () => DEFAULT_PRESETS_UNIVERSAL,
 })
 
 const dateFrom = defineModel<string>('dateFrom', { default: '' })
@@ -122,16 +126,7 @@ const emit = defineEmits<{
   (e: 'reset'): void
 }>()
 
-const presets = [
-  { id: 'today', label: 'Сегодня' },
-  { id: 'yesterday', label: 'Вчера' },
-  { id: '7', label: '7 дней' },
-  { id: '14', label: '14 дней' },
-  { id: '30', label: '30 дней' },
-  { id: '90', label: '90 дней' },
-  { id: '365', label: '365 дней' },
-  { id: 'ytd', label: 'С начала года' },
-]
+/** Пресеты по умолчанию — из общего модуля (экспорт из .vue запрещён). */
 const activePreset = ref(props.defaultPreset)
 const suggestions = ref<any[]>([])
 const popupOpen = ref(false)
@@ -261,7 +256,7 @@ function applyPreset(id: string) {
 
 // подсветка следует за датами: ссылка/ручной ввод сами выбирают пресет, иначе — без подсветки
 function syncPresetToDates() {
-  for (const p of presets) {
+  for (const p of props.presets) {
     const r = rangeOf(p.id)
     if (r && r[0] === dateFrom.value && r[1] === dateTo.value) { activePreset.value = p.id; return }
   }

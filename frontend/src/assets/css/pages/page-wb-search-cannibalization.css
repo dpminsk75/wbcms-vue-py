@@ -1,0 +1,21 @@
+/* Страница «Каннибализация запросов» (/wb-search/cannibalization).
+   Тема: .tbl-card → .card__hd → .tbl-wrap → .tbl; бейджи — badge--warn/badge--bad. */
+
+/* Фраза — ссылка на «Фраза → карточки» (/wb-search/phrase) */
+.page-wb-search-cannibalization__phrase {
+  font-weight: 700;
+  color: var(--brand);
+  text-decoration: none;
+}
+.page-wb-search-cannibalization__phrase:hover { color: var(--brand-hover); text-decoration: underline; }
+
+/* Карточки в ячейке — бейджи .badge--brand (наши товары) */
+.page-wb-search-cannibalization__cards { line-height: 1.9; }
+.page-wb-search-cannibalization__cards .badge {
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+.page-wb-search-cannibalization__cards .badge:hover {
+  background: color-mix(in srgb, var(--brand) 22%, var(--surface));
+  color: var(--brand-deep);
+}

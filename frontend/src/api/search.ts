@@ -48,4 +48,31 @@ export const wbSearchApi = {
     })
     return data
   },
+  /** Каннибализация: фразы, по которым ранжируются ≥2 наших карточек. */
+  async cannibalization(
+    dateFrom: string,
+    dateTo: string,
+    opts: {
+      q?: string
+      nmId?: number | null
+      brand?: string
+      category?: string
+      page?: number
+      pageSize?: number
+    } = {},
+  ): Promise<any> {
+    const { data } = await api.get('/api/wb-search/cannibalization', {
+      params: {
+        date_from: dateFrom,
+        date_to: dateTo,
+        q: opts.q || undefined,
+        nm_id: opts.nmId || undefined,
+        brand: opts.brand || undefined,
+        category: opts.category || undefined,
+        page: opts.page ?? 1,
+        page_size: opts.pageSize ?? 50,
+      },
+    })
+    return data
+  },
 }

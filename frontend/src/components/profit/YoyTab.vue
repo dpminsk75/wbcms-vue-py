@@ -8,17 +8,17 @@
     <template v-else>
       <!-- Выбор годов (применяется кнопкой «Сформировать») — слева -->
       <div class="d-flex justify-content-start mb-2">
-        <YearSelector :years="availableYears" :model-value="appliedYears" @apply="onApply" />
+        <YearPicker :available="availableYears" :model-value="appliedYears" @apply="onApply" />
       </div>
 
-      <!-- Карточки YTD: два последних выбранных года -->
+      <!-- Карточки YTD: два последних выбранных года (плитки темы) -->
       <div class="row g-2 mb-3">
         <div v-for="c in cards" :key="c.k" class="col-6 col-lg-3">
-          <div class="yoy-card">
-            <div class="yoy-card__cap">{{ c.label }}</div>
-            <div class="yoy-card__val">{{ c.value }}</div>
-            <div class="yoy-card__delta" :class="c.deltaCls">{{ c.delta }}</div>
-            <div class="yoy-card__note">{{ c.note }}</div>
+          <div class="tile">
+            <div class="tile__label">{{ c.label }}</div>
+            <div class="tile__value">{{ c.value }}</div>
+            <div class="tile__delta" :class="c.deltaCls">{{ c.delta }}</div>
+            <div class="tile__note">{{ c.note }}</div>
           </div>
         </div>
       </div>
@@ -50,7 +50,7 @@
                   :title="`Скрыть/показать ${y} год`"
                   @click="toggleYear(y)"
                 >
-                  <span class="cost-years__swatch" :style="{ background: '#ffffff', opacity: 0.5 + 0.5 * yearOpacity(i) }"></span>{{ y }}
+                  <span class="cost-years__swatch" :style="{ background: yearColor(i), opacity: 0.5 + 0.5 * yearOpacity(i) }"></span>{{ y }}
                 </button>
               </div>
             </template>
@@ -83,7 +83,7 @@ import { useQuery } from '@tanstack/vue-query'
 import { dashboardApi } from '@/api/dashboard'
 import { useAuthStore } from '@/stores/auth'
 import { useSelectedYears } from '@/composables/useSelectedYears'
-import YearSelector from './YearSelector.vue'
+import YearPicker from '@/components/common/YearPicker.vue'
 import ProfitChartCard from './ProfitChartCard.vue'
 
 const auth = useAuthStore()
@@ -103,7 +103,8 @@ const MONTHS = [
   { m: 10, label: 'Окт' }, { m: 11, label: 'Ноя' }, { m: 12, label: 'Дек' },
 ]
 
-// Палитра по годам (по возрастанию): 2025 — серый, 2026 — зелёный, 2027 — синий…
+// Палитра по годам — исходная (как в отчёте «Финансовая аналитика»).
+// Цвета серий не перекрашиваем: правка темы трогает только оформление (шапка, иконки, оси).
 const YEAR_COLORS = ['#b9c6d4', '#1e9e7c', '#2980b9', '#f0b429', '#e0525c', '#8e44ad', '#16a085']
 // Тёмные варианты — текст и рамка подписи (светло-серый 2025 нечитаем).
 const YEAR_LABEL_COLORS = ['#7f8c8d', '#16806a', '#21618c', '#b9770e', '#c0392b', '#6c3483', '#117a65']
@@ -124,6 +125,15 @@ const COST_TYPES = [
   { key: 'adv', name: 'Реклама', color: '#8e44ad', labelColor: '#6c3483' },
   { key: 'cashback', name: 'Кэшбек', color: '#d4ac0d', labelColor: '#9a7b0a' },
 ] as const
+
+/** Значение токена темы (в ECharts нужны конкретные цвета). */
+const cssVar = (n: string, fallback = ''): string => {
+  try {
+    return (typeof document !== 'undefined' ? getComputedStyle(document.documentElement).getPropertyValue(n).trim() : '') || fallback
+  } catch {
+    return fallback
+  }
+}
 
 // --- разбор данных ------------------------------------------------------
 const byMonth = computed(() => {
@@ -167,6 +177,8 @@ const toggleYear = (y: number) => {
 }
 /** Прозрачность столбика года: ранние годы приглушены, свежий — обычный. */
 const yearOpacity = (i: number) => Math.max(0.45, 1 - 0.22 * i)
+/** Цвет года (палитра отчёта). */
+const yearColor = (i: number) => YEAR_COLORS[i % YEAR_COLORS.length]
 
 // Последний ПОЛНЫЙ месяц текущего года (текущий месяц ещё не закрыт).
 const lastFullMonth = computed(() => {
@@ -280,8 +292,8 @@ const marginValue = (year: number, mm: number): number => {
 /** Шрифт подписей осей (увеличивается при раскрытии графика). */
 const axisFont = (scale: number) => ({
   fontSize: Math.round(10 * scale),
-  color: '#888',
-  fontFamily: '"Segoe UI",Roboto,Helvetica,Arial,sans-serif',
+  color: cssVar('--ink-muted', '#969CA1'),
+  fontFamily: cssVar('--font-ui', 'sans-serif'),
 })
 
 /** Значение из params-объекта подписи ECharts (или из «голого» числа). */
@@ -351,8 +363,8 @@ const chartOption = (id: string, kind: MetricKind, withQty = false) => computed(
   const valueAxis = (fmt: (v: number) => string, name: string) => ({
     type: 'value',
     name,
-    nameTextStyle: { fontSize: Math.round(10 * scale), color: '#95a5a6' },
-    splitLine: { lineStyle: { color: '#eef1f4' } },
+    nameTextStyle: { fontSize: Math.round(10 * scale), color: cssVar('--ink-muted', '#969CA1') },
+    splitLine: { lineStyle: { color: cssVar('--line', '#E1E3E6') } },
     axisLabel: { ...af, formatter: fmt },
     // Запас сверху, чтобы подпись над самым высоким столбиком не обрезалась.
     min: 0,
@@ -384,7 +396,7 @@ const chartOption = (id: string, kind: MetricKind, withQty = false) => computed(
       data: [...bars.map(b => b.name), ...lines.map(l => l.name)],
       bottom: 0, left: 'center', icon: 'roundRect',
       itemWidth: Math.round(11 * scale), itemHeight: Math.round(11 * scale),
-      textStyle: { fontSize: Math.round(10 * scale), fontFamily: '"Segoe UI",Roboto,Helvetica,Arial,sans-serif' },
+      textStyle: { fontSize: Math.round(10 * scale), color: cssVar('--ink-soft', '#4C5257'), fontFamily: cssVar('--font-ui', 'sans-serif') },
       type: 'scroll',
     },
     // Одинаковые отступы у всех графиков (у «Структуры затрат» легенда в 2 строки),
@@ -393,7 +405,7 @@ const chartOption = (id: string, kind: MetricKind, withQty = false) => computed(
     xAxis: {
       type: 'category',
       data: labels,
-      axisLine: { lineStyle: { color: '#dee2e6' } },
+      axisLine: { lineStyle: { color: cssVar('--line-strong', '#CBD0D4') } },
       axisTick: { show: false },
       axisLabel: { ...af, interval: 0 },
     },
@@ -526,7 +538,7 @@ const optCosts = computed(() => {
       data: [...COST_TYPES].reverse().map(t => t.name),
       bottom: 0, left: 'center', itemGap: Math.round(10 * scale), icon: 'roundRect',
       itemWidth: Math.round(11 * scale), itemHeight: Math.round(11 * scale),
-      textStyle: { fontSize: Math.round(10 * scale), fontFamily: '"Segoe UI",Roboto,Helvetica,Arial,sans-serif' },
+      textStyle: { fontSize: Math.round(10 * scale), color: cssVar('--ink-soft', '#4C5257'), fontFamily: cssVar('--font-ui', 'sans-serif') },
     },
     grid: { left: 4, right: 10, top: Math.round(26 * scale), bottom: 66, containLabel: true },
     barGap: '12%',
@@ -534,15 +546,15 @@ const optCosts = computed(() => {
     xAxis: {
       type: 'category',
       data: MONTHS.map(x => x.label),
-      axisLine: { lineStyle: { color: '#dee2e6' } },
+      axisLine: { lineStyle: { color: cssVar('--line-strong', '#CBD0D4') } },
       axisTick: { show: false },
       axisLabel: { ...af, interval: 0 },
     },
     yAxis: [{
       type: 'value',
       name: '₽',
-      nameTextStyle: { fontSize: Math.round(10 * scale), color: '#95a5a6' },
-      splitLine: { lineStyle: { color: '#eef1f4' } },
+      nameTextStyle: { fontSize: Math.round(10 * scale), color: cssVar('--ink-muted', '#969CA1') },
+      splitLine: { lineStyle: { color: cssVar('--line', '#E1E3E6') } },
       axisLabel: { ...af, formatter: (v: number) => fmtCompact(v) },
       // Нижняя граница = фактический минимум (без «красивого» отступа вниз),
       // сверху — запас под подписи.
@@ -559,27 +571,18 @@ const optMargin = chartOption('margin', 'clean_margin')
 </script>
 
 <style scoped>
-.yoy-card {
-  background: #fff;
-  border: 1px solid #e3e7eb;
-  border-radius: 10px;
-  padding: 10px 12px;
-  height: 100%;
-}
-.yoy-card__cap { font-size: 10px; text-transform: uppercase; color: #7f8c8d; font-weight: 700; }
-.yoy-card__val { font-size: 19px; font-weight: 700; color: #2c3e50; line-height: 1.25; margin-top: 2px; }
-.yoy-card__delta { font-size: 12px; font-weight: 700; color: #7f8c8d; margin-top: 2px; }
-.yoy-card__delta--up { color: #1e9e7c; }
-.yoy-card__delta--down { color: #e0525c; }
-.yoy-card__note { font-size: 10px; color: #95a5a6; margin-top: 2px; }
+/* Плитки KPI — общий .tile темы; здесь только цвет дельты */
+.yoy-card__delta--up { color: var(--good); }
+.yoy-card__delta--down { color: var(--bad); }
 
+/* Чипы годов в шапке графика «Структура затрат» (на тёмной шапке — currentColor) */
 .cost-years { display: inline-flex; align-items: center; gap: 6px; margin-right: 4px; }
 .cost-years__chip {
   display: inline-flex; align-items: center; gap: 4px;
-  border: 1px solid rgba(255,255,255,.6); background: transparent; border-radius: 12px;
-  font-size: 10px; color: #fff; padding: 1px 7px; cursor: pointer;
+  border: 1px solid color-mix(in srgb, currentColor 45%, transparent); background: transparent; border-radius: 12px;
+  font-size: 10px; color: inherit; padding: 1px 7px; cursor: pointer;
 }
-.cost-years__chip:hover { background: rgba(255,255,255,.15); }
+.cost-years__chip:hover { background: color-mix(in srgb, currentColor 15%, transparent); }
 .cost-years__chip--off { opacity: .4; text-decoration: line-through; }
-.cost-years__swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: #fff; }
+.cost-years__swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: currentColor; }
 </style>

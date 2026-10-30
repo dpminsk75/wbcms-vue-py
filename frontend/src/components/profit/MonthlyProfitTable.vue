@@ -2,88 +2,113 @@
   <div v-if="busy || allRows.length || isError">
     <!-- Выбор годов (общий с «Год к году», в URL) — слева, ДО таблицы -->
     <div class="d-flex justify-content-start mb-2">
-      <YearSelector :years="availableYears" :model-value="appliedYears" @apply="onApply" />
+      <YearPicker :available="availableYears" :model-value="appliedYears" @apply="onApply" />
     </div>
-    <div style="border:1px solid #e0e0e0; border-radius:12px; background:#fff; overflow:hidden">
-      <div class="card-header d-flex justify-content-between align-items-center text-white bg-wb-blue-header" style="padding:10px 15px; font-size:13px; font-weight:700; font-family:&quot;Segoe UI&quot;,Roboto,Helvetica,Arial,sans-serif">
+
+    <div class="tbl-card tbl-card--compact page-wb-profit__block">
+      <div class="card__hd">
         <span>Финансовая аналитика (с 2025 года)</span>
-        <span style="font-weight:400; font-size:11px; opacity:.85">{{ rows.length }} мес.</span>
+        <span class="spacer"></span>
+        <span class="hd-badge">{{ rows.length }} мес.</span>
       </div>
-      <div v-if="isLoading" class="text-center p-5">
-        <div class="spinner-border text-primary" role="status"></div>
-        <div class="mt-2 text-muted" style="font-size:12px">Загрузка финансовой аналитики...</div>
+      <div v-if="isLoading" class="text-center p-4 text-muted">
+        <span class="spinner-border spinner-border-sm"></span> Загрузка финансовой аналитики...
       </div>
-      <div v-else style="overflow-x:auto">
-        <table class="table table-striped table-bordered table-hover kv-grid-table mb-0" style="font-size:11px; margin:0; white-space:nowrap; font-family:&quot;Segoe UI&quot;,Roboto,Helvetica,Arial,sans-serif">
+      <div v-else class="tbl-wrap">
+        <table class="tbl page-wb-profit__monthly">
           <thead>
-            <tr style="background:#f8f7fb">
-              <th style="padding:5px 6px; text-align:center; min-width:80px">Месяц</th>
-              <th style="padding:5px 6px; text-align:center">Кол-во</th>
-              <th style="padding:5px 6px; text-align:center; font-weight:700">Продажи</th>
-              <th style="padding:5px 6px; text-align:center; color:#c0392b">Ком. WB</th>
-              <th style="padding:5px 6px; text-align:center; color:#c0392b">Эквайринг</th>
-              <th style="padding:5px 6px; text-align:center; color:#c0392b">Приёмка</th>
-              <th style="padding:5px 6px; text-align:center; color:#c0392b; font-weight:500">Логистика</th>
-              <th style="padding:5px 6px; text-align:center; color:#c0392b">Хранение</th>
-              <th style="padding:5px 6px; text-align:center; color:#c0392b">Штрафы</th>
-              <th style="padding:5px 6px; text-align:center; color:#c0392b">Удержан.</th>
-              <th style="padding:5px 6px; text-align:center; color:#16a085">Отзывы</th>
-              <th style="padding:5px 6px; text-align:center; color:#2980b9">Реклама</th>
-              <th style="padding:5px 6px; text-align:center; color:#c0392b">Кэшбек</th>
-              <th style="padding:5px 6px; text-align:center; background:#e8f8f5; font-weight:700">Общий итог</th>
-              <th style="padding:5px 6px; text-align:center">НДС</th>
-              <th style="padding:5px 6px; text-align:center">Себ-ть</th>
-              <th style="padding:5px 6px; text-align:center; background:#fcf3cf; font-weight:700">Прибыль</th>
-              <th style="padding:5px 6px; text-align:center; color:#d35400">Налог 7%</th>
-              <th style="padding:5px 6px; text-align:center; background:#d4efdf; font-weight:700">Маржа</th>
+            <tr>
+              <th class="t-center">Месяц</th>
+              <th class="num">Кол-во</th>
+              <th class="num">Продажи</th>
+              <th class="num">Ком. WB</th>
+              <th class="num">Эквайринг</th>
+              <th class="num">Приёмка</th>
+              <th class="num">Логистика</th>
+              <th class="num">Хранение</th>
+              <th class="num">Штрафы</th>
+              <th class="num">Удержан.</th>
+              <th class="num">Отзывы</th>
+              <th class="num">Реклама</th>
+              <th class="num">Кэшбек</th>
+              <th class="num page-wb-profit__monthly-net">Общий итог</th>
+              <th class="num">НДС</th>
+              <th class="num">Себ-ть</th>
+              <th class="num page-wb-profit__monthly-profit">Прибыль</th>
+              <th class="num">Налог 7%</th>
+              <th class="num page-wb-profit__monthly-margin">Маржа</th>
             </tr>
           </thead>
           <tbody>
-            <!-- pageSummary Итого -->
-            <tr class="table-warning" style="font-weight:700; background:#fff3cd">
-              <td style="padding:5px 6px; text-align:center">Итого</td>
-              <td style="padding:5px 6px; text-align:right">{{ fmt0(totals.qnt) }}</td>
-              <td style="padding:5px 6px; text-align:right">{{ fmt0(totals.amount) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#c0392b">{{ fmt0(totals.commission) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#c0392b">{{ fmt0(totals.f_acquiring_fee) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#c0392b">{{ fmt0(totals.f_acceptance) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#c0392b">{{ fmt0(totals.f_delivery) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#c0392b">{{ fmt0(totals.f_storage_fee) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#c0392b">{{ fmt0(totals.f_penalty) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#c0392b">{{ fmt0(totals.f_deduction) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#16a085">{{ fmt0(totals.f_otziv) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#2980b9">{{ fmt0(totals.f_adv) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#c0392b">{{ fmt0(totals.f_cashback) }}</td>
-              <td style="padding:5px 6px; text-align:right; background:#f4fbf7; color:#27ae60">{{ fmt0(totals.net_profit) }}</td>
-              <td style="padding:5px 6px; text-align:right">{{ fmt0(totals.total_nds) }}</td>
-              <td style="padding:5px 6px; text-align:right">{{ fmt0(totals.total_cost) }}</td>
-              <td style="padding:5px 6px; text-align:right; background:#fefde7">{{ fmt0(totals.profit_before_tax) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#e67e22">{{ fmt0(totals.tax_amount) }}</td>
-              <td style="padding:5px 6px; text-align:right; background:#eaf2f8; color:#196f3d">{{ fmt0(totals.clean_margin) }}</td>
+            <!-- Итого -->
+            <tr class="tbl__total tbl__total--top">
+              <td class="t-center">Итого</td>
+              <td class="num">{{ fmt0(totals.qnt) }}</td>
+              <td class="num">{{ fmt0(totals.amount) }}</td>
+              <td class="num">{{ fmt0(totals.commission) }}</td>
+              <td class="num">{{ fmt0(totals.f_acquiring_fee) }}</td>
+              <td class="num">{{ fmt0(totals.f_acceptance) }}</td>
+              <td class="num">{{ fmt0(totals.f_delivery) }}</td>
+              <td class="num">{{ fmt0(totals.f_storage_fee) }}</td>
+              <td class="num">{{ fmt0(totals.f_penalty) }}</td>
+              <td class="num">{{ fmt0(totals.f_deduction) }}</td>
+              <td class="num">{{ fmt0(totals.f_otziv) }}</td>
+              <td class="num">{{ fmt0(totals.f_adv) }}</td>
+              <td class="num">{{ fmt0(totals.f_cashback) }}</td>
+              <td class="num">{{ fmt0(totals.net_profit) }}</td>
+              <td class="num">{{ fmt0(totals.total_nds) }}</td>
+              <td class="num">{{ fmt0(totals.total_cost) }}</td>
+              <td class="num">{{ fmt0(totals.profit_before_tax) }}</td>
+              <td class="num">{{ fmt0(totals.tax_amount) }}</td>
+              <td class="num">{{ fmt0(totals.clean_margin) }}</td>
             </tr>
             <tr v-if="!rows.length">
               <td colspan="19" class="text-center text-muted py-3">Нет данных за выбранные годы</td>
             </tr>
-            <tr v-for="r in rows" :key="r.month" style="font-size:11px">
-              <td style="padding:5px 6px; text-align:center; font-weight:700; color:#2c3e50">{{ r.month }}</td>
-              <td style="padding:5px 6px; text-align:right">{{ fmt0(r.qnt) }}</td>
-              <td style="padding:5px 6px; text-align:right; font-weight:700">{{ fmt0(r.amount) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#c0392b">{{ fmt0(r.commission) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#c0392b">{{ fmt0(r.f_acquiring_fee) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#c0392b"><button v-if="num(r.f_acceptance)" class="wb-cell-link" title="Детализация приёмки" @click="openPop('acceptance', r.month)">{{ fmt0(r.f_acceptance) }}</button><template v-else>{{ fmt0(r.f_acceptance) }}</template></td>
-              <td style="padding:5px 6px; text-align:right; color:#c0392b; font-weight:500"><button v-if="num(r.f_delivery)" class="wb-cell-link" title="Детализация логистики" @click="openCell('delivery', r.month)">{{ fmt0(r.f_delivery) }}</button><template v-else>{{ fmt0(r.f_delivery) }}</template></td>
-              <td style="padding:5px 6px; text-align:right; color:#c0392b"><button v-if="num(r.f_storage_fee)" class="wb-cell-link" title="Детализация хранения" @click="openPop('storage', r.month)">{{ fmt0(r.f_storage_fee) }}</button><template v-else>{{ fmt0(r.f_storage_fee) }}</template></td>
-              <td style="padding:5px 6px; text-align:right; color:#c0392b"><button v-if="num(r.f_penalty)" class="wb-cell-link" title="Детализация штрафов" @click="openPop('shf', r.month)">{{ fmt0(r.f_penalty) }}</button><template v-else>{{ fmt0(r.f_penalty) }}</template></td>
-              <td style="padding:5px 6px; text-align:right; color:#c0392b"><button v-if="num(r.f_deduction)" class="wb-cell-link" title="Детализация удержаний" @click="openPop('udr', r.month)">{{ fmt0(r.f_deduction) }}</button><template v-else>{{ fmt0(r.f_deduction) }}</template></td>
-              <td style="padding:5px 6px; text-align:right; color:#16a085; font-weight:600"><button v-if="num(r.f_otziv)" class="wb-cell-link" title="Детализация отзывов" @click="openPop('feedback', r.month)">{{ fmt0(r.f_otziv) }}</button><template v-else>{{ fmt0(r.f_otziv) }}</template></td>
-              <td style="padding:5px 6px; text-align:right; color:#2980b9"><button v-if="num(r.f_adv)" class="wb-cell-link" title="Детализация рекламы" @click="openPop('adv', r.month)">{{ fmt0(r.f_adv) }}</button><template v-else>{{ fmt0(r.f_adv) }}</template></td>
-              <td style="padding:5px 6px; text-align:right; color:#c0392b"><button v-if="num(r.f_cashback)" class="wb-cell-link" title="Детализация кэшбека" @click="openCell('cashback', r.month)">{{ fmt0(r.f_cashback) }}</button><template v-else>{{ fmt0(r.f_cashback) }}</template></td>
-              <td style="padding:5px 6px; text-align:right; font-weight:700; color:#27ae60; background:#f4fbf7">{{ fmt0(r.net_profit) }}</td>
-              <td style="padding:5px 6px; text-align:right">{{ fmt0(r.total_nds) }}</td>
-              <td style="padding:5px 6px; text-align:right">{{ fmt0(r.total_cost) }}</td>
-              <td style="padding:5px 6px; text-align:right; font-weight:700; background:#fefde7">{{ fmt0(r.profit_before_tax) }}</td>
-              <td style="padding:5px 6px; text-align:right; color:#e67e22">{{ fmt0(r.tax_amount) }}</td>
-              <td style="padding:5px 6px; text-align:right; font-weight:700; background:#eaf2f8; color:#196f3d">{{ fmt0(r.clean_margin) }}</td>
+            <tr v-for="r in rows" :key="r.month">
+              <td class="t-center page-wb-profit__monthly-month">{{ r.month }}</td>
+              <td class="num">{{ fmt0(r.qnt) }}</td>
+              <td class="num">{{ fmt0(r.amount) }}</td>
+              <td class="num t-neg">{{ fmt0(r.commission) }}</td>
+              <td class="num t-neg">{{ fmt0(r.f_acquiring_fee) }}</td>
+              <td class="num t-neg">
+                <button v-if="num(r.f_acceptance)" class="wb-cell-link" title="Детализация приёмки" @click="openPop('acceptance', r.month)">{{ fmt0(r.f_acceptance) }}</button>
+                <template v-else>{{ fmt0(r.f_acceptance) }}</template>
+              </td>
+              <td class="num t-neg">
+                <button v-if="num(r.f_delivery)" class="wb-cell-link" title="Детализация логистики" @click="openCell('delivery', r.month)">{{ fmt0(r.f_delivery) }}</button>
+                <template v-else>{{ fmt0(r.f_delivery) }}</template>
+              </td>
+              <td class="num t-neg">
+                <button v-if="num(r.f_storage_fee)" class="wb-cell-link" title="Детализация хранения" @click="openPop('storage', r.month)">{{ fmt0(r.f_storage_fee) }}</button>
+                <template v-else>{{ fmt0(r.f_storage_fee) }}</template>
+              </td>
+              <td class="num t-neg">
+                <button v-if="num(r.f_penalty)" class="wb-cell-link" title="Детализация штрафов" @click="openPop('shf', r.month)">{{ fmt0(r.f_penalty) }}</button>
+                <template v-else>{{ fmt0(r.f_penalty) }}</template>
+              </td>
+              <td class="num t-neg">
+                <button v-if="num(r.f_deduction)" class="wb-cell-link" title="Детализация удержаний" @click="openPop('udr', r.month)">{{ fmt0(r.f_deduction) }}</button>
+                <template v-else>{{ fmt0(r.f_deduction) }}</template>
+              </td>
+              <td class="num t-pos">
+                <button v-if="num(r.f_otziv)" class="wb-cell-link" title="Детализация отзывов" @click="openPop('feedback', r.month)">{{ fmt0(r.f_otziv) }}</button>
+                <template v-else>{{ fmt0(r.f_otziv) }}</template>
+              </td>
+              <td class="num">
+                <button v-if="num(r.f_adv)" class="wb-cell-link" title="Детализация рекламы" @click="openPop('adv', r.month)">{{ fmt0(r.f_adv) }}</button>
+                <template v-else>{{ fmt0(r.f_adv) }}</template>
+              </td>
+              <td class="num t-neg">
+                <button v-if="num(r.f_cashback)" class="wb-cell-link" title="Детализация кэшбека" @click="openCell('cashback', r.month)">{{ fmt0(r.f_cashback) }}</button>
+                <template v-else>{{ fmt0(r.f_cashback) }}</template>
+              </td>
+              <td class="num" :class="r.net_profit < 0 ? 't-neg' : 't-pos'">{{ fmt0(r.net_profit) }}</td>
+              <td class="num">{{ fmt0(r.total_nds) }}</td>
+              <td class="num">{{ fmt0(r.total_cost) }}</td>
+              <td class="num" :class="r.profit_before_tax < 0 ? 't-neg' : ''">{{ fmt0(r.profit_before_tax) }}</td>
+              <td class="num t-neg">{{ fmt0(r.tax_amount) }}</td>
+              <td class="num" :class="r.clean_margin < 0 ? 't-neg' : 't-pos'">{{ fmt0(r.clean_margin) }}</td>
             </tr>
           </tbody>
         </table>
@@ -109,7 +134,7 @@ import { useAuthStore } from '../../stores/auth'
 import { useSelectedYears } from '@/composables/useSelectedYears'
 import FinancePopup, { type FinancePopupKind } from '../dashboard/FinancePopup.vue'
 import MarginBreakdownModal from './MarginBreakdownModal.vue'
-import YearSelector from './YearSelector.vue'
+import YearPicker from '@/components/common/YearPicker.vue'
 import type { MarginKind } from '@/api/margin'
 const emit = defineEmits<{ report: [ok: boolean] }>()
 const auth = useAuthStore()
@@ -174,3 +199,14 @@ const openCell = (kind: MarginKind, month: string) => {
 const hasData = computed(() => rows.value.length > 0)
 watchEffect(() => { if (!busy.value) emit('report', hasData.value || !!isError.value) })
 </script>
+<style scoped>
+/* Таблица широкая (19 колонок) — плотные горизонтальные отступы,
+   чтобы укладываться в контейнер 1320px с запасом. */
+.page-wb-profit__monthly.tbl td { padding-left: 4px; padding-right: 4px; }
+.page-wb-profit__monthly.tbl thead th { padding-left: 5px; padding-right: 5px; }
+/* Тон колонок — на токенах (не легаси-жёлтый/зелёный) */
+.page-wb-profit__monthly-net { background: color-mix(in srgb, var(--info) 8%, transparent); }
+.page-wb-profit__monthly-profit { background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.page-wb-profit__monthly-margin { background: color-mix(in srgb, var(--good) 10%, transparent); }
+.page-wb-profit__monthly-month { font-weight: 700; }
+</style>

@@ -98,6 +98,22 @@
 
 .btn-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
+/* ---------- кнопки в шапке графика ----------
+   Раньше эти классы жили scoped-стилями DetailCharts.vue / AdvCharts.vue —
+   в теме их не было, и новый график не мог их взять (правило theme.md §5.9).
+   Теперь это общие классы темы: работают на тёмной и на светлой шапке. */
+.ch-seg { display: inline-flex; border-radius: 6px; overflow: hidden; border: 1px solid color-mix(in srgb, currentColor 45%, transparent); }
+.ch-seg__btn { border: 0; background: transparent; color: inherit; font: inherit; font-size: calc(11px * var(--fs)); font-weight: 700; padding: 3px 9px; cursor: pointer; line-height: 1.5; }
+.ch-seg__btn.is-on { background: #ffffff; color: #111111; }
+.ch-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid color-mix(in srgb, currentColor 45%, transparent);
+  background: transparent; color: inherit;
+  border-radius: 6px; width: 26px; height: 24px; line-height: 1;
+  cursor: pointer; font-size: calc(12px * var(--fs)); flex: none;
+}
+.ch-icon-btn:hover { background: color-mix(in srgb, currentColor 18%, transparent); }
+
 /* ---------- бейджи (модификаторы к .badge) ---------- */
 .badge--ok      { background: var(--good-tint); color: var(--good-deep); }
 .badge--bad     { background: var(--bad-tint);  color: var(--bad-deep); }

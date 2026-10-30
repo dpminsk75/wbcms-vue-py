@@ -133,9 +133,12 @@
    ============================================================ */
 .tbl-wrap { overflow-x: auto; }
 
-/* компакт: плотные и строки, и колонки */
-.tbl-card--compact .tbl td { padding: 3px 6px; font-size: calc(11px * var(--fs)); }
-.tbl-card--compact .tbl thead th { padding: 4px 6px; font-size: calc(10px * var(--fs)); }
+/* компакт: плотные и строки, и колонки.
+   Кегль ФИКСИРОВАННЫЙ (11px / 10px), не масштабируется настройкой размера:
+   плотность — это «влезает больше строк», и раздувание до 13.75px при --fs: xl
+   убивает смысл опции. Остальные таблицы масштабируются как раньше. */
+.tbl-card--compact .tbl td { padding: 3px 6px; font-size: 11px; }
+.tbl-card--compact .tbl thead th { padding: 4px 6px; font-size: 10px; }
 .tbl-card--compact .card__hd { padding: 6px 10px; font-size: calc(12px * var(--fs)); }
 .tbl-card--compact .prod { gap: 6px; }
 .tbl-card--compact .prod__img { width: 20px; height: 26px; }

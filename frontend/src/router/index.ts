@@ -58,6 +58,11 @@ const router = createRouter({
     { path: '/wb-warehouses', name: 'warehouses', component: () => import('../pages/WarehousesPage.vue'), meta: { title: 'Склады — SelBI' } },
     { path: '/wb-fbs-virtual', name: 'fbs-virtual', component: () => import('../pages/FbsVirtualPage.vue'), meta: { title: 'FBS остатки — SelBI' } },
     { path: '/wb-stock-reports/:tab(balance|turnover|card|nonliquid)', name: 'stock-reports', component: () => import('../pages/StockReportsPage.vue'), meta: { title: 'Отчеты склада — SelBI' } },
+    { path: '/wb-stock', name: 'stock-wb', component: () => import('../pages/StockWbPage.vue'), meta: { title: 'Анализ остатков — SelBI', needPerm: 'viewOrders' } },
+    // Старые URL из Yii2 (три отдельных экрана) → одна страница с вкладками
+    { path: '/wb-stock/analytics', redirect: { path: '/wb-stock', query: { tab: 'turnover' } } },
+    { path: '/wb-stock/top-warehouse-report', redirect: { path: '/wb-stock', query: { tab: 'sklads' } } },
+    { path: '/wb-stock/warehouse-analytics', redirect: { path: '/wb-stock', query: { tab: 'sklads' } } },
     { path: '/wb-production', name: 'production', component: () => import('../pages/ProductionReportPage.vue'), meta: { title: 'Производственный план — SelBI' } },
     { path: '/wb-production/smolensk', name: 'production-smolensk', component: () => import('../pages/ProductionSmolenskPage.vue'), meta: { title: 'Смоленск — остатки и движения — SelBI' } },
     { path: '/product-catalog', name: 'product-catalog', component: () => import('../pages/ProductCatalogPage.vue'), meta: { title: 'Линейки товаров — SelBI' } },
@@ -86,6 +91,11 @@ const router = createRouter({
     { path: '/wb-search/phrase', name: 'wb-search-phrase', component: () => import('../pages/WbSearchPhrasePage.vue'), alias: ['/wb-search/phrase/'], meta: { title: 'Анализ фразы' } },
     { path: '/wb-search/trend', name: 'wb-search-trend', component: () => import('../pages/WbSearchTrendPage.vue'), alias: ['/wb-search/trend/'], meta: { title: 'Анализ фразы' } },
     { path: '/wb-search/analytics', name: 'wb-search-analytics', component: () => import('../pages/WbSearchAnalyticsPage.vue'), alias: ['/wb-search/analytics/'], meta: { title: 'Частотность поисковых запросов' } },
+    { path: '/wb-search/cannibalization', name: 'wb-search-cannibalization', component: () => import('../pages/WbSearchCannibalizationPage.vue'), alias: ['/wb-search/cannibalization/'], meta: { title: 'Каннибализация запросов — SelBI', needPerm: 'viewSeo' } },
+    { path: '/wb-reports/year-compare', name: 'year-compare', component: () => import('../pages/YearComparePage.vue'), meta: { title: 'Сравнение по годам — SelBI', needPerm: 'viewOrders' } },
+    // Старые адреса Yii2 — редиректы на новый экран (закладки «Заказы» / «Продажи»).
+    { path: '/agg-orders-report/compare', redirect: { path: '/wb-reports/year-compare', query: { tab: 'orders' } } },
+    { path: '/agg-sales-report/compare', redirect: { path: '/wb-reports/year-compare', query: { tab: 'sales' } } },
     { path: '/cost-import', name: 'cost-import', component: () => import('../pages/CostImportPage.vue'), alias: ['/cost-import/'], meta: { title: 'Загрузка себестоимости' } },
     { path: '/cost-import/list', name: 'cost-list', component: () => import('../pages/CostListPage.vue'), alias: ['/cost-import/list/'], meta: { title: 'Себестоимость: просмотр и редактирование' } },
     { path: '/cost-import/missing', name: 'cost-missing', component: () => import('../pages/CostMissingPage.vue'), alias: ['/cost-import/missing/'], meta: { title: 'Нет себестоимости — SelBI' } },
