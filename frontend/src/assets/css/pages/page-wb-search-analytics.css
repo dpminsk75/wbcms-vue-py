@@ -1,66 +1,53 @@
-.page-wb-search-analytics__title {
-  font-size: 20px;
-  font-weight: 700;
+/* page-wb-search-analytics.css — /wb-search/analytics: частотность запросов
+   на блоках темы (.tbl-card → .card__hd → .tbl-wrap → .tbl). Цвета — токены. */
+.page-wb-search-analytics__grid { margin-top: 12px; }
+
+/* ---------- липкие колонки: «#» и «Поисковый запрос» ----------
+   Ширина «#» фиксирована (width + min-width) — иначе в auto-layout колонка
+   схлопывается и липкая «Поисковый запрос» (left: 44px) отодвигается:
+   между колонками появляется зазор. min-width при border-box = ровно 44px. */
+.page-wb-search-analytics__pos {
+  width: 44px; min-width: 44px;
+  position: sticky; left: 0; z-index: 2;
+  background: var(--surface);
+  box-shadow: inset -1px 0 0 var(--line);
+}
+.page-wb-search-analytics__sticky {
+  position: sticky; left: 44px; z-index: 2;
+  background: var(--surface);
+  box-shadow: inset -1px 0 0 var(--line);
+  max-width: 420px;
+  white-space: normal;
+  word-break: break-word;
+}
+/* Фон липких колонок повторяет строку (зебра / наведение) */
+.tbl tbody tr:nth-child(even) td.page-wb-search-analytics__pos,
+.tbl tbody tr:nth-child(even) td.page-wb-search-analytics__sticky {
+  background: color-mix(in srgb, var(--ink) 4%, var(--surface));
+}
+.tbl tbody tr:hover td.page-wb-search-analytics__pos,
+.tbl tbody tr:hover td.page-wb-search-analytics__sticky {
+  background: color-mix(in srgb, var(--ink) 7%, var(--surface));
+}
+.tbl thead th.page-wb-search-analytics__pos,
+.tbl thead th.page-wb-search-analytics__sticky {
+  z-index: 4;
+  background: var(--surface);
 }
 
 .page-wb-search-analytics__period {
   font-weight: 400;
-  font-size: 12px;
-  color: #6c757d;
+  font-size: calc(12px * var(--fs));
+  color: var(--ink-muted);
   margin-left: 8px;
 }
 
-.page-wb-search-analytics__table {
-  width: 100%;
-  table-layout: fixed;
-  font-size: 12px;
-}
+/* Сортируемые заголовки */
+.page-wb-search-analytics__sort { cursor: pointer; white-space: nowrap; }
 
-.page-wb-search-analytics__table th {
-  text-align: center;
-  vertical-align: middle;
-  font-size: 11px;
-  position: relative;
-}
+/* Динамика — токены темы */
+.page-wb-search-analytics__delta--up { color: var(--good); font-weight: 600; white-space: nowrap; }
+.page-wb-search-analytics__delta--down { color: var(--bad); font-weight: 600; white-space: nowrap; }
+.page-wb-search-analytics__delta--new { color: var(--brand); font-weight: 600; }
 
-.page-wb-search-analytics__table td {
-  padding: 4px 6px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.page-wb-search-analytics__th--num {
-  width: 44px;
-}
-
-.page-wb-search-analytics__phrase {
-  width: 300px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.page-wb-search-analytics__sort {
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.page-wb-search-analytics__delta--up {
-  color: #1e9e7c;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.page-wb-search-analytics__delta--down {
-  color: #e0525c;
-  white-space: nowrap;
-}
-
-.page-wb-search-analytics__delta--new {
-  color: #8a2be0;
-  font-weight: 600;
-}
-
-.page-wb-search-analytics__sub {
-  font-size: 11px;
-}
+.page-wb-search-analytics__sub { font-size: calc(11px * var(--fs)); }

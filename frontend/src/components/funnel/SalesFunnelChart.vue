@@ -1,13 +1,16 @@
 <template>
-  <div class="card" style="border:1px solid #e0e0e0; border-radius:12px; overflow:hidden; margin-bottom:16px">
-    <div class="card-header text-white" style="background: linear-gradient(97.26deg,#ed3cca .49%,#df34d2 14.88%,#d02bd9 29.27%,#bf22e1 43.14%,#ae1ae8 57.02%,#9a10f0 70.89%,#8306f7 84.76%,#7c1af8 99.15%); font-weight:700; display:flex; justify-content:space-between; align-items:center">
+  <div class="wb-panel page-sales-funnel-wb-card__chart">
+    <div class="card__hd">
       <span>Воронка продаж</span>
-      <button class="btn btn-sm" :class="showValues?'btn-light':'btn-outline-light'" style="width:32px; height:28px; padding:0" @click="showValues=!showValues" :title="showValues?'Скрыть значения':'Показать значения'">
-        <i :class="showValues?'bi bi-eye':'bi bi-eye-slash'"></i>
+      <span class="spacer"></span>
+      <button type="button" class="ch-icon-btn" @click="showValues = !showValues" :title="showValues ? 'Скрыть значения' : 'Показать значения'">
+        <i :class="showValues ? 'bi bi-eye' : 'bi bi-eye-slash'"></i>
       </button>
     </div>
-    <div v-if="!data.length" class="sales-funnel-chart-empty">Нет данных для графика</div>
-    <VChart v-else :option="chartOption" autoresize style="height:380px" />
+    <div class="wb-panel__bd">
+      <div v-if="!data.length" class="sales-funnel-chart-empty">Нет данных для графика</div>
+      <VChart v-else :option="chartOption" autoresize class="page-sales-funnel-wb-card__chart-canvas" />
+    </div>
   </div>
 </template>
 
@@ -27,6 +30,20 @@ const props = defineProps<{
 
 const selected = ref({ openCount: true, cartCount: true, orderCount: true })
 const showValues = ref(true)
+
+/* Цвета серий — палитра отчёта (theme.md 5.9): клики / корзины / заказы. Фиксированные. */
+const C_OPEN = '#2563EB'
+const C_CART = '#059669'
+const C_ORDER = '#DB2777'
+
+/** Токены темы для осей и сетки (в ECharts нужен конкретный цвет). */
+const cssVar = (n: string): string => {
+  try {
+    return (typeof document !== 'undefined' ? getComputedStyle(document.documentElement).getPropertyValue(n).trim() : '') || ''
+  } catch {
+    return ''
+  }
+}
 
 const norm = (rows: any[]) => (rows || []).map((r: any) => ({
   date: String(r.date ?? r.odate ?? '').slice(0, 10),
@@ -51,6 +68,10 @@ const chartOption = computed(() => {
   const data = norm(props.data || [])
   if (!data.length) return {}
 
+  const axis = cssVar('--ink-muted') || '#969CA1'
+  const line = cssVar('--line') || '#E1E3E6'
+  const soft = cssVar('--ink-soft') || '#4C5257'
+
   // запас как в _chart.php: левая +20%, правая +10%, верх и шаг — круглые
   const leftMax = data.reduce((m, r) => Math.max(m, r.cartCount || 0, r.orderCount || 0), 0)
   const rightMax = data.reduce((m, r) => Math.max(m, r.openCount || 0), 0)
@@ -67,17 +88,32 @@ const chartOption = computed(() => {
         cartCount: selected.value.cartCount,
         orderCount: selected.value.orderCount,
       },
-      textStyle: { fontSize: 12 },
+      textStyle: { fontSize: 12, color: soft },
     },
     grid: { left: 48, right: 24, top: 55, bottom: 80, containLabel: true },
     xAxis: {
       type: 'category',
       data: data.map(row => row.date),
-      axisLabel: { fontSize: 11, rotate: 35 },
+      axisLabel: { fontSize: 11, color: axis },
+      axisLine: { lineStyle: { color: line } },
     },
     yAxis: [
-      { type: 'value', name: 'Корзины / заказы', nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 }, min: 0, max: L.top, interval: L.step },
-      { type: 'value', name: 'Переходы', nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 }, min: 0, max: R.top, interval: R.step },
+      {
+        type: 'value', name: 'Корзины / заказы',
+        nameTextStyle: { fontSize: 11, color: axis },
+        axisLabel: { fontSize: 11, color: axis },
+        axisLine: { lineStyle: { color: line } },
+        splitLine: { lineStyle: { color: line } },
+        min: 0, max: L.top, interval: L.step,
+      },
+      {
+        type: 'value', name: 'Переходы',
+        nameTextStyle: { fontSize: 11, color: axis },
+        axisLabel: { fontSize: 11, color: axis },
+        axisLine: { lineStyle: { color: line } },
+        splitLine: { show: false },
+        min: 0, max: R.top, interval: R.step,
+      },
     ],
     dataZoom: [
       { type: 'inside' },
@@ -93,10 +129,10 @@ const chartOption = computed(() => {
         symbolSize: 8,
         data: data.map(row => row.openCount || 0),
         z: 10, zlevel: 3,
-        lineStyle: { width: 2.5, color: '#f44336', opacity: 1 },
-        itemStyle: { color: '#f44336', opacity: 1, borderColor: '#ffffff', borderWidth: 1.5 },
-        areaStyle: { color: 'rgba(244,67,54,0.08)' },
-        label: { show: showValues.value, position: 'top', distance: 10, fontSize: 11, fontWeight: 700, color: '#f44336', opacity: 1, backgroundColor: '#ffffff', borderColor: '#f44336', borderWidth: 1.5, borderRadius: 6, padding: [3, 6] },
+        lineStyle: { width: 2.5, color: C_OPEN, opacity: 1 },
+        itemStyle: { color: C_OPEN, opacity: 1, borderColor: '#ffffff', borderWidth: 1.5 },
+        areaStyle: { color: C_OPEN, opacity: 0.08 },
+        label: { show: showValues.value, position: 'top', distance: 10, fontSize: 11, fontWeight: 700, color: C_OPEN, opacity: 1, backgroundColor: '#ffffff', borderColor: C_OPEN, borderWidth: 1.5, borderRadius: 6, padding: [3, 6] },
         labelLayout: { hideOverlap: false, moveOverlap: 'shiftY', minMargin: 3 },
       },
       {
@@ -107,10 +143,10 @@ const chartOption = computed(() => {
         symbolSize: 8,
         data: data.map(row => row.cartCount || 0),
         z: 10, zlevel: 3,
-        lineStyle: { width: 2.5, color: '#660ec8', opacity: 1 },
-        itemStyle: { color: '#660ec8', opacity: 1, borderColor: '#ffffff', borderWidth: 1.5 },
-        areaStyle: { color: 'rgba(102,14,200,0.08)' },
-        label: { show: showValues.value, position: 'top', distance: 10, fontSize: 11, fontWeight: 700, color: '#660ec8', opacity: 1, backgroundColor: '#ffffff', borderColor: '#660ec8', borderWidth: 1.5, borderRadius: 6, padding: [3, 6] },
+        lineStyle: { width: 2.5, color: C_CART, opacity: 1 },
+        itemStyle: { color: C_CART, opacity: 1, borderColor: '#ffffff', borderWidth: 1.5 },
+        areaStyle: { color: C_CART, opacity: 0.08 },
+        label: { show: showValues.value, position: 'top', distance: 10, fontSize: 11, fontWeight: 700, color: C_CART, opacity: 1, backgroundColor: '#ffffff', borderColor: C_CART, borderWidth: 1.5, borderRadius: 6, padding: [3, 6] },
         labelLayout: { hideOverlap: false, moveOverlap: 'shiftY', minMargin: 3 },
       },
       {
@@ -121,10 +157,10 @@ const chartOption = computed(() => {
         symbolSize: 8,
         data: data.map(row => row.orderCount || 0),
         z: 11, zlevel: 3,
-        lineStyle: { width: 2.5, color: '#5067de', opacity: 1 },
-        itemStyle: { color: '#5067de', opacity: 1, borderColor: '#ffffff', borderWidth: 1.5 },
-        areaStyle: { color: 'rgba(80,103,222,0.08)' },
-        label: { show: showValues.value, position: 'top', distance: 10, fontSize: 11, fontWeight: 700, color: '#5067de', opacity: 1, backgroundColor: '#ffffff', borderColor: '#5067de', borderWidth: 1.5, borderRadius: 6, padding: [3, 6] },
+        lineStyle: { width: 2.5, color: C_ORDER, opacity: 1 },
+        itemStyle: { color: C_ORDER, opacity: 1, borderColor: '#ffffff', borderWidth: 1.5 },
+        areaStyle: { color: C_ORDER, opacity: 0.08 },
+        label: { show: showValues.value, position: 'top', distance: 10, fontSize: 11, fontWeight: 700, color: C_ORDER, opacity: 1, backgroundColor: '#ffffff', borderColor: C_ORDER, borderWidth: 1.5, borderRadius: 6, padding: [3, 6] },
         labelLayout: { hideOverlap: false, moveOverlap: 'shiftY', minMargin: 3 },
       },
     ],
@@ -133,19 +169,13 @@ const chartOption = computed(() => {
 </script>
 
 <style scoped>
-.sales-funnel-chart-card {
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  background: #fff;
-  padding: 16px;
-  margin-bottom: 16px;
-}
+.page-sales-funnel-wb-card__chart-canvas { height: 380px; }
 .sales-funnel-chart-empty {
   height: 380px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #6b7280;
-  font-size: 13px;
+  color: var(--ink-muted);
+  font-size: calc(13px * var(--fs));
 }
 </style>

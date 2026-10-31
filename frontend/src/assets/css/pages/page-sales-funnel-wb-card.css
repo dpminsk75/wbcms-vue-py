@@ -1,21 +1,15 @@
-/* page-sales-funnel-wb-card.css — чанк SalesFunnelWbCard.
- * Title: 'Воронка продаж: Карточка WB' (PageHeaderWidget + query nm_id — не трогать).
- * График SalesFunnelChart (echarts) — не терять. Фильтр: WbFilterBar.
+/* page-sales-funnel-wb-card.css — /wb-get-sales-funnel/wbcard (Воронка продаж: Карточка WB).
+ * Фильтр: общий WbUniversalFilter (карточка + даты + кнопки).
+ * График: SalesFunnelChart (echarts) — палитра отчёта, оси на токенах.
+ * Таблица: .tbl-card / .card__hd / .tbl-wrap / .tbl; итоги — .tbl__total;
+ *          ресайзер колонок — общий useTableResize.
  * Excel: exportExcel через salesFunnelApi (blob) — не терять.
- * Таблица 12 колонок: внутренняя прокрутка. Ширины th — инлайн (размерный churn).
- * Итоги — глобальный .kv-totals; drag-ресайз — JS, не трогать.
  */
-.page-sales-funnel-wb-card { /* паддинги из wb-ui.css */ }
-.page-sales-funnel-wb-card__table-wrap { overflow-x: auto; }
-.page-sales-funnel-wb-card__table { font-size: 12px; width: 100%; table-layout: fixed; }
+.page-sales-funnel-wb-card__hint { margin: 0 0 14px; }
 
-/* Ячейки (legacy .funnel-table не переименовываем — правила переехали из scoped) */
-.page-sales-funnel-wb-card__cell-center { text-align: center; white-space: nowrap; }
-.page-sales-funnel-wb-card__cell-num { text-align: right; }
-.page-sales-funnel-wb-card__nm-link { text-decoration: none; }
+/* Блок с таблицей — отступ от графика */
+.page-sales-funnel-wb-card__table-card { margin-top: 14px; }
 
-/* Перенесено 1в1 из <style scoped> SalesFunnelWbCard.vue */
-.funnel-table { table-layout: fixed; width: 100%; }
-.funnel-table th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.funnel-table td { overflow: hidden; text-overflow: ellipsis; }
-.funnel-table tbody td { white-space: nowrap; }
+/* Ссылка на карточку WB */
+.page-sales-funnel-wb-card__nm-link { color: var(--brand); text-decoration: none; font-weight: 600; }
+.page-sales-funnel-wb-card__nm-link:hover { color: var(--brand-hover); text-decoration: underline; }

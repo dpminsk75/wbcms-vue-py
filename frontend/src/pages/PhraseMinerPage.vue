@@ -6,12 +6,13 @@
       </div>
       <div class="col-auto d-flex gap-2 align-items-center">
         <span v-if="st?.paused" class="badge text-bg-warning">Пауза</span>
+        <span v-else-if="st?.balance?.paused" class="badge text-bg-warning">Пауза ИИ</span>
         <span v-else-if="st?.running" class="badge text-bg-success">Работает</span>
         <span v-else class="badge text-bg-secondary">Не запущен</span>
-        <button class="btn btn-sm" :class="st?.paused ? 'btn-success' : 'btn-outline-warning'"
+        <button class="btn btn-sm" :class="isPaused ? 'btn-success' : 'btn-outline-warning'"
                 :disabled="!st || toggling" @click="togglePause">
-          <i class="bi me-1" :class="st?.paused ? 'bi-play-fill' : 'bi-pause-fill'"></i>
-          {{ st?.paused ? 'Возобновить' : 'Пауза' }}
+          <i class="bi me-1" :class="isPaused ? 'bi-play-fill' : 'bi-pause-fill'"></i>
+          {{ isPaused ? 'Возобновить' : 'Пауза' }}
         </button>
         <button class="btn btn-sm btn-light" @click="refreshAll" :disabled="loading">
           <i class="bi bi-arrow-clockwise me-1"></i> Обновить
@@ -20,6 +21,21 @@
     </div>
 
     <div v-if="loadErr" class="alert alert-danger py-2">{{ loadErr }}</div>
+
+    <div v-if="st?.balance?.paused" class="alert alert-warning py-2 d-flex align-items-center gap-2 flex-wrap">
+      <i class="bi bi-pause-circle"></i>
+      <span>
+        У ИИ-провайдера кончились токены
+        ({{ st?.balance?.reason || 'insufficient_balance' }}) —
+        разбор на паузе до {{ fmtTime(st?.balance?.until) }}
+        <span class="text-muted">(осталось {{ fmtLeft(st?.balance?.left_sec) }})</span>
+        <span v-if="(st?.balance?.companies || []).length > 1" class="text-muted">
+          · компаний на паузе: {{ st?.balance?.companies?.length }}</span>
+      </span>
+      <button class="btn btn-sm btn-outline-dark ms-auto" :disabled="toggling" @click="togglePause">
+        Возобновить сейчас
+      </button>
+    </div>
 
     <!-- Полоса статуса: видна всегда, вне вкладок -->
     <div class="card mb-3">
@@ -46,6 +62,19 @@
             </span>
           </div>
           <div>готово: {{ st?.queue?.counts?.done || 0 }} · ошибок: {{ st?.queue?.counts?.error || 0 }}</div>
+          <div v-if="st?.quota?.ok" class="mt-1 small">
+            Лимит ИИ: <b>{{ st?.quota?.percent }}%</b>
+            <span class="text-muted">· сброс в {{ fmtClock(st?.quota?.reset_at) }}
+              <template v-if="st?.quota?.reset_left">· осталось {{ st?.quota?.reset_left }}</template>
+            </span>
+          </div>
+          <div v-else-if="st?.quota?.applicable && !st?.quota?.ok" class="mt-1 small text-muted">
+            Лимит ИИ: не удалось проверить ({{ st?.quota?.error || 'нет данных' }})
+          </div>
+          <div v-if="st?.quota?.weekly_percent !== null && st?.quota?.weekly_percent !== undefined && st?.quota?.weekly_percent < 10"
+               class="small text-warning-emphasis">
+            Недельный лимит: {{ st?.quota?.weekly_percent }}%
+          </div>
         </div>
         <div>
           <div class="page-pminer__k">Последняя ошибка цикла</div>
@@ -174,6 +203,7 @@
               <option value="skip">пропуск</option>
               <option value="rest">отдых</option>
               <option value="manual">ручной разбор</option>
+              <option value="balance-pause">нет токенов</option>
             </select>
           </div>
         </div>
@@ -353,6 +383,30 @@ const queueTotal = computed(() => Object.values(st.value?.queue?.counts || {})
   .reduce((a, b) => a + (Number(b) || 0), 0))
 const logTotal = computed(() => st.value?.log_counts?.total ?? 0)
 
+/** Пауза активна: ручная или по отсутствию токенов у провайдера. */
+const isPaused = computed(() => !!st.value?.paused || !!st.value?.balance?.paused)
+
+function fmtTime(v: string | null | undefined): string {
+  if (!v) return '—'
+  return v.replace('T', ' ').slice(0, 16)
+}
+
+function fmtLeft(sec: number | null | undefined): string {
+  const m = Math.max(0, Math.round((sec || 0) / 60))
+  if (m < 60) return `${m} мин`
+  const h = Math.floor(m / 60)
+  const rest = m % 60
+  return rest ? `${h} ч ${rest} мин` : `${h} ч`
+}
+
+/** Время сброса окна лимита — в таймзоне браузера (бэк отдаёт ISO со смещением). */
+function fmtClock(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+}
+
 let timer: ReturnType<typeof setInterval> | null = null
 
 /** company_id для запросов: глобальный админ — свой фильтр, остальные — null
@@ -429,7 +483,7 @@ async function togglePause() {
   if (!st.value || toggling.value) return
   toggling.value = true
   try {
-    await phraseMinerApi.pause(!st.value.paused)
+    await phraseMinerApi.pause(!isPaused.value, scopeParam())
     await loadStatus()
   } finally {
     toggling.value = false

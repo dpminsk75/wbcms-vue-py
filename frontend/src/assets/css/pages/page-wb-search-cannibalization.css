@@ -1,21 +1,67 @@
-/* Страница «Каннибализация запросов» (/wb-search/cannibalization).
-   Тема: .tbl-card → .card__hd → .tbl-wrap → .tbl; бейджи — badge--warn/badge--bad. */
+/* page-wb-search-cannibalization.css — /wb-search/cannibalization:
+   таблица на блоках темы (.tbl-card → .card__hd → .tbl-wrap → .tbl),
+   состояния — .badge--warn/.badge--bad/.badge--brand,
+   ссылка на поисковый запрос — общий класс темы .wb-query-link. */
 
-/* Фраза — ссылка на «Фраза → карточки» (/wb-search/phrase) */
-.page-wb-search-cannibalization__phrase {
-  font-weight: 700;
-  color: var(--brand);
-  text-decoration: none;
+/* Загрузка: таблица приглушается и не принимает клики (сортировка/пагинация),
+   в шапке — мини-спиннер. */
+.page-wb-search-cannibalization .tbl-wrap { transition: opacity .15s ease; }
+.page-wb-search-cannibalization__wrap--loading {
+  opacity: .5;
+  pointer-events: none;
 }
-.page-wb-search-cannibalization__phrase:hover { color: var(--brand-hover); text-decoration: underline; }
+.card__hd .page-wb-search-cannibalization__spin {
+  width: 13px;
+  height: 13px;
+  border-width: 2px;
+  /* цвет текста шапки (--hd-fg): на тёмной шапке --brand не виден */
+  color: var(--hd-fg);
+  flex: none;
+}
 
-/* Карточки в ячейке — бейджи .badge--brand (наши товары) */
-.page-wb-search-cannibalization__cards { line-height: 1.9; }
-.page-wb-search-cannibalization__cards .badge {
+/* Сортировка в шапке таблицы — селект в гамме .hd-btn/.hd-badge */
+.page-wb-search-cannibalization__sort { display: inline-flex; }
+.page-wb-search-cannibalization__sort select {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: calc(12px * var(--fs));
+  font-weight: 500;
+  padding: 3px 6px 3px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  outline: none;
+}
+.page-wb-search-cannibalization__sort select:hover {
+  background: color-mix(in srgb, currentColor 20%, transparent);
+}
+.page-wb-search-cannibalization__sort select option {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+/* Ширины колонок: «Поисковый запрос» и «Ваши товары в выдаче» — по 320px,
+   остальные 4 колонки делят остаток поровну (table-layout: fixed).
+   Ниже 1080px включается горизонтальный скролл (.tbl-wrap). */
+.page-wb-search-cannibalization__tbl { table-layout: fixed; min-width: 1080px; }
+.page-wb-search-cannibalization__phrase-col { width: 320px; }
+.page-wb-search-cannibalization__cards-col { width: 320px; }
+
+/* Ваши товары в выдаче — набор бейджей-ссылок компактной лентой */
+.page-wb-search-cannibalization__cards-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.page-wb-search-cannibalization__cards-list .badge {
   text-decoration: none;
   font-variant-numeric: tabular-nums;
 }
-.page-wb-search-cannibalization__cards .badge:hover {
+.page-wb-search-cannibalization__cards-list .badge:hover {
   background: color-mix(in srgb, var(--brand) 22%, var(--surface));
   color: var(--brand-deep);
+}
+/* Своя карточка (по фильтру «Товар») — выделена фоном и рамкой. */
+.page-wb-search-cannibalization__card--mine {
+  background: color-mix(in srgb, var(--brand) 30%, var(--surface));
+  color: var(--brand-deep);
+  border-color: var(--brand);
+  font-weight: 700;
 }

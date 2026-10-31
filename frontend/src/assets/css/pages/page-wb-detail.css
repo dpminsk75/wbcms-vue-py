@@ -9,40 +9,53 @@
 .page-wb-detail__table-wrap { overflow-x: auto; }
 
 /* Хлебные крошки */
-.page-wb-detail__crumbs { font-size: 12px; color: #6b7280; }
-.page-wb-detail__crumbs-link { text-decoration: none; }
+.page-wb-detail__crumbs { font-size: calc(12px * var(--fs)); color: var(--ink-soft); }
+.page-wb-detail__crumbs-link { text-decoration: none; color: inherit; }
+.page-wb-detail__crumbs-link:hover { color: var(--brand); }
 
 /* Шапка карточки */
 .page-wb-detail__head { display: flex; align-items: center; gap: 12px; }
-.page-wb-detail__title { font-size: 28px; font-weight: 700; flex: 1 1 auto; min-width: 0; }
+.page-wb-detail__title { font-size: calc(28px * var(--fs)); font-weight: 700; flex: 1 1 auto; min-width: 0; }
 .page-wb-detail__id-group { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
-.page-wb-detail__id-label { font-size: 12px; }
-.page-wb-detail__id-badge { font-size: 12px; }
+.page-wb-detail__id-label { font-size: calc(12px * var(--fs)); color: var(--ink-muted); }
+.page-wb-detail__id-badge { font-size: calc(12px * var(--fs)); }
 .page-wb-detail__icon-btn { width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; }
 
 /* Карточка товара */
-.page-wb-detail__product-card { border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden; }
-.page-wb-detail__product-head { background: #f8f9fa; font-weight: 700; font-size: 13px; display: flex; justify-content: space-between; }
-.page-wb-detail__product-wb { font-size: 11px; color: #6b7280; }
-.page-wb-detail__facts { font-size: 12px; }
-.page-wb-detail__card-actions { flex: 1; }
+.page-wb-detail__product-card { border-radius: var(--radius-lg); overflow: hidden; }
+.page-wb-detail__product-head { display: flex; justify-content: space-between; }
+.page-wb-detail__product-wb { font-size: calc(11px * var(--fs)); color: var(--ink-muted); }
+.page-wb-detail__facts { font-size: calc(12px * var(--fs)); }
+/* кнопки действий карточки: компактные, ширина по содержимому */
+.page-wb-detail__card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: var(--radius-sm);
+  font-size: calc(12.5px * var(--fs));
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.page-wb-detail__card-actions i { font-size: calc(13px * var(--fs)); }
 .page-wb-detail__period { text-align: center; }
 
 /* Галерея (legacy .wb-card-gallery-scroll не переименовываем — скроллбары в scoped) */
-.page-wb-detail__gallery { display: flex; flex-direction: row; overflow-x: auto; gap: 10px; padding: 10px; background: #fdfdfd; border: 1px solid #eee; border-radius: 8px; height: 200px; align-items: center; }
+.page-wb-detail__gallery { display: flex; flex-direction: row; overflow-x: auto; gap: 10px; padding: 10px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-md); height: 200px; align-items: center; }
 .page-wb-detail__gallery-video { flex: 0 0 auto; position: relative; height: 180px; }
 .page-wb-detail__gallery-video-el { height: 180px; width: auto; border-radius: 4px; background: #000; }
-.page-wb-detail__gallery-photo { height: 180px; width: auto; flex: 0 0 auto; border-radius: 4px; border: 1px solid #ddd; }
-.page-wb-detail__gallery-empty { padding: 10px; }
+.page-wb-detail__gallery-photo { height: 180px; width: auto; flex: 0 0 auto; border-radius: 4px; border: 1px solid var(--line-strong); }
+.page-wb-detail__gallery-empty { padding: 10px; color: var(--ink-muted); }
 
 /* Характеристики / описание */
-.page-wb-detail__section-title { font-size: 11px; font-weight: 700; margin-bottom: 6px; }
-.page-wb-detail__empty { font-size: 12px; }
-.page-wb-detail__description { font-size: 11px; white-space: pre-wrap; border-left: 1px dashed #ddd; padding-left: 10px; }
+.page-wb-detail__section-title { font-size: calc(11px * var(--fs)); font-weight: 700; margin-bottom: 6px; color: var(--ink-soft); }
+.page-wb-detail__empty { font-size: calc(12px * var(--fs)); color: var(--ink-muted); }
+.page-wb-detail__description { font-size: calc(11px * var(--fs)); white-space: pre-wrap; border-left: 1px dashed var(--line-strong); padding-left: 10px; color: var(--ink-soft); }
 
 /* Кнопка «Увидеть больше» */
 .page-wb-detail__expand-btn { text-align: center; margin: 10px 0 0; }
-.page-wb-detail__more-btn { font-size: 12px; padding: 4px 16px; border-radius: 6px; }
+.page-wb-detail__more-btn { font-size: calc(12px * var(--fs)); padding: 4px 16px; border-radius: 6px; }
 
 /* ===== Модалки карточки: «Целевые», «Поисковые запросы», «Конкуренты» =====
  * Bootstrap JS в проекте не подключён (main.ts — только CSS), поэтому модалки ручные.
@@ -58,6 +71,9 @@
   padding: 16px 18px 18px; box-shadow: 0 18px 48px rgba(0, 0, 0, .25);
 }
 .page-wb-detail__modal-box--wide { max-width: 760px; }
+/* Полки и баджи: модалка широкая (ленты карточек) и перетаскивается за шапку. */
+.page-wb-detail__modal-box--xl { max-width: 1180px; }
+.page-wb-detail__modal-box--xl .page-wb-detail__modal-head { cursor: move; touch-action: none; user-select: none; }
 .page-wb-detail__modal-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .page-wb-detail__modal-title { font-size: 16px; font-weight: 700; margin: 0; flex: 1 1 auto; display: flex; align-items: center; gap: 6px; }
 .page-wb-detail__modal-count { font-size: 12px; font-weight: 400; color: #6b7280; }
@@ -93,6 +109,68 @@ button.page-wb-detail__suggest-row:hover { background: #f3f4f6; }
 .page-wb-detail__suggest-row.is-added { color: #9ca3af; cursor: default; }
 .page-wb-detail__suggest-phrase { font-weight: 500; }
 .page-wb-detail__suggest-meta { color: #6b7280; font-size: 11px; white-space: nowrap; }
+
+/* ===== Модалка «Полки и баджи» (наша карточка) =====
+ * Общие стили для OurCardShelvesModal / ShelfBlockModal / OurCardBadgesModal.
+ */
+.page-wb-detail__modal-backdrop--top { z-index: 1090; }
+
+.page-wb-detail__shelf-head {
+  display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap;
+  padding-bottom: 12px; border-bottom: 1px solid #e5e7eb;
+}
+.page-wb-detail__shelf-badges { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.page-wb-detail__shelf-badge {
+  font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 5px; white-space: nowrap;
+}
+.page-wb-detail__shelf-badge--sale { background: #fde2e1; color: #c0392b; }
+.page-wb-detail__shelf-badge--price { background: #fff3cd; color: #8a6100; }
+.page-wb-detail__shelf-badge--cash { background: #ece0ff; color: #6b3fa0; }
+.page-wb-detail__shelf-badge--promo { background: #ffe1ec; color: #b02a5b; }
+.page-wb-detail__shelf-badge--vip { background: #2f3640; color: #fff; }
+.page-wb-detail__shelf-badge--resale { background: #8bf7d0; color: #063d2c; }
+.page-wb-detail__shelf-badge--plain { background: #eef1f6; color: #4b5563; }
+.page-wb-detail__shelf-state { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+.page-wb-detail__shelf-chip {
+  font-size: 12px; padding: 2px 8px; border-radius: 6px; background: #eef1f6; color: #4b5563;
+}
+.page-wb-detail__shelf-chip--ok { background: #dcfce7; color: #166534; }
+.page-wb-detail__shelf-chip--queue { background: #fef3c7; color: #92400e; }
+.page-wb-detail__shelf-price { margin-left: auto; text-align: right; }
+.page-wb-detail__shelf-price b { font-size: 20px; }
+.page-wb-detail__shelf-price s { color: #9ca3af; margin-left: 6px; }
+.page-wb-detail__shelf-price-note { font-size: 12px; color: #6b7280; }
+
+.page-wb-detail__shelf-tabs {
+  display: flex; gap: 4px; border-bottom: 1px solid #e5e7eb; margin: 12px 0 14px;
+}
+.page-wb-detail__shelf-tab {
+  border: 0; background: transparent; padding: 8px 12px; font-size: 13px; font-weight: 600;
+  color: #6b7280; cursor: pointer; border-bottom: 2px solid transparent;
+}
+.page-wb-detail__shelf-tab--on { color: #111827; border-bottom-color: #2563eb; }
+
+.page-wb-detail__shelf-block { margin-bottom: 18px; }
+.page-wb-detail__shelf-block-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.page-wb-detail__shelf-block-title { font-size: 15px; font-weight: 700; }
+.page-wb-detail__shelf-block-meta { font-size: 12px; color: #6b7280; }
+.page-wb-detail__shelf-row {
+  display: flex; gap: 12px; overflow-x: auto; padding: 2px 2px 10px;
+  scrollbar-width: thin; cursor: grab;
+  /* ленту тянем мышью: текст не выделяем, картинки не таскаем нативно */
+  user-select: none; -webkit-user-select: none;
+}
+.page-wb-detail__shelf-row:active { cursor: grabbing; }
+/* нативный drag картинки перехватывает pointermove — лента перестаёт ехать */
+.page-wb-detail__shelf-row img { -webkit-user-drag: none; user-drag: none; pointer-events: none; }
+.page-wb-detail__shelf-row::-webkit-scrollbar { height: 8px; }
+.page-wb-detail__shelf-row::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 8px; }
+.page-wb-detail__shelf-hint { font-size: 12px; color: #6b7280; margin: 2px 0 12px; }
+.page-wb-detail__shelf-empty { font-size: 12px; color: #6b7280; padding: 8px 0; }
+.page-wb-detail__shelf-hist {
+  border: 1px solid #e5e7eb; border-radius: 10px; padding: 9px 10px; margin-bottom: 8px; background: #fbfbfd;
+}
+.page-wb-detail__shelf-hist-date { font-size: 12px; color: #6b7280; margin-bottom: 5px; }
 
 /* Конкуренты */
 .page-wb-detail__add-row { display: flex; gap: 8px; margin-bottom: 8px; }

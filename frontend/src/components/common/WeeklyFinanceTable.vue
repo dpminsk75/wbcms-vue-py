@@ -1,94 +1,110 @@
 <template>
-  <div class="card grid_wbstat" style="border:1px solid var(--bs-border-color-translucent); border-radius:12px; overflow:hidden">
-    <div class="card-header text-white d-flex justify-content-between align-items-center" style="background:#1a9a6b; font-weight:700">
+  <div class="tbl-card tbl-card--compact tbl-card--stickycol">
+    <div class="card__hd">
       <span>{{ title }}</span>
-      <button class="btn btn-sm btn-light" style="font-size:12px; padding:4px 12px; border-radius:6px" @click="exportExcel" :disabled="!rows.length"><i class="bi bi-file-earmark-excel me-1"></i> Excel</button>
+      <span class="spacer"></span>
+      <button class="hd-btn" @click="exportExcel" :disabled="!rows.length"><i class="bi bi-file-earmark-excel me-1"></i> Excel</button>
     </div>
     <div v-if="isLoading" class="text-center p-4"><span class="spinner-border spinner-border-sm"></span> Загрузка...</div>
-    <div v-else style="overflow-x:auto" ref="wrapRef">
-      <table ref="tbl" class="table table-bordered table-striped table-hover kv-grid-table mb-0" style="font-size:12px; width:100%">
+    <div v-else class="tbl-wrap" ref="wrapRef">
+      <table ref="tbl" class="tbl" style="width:100%">
         <thead>
           <tr>
-            <th style="width:90px; text-align:center; vertical-align:middle">Год-Неделя</th>
-            <th style="text-align:center; vertical-align:middle">Кол-во</th>
-            <th style="text-align:center; vertical-align:middle">Продажи</th>
-            <th style="text-align:center; vertical-align:middle">Ком. WB</th>
-            <th style="text-align:center; vertical-align:middle">Эквайринг</th>
-            <th style="text-align:center; vertical-align:middle">Логистика</th>
-            <th style="text-align:center; vertical-align:middle">Штрафы</th>
-            <th style="text-align:center; vertical-align:middle">Отзывы</th>
-            <th style="text-align:center; vertical-align:middle">Реклама</th>
-            <th style="text-align:center; vertical-align:middle">Кэшбек</th>
-            <th style="text-align:center; vertical-align:middle; background:#e8f8f5">Общий итог</th>
-            <th style="text-align:center; vertical-align:middle">НДС</th>
-            <th style="text-align:center; vertical-align:middle">Себ-ть</th>
-            <th style="text-align:center; vertical-align:middle; background:#fcf3cf">Прибыль</th>
-            <th style="text-align:center; vertical-align:middle; color:#d35400">Налог (7%)</th>
-            <th style="text-align:center; vertical-align:middle; background:#d4efdf">Маржа</th>
-            <th style="text-align:center; vertical-align:middle">Продажа/шт</th>
-            <th style="text-align:center; vertical-align:middle">Итог/шт</th>
-            <th style="text-align:center; vertical-align:middle">Маржа/шт</th>
+            <th class="t-center">Год-Неделя</th>
+            <th class="t-center">Кол-во</th>
+            <th class="t-center">Продажи</th>
+            <th class="t-center">Ком. WB</th>
+            <th class="t-center">Эквайринг</th>
+            <th class="t-center">Приёмка</th>
+            <th class="t-center">Логистика</th>
+            <th class="t-center">Хранение</th>
+            <th class="t-center">Штрафы</th>
+            <th class="t-center">Отзывы</th>
+            <th class="t-center">Реклама</th>
+            <th class="t-center">Кэшбек</th>
+            <th class="t-center">Общий итог</th>
+            <th class="t-center">НДС</th>
+            <th class="t-center">Себ-ть</th>
+            <th class="t-center">Прибыль</th>
+            <th class="t-center">Налог (7%)</th>
+            <th class="t-center">Маржа</th>
+            <th class="t-center">Продажа/шт</th>
+            <th class="t-center">Итог/шт</th>
+            <th class="t-center">Маржа/шт</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-if="!rows.length"><td colspan="19" class="text-center text-muted">Нет данных</td></tr>
+          <tr v-if="!rows.length"><td colspan="21" class="text-center text-muted">Нет данных</td></tr>
           <tr v-for="r in rows" :key="r.sdate">
             <td class="week-pos">
               <button class="week-eye" title="Структура затрат за неделю" @click.stop="openBreakdown(r)">
                 <i class="bi bi-eye"></i>
               </button>&nbsp;&nbsp;{{ r.sdate }}
             </td>
-            <td style="text-align:right">{{ fmt0(r.qnt) }}</td>
-            <td style="text-align:right; font-weight:bold">{{ fmt0(r.amount) }}</td>
-            <td style="text-align:right; color:#c0392b">{{ fmt0(r.commission) }}</td>
-            <td style="text-align:right; color:#c0392b">{{ fmt0(r.f_acquiring_fee) }}</td>
-            <td style="text-align:right; color:#c0392b; font-weight:500"><span class="week-logistics" title="Расшифровка логистики" @click.stop="openLogistics(r)">{{ fmt0(r.f_delivery) }}</span></td>
-            <td style="text-align:right; color:#c0392b">{{ fmt0(r.f_penalty) }}</td>
-            <td style="text-align:right; color:#16a085">{{ fmt0(r.f_otziv) }}</td>
-            <td style="text-align:right; color:#2980b9">{{ fmt0(r.f_adv) }}</td>
-            <td style="text-align:right; color:#c0392b">{{ fmt0(r.f_cashback) }}</td>
-            <td :class="r.net_profit<0?'table-danger text-danger fw-bold':'table-success text-success fw-bold'" style="text-align:right">{{ fmt0(r.net_profit) }}</td>
-            <td style="text-align:right">{{ fmt0(r.total_nds) }}</td>
-            <td style="text-align:right">{{ fmt0(r.total_cost) }}</td>
-            <td :class="r.profit_before_tax<0?'text-danger':'text-success'" style="text-align:right; font-weight:bold; background:#fefde7">{{ fmt0(r.profit_before_tax) }}</td>
-            <td style="text-align:right; color:#e67e22">{{ fmt0(r.tax_amount) }}</td>
-            <td :class="r.clean_margin<0?'table-danger text-danger fw-bold':'table-success text-success fw-bold'" style="text-align:right">{{ fmt0(r.clean_margin) }}</td>
-            <td style="text-align:right; font-style:italic; background:#fafafa">{{ fmt2(r.amount_per_item) }}</td>
-            <td :class="r.profit_per_item<0?'text-danger':'text-success'" style="text-align:right; font-weight:bold; font-style:italic; background:#fafafa">{{ fmt2(r.profit_per_item) }}</td>
-            <td :class="r.clear_per_item<0?'text-danger':'text-success'" style="text-align:right; font-weight:bold; font-style:italic; background:#fafafa">{{ fmt2(r.clear_per_item) }}</td>
+            <td>{{ fmt0(r.qnt) }}</td>
+            <td style="font-weight:bold">{{ fmt0(r.amount) }}</td>
+            <td class="col-cost">{{ fmt0(r.commission) }}</td>
+            <td class="col-cost">{{ fmt0(r.f_acquiring_fee) }}</td>
+            <td class="col-cost"><button v-if="num(r.f_acceptance)" class="wb-cell-link" title="Детализация приёмки" @click.stop="openCell('acceptance', r)">{{ fmt0(r.f_acceptance) }}</button><template v-else>{{ fmt0(r.f_acceptance) }}</template></td>
+            <td class="col-cost" style="font-weight:500"><button v-if="num(r.f_delivery)" class="wb-cell-link" title="Детализация логистики" @click.stop="openCell('delivery', r)">{{ fmt0(r.f_delivery) }}</button><template v-else>{{ fmt0(r.f_delivery) }}</template></td>
+            <td class="col-cost" style="font-weight:500"><button v-if="num(r.f_storage_fee)" class="wb-cell-link" title="Детализация хранения" @click.stop="openCell('storage', r)">{{ fmt0(r.f_storage_fee) }}</button><template v-else>{{ fmt0(r.f_storage_fee) }}</template></td>
+            <td class="col-cost"><button v-if="num(r.f_penalty)" class="wb-cell-link" title="Детализация штрафов" @click.stop="openCell('penalty', r)">{{ fmt0(r.f_penalty) }}</button><template v-else>{{ fmt0(r.f_penalty) }}</template></td>
+            <td class="col-good"><button v-if="num(r.f_otziv)" class="wb-cell-link" title="Детализация отзывов" @click.stop="openCell('otziv', r)">{{ fmt0(r.f_otziv) }}</button><template v-else>{{ fmt0(r.f_otziv) }}</template></td>
+            <td class="col-info"><button v-if="num(r.f_adv)" class="wb-cell-link" title="Детализация рекламы" @click.stop="openCell('adv', r)">{{ fmt0(r.f_adv) }}</button><template v-else>{{ fmt0(r.f_adv) }}</template></td>
+            <td class="col-cost"><button v-if="num(r.f_cashback)" class="wb-cell-link" title="Детализация кэшбекка" @click.stop="openCell('cashback', r)">{{ fmt0(r.f_cashback) }}</button><template v-else>{{ fmt0(r.f_cashback) }}</template></td>
+            <td :class="r.net_profit<0?'t-neg fw-bold':'t-pos fw-bold'">{{ fmt0(r.net_profit) }}</td>
+            <td>{{ fmt0(r.total_nds) }}</td>
+            <td>{{ fmt0(r.total_cost) }}</td>
+            <td :class="[r.profit_before_tax<0?'t-neg':'t-pos','col-profit']" style="font-weight:bold">{{ fmt0(r.profit_before_tax) }}</td>
+            <td class="col-warn">{{ fmt0(r.tax_amount) }}</td>
+            <td :class="r.clean_margin<0?'t-neg fw-bold':'t-pos fw-bold'">{{ fmt0(r.clean_margin) }}</td>
+            <td class="col-per-item" style="font-style:italic">{{ fmt2(r.amount_per_item) }}</td>
+            <td :class="[r.profit_per_item<0?'t-neg':'t-pos','col-per-item']" style="font-weight:bold; font-style:italic">{{ fmt2(r.profit_per_item) }}</td>
+            <td :class="[r.clear_per_item<0?'t-neg':'t-pos','col-per-item']" style="font-weight:bold; font-style:italic">{{ fmt2(r.clear_per_item) }}</td>
           </tr>
         </tbody>
         <tfoot v-if="rows.length">
-          <tr class="kv-totals" style="font-weight:700; background:#f2e7c3; font-size:11px">
-            <td style="padding:4px 6px; border-top:2px solid #8A2BE0"></td>
-            <td style="text-align:right; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(sum('qnt')) }}</td>
-            <td style="text-align:right; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(sum('amount')) }}</td>
-            <td style="text-align:right; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(sum('commission')) }}</td>
-            <td style="text-align:right; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(sum('f_acquiring_fee')) }}</td>
-            <td style="text-align:right; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(sum('f_delivery')) }}</td>
-            <td style="text-align:right; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(sum('f_penalty')) }}</td>
-            <td style="text-align:right; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(sum('f_otziv')) }}</td>
-            <td style="text-align:right; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(sum('f_adv')) }}</td>
-            <td style="text-align:right; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(sum('f_cashback')) }}</td>
-            <td style="text-align:right; color:#27ae60; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(sum('net_profit')) }}</td>
-            <td style="text-align:right; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(sum('total_nds')) }}</td>
-            <td style="text-align:right; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(sum('total_cost')) }}</td>
-            <td style="text-align:right; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(sum('profit_before_tax')) }}</td>
-            <td style="text-align:right; color:#e67e22; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(sum('tax_amount')) }}</td>
-            <td style="text-align:right; color:#196f3d; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(sum('clean_margin')) }}</td>
-            <td colspan="3" style="padding:4px 6px; border-top:2px solid #8A2BE0"></td>
+          <tr class="tbl__total">
+            <td></td>
+            <td>{{ fmt0(sum('qnt')) }}</td>
+            <td>{{ fmt0(sum('amount')) }}</td>
+            <td>{{ fmt0(sum('commission')) }}</td>
+            <td>{{ fmt0(sum('f_acquiring_fee')) }}</td>
+            <td>{{ fmt0(sum('f_acceptance')) }}</td>
+            <td>{{ fmt0(sum('f_delivery')) }}</td>
+            <td>{{ fmt0(sum('f_storage_fee')) }}</td>
+            <td>{{ fmt0(sum('f_penalty')) }}</td>
+            <td>{{ fmt0(sum('f_otziv')) }}</td>
+            <td>{{ fmt0(sum('f_adv')) }}</td>
+            <td>{{ fmt0(sum('f_cashback')) }}</td>
+            <td>{{ fmt0(sum('net_profit')) }}</td>
+            <td>{{ fmt0(sum('total_nds')) }}</td>
+            <td>{{ fmt0(sum('total_cost')) }}</td>
+            <td>{{ fmt0(sum('profit_before_tax')) }}</td>
+            <td>{{ fmt0(sum('tax_amount')) }}</td>
+            <td>{{ fmt0(sum('clean_margin')) }}</td>
+            <td colspan="3"></td>
           </tr>
         </tfoot>
       </table>
     </div>
     <MarginBreakdownPopup v-if="breakdownRow" :open="true" :row="breakdownRow" :period="weekPeriod(breakdownRow.sdate)" @close="breakdownRow = null" @logistics="onLogistics" />
-    <FinancePopup v-if="logisticsPeriod" kind="logistics" :date-from="logisticsPeriod.dateFrom" :date-to="logisticsPeriod.dateTo" @close="logisticsPeriod = null" />
+    <MarginBreakdownModal
+      v-if="cellModal"
+      :kind="cellModal.kind"
+      basis="product"
+      :date-from="cellModal.dateFrom"
+      :date-to="cellModal.dateTo"
+      :nm-id="cellModal.nmId"
+      @close="cellModal = null"
+    />
   </div>
 </template>
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, onMounted } from 'vue'
 import MarginBreakdownPopup from '../profit/MarginBreakdownPopup.vue'
-import FinancePopup from '../dashboard/FinancePopup.vue'
+import MarginBreakdownModal from '../profit/MarginBreakdownModal.vue'
+import type { MarginKind } from '@/api/margin'
 const props = withDefaults(defineProps<{
   rows: any[]
   isLoading?: boolean
@@ -100,11 +116,12 @@ const tbl = ref<HTMLTableElement|null>(null)
 const wrapRef = ref<HTMLDivElement|null>(null)
 const fmt0 = (v:any)=> new Intl.NumberFormat('ru-RU').format(Math.round(Number(v)||0))
 const fmt2 = (v:any)=> new Intl.NumberFormat('ru-RU',{minimumFractionDigits:2, maximumFractionDigits:2}).format(Number(v)||0)
+const num = (v:any)=> Number(v)||0
 const sum = (k:string)=> props.rows.reduce((a:number,r:any)=> a+(Number(r[k])||0),0)
 
 // Попап «Структура затрат» по неделе (данные карточки — из card, nm_id — из строки отчёта)
 const breakdownRow = ref<any>(null)
-const card = computed(() => props.card || {})
+const card = computed(()=> props.card || {})
 const weekPeriod = (sdate: string) => {
   if (!sdate) return ''
   const end = new Date(new Date(sdate + 'T00:00:00Z').getTime() + 6 * 864e5).toISOString().slice(0, 10)
@@ -119,17 +136,22 @@ const openBreakdown = (r: any) => {
   }
 }
 
-// Расшифровка «Логистики»: клик по колонке — за неделю строки,
-// клик по строке «Логистика (доставка)» в попапе затрат — за его период.
-const logisticsPeriod = ref<{ dateFrom: string, dateTo: string } | null>(null)
-const openLogistics = (r: any) => {
+// Модалка-расшифровка значения колонки затрат (период = неделя строки)
+const cellModal = ref<{ kind: MarginKind, dateFrom: string, dateTo: string, nmId: number | null } | null>(null)
+const openCell = (kind: MarginKind, r: any) => {
   if (!r?.sdate) return
   const end = new Date(new Date(r.sdate + 'T00:00:00Z').getTime() + 6 * 864e5).toISOString().slice(0, 10)
-  logisticsPeriod.value = { dateFrom: r.sdate, dateTo: end }
+  cellModal.value = {
+    kind,
+    dateFrom: r.sdate,
+    dateTo: end,
+    nmId: Number(card.value.nmID || props.nmId) || null,
+  }
 }
+// Расшифровка «Логистики» из попапа затрат — тот же период, что у строки недели.
 const onLogistics = (p: { dateFrom: string, dateTo: string }) => {
   breakdownRow.value = null
-  logisticsPeriod.value = p
+  cellModal.value = { kind: 'delivery', dateFrom: p.dateFrom, dateTo: p.dateTo, nmId: Number(card.value.nmID || props.nmId) || null }
 }
 const enableResize = ()=>{
   const t=tbl.value; if(!t) return
@@ -150,12 +172,12 @@ const enableResize = ()=>{
   window.addEventListener('resize', fit); fit()
 }
 onMounted(()=> nextTick(enableResize))
-watch(()=>props.rows, ()=> nextTick(enableResize))
+watch(()=>props.rows, ()=>nextTick(enableResize))
 const exportExcel = async()=>{
   if(!props.rows.length) return
   const XLSX=await import('xlsx')
   const data=props.rows.map((r:any)=>({
-    'Год-Неделя':r.sdate,'Кол-во':r.qnt,'Продажи':r.amount,'Ком WB':r.commission,'Эквайринг':r.f_acquiring_fee,'Логистика':r.f_delivery,'Штрафы':r.f_penalty,'Отзывы':r.f_otziv,'Реклама':r.f_adv,'Кэшбек':r.f_cashback,'Общий итог':r.net_profit,'НДС':r.total_nds,'Себ-ть':r.total_cost,'Прибыль':r.profit_before_tax,'Налог':r.tax_amount,'Маржа':r.clean_margin,'Продажа/шт':r.amount_per_item,'Итог/шт':r.profit_per_item,'Маржа/шт':r.clear_per_item
+    'Год-Неделя':r.sdate,'Кол-во':r.qnt,'Продажи':r.amount,'Ком WB':r.commission,'Эквайринг':r.f_acquiring_fee,'Приёмка':r.f_acceptance,'Логистика':r.f_delivery,'Хранение':r.f_storage_fee,'Штрафы':r.f_penalty,'Отзывы':r.f_otziv,'Реклама':r.f_adv,'Кэшбек':r.f_cashback,'Общий итог':r.net_profit,'НДС':r.total_nds,'Себ-ть':r.total_cost,'Прибыль':r.profit_before_tax,'Налог':r.tax_amount,'Маржа':r.clean_margin,'Продажа/шт':r.amount_per_item,'Итог/шт':r.profit_per_item,'Маржа/шт':r.clear_per_item
   }))
   const ws=XLSX.utils.json_to_sheet(data)
   const wb=XLSX.utils.book_new()
@@ -164,17 +186,18 @@ const exportExcel = async()=>{
 }
 </script>
 <style scoped>
-/* резина B как OrdersFeed: th normal break-word, td 12px; condensed-паддинги как gridv.css */
-.grid_wbstat th{white-space:normal !important; word-break:break-word; font-weight:500 !important; color:#444; text-align:center; vertical-align:middle; padding:4px !important}
-.grid_wbstat td{padding:4px !important}
-.grid_wbstat td:not(:first-child){font-size:12px !important; vertical-align:middle}
-/* Bootstrap 5 table-striped красит ячейки inset box-shadow поверх фона tr — гасим его, фон задаем самим td */
-.kv-totals > td{background-color:#f2e7c3 !important; box-shadow:none !important}
-.col-resizer:hover{background:#4A3A8C; opacity:.2}
+/* цвета колонок — из токенов темы */
+.col-cost{color:var(--bad)}
+.col-good{color:var(--good)}
+.col-info{color:var(--info)}
+.col-warn{color:var(--warn)}
+/* подсветка «прибыли» и «на единицу» — перебиваем зебру темы */
+.tbl tbody td.col-profit{background:var(--warn-tint)}
+.tbl tbody td.col-per-item{background:var(--surface-2)}
 /* Глазик структуры затрат в первой колонке (слева от недели), абсолютом — не ломает высоту строки */
-.week-pos{position:relative; text-align:center; font-weight:bold; color:#2c3e50; white-space:nowrap}
-.week-eye{position:absolute; left:4px; top:50%; transform:translateY(-50%); border:0; background:transparent; color:#9aa0a8; padding:0; font-size:11px; line-height:1; cursor:pointer}
-.week-eye:hover{color:#8a2be0}
-.week-logistics{cursor:pointer; border-bottom:1px dashed #c0392b}
-.week-logistics:hover{color:#8a2be0}
+.week-pos{position:relative; text-align:center; font-weight:bold; color:var(--ink); white-space:nowrap}
+/* резерв слева, чтобы глазик не наезжал на дату (перекрываем компактные padding темы) */
+.tbl tbody td.week-pos{padding-left:20px}
+.week-eye{position:absolute; left:5px; top:50%; transform:translateY(-50%); border:0; background:transparent; color:var(--ink-muted); padding:0; font-size:11px; line-height:1; cursor:pointer}
+.week-eye:hover{color:var(--brand)}
 </style>

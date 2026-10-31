@@ -12,6 +12,8 @@ export interface WatchSettings {
   phrases_limit?: number
   /** Старше стольких дней карточка считается «устаревшей» для сбора контента. */
   card_stale_days?: number
+  /** Не пересобирать карточку, если её полный сбор был меньше N часов назад. */
+  recollect_hours?: number
 }
 
 export interface WatchCard {
@@ -44,6 +46,10 @@ export interface WatchNewItem {
    * «вошло», повторный сбор не нужен (в очереди такая карточка пропускается).
    */
   fresh?: boolean
+  /** Часов с последнего полного сбора карточки (null — не собирали). */
+  hours?: number | null
+  /** Товар от частного лица (ресейл) — не наш конкурент, не собираем. */
+  is_resale?: number
 }
 
 export interface WatchPriceMove {
@@ -54,6 +60,10 @@ export interface WatchPriceMove {
   pct: number
   /** См. WatchNewItem.fresh — то же правило для сдвига цены. */
   fresh?: boolean
+  /** См. WatchNewItem.hours. */
+  hours?: number | null
+  /** См. WatchNewItem.is_resale. */
+  is_resale?: number
 }
 
 export interface WatchMatrixRow {
@@ -95,11 +105,12 @@ export interface WatchMatrixRow {
   cards_by_depth?: Record<string, { fresh: number; stale: number; missing: number }>
   /**
    * Карточки окна последнего захода (ТОП-40) для точных счётчиков кнопок:
-   * [nmId, позиция, статус контента] — статус 0 актуальный / 1 устаревший /
-   * 2 без описания. Фронт дедупит по nmId: суммы по фразам завышали кнопки
-   * (числили карточку в нескольких фразах, а в очередь она встаёт один раз).
+   * [nmId, позиция, статус контента, ресейл] — статус 0 актуальный / 1 устаревший /
+   * 2 без описания, 4-й — 1, если товар от частного лица (его не собираем).
+   * Фронт считает по нему УНИКАЛЬНЫЕ карточки любых выбранных фраз и
+   * любой глубины — суммы по фразам завышали кнопки (953 реального 22).
    */
-  pool?: Array<[number, number, number]>
+  pool?: Array<[number, number, number, number?]>
   ours_cnt: number
   /** Позиций в окне анализа (ТОП-40). */
   top_cnt?: number
@@ -226,6 +237,10 @@ export interface WatchRefreshResult {
   phrases_cnt?: number
   /** Пропущено карточек, собранных сегодня. */
   skipped_today?: number
+  /** Пропущено карточек, собранных меньше recollect_hours назад. */
+  skipped_fresh?: number
+  /** Пропущено карточек, уже стоящих в очереди. */
+  skipped_queued?: number
   stale_days: number
 }
 
@@ -239,6 +254,25 @@ export interface WatchCollectResult {
   top: number
   phrases_cnt: number
   stale_days: number
+  /** Пропущено карточек, собранных меньше recollect_hours назад. */
+  skipped_fresh?: number
+  /** Пропущено карточек, уже стоящих в очереди. */
+  skipped_queued?: number
+}
+
+/** Результат сбора НАШИХ карточек в очередь enrich (source='' — общая куча). */
+export interface WatchCollectOwnResult {
+  requested: number
+  assigned: number
+  skipped: number
+  candidates: number
+  top: number
+  /** Пропущено карточек, собранных меньше recollect_hours назад. */
+  skipped_fresh?: number
+  /** Пропущено карточек, уже стоящих в очереди. */
+  skipped_queued?: number
+  /** Наши карточки по заказам (из `agg_orders_daily_sku`). */
+  cards?: Array<{ nm_id: number; orders: number; title: string }>
 }
 
 export interface WatchFilterParams {
@@ -293,4 +327,11 @@ export const seoWatchApi = {
   collectNms: (nmIds: number[]) =>
     api.post('/api/seo-watch/collect-nms', { nm_ids: nmIds }, { timeout: seoWatchApi.TIMEOUT })
       .then((r) => r.data as { requested: number; assigned: number; skipped: number; excluded: number }),
+
+  /** Собрать наши ТОП-N карточек (цены, баджи, полки) → очередь enrich.
+   * Очередь общая (source='') — расширение забирает её в режиме «Обновление». */
+  collectOwn: (top = 20, dateFrom?: string) =>
+    api.post('/api/seo-watch/collect-own', { top },
+      { params: { date_from: dateFrom || undefined }, timeout: seoWatchApi.TIMEOUT })
+      .then((r) => r.data as WatchCollectOwnResult),
 }

@@ -5,12 +5,14 @@
     <div class="row mb-3 d-flex align-items-center">
       <div class="col-auto d-flex gap-2 align-items-center">
         <span v-if="st?.flags?.paused" class="badge text-bg-warning">Пауза</span>
+        <span v-else-if="st?.flags?.balance_paused" class="badge text-bg-warning">Пауза ИИ</span>
+        <span v-else-if="st?.flags?.manual_running" class="badge text-bg-info">Разбор идёт</span>
         <span v-else-if="st?.flags?.running" class="badge text-bg-success">Работает</span>
         <span v-else class="badge text-bg-secondary">Не запущен</span>
-        <button class="btn btn-sm" :class="st?.flags?.paused ? 'btn-success' : 'btn-outline-warning'"
+        <button class="btn btn-sm" :class="isPaused ? 'btn-success' : 'btn-outline-warning'"
                 :disabled="!st || toggling" @click="togglePause">
-          <i class="bi me-1" :class="st?.flags?.paused ? 'bi-play-fill' : 'bi-pause-fill'"></i>
-          {{ st?.flags?.paused ? 'Возобновить' : 'Пауза' }}
+          <i class="bi me-1" :class="isPaused ? 'bi-play-fill' : 'bi-pause-fill'"></i>
+          {{ isPaused ? 'Возобновить' : 'Пауза' }}
         </button>
         <button class="btn btn-sm btn-light" @click="refreshAll" :disabled="loading">
           <i class="bi bi-arrow-clockwise me-1"></i> Обновить
@@ -20,6 +22,19 @@
 
     <div v-if="loadErr" class="alert alert-danger py-2">{{ loadErr }}</div>
     <div v-if="msg" class="alert alert-info py-2">{{ msg }}</div>
+
+    <div v-if="st?.flags?.balance_paused" class="alert alert-warning py-2 d-flex align-items-center gap-2 flex-wrap">
+      <i class="bi bi-pause-circle"></i>
+      <span>
+        У ИИ-провайдера кончились токены
+        ({{ st?.flags?.balance_pause_reason || 'insufficient_balance' }}) —
+        разбор на паузе до {{ fmtTime(st?.flags?.balance_pause_until) }}
+        <span class="text-muted">(осталось {{ fmtLeft(st?.flags?.balance_pause_left_sec) }})</span>
+      </span>
+      <button class="btn btn-sm btn-outline-dark ms-auto" :disabled="toggling" @click="togglePause">
+        Возобновить сейчас
+      </button>
+    </div>
 
     <!-- Статус -->
     <div class="card mb-3">
@@ -34,6 +49,19 @@
             </div>
             <div class="mb-1">ждут повторного разбора: <b>{{ st?.counts?.pending || 0 }}</b></div>
             <div>готово: <b>{{ st?.counts?.done || 0 }}</b> · ошибок: <b>{{ st?.counts?.error || 0 }}</b></div>
+            <div v-if="st?.quota?.ok" class="mt-1 small">
+              Лимит ИИ: <b>{{ st?.quota?.percent }}%</b>
+              <span class="text-muted">· сброс в {{ fmtClock(st?.quota?.reset_at) }}
+                <template v-if="st?.quota?.reset_left">· осталось {{ st?.quota?.reset_left }}</template>
+              </span>
+            </div>
+            <div v-else-if="st?.quota?.applicable && !st?.quota?.ok" class="mt-1 small text-muted">
+              Лимит ИИ: не удалось проверить ({{ st?.quota?.error || 'нет данных' }})
+            </div>
+            <div v-if="st?.quota?.weekly_percent !== null && st?.quota?.weekly_percent !== undefined && st?.quota?.weekly_percent < 10"
+                 class="small text-warning-emphasis">
+              Недельный лимит: {{ st?.quota?.weekly_percent }}%
+            </div>
           </div>
 
           <div class="col-12 col-md-6 col-xl-3">
@@ -65,7 +93,7 @@
 
           <div class="col-12 col-md-6 col-xl-3">
             <div class="page-feedback-review__k">Разобрать сейчас</div>
-            <button class="btn btn-sm btn-primary mb-2" :disabled="running || !st?.prompt_set" @click="onRun">
+            <button class="btn btn-sm btn-primary mb-2" :disabled="running || !st?.prompt_set || st?.flags?.balance_paused" @click="onRun">
               <span v-if="running" class="spinner-border spinner-border-sm me-1"></span>
               {{ running ? 'Разбираем...' : 'Разобрать порцию' }}
             </button>
@@ -265,7 +293,7 @@
 
 <script setup lang="ts">
 import '@/assets/css/pages/page-feedback-review.css'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { feedbackApi } from '@/api/feedback'
 import {
@@ -300,6 +328,9 @@ const promptSaving = ref(false)
 const promptMsg = ref('')
 const promptMsgOk = ref(true)
 
+/** Авто-обновление статуса/лога, пока разбор идёт в фоне. */
+let timer: ReturnType<typeof setInterval> | null = null
+
 const costPeriods = computed(() => {
   const u = st.value?.ai_usage
   return [
@@ -308,6 +339,30 @@ const costPeriods = computed(() => {
     { key: 'month', label: '30 дней', block: u?.month || { calls: 0, total_tokens: 0, cost: 0 } },
   ]
 })
+
+/** Пауза активна: ручная или по отсутствию токенов у провайдера. */
+const isPaused = computed(() => !!st.value?.flags?.paused || !!st.value?.flags?.balance_paused)
+
+function fmtTime(v: string | null | undefined): string {
+  if (!v) return '—'
+  return v.replace('T', ' ').slice(0, 16)
+}
+
+function fmtLeft(sec: number | null | undefined): string {
+  const m = Math.max(0, Math.round((sec || 0) / 60))
+  if (m < 60) return `${m} мин`
+  const h = Math.floor(m / 60)
+  const rest = m % 60
+  return rest ? `${h} ч ${rest} мин` : `${h} ч`
+}
+
+/** Время сброса окна лимита — в таймзоне браузера (бэк отдаёт ISO со смещением). */
+function fmtClock(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+}
 
 async function loadStatus() {
   st.value = await feedbackReviewApi.status()
@@ -357,7 +412,7 @@ async function togglePause() {
   toggling.value = true
   msg.value = ''
   try {
-    const f = await feedbackReviewApi.pause(!st.value?.flags?.paused)
+    const f = await feedbackReviewApi.pause(!isPaused.value)
     if (st.value) st.value.flags = { ...st.value.flags, ...f }
     msg.value = f.paused ? 'Разбор на паузе' : 'Разбор возобновлён'
   } catch (e: any) {
@@ -386,9 +441,11 @@ async function onRun() {
   msg.value = ''
   try {
     const d = await feedbackReviewApi.run(batch.value || 20)
-    msg.value = d.fatal
-      ? `Остановлено: ${d.fatal}`
-      : `Взято ${d.taken}, разобрано ${d.ok}, ошибок ${d.errors}`
+    msg.value = d.paused
+      ? `Пауза ИИ (нет токенов) до ${fmtTime(d.pause_until)} — разбор пропущен`
+      : d.started
+        ? `Запущено в фоне: ${d.limit} отзывов. Прогресс — во вкладке «Лог работы»`
+        : (d.reason || 'Запуск не удался')
     await refreshAll()
   } catch (e: any) {
     loadErr.value = e?.response?.data?.detail || String(e)
@@ -446,5 +503,16 @@ async function onSavePrompt() {
   }
 }
 
-onMounted(refreshAll)
+onMounted(() => {
+  refreshAll()
+  // разбор идёт в фоне минутами — подтягиваем статус и лог, чтобы видеть прогресс
+  timer = setInterval(() => {
+    loadStatus().catch(() => {})
+    if (tab.value === 'log') loadLog().catch(() => {})
+  }, 15000)
+})
+
+onBeforeUnmount(() => {
+  if (timer) clearInterval(timer)
+})
 </script>

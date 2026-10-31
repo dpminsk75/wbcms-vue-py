@@ -1,36 +1,42 @@
 <template>
   <div class="container-xxl page-wb-search-phrase">
-    <div class="row mb-3">
-      <h2 class="page-wb-search-phrase__title">{{ pageTitle }}</h2>
-    </div>
+    <h1 class="page-title">{{ pageTitle }}</h1>
 
-    <div class="row mb-3">
-      <div class="col-md-6">
-        <UniversalFilter
-          label="Поисковая фраза"
-          :data="phraseOptions"
-          v-model="filters.phrase_id"
-          v-model:date-from="filters.date_from"
-          v-model:date-to="filters.date_to"
-          :default-days="70"
-          @apply="onApply"
-          @reset="onReset"
-        />
-      </div>
-    </div>
+    <!-- Фильтр: общий WbUniversalFilter (пресеты дат + «Применить/Сбросить»),
+         выбор фразы — в слоте #fields (общий WbPhraseSelect). -->
+    <WbUniversalFilter
+      v-model:date-from="filters.date_from"
+      v-model:date-to="filters.date_to"
+      :show-product="false"
+      :show-brand-category="false"
+      :show-quick="false"
+      @apply="onApply"
+      @reset="onReset"
+    >
+      <template #fields>
+        <div class="wb-field wb-field--wide">
+          <label class="wb-field__label">Поисковая фраза</label>
+          <WbPhraseSelect v-model="filters.phrase_id" :options="phraseOptions" placeholder="Введите фразу..." />
+        </div>
+      </template>
+    </WbUniversalFilter>
 
     <div v-if="phrase && models.length" class="row page-wb-search-phrase__grid mb-3">
       <div class="col-md-12">
         <PhrasesMatrix :rows="models" :dates="uniqueDates" :is-loading="isLoading" :show-excel="true" mode="by-card" :heading="phrase ? `Товары по запросу: ${phrase}` : null" />
       </div>
     </div>
-    <div v-else-if="phrase && !isLoading" class="alert alert-warning border-0 shadow-sm">
-      По фразе <strong>"{{ phrase }}"</strong> данных не найдено.
+    <div v-else-if="phrase && !isLoading" class="wb-panel mb-3">
+      <div class="wb-panel__bd">
+        По фразе <strong>«{{ phrase }}»</strong> данных не найдено.
+      </div>
     </div>
 
-    <div v-if="phraseId && chartData.length" class="card border-0 shadow-sm mb-4 bg-light">
-      <div class="card-body">
-        <h5 class="card-title">Динамика ТОП-5 карточек (по кликам) и частотности запроса</h5>
+    <div v-if="phraseId && chartData.length" class="wb-panel mb-4">
+      <div class="card__hd">
+        <span><i class="bi bi-graph-up me-2"></i>Динамика ТОП-5 карточек (по кликам) и частотности запроса</span>
+      </div>
+      <div class="wb-panel__bd">
         <v-chart :option="chartOption" autoresize class="page-wb-search-phrase__chart" />
       </div>
     </div>
@@ -46,7 +52,8 @@ import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import UniversalFilter from '@/components/common/UniversalFilter.vue'
+import WbUniversalFilter from '@/components/common/WbUniversalFilter.vue'
+import WbPhraseSelect from '@/components/common/WbPhraseSelect.vue'
 import PhrasesMatrix from '@/components/common/PhrasesMatrix.vue'
 import { wbSearchApi } from '@/api/search'
 
@@ -58,10 +65,11 @@ const router = useRouter()
 const today = new Date()
 const yesterday = new Date(today.getTime() - 864e5)
 const defTo = yesterday.toISOString().slice(0, 10)
-const defFrom = new Date(today.getTime() - 70 * 864e5).toISOString().slice(0, 10)
+const defFrom = new Date(today.getTime() - 30 * 864e5).toISOString().slice(0, 10)
 
 const filters = reactive({
-  phrase_id: String(route.query.phrase_id || ''),
+  // фраза приходит и как id (phrase_id), и как текст (phrase) — ссылки из отчётов
+  phrase_id: String(route.query.phrase_id || route.query.phrase || ''),
   date_from: String(route.query.date_from || defFrom),
   date_to: String(route.query.date_to || defTo),
 })
@@ -148,7 +156,16 @@ async function fetchData() {
 }
 
 function onApply() {
-  router.replace({ path: '/wb-search/phrase', query: { phrase_id: filters.phrase_id || undefined, date_from: filters.date_from, date_to: filters.date_to } })
+  // в URL фраза-текст пишем как phrase, id — как phrase_id
+  const isId = /^\d+$/.test(filters.phrase_id)
+  router.replace({
+    path: '/wb-search/phrase',
+    query: {
+      [isId ? 'phrase_id' : 'phrase']: filters.phrase_id || undefined,
+      date_from: filters.date_from,
+      date_to: filters.date_to,
+    },
+  })
   fetchData()
 }
 

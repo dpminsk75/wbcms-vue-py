@@ -1,0 +1,12 @@
+[Unit]
+Description=Run wbcms questions sync every 4 hours
+
+[Timer]
+# :15 в 00,04,08,12,16,20 (каждые 4 часа). Не на :00/:30 — там же работает
+# wbcms-feedback-sync: оба воркера ходят в WB одним токеном (категория
+# «Вопросы и отзывы», 3 запроса/с), одновременный старт даёт 429 и замедляет оба.
+OnCalendar=00,04,08,12,16,20:15
+Persistent=true
+
+[Install]
+WantedBy=timers.target

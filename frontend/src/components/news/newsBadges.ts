@@ -1,8 +1,9 @@
-// Особые бейджи типов новостей (как у WB): Важно — оранжевый, Персональная — зелёная.
-export function newsBadgeStyle(name: string): Record<string, string> | undefined {
-  if (name === 'Важно') return { background: '#FDEBD7', color: '#C46A1B', borderColor: '#F5CBA7' }
-  if (name === 'Персональная новость') return { background: '#DFF5E1', color: '#1E7A5F', borderColor: '#A9DFBF' }
-  return undefined
+// Бейджи типов новостей — общие классы темы (.badge--*), без своих hex.
+// «Важно» — предупреждение, «Персональная новость» — подтверждение, остальные — нейтральные.
+export function newsBadgeClass(name: string): string {
+  if (name === 'Важно') return 'badge--warn'
+  if (name === 'Персональная новость') return 'badge--ok'
+  return 'badge--neutral'
 }
 
 export function newsBadgeIcon(name: string): string {

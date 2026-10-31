@@ -119,6 +119,11 @@ ALLOWED: dict[str, dict] = {
         "default": "*:00,30",
         "group": "day",
     },
+    "wbcms-questions-sync": {
+        "title": "Синк вопросов WB (каждые 4 часа)",
+        "default": "00,04,08,12,16,20:15",
+        "group": "day",
+    },
 }
 
 _NAME_RE = re.compile(r"^wbcms-[a-z0-9-]+$")

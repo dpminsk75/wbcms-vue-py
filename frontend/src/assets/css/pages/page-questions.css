@@ -1,0 +1,47 @@
+/* Страница «Вопросы» (page-questions).
+   Свои правила — только то, чего нет в Bootstrap 5:
+   ширины колонок таблицы, обрезка длинного текста, клик по строке, ширина модалки.
+   Цвета — только var(--*) (theme.md §3.1). */
+
+.page-questions__kpi {
+  margin-bottom: 14px;
+}
+
+.page-questions__count {
+  font-size: calc(11px * var(--fs));
+  color: var(--ink-soft);
+}
+
+/* Ширины колонок: у Bootstrap нет утилиты ширины колонки таблицы. */
+.page-questions__table th:nth-child(1) { width: 120px; }
+.page-questions__table th:nth-child(2) { width: 240px; }
+.page-questions__table th:nth-child(5) { width: 130px; }
+
+/* Обрезка текста вопроса/ответа до 3 строк: line-clamp нет в Bootstrap 5.3.
+   Кламп — на ВНУТРЕННЕМ div: display:-webkit-box на самом <td> ломает
+   табличную раскладку (ячейка перестаёт быть ячейкой). */
+.page-questions__text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Строка открывает вопрос целиком — курсор. */
+.page-questions__row {
+  cursor: pointer;
+}
+
+/* Модалка вопроса: ширина и перенос длинного текста (у Bootstrap только .modal-dialog). */
+.page-questions__modal {
+  max-width: 640px;
+}
+.page-questions__modal > div {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.page-questions__modal-meta {
+  margin-top: -4px;
+}

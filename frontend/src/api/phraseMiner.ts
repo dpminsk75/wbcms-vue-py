@@ -35,12 +35,45 @@ export interface MinerCurrent {
   since?: number
 }
 
+export interface MinerBalanceCompany {
+  company_id: number
+  until: string | null
+  left_sec: number
+  reason: string
+}
+
+export interface MinerBalance {
+  /** В скоупе есть компания на паузе «нет токенов» */
+  paused: boolean
+  until: string | null
+  left_sec: number
+  reason: string
+  companies: MinerBalanceCompany[]
+}
+
+export interface MinerQuota {
+  applicable: boolean
+  ok: boolean
+  error?: string
+  percent?: number | null
+  active?: boolean | null
+  reset_at?: string
+  reset_left?: string
+  reset_left_sec?: number
+  weekly_percent?: number | null
+  weekly_reset_at?: string
+  pause_until?: string
+  checked_at?: string
+}
+
 export interface MinerStatus {
   running: boolean
   paused: boolean
   current: MinerCurrent | null
   last_error: { msg: string; ts: number } | null
   scenario: string
+  balance?: MinerBalance
+  quota?: MinerQuota
   queue: {
     counts: Record<string, number>
     pending_by_priority: Record<string, number>
@@ -102,6 +135,7 @@ export const phraseMinerApi = {
   log: (params: { level?: string; action?: string; company_id?: number | null; limit?: number; offset?: number }) =>
     api.get('/api/phrases/miner/log', { params }).then((r) => r.data as MinerLogResp),
 
-  pause: (paused: boolean) =>
-    api.post('/api/phrases/miner/pause', { paused }).then((r) => r.data as { ok: boolean; paused: boolean }),
+  pause: (paused: boolean, companyId?: number | null) =>
+    api.post('/api/phrases/miner/pause', { paused }, { params: companyId ? { company_id: companyId } : {} })
+      .then((r) => r.data as { ok: boolean; paused: boolean }),
 }

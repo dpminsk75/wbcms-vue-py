@@ -1,41 +1,52 @@
 <template>
   <div class="container-xxl page-news">
-    <h2 class="page-news__title">Новости WB</h2>
+    <h1 class="page-title">Новости WB</h1>
     <div class="row">
+      <!-- Фильтры: панель темы (.wb-panel), поле — .wb-field/.wb-input,
+           даты — общий WbDateRangeFilter (bare),
+           кнопки — внизу панели слева (.wb-filter-panel__btns). -->
       <div class="col-md-3">
-        <div class="card page-news__side">
-          <div class="card-body">
-            <div class="page-news__search">
-              <input v-model="q" @keyup.enter="load" placeholder="Поиск новости" class="form-control form-control-sm" />
-            </div>
-            <div class="page-news__filters-title">Фильтры</div>
-            <div class="page-news__pills">
-              <button v-for="t in types" :key="t.id" type="button"
-                :class="['page-news__pill', { 'page-news__pill--on': typeSel.includes(t.id) }]"
-                @click="toggle(t.id)">{{ t.name }}</button>
+        <div class="wb-panel page-news__side">
+          <div class="wb-panel__bd">
+            <div class="wb-field page-news__search">
+              <label class="wb-field__label" for="news-search">Поиск</label>
+              <input
+                id="news-search"
+                v-model="q"
+                class="wb-input"
+                placeholder="Заголовок новости"
+                @keyup.enter="load"
+              />
             </div>
             <div class="page-news__dates">
-              <WbDateInput v-model="dateFrom" input-class="form-control-sm" />
-              <WbDateInput v-model="dateTo" input-class="form-control-sm" />
+              <WbDateRangeFilter v-model:from="dateFrom" v-model:to="dateTo" bare />
             </div>
-            <div class="d-flex gap-2 mt-2">
-              <button class="btn btn-sm btn-primary" @click="load">Применить</button>
-              <button class="btn btn-sm btn-outline-secondary" @click="reset">Сбросить</button>
+            <div class="wb-filter-panel__btns">
+              <button class="btn btn--brand" @click="load">Применить</button>
+              <button class="btn btn--outline" @click="reset">Сбросить</button>
             </div>
           </div>
         </div>
       </div>
       <div class="col-md-9">
+        <!-- Типы новостей — общие чипы темы (.opt), в широкой колонке над лентой:
+             в сайдбаре чипы ложились бы в 3+ ряда. Применяются сразу. -->
+        <div class="wb-field page-news__types">
+          <span class="wb-field__label">Тип</span>
+          <WbChipGroup v-model="typeSel" :options="typeOptions" multiple @update:model-value="load" />
+        </div>
         <div v-if="error" class="wb-error">{{ error }}</div>
         <div v-if="loading" class="text-muted">Загрузка…</div>
-        <div v-else-if="!rows.length" class="alert alert-info">Новостей нет.</div>
+        <div v-else-if="!rows.length" class="wb-panel">
+          <div class="wb-panel__bd text-muted">Новостей нет.</div>
+        </div>
         <div v-else class="page-news__feed">
-          <div v-for="r in rows" :key="r.id" class="card page-news__card" :class="{ 'page-news__card--read': r.is_read }" @click="open(r)">
-            <div class="card-body">
+          <div v-for="r in rows" :key="r.id" class="wb-panel page-news__card" :class="{ 'page-news__card--read': r.is_read }" @click="open(r)">
+            <div class="wb-panel__bd">
               <div class="page-news__date">{{ newsDate(r.date) }}</div>
               <div class="page-news__head">{{ r.header }}</div>
               <div class="mt-1">
-                <span v-for="t in r.types" :key="t.id" class="badge border me-1" :class="{ 'text-bg-light': !newsBadgeStyle(t.name) }" :style="newsBadgeStyle(t.name)"><i v-if="newsBadgeIcon(t.name)" :class="newsBadgeIcon(t.name) + ' me-1'"></i>{{ t.name }}</span>
+                <span v-for="t in r.types" :key="t.id" class="badge me-1" :class="newsBadgeClass(t.name)"><i v-if="newsBadgeIcon(t.name)" :class="newsBadgeIcon(t.name) + ' me-1'"></i>{{ t.name }}</span>
               </div>
             </div>
           </div>
@@ -48,10 +59,11 @@
 
 <script setup lang="ts">
 import '@/assets/css/pages/page-news.css'
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import NewsPopup from '../components/news/NewsPopup.vue'
-import WbDateInput from '../components/common/WbDateInput.vue'
-import { newsBadgeStyle, newsBadgeIcon } from '../components/news/newsBadges'
+import WbDateRangeFilter from '../components/common/WbDateRangeFilter.vue'
+import WbChipGroup from '../components/common/WbChipGroup.vue'
+import { newsBadgeClass, newsBadgeIcon } from '../components/news/newsBadges'
 import { newsApi, type NewsRow, type NewsType } from '../api/news'
 
 const rows = ref<NewsRow[]>([])
@@ -71,12 +83,9 @@ function newsDate(iso: string | null): string {
   return `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]} ${m[1]}`
 }
 
-function toggle(id: number) {
-  typeSel.value = typeSel.value.includes(id)
-    ? typeSel.value.filter((x) => x !== id)
-    : [...typeSel.value, id]
-  load()
-}
+/** Типы новостей — варианты для общих чипов темы (.opt), множественный выбор. */
+const typeOptions = computed(() => types.value.map((t) => ({ value: t.id, label: t.name })))
+
 function open(r: NewsRow) { selected.value = r }
 function close() {
   if (selected.value) selected.value.is_read = true

@@ -1,0 +1,13 @@
+[Unit]
+Description=wbcms questions sync (вопросы WB, каждые 30 минут)
+After=network.target mysql.service
+
+[Service]
+Type=oneshot
+User=www-data
+WorkingDirectory=/var/www/wb/wbcms-py
+EnvironmentFile=/var/www/wb/wbcms-py/.env
+Environment=PYTHONUNBUFFERED=1
+# свежие вопросы за последние 7 дней (окно шире 2 дней: ответ продавца может
+# прийти позже даты вопроса — иначе ответ не обновится)
+ExecStart=/var/www/wb/wbcms-py/.venv/bin/python backend/workers/questions_sync.py --mode fresh --date-from -7

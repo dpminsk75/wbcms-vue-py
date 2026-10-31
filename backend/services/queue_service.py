@@ -42,6 +42,35 @@ def _like(q: str) -> str:
     return f"%{s}%"
 
 
+def enrich_owner_union(cols: str, extra_where: str = "", join: str = "") -> str:
+    """Владелец строки очереди — 3 непересекающиеся ветки (UNION ALL).
+
+    Было одним условием: (q.company_id=:cid OR q.company_id IS NULL OR
+    q.status='need_update'). OR из трёх условий MySQL не сводит в один диапазон
+    по индексу → фулл-скан wb_enrich_queue на КАЖДЫЙ опрос расширения
+    (/api/ext/status поллится каждые 0.5–2 с — 72 с на запрос, БД встаёт).
+
+    Ветки дают ровно тот же набор строк (строки разных компаний не пересекаются):
+      1) свои строки компании;
+      2) «ничьи» строки (company_id IS NULL);
+      3) need_update чужих компаний — глобальный флаг «контент устарел».
+    Каждая ветка берётся по индексу (company_id,status) или (source,status).
+    """
+    def br(cond: str) -> str:
+        w = f"WHERE {cond}"
+        if extra_where:
+            w += f" AND {extra_where}"
+        return f"SELECT {cols} FROM wb_enrich_queue q {join} {w}"
+    return ("("
+            + br("q.company_id = :cid")
+            + " UNION ALL "
+            + br("q.company_id IS NULL")
+            + " UNION ALL "
+            + br("q.status = 'need_update' AND q.company_id IS NOT NULL"
+                 " AND q.company_id <> :cid")
+            + ")")
+
+
 def _src_cond(source: str) -> str:
     """Фильтр источника очереди: отражает режимы попапа (тексты про /status)."""
     s = (source or "").strip().lower()
@@ -49,7 +78,9 @@ def _src_cond(source: str) -> str:
         return "q.source='watch'"
     if s == "all":
         return "1=1"
-    return "(q.source='' OR q.source IS NULL)"
+    # source — NOT NULL DEFAULT '' (миграция 20261035): «общая куча» это ровно
+    # source='', а «='' OR IS NULL» ломало бы индекс по source.
+    return "q.source=''"
 
 
 async def enrich_counts(db: AsyncSession, cid: int | None, source: str = "") -> dict:
@@ -58,20 +89,25 @@ async def enrich_counts(db: AsyncSession, cid: int | None, source: str = "") -> 
     cid IS NULL (глобальный админ) считаем все строки.
     source: '' (по умолчанию) — общая куча, 'watch' — SEO-мониторинг, 'all' — обе.
     """
-    cond_owner = "(q.company_id=:cid OR q.company_id IS NULL OR q.status='need_update')" \
-        if cid is not None else "1=1"
     src_cond = _src_cond(source)
     params: dict = {}
     if cid is not None:
         params["cid"] = cid
-    rows = (await db.execute(text(f"""
-        SELECT q.status, COUNT(*) AS cnt
-        FROM wb_enrich_queue q
-        WHERE {cond_owner}
-          AND q.nm_id > 0
-          AND {src_cond}
-        GROUP BY q.status
-    """), params)).mappings().all()
+    # владелец — 3 ветки UNION ALL (индексы вместо фулл-скана очереди)
+    if cid is not None:
+        cnt_sql = f"""
+            SELECT t.status, COUNT(DISTINCT t.id) AS cnt
+            FROM {enrich_owner_union('q.status AS status, q.id AS id',
+                                     extra_where=f'q.nm_id > 0 AND {src_cond}')} t
+            GROUP BY t.status
+        """
+    else:
+        cnt_sql = f"""
+            SELECT q.status, COUNT(*) AS cnt FROM wb_enrich_queue q
+            WHERE q.nm_id > 0 AND {src_cond}
+            GROUP BY q.status
+        """
+    rows = (await db.execute(text(cnt_sql), params)).mappings().all()
     counts = {r["status"]: int(r["cnt"]) for r in rows}
     hidden = 0
     if cid is not None:
@@ -108,8 +144,9 @@ async def enrich_list(db: AsyncSession, cid: int | None, *, status: str = "",
         params["cid"] = cid
     src_cond = _src_cond(source)
     where = ["q.nm_id > 0", src_cond]
-    if cid is not None:
-        where.append("(q.company_id=:cid OR q.company_id IS NULL OR q.status='need_update')")
+    # владелец строки вынесен из WHERE в ветки UNION ALL (индексы вместо
+    # фулл-скана очереди) — набор строк тот же
+    owner_in_union = cid is not None
     if hidden:
         if cid is None:
             raise ValueError("Свои исключения есть только у компании — выберите её в шапке")
@@ -148,27 +185,41 @@ async def enrich_list(db: AsyncSession, cid: int | None, *, status: str = "",
             ORDER BY c2.id DESC LIMIT 1)
     """
     page_sql = "LIMIT :lim OFFSET :off" if limit else ""
-    items = (await db.execute(text(f"""
-        SELECT q.id, q.nm_id, q.status, q.source, q.company_id AS owner_company_id,
+    item_cols = """q.id, q.nm_id, q.status, q.source, q.company_id AS owner_company_id,
                q.requested_at, q.claimed_at, q.processed_at,
                COALESCE(NULLIF(d.title,''),  NULLIF(pp.title,''),  NULLIF(pc.title,'')) AS title,
                COALESCE(NULLIF(d.brand,''),  NULLIF(pp.brand,''),  NULLIF(pc.brand,'')) AS brand,
                COALESCE(NULLIF(d.seller,''), NULLIF(pp.seller,'')) AS seller,
                COALESCE(NULLIF(d.price,0), NULLIF(pp.price,0), NULLIF(pc.price,0)) AS price,
-               {hidden_col}
-        FROM wb_enrich_queue q
-        LEFT JOIN wb_competitor_details d ON d.nm_id=q.nm_id
-        {fb_joins}
-        WHERE {base_where}
-        ORDER BY q.status='pending' DESC, q.status='need_update' DESC, q.id
-        {page_sql}
-    """), params)).mappings().all()
-    total = int((await db.execute(text(f"""
-        SELECT COUNT(*) FROM wb_enrich_queue q
-        LEFT JOIN wb_competitor_details d ON d.nm_id=q.nm_id
-        {fb_joins}
-        WHERE {base_where}
-    """), {k: v for k, v in params.items() if k not in ("lim", "off")})).scalar() or 0)
+               {hidden_col}"""
+    joins = (f"LEFT JOIN wb_competitor_details d ON d.nm_id=q.nm_id {fb_joins}")
+    if owner_in_union:
+        union = enrich_owner_union(item_cols, extra_where=base_where, join=joins)
+        lean_union = enrich_owner_union("q.id AS id", extra_where=base_where, join=joins)
+        items_sql = f"""
+            SELECT * FROM ({union}) t
+            ORDER BY t.status='pending' DESC, t.status='need_update' DESC, t.id
+            {page_sql}
+        """
+        total_sql = f"SELECT COUNT(*) FROM ({lean_union}) t"
+    else:
+        items_sql = f"""
+            SELECT {item_cols}
+            FROM wb_enrich_queue q
+            {joins}
+            WHERE {base_where}
+            ORDER BY q.status='pending' DESC, q.status='need_update' DESC, q.id
+            {page_sql}
+        """
+        total_sql = f"""
+            SELECT COUNT(*) FROM wb_enrich_queue q
+            {joins}
+            WHERE {base_where}
+        """
+    items = (await db.execute(text(items_sql), params)).mappings().all()
+    total = int((await db.execute(text(total_sql),
+                                  {k: v for k, v in params.items()
+                                   if k not in ("lim", "off")})).scalar() or 0)
     return {"items": [dict(r) for r in items], "total": total,
             "limit": limit, "offset": offset}
 

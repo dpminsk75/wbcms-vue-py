@@ -537,6 +537,13 @@ const CARD_TOP_OPTIONS = [
   { v: 20, label: 'ТОП-20' },
   { v: 40, label: 'ТОП-40' },
 ]
+/** Сколько наших карточек берём в сбор (цены, баджи, полки): ТОП-20/50/100. */
+const ownTop = ref(20)
+const OWN_TOP_OPTIONS = [
+  { v: 20, label: 'ТОП-20' },
+  { v: 50, label: 'ТОП-50' },
+  { v: 100, label: 'ТОП-100' },
+]
 
 /**
  * Целевые фразы для действий: отмеченные в матрице, иначе — все фразы набора.
@@ -552,15 +559,22 @@ const targetPhrases = computed<Set<string>>(
 
 /** Пул «Собрать новые и изменённые»: уникальные карточки событий матрицы
  * (new_items + price_moves), ещё не собранные свежее события. Карточки с
- * fresh=true бэкенд пропускает — их в счётчик не берём. */
+ * fresh=true бэкенд пропускает — их в счётчик не берём. Ресейл (товар от
+ * частного лица) и карточки, собранные меньше recollect_hours назад, — тоже:
+ * их не ставят в очередь, значит и в счётчике их быть не должно. */
 const newPoolCnt = computed(() => {
+  const hours = matrix.value?.settings?.recollect_hours ?? 12
   const ids = new Set<number>()
   for (const row of items.value) {
     for (const n of row.new_items || []) {
-      if (!n.fresh) ids.add(n.nm_id)
+      if (n.fresh || n.is_resale) continue
+      if (n.hours != null && n.hours < hours) continue
+      ids.add(n.nm_id)
     }
     for (const mv of row.price_moves || []) {
-      if (!mv.fresh) ids.add(mv.nm_id)
+      if (mv.fresh || mv.is_resale) continue
+      if (mv.hours != null && mv.hours < hours) continue
+      ids.add(mv.nm_id)
     }
   }
   return ids.size
@@ -572,13 +586,14 @@ const newPoolCnt = computed(() => {
  * Данные — `row.pool` из матрицы: одна карточка в ТОП-40 нескольких фраз
  * считается здесь один раз, поэтому цифра кнопки ровно совпадает с тем, что
  * бэкенд поставит в очередь (старая «сумма по фразам» с 22 фактических
- * показывала 953).
+ * показывала 953). Ресейл (4-й элемент) не считаем — его не собираем.
  */
 function poolUnique(depth: number, kinds: number[]): number {
   const ids = new Set<number>()
   for (const row of items.value) {
     if (!targetPhrases.value.has(row.phrase)) continue
-    for (const [nm, pos, st] of row.pool || []) {
+    for (const [nm, pos, st, resale] of row.pool || []) {
+      if (resale) continue
       if (pos <= depth && kinds.includes(st)) ids.add(nm)
     }
   }
@@ -642,7 +657,7 @@ async function doRequeueOlder() {
  * Обновление содержимого ТОП-10 карточек выдачи: `wb_enrich_queue`
  * (source='watch') — расширение забирает в режиме «SEO-мониторинг».
  * Целевые фразы: отмеченные, иначе все (бэкенд сам подставит watch set).
- * Пропускаются только карточки, собранные сегодня.
+ * Пропускаются карточки, собранные недавно (правило 12 ч) и те, что уже в очереди.
  */
 async function doRefresh() {
   if (actionBusy.value) return
@@ -650,11 +665,12 @@ async function doRefresh() {
   try {
     const r = await seoWatchApi.refresh(selected.value, 10, dateFrom.value, dateTo.value, filterParams.value)
     const over = r.overflow ? `, сверх лимита не взято: ${r.overflow}` : ''
-    const today = r.skipped_today ? `, собрано сегодня — пропущено ${r.skipped_today}` : ''
+    const fresh = r.skipped_fresh ? `, собрано недавно — пропущено ${r.skipped_fresh}` : ''
+    const queued = r.skipped_queued ? `, уже в очереди — пропущено ${r.skipped_queued}` : ''
     selected.value = []
     await load()
     actionNotice.value =
-      `в очередь enrich: ${r.assigned} (в пуле ${r.candidates}${today}, пропущено ${r.skipped}${over})`
+      `в очередь enrich: ${r.assigned} (в пуле ${r.candidates}${fresh}${queued}, пропущено ${r.skipped}${over})`
   } catch (e: any) {
     error.value = e?.response?.data?.detail || e?.message || 'Ошибка постановки в очередь'
   } finally {
@@ -679,14 +695,39 @@ async function doCollect(mode: 'changed' | 'stale' | 'missing') {
     // устаревшие» — глубина «из:» рядом с ним.
     const top = mode === 'missing' ? missingTop.value : cardTop.value
     const r = await seoWatchApi.collect(mode, phrases, top, dateFrom.value, dateTo.value, filterParams.value)
+    const fresh = r.skipped_fresh ? `, собрано недавно — пропущено ${r.skipped_fresh}` : ''
+    const queued = r.skipped_queued ? `, уже в очереди — пропущено ${r.skipped_queued}` : ''
     const notice = mode === 'stale'
-      ? `в очередь enrich: ${r.assigned} (устаревших ${r.candidates}, пропущено ${r.skipped}, порог ${r.stale_days} дн.)`
+      ? `в очередь enrich: ${r.assigned} (устаревших ${r.candidates}${fresh}${queued}, пропущено ${r.skipped}, порог ${r.stale_days} дн.)`
       : mode === 'missing'
-        ? `в очередь enrich: ${r.assigned} (без описания ${r.candidates}, ТОП-${r.top}, пропущено ${r.skipped} — описание уже есть)`
-        : `в очередь enrich: ${r.assigned} (новых и изменённых ${r.candidates}, пропущено ${r.skipped})`
+        ? `в очередь enrich: ${r.assigned} (без описания ${r.candidates}, ТОП-${r.top}${fresh}${queued}, пропущено ${r.skipped} — описание уже есть)`
+        : `в очередь enrich: ${r.assigned} (новых и изменённых ${r.candidates}${fresh}${queued}, пропущено ${r.skipped})`
     selected.value = []
     await load()
     actionNotice.value = notice
+  } catch (e: any) {
+    error.value = e?.response?.data?.detail || e?.message || 'Ошибка постановки в очередь'
+  } finally {
+    actionBusy.value = ''
+  }
+}
+
+/**
+ * Сбор НАШИХ карточек (цены, баджи, полки) в очередь SEO-мониторинга
+ * (source='watch') — расширение забирает её в режиме «Из SEO-мониторинг».
+ * Пул — наши ТОП-N карточек по заказам за период панели (не «ТОП-N позиций
+ * выдачи», как у кнопок мониторинга). Правило 12 ч то же: недавно собранные
+ * карточки в очередь не возвращаются.
+ */
+async function doCollectOwn() {
+  if (actionBusy.value) return
+  actionBusy.value = 'collect-own'
+  try {
+    const r = await seoWatchApi.collectOwn(ownTop.value, dateFrom.value)
+    const fresh = r.skipped_fresh ? `, собрано недавно — пропущено ${r.skipped_fresh}` : ''
+    const queued = r.skipped_queued ? `, уже в очереди — пропущено ${r.skipped_queued}` : ''
+    actionNotice.value =
+      `наши карточки в очередь сбора: ${r.assigned} (наши ТОП-${r.top}, в пуле ${r.candidates}${fresh}${queued}, пропущено ${r.skipped})`
   } catch (e: any) {
     error.value = e?.response?.data?.detail || e?.message || 'Ошибка постановки в очередь'
   } finally {
@@ -952,6 +993,29 @@ onMounted(() => {
 
 
           </div>
+        </div>
+        <!-- Наши карточки: другой объект (не конкуренты) — своя строка под сеткой.
+             Сбор нужен, чтобы получить цены, баджи и полки наших карточек:
+             расширение откроет каждую карточку и соберёт контент. -->
+        <div class="page-seo-watch__own">
+          <span class="page-seo-watch__own-label">Наши карточки</span>
+          <button
+            class="btn btn-sm btn-outline-primary"
+            :disabled="!!actionBusy"
+            :title="`Наши ТОП-${ownTop} карточек по заказам → в очередь сбора SEO-мониторинга: расширение откроет каждую карточку и соберёт цены, баджи и полки. Правило 12 ч к нашим карточкам НЕ применяется — пересобираем, когда вы решили. Пропускаются только уже стоящие в очереди и исключённые из сбора`"
+            @click="doCollectOwn"
+          >
+            <i class="bi bi-collection"></i>
+            Собрать наши карточки
+            <span class="page-seo-watch__cnt">(ТОП-{{ ownTop }})</span>
+          </button>
+          <label class="page-seo-watch__depth" title="Сколько наших карточек по заказам берём в сбор">
+            <span class="ms-3">ТОП:</span>
+            <select v-model.number="ownTop" class="form-select form-select-sm">
+              <option v-for="o in OWN_TOP_OPTIONS" :key="o.v" :value="o.v">{{ o.label }}</option>
+            </select>
+          </label>
+          <span class="text-muted small">цены, баджи и полки — расширение откроет карточку и соберёт</span>
         </div>
         <div class="page-seo-watch__actions-foot"> 
           <span v-if="actionNotice" class="page-seo-watch__notice">{{ actionNotice }}</span>

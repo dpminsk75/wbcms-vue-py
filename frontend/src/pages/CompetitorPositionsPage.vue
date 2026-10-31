@@ -300,7 +300,12 @@
                 <td class="text-center">{{ c.rating || '—' }}</td>
                 <td class="text-center">{{ c.reviews ?? c.feedbacks ?? '—' }}</td>
                 <td>
-                  <span v-for="b in c.badges" :key="b" class="badge bg-warning text-dark me-1">{{ b }}</span>
+                  <span
+                    v-for="b in c.badges"
+                    :key="b"
+                    class="badge me-1"
+                    :class="isResaleBadge(b) ? 'page-positions__badge--resale' : 'bg-warning text-dark'"
+                  >{{ b }}</span>
                 </td>
               </tr>
               <tr v-if="!p.competitors.length">
@@ -548,6 +553,10 @@ const ourCardNm = ref<number | null>(null)
 function money(v: any): string {
   if (v == null || v === '' || Number(v) === 0) return '—'
   return `${fmt0(v)} ₽`
+}
+/** Ресейл (товар от частного лица) — свой цвет, как в карточке выдачи. */
+function isResaleBadge(b: string): boolean {
+  return /ресейл|resale/i.test(String(b || ''))
 }
 function wbUrl(nm: number): string {
   return `https://www.wildberries.ru/catalog/${nm}/detail.aspx`
@@ -827,4 +836,6 @@ onMounted(() => {
 .page-positions__block-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
 .page-positions__history { margin-bottom: 6px; }
 .page-positions__section { font-size: 14px; font-weight: 700; margin: 18px 0 8px; }
+/* Ресейл (товар от частного лица) — мятный, как в карточке выдачи. */
+.page-positions__badge--resale { background: #8bf7d0; color: #063d2c; }
 </style>

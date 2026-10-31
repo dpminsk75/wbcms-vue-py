@@ -680,7 +680,10 @@ onMounted(() => {
               <span v-if="r.is_hidden" class="badge bg-dark" title="Исключена из сбора — /next не отдаёт, seed не сеет">исключена</span>
               <span class="badge" :class="CARD_STATUS_BADGE[r.status] || 'bg-light text-dark'">{{ statusLabel(r.status) }}</span>
             </td>
-            <td class="text-muted small">{{ (r.processed_at || r.requested_at || '').slice(0, 16).replace('T', ' ') }}</td>
+            <td
+              class="text-muted small"
+              :title="r.requested_at ? `запрошено: ${String(r.requested_at).slice(0, 16).replace('T', ' ')}` : ''"
+            >{{ (r.processed_at || r.requested_at || '').slice(0, 16).replace('T', ' ') }}</td>
             <td class="page-queue__w-actions text-end">
               <button v-if="r.is_hidden" class="btn btn-sm btn-outline-success" @click="blockCard(r)" title="Вернуть в сбор">Разблокировать</button>
               <button v-else class="btn btn-sm btn-outline-secondary" @click="blockCard(r)" title="Исключить из сбора: не сеять и не отдавать /next">Блокировать</button>

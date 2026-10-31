@@ -225,6 +225,7 @@ const SCENARIO_OPTIONS: Record<string, string> = {
   newcard_phrases: 'Фразы (новый товар)',
   newcard_phrases_miner: 'Фразы (фон-разбор)',
   newcard_generate: 'Title+Description (новый товар)',
+  review_analysis: 'Разбор жалоб по отзывам',
   test: 'Проба подключения',
   other: 'Прочее',
 }

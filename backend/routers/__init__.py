@@ -28,6 +28,7 @@ from .product_catalog import router as product_catalog_router
 from .wb_cards import router as wb_cards_router
 from .wb_sales import router as wb_sales_router
 from .feedback import router as feedback_router
+from .questions import router as questions_router
 from .feedback_dashboard import router as feedback_dashboard_router
 from .feedback_insights import router as feedback_insights_router
 from .reply_rules import router as reply_rules_router
@@ -49,3 +50,4 @@ from .queue import router as queue_router
 from .phrase_miner import router as phrase_miner_router
 from .cms import router as cms_router
 from .ext import router as ext_router, admin_router as ext_tokens_admin_router, diag_admin_router as ext_diag_admin_router, dl_router as ext_download_router, cat_router as ext_filters_router
+from .images import router as images_router

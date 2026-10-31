@@ -9,7 +9,7 @@
         <div class="page-news-min__date">{{ newsDate(r.date) }}</div>
         <div class="page-news-min__name" :title="r.header">{{ r.header }}</div>
         <div class="mt-1">
-          <span v-for="t in r.types.slice(0, 2)" :key="t.id" class="badge border me-1" :class="{ 'text-bg-light': !newsBadgeStyle(t.name) }" :style="newsBadgeStyle(t.name)"><i v-if="newsBadgeIcon(t.name)" :class="newsBadgeIcon(t.name) + ' me-1'"></i>{{ t.name }}</span>
+          <span v-for="t in r.types.slice(0, 2)" :key="t.id" class="badge me-1" :class="newsBadgeClass(t.name)"><i v-if="newsBadgeIcon(t.name)" :class="newsBadgeIcon(t.name) + ' me-1'"></i>{{ t.name }}</span>
         </div>
       </div>
     </div>
@@ -20,7 +20,7 @@
 <script setup lang="ts">
 import { ref, inject, onMounted } from 'vue'
 import NewsPopup from '../news/NewsPopup.vue'
-import { newsBadgeStyle, newsBadgeIcon } from '../news/newsBadges'
+import { newsBadgeClass, newsBadgeIcon } from '../news/newsBadges'
 import { newsApi, type NewsRow } from '../../api/news'
 
 const rows = ref<NewsRow[]>([])
@@ -84,14 +84,15 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* Виджет новостей на дашборде — на токенах темы (цвета, радиусы, тени, кегли). */
 .page-news-min__head { margin-bottom: 8px; }
-.page-news-min__title { font-size: 20px; font-weight: 700; color: #111827; text-decoration: none; }
-.page-news-min__title:hover { color: #8A2BE0; }
+.page-news-min__title { font-size: calc(20px * var(--fs)); font-weight: 700; color: var(--ink); text-decoration: none; }
+.page-news-min__title:hover { color: var(--brand); }
 .page-news-min__track { display: flex; gap: 24px; overflow-x: auto; scrollbar-width: none; cursor: grab; padding-bottom: 4px; user-select: none; }
 .page-news-min__track::-webkit-scrollbar { display: none; }
-.page-news-min__item { flex: 0 0 300px; cursor: pointer; background: #fff; border: 1px solid #d3d9e0; border-radius: 12px; padding: 12px 14px; box-shadow: 0 1px 4px rgba(16,24,40,.08); }
-.page-news-min__item:hover { border-color: #8A2BE0; }
+.page-news-min__item { flex: 0 0 300px; cursor: pointer; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-md); padding: 12px 14px; box-shadow: var(--shadow-1); }
+.page-news-min__item:hover { border-color: var(--brand); }
 .page-news-min__item--read { opacity: .62; }
-.page-news-min__date { font-size: 12px; color: #6c757d; margin-bottom: 4px; }
-.page-news-min__name { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 15px; font-weight: 600; color: #111827; }
+.page-news-min__date { font-size: calc(12px * var(--fs)); color: var(--ink-muted); margin-bottom: 4px; }
+.page-news-min__name { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: calc(15px * var(--fs)); font-weight: 600; color: var(--ink); }
 </style>

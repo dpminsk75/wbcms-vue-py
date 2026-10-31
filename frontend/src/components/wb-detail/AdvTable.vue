@@ -1,29 +1,40 @@
 <template>
-  <div class="card grid_wbstat mt-3" style="border:1px solid var(--bs-border-color-translucent); border-radius:12px; overflow:hidden">
-    <div class="card-header text-white" style="background: linear-gradient(97.26deg,#ed3cca .49%,#df34d2 14.88%,#d02bd9 29.27%,#bf22e1 43.14%,#ae1ae8 57.02%,#9a10f0 70.89%,#8306f7 84.76%,#7c1af8 99.15%); font-weight:700; font-size:13px; line-height:1.5; padding:4px 8px">Реклама ({{ dateFrom }} — {{ dateTo }})</div>
+  <div class="tbl-card tbl-card--compact mt-3">
+    <div class="card__hd">Реклама ({{ dateFrom }} — {{ dateTo }})</div>
     <div v-if="loading" class="text-center p-3"><span class="spinner-border spinner-border-sm"></span></div>
     <div v-else-if="!rows.length" class="alert alert-info m-3">Нет рекламы за период.</div>
-    <div v-else style="overflow-x:auto" ref="wrapRef">
-      <table ref="tbl" class="table table-bordered table-striped table-hover kv-grid-table mb-0" style="font-size:12px; width:100%; table-layout:auto">
+    <div v-else class="tbl-wrap" ref="wrapRef">
+      <table ref="tbl" class="tbl" style="width:100%; table-layout:auto">
         <thead><tr>
-          <th style="text-align:center; padding:4px">Компания</th>
-          <th style="width:80px; text-align:center; white-space:nowrap; padding:4px">Ст</th>
-          <th style="text-align:center; white-space:nowrap; padding:4px">Заказы</th>
-          <th style="text-align:center; white-space:nowrap; padding:4px">Σ зак, ₽</th>
-          <th style="text-align:center; white-space:nowrap; padding:4px">Затраты, ₽</th>
-          <th style="text-align:center; white-space:nowrap; padding:4px">CPO ₽</th>
+          <th>Компания</th>
+          <th class="t-center">Ст</th>
+          <th class="t-center">Заказы</th>
+          <th class="t-center">Σ зак, ₽</th>
+          <th class="t-center">Затраты, ₽</th>
+          <th class="t-center">CPO ₽</th>
         </tr></thead>
         <tbody>
           <tr v-for="r in rows" :key="r.campaign_id">
-            <td style="white-space:nowrap; padding:4px"><span :title="Number(r.adv)===1?'Реклама':'Органика'" style="margin-right:6px"><i :class="Number(r.adv)===1?'bi bi-arrow-right-circle text-danger':'bi bi-arrow-repeat text-muted'"></i></span><a :href="'/wb-adv-report?id='+r.campaign_id+'&date_from='+dateFrom+'&date_to='+dateTo" target="_blank" style="text-decoration:none; color:#8A2BE0; font-weight:600">{{ r.name }}</a></td>
-            <td style="text-align:center; padding:4px"><span :style="statusStyle(r.status)">{{ statusLabel(r.status) }}</span></td>
-            <td style="text-align:right; padding:4px">{{ fmt0(r.orders) }}</td>
-            <td style="text-align:right; padding:4px">{{ fmt2(r.sum_price) }}</td>
-            <td style="text-align:right; padding:4px">{{ fmt2(r.sum) }}</td>
-            <td style="text-align:right; padding:4px">{{ r.orders? fmt2(Number(r.sum)/Number(r.orders)) : '—' }}</td>
+            <td class="t-left">
+              <span :title="Number(r.adv)===1?'Реклама':'Органика'" style="margin-right:6px"><i :class="Number(r.adv)===1?'bi bi-arrow-right-circle t-neg':'bi bi-arrow-repeat text-muted'"></i></span><a :href="'/wb-adv-report?id='+r.campaign_id+'&date_from='+dateFrom+'&date_to='+dateTo" target="_blank" style="text-decoration:none; font-weight:600">{{ r.name }}</a>
+            </td>
+            <td class="t-center"><span :style="statusStyle(r.status)">{{ statusLabel(r.status) }}</span></td>
+            <td>{{ fmt0(r.orders) }}</td>
+            <td>{{ fmt2(r.sum_price) }}</td>
+            <td>{{ fmt2(r.sum) }}</td>
+            <td>{{ r.orders? fmt2(Number(r.sum)/Number(r.orders)) : '—' }}</td>
           </tr>
         </tbody>
-        <tfoot><tr class="kv-totals" style="font-weight:700; background:#f2e7c3; font-size:11px"><td style="padding:4px 6px; border-top:2px solid #8A2BE0"></td><td style="padding:4px 6px; border-top:2px solid #8A2BE0"></td><td class="text-end" style="color:#5A1C9C; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(rows.reduce((a,b)=>a+(Number(b.orders)||0),0)) }}</td><td class="text-end" style="color:#5A1C9C; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt2(rows.reduce((a,b)=>a+(Number(b.sum_price)||0),0)) }}</td><td class="text-end" style="color:#5A1C9C; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt2(rows.reduce((a,b)=>a+(Number(b.sum)||0),0)) }}</td><td style="padding:4px 6px; border-top:2px solid #8A2BE0"></td></tr></tfoot>
+        <tfoot>
+          <tr class="tbl__total">
+            <td></td>
+            <td></td>
+            <td>{{ fmt0(rows.reduce((a,b)=>a+(Number(b.orders)||0),0)) }}</td>
+            <td>{{ fmt2(rows.reduce((a,b)=>a+(Number(b.sum_price)||0),0)) }}</td>
+            <td>{{ fmt2(rows.reduce((a,b)=>a+(Number(b.sum)||0),0)) }}</td>
+            <td></td>
+          </tr>
+        </tfoot>
       </table>
     </div>
   </div>
@@ -43,18 +54,18 @@ const statusLabel=(s:any)=> {
   const map: Record<string,string> = {'-1':'Удалена','4':'Готова к запуску','7':'Завершена','8':'Отклонена','9':'Активна','11':'Пауза'}
   return map[n] ?? `Неизвестно (${s})`
 }
-// пастельные бейджи как .label-success/.label-primary в gridv.css:169-172 (вес 400, не сплошная заливка)
+// пастельные бейджи статусов — цвета темы
 const statusStyle=(s:any)=> {
   const n=String(Number(s))
   const m: Record<string,string> = {
-    '9': 'background:#E4F5EF; color:#1E9E7C',
-    '7': 'background:#F2E9FB; color:#8A2BE0',
-    '11': 'background:#FEF3E2; color:#B45309',
-    '4': 'background:#E0F2FE; color:#0284C7',
-    '8': 'background:#FBEBEC; color:#E0525C',
-    '-1': 'background:#F1F1F4; color:#6E6A80'
+    '9': 'background:var(--good-tint); color:var(--good-deep)',
+    '7': 'background:var(--brand-tint); color:var(--brand-deep)',
+    '11': 'background:var(--warn-tint); color:var(--warn-deep)',
+    '4': 'background:var(--info-tint); color:var(--info-deep)',
+    '8': 'background:var(--bad-tint); color:var(--bad-deep)',
+    '-1': 'background:var(--surface-3); color:var(--ink-soft)'
   }
-  return `display:inline-block; padding:2px 4px; border-radius:6px; font-size:11px; font-weight:400; white-space:nowrap; ${m[n] ?? 'background:#F1F1F4; color:#6E6A80'}`
+  return `display:inline-block; padding:2px 6px; border-radius:6px; font-size:11px; font-weight:400; white-space:nowrap; ${m[n] ?? 'background:var(--surface-3); color:var(--ink-soft)'}`
 }
 const fetchData=async()=>{
   if(!props.nmId) return
@@ -84,7 +95,3 @@ const enableResize=()=>{
 onMounted(fetchData)
 watch(()=>[props.nmId, props.dateFrom, props.dateTo], fetchData)
 </script>
-<style scoped>
-/* Bootstrap 5 table-striped красит ячейки inset box-shadow поверх фона tr — гасим его, фон задаем самим td */
-.kv-totals > td{background-color:#f2e7c3 !important; box-shadow:none !important}
-</style>

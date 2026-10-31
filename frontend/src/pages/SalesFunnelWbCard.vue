@@ -2,21 +2,18 @@
   <div class="container-xxl sales-funnel-wb-card page-sales-funnel-wb-card">
     <PageHeaderWidget :title="'Воронка продаж: Карточка WB'" :nm-id="filters.nm_id || card?.nmID || ''" />
 
-    <div class="row mt-3">
-      <div class="col-md-6">
-        <WbFilterBar
-          v-model:nm-id="filters.nm_id"
-          v-model:date-from="filters.date_from"
-          v-model:date-to="filters.date_to"
-          @apply="fetchData"
-          @reset="reset"
-        />
-      </div>
-      <div class="col-md-6">
-        <div v-if="!filters.nm_id" class="alert alert-warning">
-          Выберите артикул WB и нажмите «Применить».
-        </div>
-      </div>
+    <!-- Фильтр: общий WbUniversalFilter — карточка + даты, кнопки «Применить/Сбросить» -->
+    <WbUniversalFilter
+      v-model:product="filters.product"
+      v-model:date-from="filters.date_from"
+      v-model:date-to="filters.date_to"
+      :show-brand-category="false"
+      @apply="onApply"
+      @reset="onReset"
+    />
+
+    <div v-if="!filters.nm_id" class="alert alert-warning page-sales-funnel-wb-card__hint">
+      Выберите карточку WB и нажмите «Применить».
     </div>
 
     <div v-if="isLoading" class="text-center p-4 text-muted">
@@ -28,63 +25,63 @@
     <template v-else-if="filters.nm_id">
       <SalesFunnelChart :data="chartData" />
 
-      <div class="card wb-grid-card">
-        <div class="card-header text-white d-flex justify-content-between align-items-center wb-card-header">
-          <span>Воронка - Переход / Корзина / Заказ WB</span>
-          <button class="btn btn-sm btn-light wb-excel-btn" @click="exportExcel" :disabled="!rows.length">
-            <i class="bi bi-file-earmark-excel me-1"></i> Excel
-          </button>
+      <div class="tbl-card page-sales-funnel-wb-card__table-card">
+        <div class="card__hd">
+          <span>Воронка — Переход / Корзина / Заказ WB</span>
+          <span class="spacer"></span>
+          <ExcelButton :disabled="!rows.length" @click="exportExcel" />
         </div>
         <div v-if="!rows.length" class="p-4 text-center text-muted">
           Нет данных за выбранный период.
         </div>
-        <div v-else class="wb-table-wrap page-sales-funnel-wb-card__table-wrap">
-          <table ref="tableRef" class="table table-bordered table-striped table-hover kv-grid-table funnel-table mb-0 page-sales-funnel-wb-card__table">
+        <div v-else class="tbl-wrap">
+          <table ref="tableRef" class="tbl page-sales-funnel-wb-card__table">
             <thead>
               <tr>
-                <th style="width:110px; text-align:center; white-space:nowrap">Дата</th>
-                <th style="width:110px; text-align:center; white-space:nowrap">Артикул WB</th>
-                <th style="width:90px; text-align:center; white-space:nowrap">Переходов</th>
-                <th style="width:80px; text-align:center; white-space:nowrap">Корзин</th>
-                <th style="width:80px; text-align:center; white-space:nowrap">CR, %</th>
-                <th style="width:80px; text-align:center; white-space:nowrap">Заказов</th>
-                <th style="width:110px; text-align:center; white-space:nowrap">CR в заказ, %</th>
-                <th style="width:110px; text-align:center; white-space:nowrap">Сумма заказов</th>
-                <th style="width:100px; text-align:center; white-space:nowrap">Ср цена, руб</th>
-                <th style="width:80px; text-align:center; white-space:nowrap">Выкупили</th>
-                <th style="width:80px; text-align:center; white-space:nowrap">SR, %</th>
-                <th style="width:110px; text-align:center; white-space:nowrap">Сумма выкупов</th>
+                <th class="t-center">Дата</th>
+                <th class="t-center">Артикул WB</th>
+                <th class="num">Переходов</th>
+                <th class="num">Корзин</th>
+                <th class="num">CR, %</th>
+                <th class="num">Заказов</th>
+                <th class="num">CR в заказ, %</th>
+                <th class="num">Сумма заказов</th>
+                <th class="num">Ср цена, руб</th>
+                <th class="num">Выкупили</th>
+                <th class="num">SR, %</th>
+                <th class="num">Сумма выкупов</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="(row, index) in rows" :key="row.date + '-' + row.nm_id">
-                <td class="page-sales-funnel-wb-card__cell-center">{{ fmtDate(row.date) }}</td>
-                <td class="page-sales-funnel-wb-card__cell-center"><a :href="`/wb/detail?nm_id=${row.nm_id}`" target="_blank" class="page-sales-funnel-wb-card__nm-link">{{ row.nm_id }}</a></td>
-                <td class="page-sales-funnel-wb-card__cell-num">{{ fmt0(row.open_count) }}</td>
-                <td class="page-sales-funnel-wb-card__cell-num">{{ fmt0(row.cart_count) }}</td>
-                <td class="page-sales-funnel-wb-card__cell-num">{{ row.open_to_cart !== null ? fmt2(row.open_to_cart) + '%' : '-' }}</td>
-                <td class="page-sales-funnel-wb-card__cell-num">{{ fmt0(row.order_count) }}</td>
-                <td class="page-sales-funnel-wb-card__cell-num">{{ row.cart_to_order !== null ? fmt2(row.cart_to_order) + '%' : '-' }}</td>
-                <td class="page-sales-funnel-wb-card__cell-num">{{ fmt2(row.order_sum) }}</td>
-                <td class="page-sales-funnel-wb-card__cell-num">{{ row.order_count > 0 ? fmt2(row.order_sum / row.order_count) : fmt2(0) }}</td>
-                <td class="page-sales-funnel-wb-card__cell-num">{{ fmt0(row.buyout_count) }}</td>
-                <td class="page-sales-funnel-wb-card__cell-num">{{ row.order_to_buyout !== null ? fmt2(row.order_to_buyout) + '%' : '-' }}</td>
-                <td class="page-sales-funnel-wb-card__cell-num">{{ fmt2(row.buyout_sum) }}</td>
+                <td class="t-center">{{ fmtDate(row.date) }}</td>
+                <td class="t-center"><a :href="`/wb/detail?nm_id=${row.nm_id}`" target="_blank" class="page-sales-funnel-wb-card__nm-link">{{ row.nm_id }}</a></td>
+                <td class="num">{{ fmt0(row.open_count) }}</td>
+                <td class="num">{{ fmt0(row.cart_count) }}</td>
+                <td class="num">{{ row.open_to_cart !== null ? fmt2(row.open_to_cart) + '%' : '—' }}</td>
+                <td class="num">{{ fmt0(row.order_count) }}</td>
+                <td class="num">{{ row.cart_to_order !== null ? fmt2(row.cart_to_order) + '%' : '—' }}</td>
+                <td class="num">{{ fmt2(row.order_sum) }}</td>
+                <td class="num">{{ row.order_count > 0 ? fmt2(row.order_sum / row.order_count) : fmt2(0) }}</td>
+                <td class="num">{{ fmt0(row.buyout_count) }}</td>
+                <td class="num">{{ row.order_to_buyout !== null ? fmt2(row.order_to_buyout) + '%' : '—' }}</td>
+                <td class="num">{{ fmt2(row.buyout_sum) }}</td>
               </tr>
             </tbody>
             <tfoot v-if="rows.length">
-              <tr class="kv-totals">
-                <td colspan="2" style="padding:4px 6px; border-top:2px solid #8A2BE0"></td>
-                <td style="text-align:right; color:#5A1C9C; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(totals.open_count) }}</td>
-                <td style="text-align:right; color:#5A1C9C; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(totals.cart_count) }}</td>
-                <td style="padding:4px 6px; border-top:2px solid #8A2BE0"></td>
-                <td style="text-align:right; color:#5A1C9C; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(totals.order_count) }}</td>
-                <td style="padding:4px 6px; border-top:2px solid #8A2BE0"></td>
-                <td style="text-align:right; color:#5A1C9C; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt2(totals.order_sum) }}</td>
-                <td style="text-align:right; color:#5A1C9C; padding:4px 6px; border-top:2px solid #8A2BE0">{{ totals.order_count ? fmt2(totals.order_sum / totals.order_count) : fmt2(0) }}</td>
-                <td style="text-align:right; color:#5A1C9C; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt0(totals.buyout_count) }}</td>
-                <td style="padding:4px 6px; border-top:2px solid #8A2BE0"></td>
-                <td style="text-align:right; color:#5A1C9C; padding:4px 6px; border-top:2px solid #8A2BE0">{{ fmt2(totals.buyout_sum) }}</td>
+              <tr class="tbl__total">
+                <td></td>
+                <td></td>
+                <td>{{ fmt0(totals.open_count) }}</td>
+                <td>{{ fmt0(totals.cart_count) }}</td>
+                <td></td>
+                <td>{{ fmt0(totals.order_count) }}</td>
+                <td></td>
+                <td>{{ fmt2(totals.order_sum) }}</td>
+                <td>{{ totals.order_count ? fmt2(totals.order_sum / totals.order_count) : fmt2(0) }}</td>
+                <td>{{ fmt0(totals.buyout_count) }}</td>
+                <td></td>
+                <td>{{ fmt2(totals.buyout_sum) }}</td>
               </tr>
             </tfoot>
           </table>
@@ -96,26 +93,31 @@
 
 <script setup lang="ts">
 import '@/assets/css/pages/page-sales-funnel-wb-card.css'
-import { nextTick, onMounted, ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { api } from '../api/client'
+import { useDateFmt } from '../composables/useDateFmt'
+import { useTableResize } from '../composables/useTableResize'
 import PageHeaderWidget from '../components/common/PageHeaderWidget.vue'
-import WbFilterBar from '../components/common/WbFilterBar.vue'
+import WbUniversalFilter from '../components/common/WbUniversalFilter.vue'
+import ExcelButton from '../components/common/ExcelButton.vue'
 import SalesFunnelChart from '../components/funnel/SalesFunnelChart.vue'
 import { salesFunnelApi } from '../api/salesFunnel'
 
 const route = useRoute()
 const router = useRouter()
 
-function getDefaultDates() {
-  const today = new Date()
-  const from = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 13)
-  return {
-    date_from: from.toISOString().slice(0, 10),
-    date_to: today.toISOString().slice(0, 10),
-  }
+// локальное время (toISOString даёт UTC и сдвигает сутки)
+// дефолт — ровно 14 суток (как пресет «14 дней»)
+const fmtD = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const getDefaultDates = () => {
+  const to = new Date()
+  const from = new Date(to.getFullYear(), to.getMonth(), to.getDate() - 13)
+  return { date_from: fmtD(from), date_to: fmtD(to) }
 }
 
 const filters = ref({
+  product: '',
   nm_id: '',
   date_from: getDefaultDates().date_from,
   date_to: getDefaultDates().date_to,
@@ -139,6 +141,25 @@ const isLoading = ref(false)
 const cardError = ref(false)
 const tableRef = ref<HTMLTableElement | null>(null)
 
+// ресайзер колонок — общий (ширины запоминаются, слушатели снимаются)
+useTableResize(tableRef, { storeKey: 'sales-funnel-wb-card' })
+
+/** WbUniversalFilter даёт свободную маску (nm_id/артикул/название) — резолвим в nm_id. */
+const resolveNmId = async (mask: string): Promise<string> => {
+  const q = String(mask || '').trim()
+  if (!q) return ''
+  if (/^\d+$/.test(q)) return q
+  try {
+    const { data } = await api.get('/api/wb/cards', { params: { q, limit: 20 } })
+    const list: any[] = Array.isArray(data) ? data : (data?.items ?? [])
+    const exact = list.find((c: any) => String(c.nmID) === q || String(c.vendorCode || '') === q)
+    if (exact) return String(exact.nmID)
+    return list.length === 1 ? String(list[0].nmID) : ''
+  } catch {
+    return ''
+  }
+}
+
 const initFromQuery = () => {
   const q = route.query as Record<string, any>
   const pick = (...keys: string[]) => {
@@ -150,7 +171,7 @@ const initFromQuery = () => {
   const nm = pick('nm_id', 'nmId', 'DPFilterForm[nm_id]', 'DPFilterForm%5Bnm_id%5D')
   if (df) filters.value.date_from = df
   if (dt) filters.value.date_to = dt
-  if (nm) filters.value.nm_id = nm
+  if (nm) { filters.value.nm_id = nm; filters.value.product = nm }
 }
 
 const syncRoute = () => {
@@ -179,13 +200,21 @@ const fetchData = async () => {
     cardError.value = true
   } finally {
     isLoading.value = false
-    nextTick(enableResize)
   }
 }
 
-const reset = () => {
-  filters.value.nm_id = ''
+/** Применение фильтра: маска карточки → nm_id, затем запрос. */
+const onApply = async () => {
+  filters.value.nm_id = await resolveNmId(filters.value.product)
+  syncRoute()
+  fetchData()
+}
+
+/** Сброс фильтра: карточка пустая, даты — 14 суток. */
+const onReset = () => {
   const dates = getDefaultDates()
+  filters.value.product = ''
+  filters.value.nm_id = ''
   filters.value.date_from = dates.date_from
   filters.value.date_to = dates.date_to
   card.value = null
@@ -205,49 +234,6 @@ const reset = () => {
   syncRoute()
 }
 
-const enableResize = () => {
-  const table = tableRef.value
-  if (!table) return
-  table.querySelectorAll('th').forEach((th) => {
-    if (th.querySelector('.col-resizer')) return
-    th.style.position = 'relative'
-    const resizer = document.createElement('div')
-    resizer.className = 'col-resizer'
-    resizer.style.cssText = 'position:absolute; top:0; right:0; width:6px; height:100%; cursor:col-resize; user-select:none; z-index:1'
-    th.appendChild(resizer)
-    let startX = 0
-    let startWidth = 0
-    const onMove = (e: MouseEvent) => {
-      const width = Math.max(40, startWidth + e.clientX - startX)
-      th.style.width = `${width}px`
-      th.style.minWidth = `${width}px`
-      table.style.width = '100%'
-      table.style.tableLayout = 'auto'
-    }
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-      document.body.style.cursor = ''
-    }
-    resizer.addEventListener('mousedown', (e) => {
-      startX = e.clientX
-      startWidth = th.offsetWidth
-      document.body.style.cursor = 'col-resize'
-      document.addEventListener('mousemove', onMove)
-      document.addEventListener('mouseup', onUp)
-      e.preventDefault()
-    })
-  })
-  const fit = () => {
-    if (!table) return
-    table.style.width = '100%'
-    table.style.tableLayout = 'auto'
-  }
-  window.addEventListener('resize', fit)
-  fit()
-}
-
-import { useDateFmt } from '../composables/useDateFmt'
 const { fmtDate } = useDateFmt()
 const fmt0 = (value: any) => new Intl.NumberFormat('ru-RU').format(Math.round(Number(value) || 0))
 const fmt1 = (value: any) => new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Number(value) || 0)
@@ -276,6 +262,5 @@ watch(() => [filters.value.nm_id, filters.value.date_from, filters.value.date_to
 onMounted(() => {
   initFromQuery()
   fetchData()
-  nextTick(enableResize)
 })
 </script>

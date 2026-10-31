@@ -58,6 +58,8 @@ PATH_PERMS_V3: tuple[tuple[str, frozenset[str], str], ...] = (
     # отзывы и вопросы
     ("/api/feedback", frozenset({"GET"}), "viewFeedback"),
     ("/api/feedback", frozenset({"POST", "PUT", "PATCH", "DELETE"}), "manageFeedback"),
+    ("/api/questions", frozenset({"GET"}), "viewFeedback"),
+    ("/api/questions", frozenset({"POST", "PUT", "PATCH", "DELETE"}), "manageFeedback"),
     ("/api/feedback-insights", frozenset({"GET"}), "viewFeedback"),
     ("/api/reply-rules", frozenset({"GET"}), "viewFeedback"),
     ("/api/reply-rules", frozenset({"POST", "PUT", "PATCH", "DELETE"}), "manageFeedback"),

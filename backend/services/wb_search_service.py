@@ -237,9 +237,15 @@ class WbSearchService:
         return None, None
 
     async def phrase_matrix(self, phrase_text: str, date_from: str, date_to: str) -> tuple[list[dict], list[str]]:
-        """Порт actionPhrase:369 — строки=карточки. Без window-функций, агрегаты в Python."""
+        """Порт actionPhrase:369 — строки=карточки. Без window-функций, агрегаты в Python.
+
+        В строке отдаём и данные карточки (фото, бренд, предмет, артикул) — их
+        рисует общий ProductCell в матрице (бэкенд-join с wbcards уже был).
+        """
         stmt = text(f"""
-            SELECT p.nmID, c.title, p.date, p.avg_position, p.clicks, p.orders, p.week_frequency
+            SELECT p.nmID, c.title, c.brand, c.vendorCode AS vendor_code,
+                   c.subjectName AS subject, c.photos,
+                   p.date, p.avg_position, p.clicks, p.orders, p.week_frequency
             FROM wb_sr_report_item_phrases p
             LEFT JOIN wbcards c ON c.nmID = p.nmID
             WHERE p.phrase=:ph AND p.date BETWEEN :d1 AND :d2{self._company_where()}
@@ -247,6 +253,7 @@ class WbSearchService:
         rows = (await self.db.execute(stmt, {"ph": phrase_text, "d1": date_from, "d2": date_to, **self._company_params()})).mappings().all()
         matrix: dict[int, dict] = {}
         titles: dict[int, str] = {}
+        cards: dict[int, dict] = {}
         clicks: dict[int, int] = {}
         orders: dict[int, int] = {}
         freq_sum: dict[int, int] = {}
@@ -256,6 +263,8 @@ class WbSearchService:
             nm, d = int(r["nmID"]), str(r["date"])
             matrix.setdefault(nm, {})[d] = {"pos": int(r["avg_position"] or 0), "orders": int(r["orders"] or 0)}
             titles[nm] = r["title"] or str(nm)
+            cards[nm] = {"brand": r["brand"], "vendor_code": r["vendor_code"],
+                         "subject": r["subject"], "photos": r["photos"]}
             clicks[nm] = clicks.get(nm, 0) + int(r["clicks"] or 0)
             orders[nm] = orders.get(nm, 0) + int(r["orders"] or 0)
             if r["week_frequency"] is not None:
@@ -264,7 +273,8 @@ class WbSearchService:
             dates.add(d)
         unique_dates = sorted(dates)
         models = [
-            {"nmID": nm, "title": titles[nm], "avg_freq": round(freq_sum.get(nm, 0) / (freq_cnt.get(nm) or 1)),
+            {"nmID": nm, "title": titles[nm], **cards.get(nm, {}),
+             "avg_freq": round(freq_sum.get(nm, 0) / (freq_cnt.get(nm) or 1)),
              "total_clicks": clicks[nm], "total_orders": orders[nm],
              **{d: matrix[nm].get(d) for d in unique_dates}}
             for nm in matrix
@@ -319,7 +329,7 @@ class WbSearchService:
     async def cannibalization(self, date_from: str, date_to: str, q: str | None = None,
                               nm_id: int | None = None, brand: str | None = None,
                               category: str | None = None, page: int = 1,
-                              page_size: int = 50) -> dict:
+                              page_size: int = 50, sort: str = "orders") -> dict:
         """Порт actionCannibalization (WbSearchController.php:192) — фразы, по которым
         в выдаче WB ранжируются ≥2 наших карточек.
 
@@ -329,7 +339,9 @@ class WbSearchService:
           * **есть LIMIT/OFFSET и счётчик** — в PHP пагинации не было, весь результат
             попадал в память, а GROUP_CONCAT резался на 1024 байтах;
           * добавлены **средняя и лучшая позиция** карточки (в PHP позиций не было);
-          * фильтры по бренду и категории — через wbcards (в отчёте WB их нет).
+          * фильтры по бренду и категории — через wbcards (в отчёте WB их нет);
+          * **сортировка** — параметром sort (orders / freq / cards / phrase);
+            по умолчанию как в PHP — по заказам, при равенстве по алфавиту.
 
         Фильтр по карточке (nm_id) НЕ меняет условие «≥2 карточек» — он лишь отбирает
         фразы, в которых эта карточка участвует (EXISTS по тому же отчёту WB).
@@ -363,8 +375,18 @@ class WbSearchService:
             HAVING COUNT(DISTINCT p.nmID) > 1
         """
 
-        lim = max(1, min(int(page_size or 50), 200))
+        # лимит страницы совпадает с лимитом эндпоинта (5000) — нужен для выгрузки в Excel
+        lim = max(1, min(int(page_size or 50), 5000))
         off = max(0, (int(page or 1) - 1) * lim)
+
+        # Порядок строк — из белого списка (значение из запроса в SQL не попадает).
+        # При равенстве значений — всегда алфавит, чтобы порядок был стабильным.
+        order_by = {
+            "orders": "total_orders DESC, p.phrase ASC",
+            "freq": "avg_freq DESC, p.phrase ASC",
+            "cards": "cards_count DESC, p.phrase ASC",
+            "phrase": "p.phrase ASC",
+        }.get(sort, "total_orders DESC, p.phrase ASC")
 
         rows_sql = text(f"""
             SELECT p.phrase,
@@ -373,7 +395,7 @@ class WbSearchService:
                    SUM(p.orders) AS total_orders,
                    AVG(p.week_frequency) AS avg_freq
             {base}
-            ORDER BY total_orders DESC, p.phrase ASC
+            ORDER BY {order_by}
             LIMIT :lim OFFSET :off
         """)
         rows = (await self.db.execute(

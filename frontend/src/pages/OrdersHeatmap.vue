@@ -208,15 +208,16 @@ const demand = (best:any)=>{
 
 const cellCnt = (wd:number, hr:number)=> data.value?.matrix?.[wd]?.[hr]?.cnt ?? 0
 const cellSum = (wd:number, hr:number)=> data.value?.matrix?.[wd]?.[hr]?.sum ?? 0
-/** Шкала тепловой карты — фиксированная (синяя), не зависит от акцента темы. */
+/** Шкала тепловой карты — фиксированная (синяя), не зависит от акцента темы.
+    Цвета — токены темы (--heat-blue-rgb/--heat-ink/--heat-empty-ink), значения прежние. */
 const cellStyle = (wd:number, hr:number)=>{
   const cnt = cellCnt(wd, hr)
   const max = data.value?.maxCnt || 0
   const alpha = max > 0 ? (cnt / max) : 0
-  let bg = '#ffffff', color = '#bbb'
+  let bg = 'var(--surface)', color = 'var(--heat-empty-ink)'
   if(cnt>0){
-    bg = `rgba(47,107,255,${(0.08 + alpha*0.92).toFixed(2)})`
-    color = alpha > 0.5 ? '#fff' : '#1f2937'
+    bg = `rgba(var(--heat-blue-rgb),${(0.08 + alpha*0.92).toFixed(2)})`
+    color = alpha > 0.5 ? 'var(--surface)' : 'var(--heat-ink)'
   }
   return `padding:6px 2px; text-align:center; border:1px solid var(--line); background:${bg}; color:${color}; cursor:pointer; font-weight:${cnt>0?'600':'400'};`
 }

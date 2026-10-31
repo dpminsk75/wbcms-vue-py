@@ -8,8 +8,7 @@
       v-model:product="filters.product"
       v-model:brand="filters.brand"
       v-model:category="filters.category"
-      :presets="presets"
-      default-preset="70"
+      default-preset="30"
       :brands="filterLists.brands"
       :categories="filterLists.categories"
       @apply="onApply"
@@ -21,16 +20,25 @@
         <span>Список фраз, по которым ранжируются 2 и более ваших товаров</span>
         <span class="spacer"></span>
         <span class="hd-badge">Фраз: {{ total }}</span>
-        <ExcelButton :disabled="!rows.length" @click="exportRows" />
+        <span v-if="loading" class="spinner-border spinner-border-sm page-wb-search-cannibalization__spin" role="status" aria-label="Загрузка"></span>
+        <label class="page-wb-search-cannibalization__sort" title="Сортировка">
+          <select v-model="sortKey" @change="onSortChange">
+            <option value="orders">По кол-ву заказов</option>
+            <option value="freq">По частотности</option>
+            <option value="cards">По кол-ву в выдаче</option>
+            <option value="phrase">По алфавиту</option>
+          </select>
+        </label>
+        <ExcelButton :disabled="!rows.length || exporting" @click="exportRows" />
       </div>
-      <div class="tbl-wrap">
-        <table class="tbl">
+      <div class="tbl-wrap" :class="{ 'page-wb-search-cannibalization__wrap--loading': loading }">
+        <table class="tbl page-wb-search-cannibalization__tbl">
           <thead>
             <tr>
-              <th class="t-left">Поисковый запрос</th>
+              <th class="t-left page-wb-search-cannibalization__phrase-col">Поисковый запрос</th>
               <th class="t-center">Ср. част</th>
               <th class="t-center">Кол-во артикулов</th>
-              <th class="t-left">Ваши товары в выдаче</th>
+              <th class="t-left page-wb-search-cannibalization__cards-col">Ваши товары в выдаче</th>
               <th class="t-center">Всего кликов</th>
               <th class="t-center">Всего заказов</th>
             </tr>
@@ -42,8 +50,8 @@
               </td>
             </tr>
             <tr v-for="r in rows" :key="r.phrase">
-              <td class="t-left">
-                <router-link class="page-wb-search-cannibalization__phrase" :to="phraseUrl(r.phrase)">
+              <td class="t-left page-wb-search-cannibalization__phrase-col">
+                <router-link class="wb-query-link" :to="phraseUrl(r.phrase)">
                   {{ r.phrase }}
                 </router-link>
               </td>
@@ -53,16 +61,19 @@
                   {{ r.cards_count }}
                 </span>
               </td>
-              <td class="t-left page-wb-search-cannibalization__cards">
-                <router-link
-                  v-for="c in r.cards"
-                  :key="c.nm_id"
-                  class="badge badge--brand me-1"
-                  :to="cardUrl(c.nm_id)"
-                  :title="c.title || String(c.nm_id)"
-                >
-                  {{ c.nm_id }}<template v-if="c.avg_pos"> · поз. {{ fmt0(c.avg_pos) }}</template>
-                </router-link>
+              <td class="t-left page-wb-search-cannibalization__cards-col">
+                <div class="page-wb-search-cannibalization__cards-list">
+                  <router-link
+                    v-for="c in r.cards"
+                    :key="c.nm_id"
+                    class="badge badge--brand"
+                    :class="{ 'page-wb-search-cannibalization__card--mine': c.nm_id === myNmId }"
+                    :to="cardUrl(c.nm_id)"
+                    :title="c.title || String(c.nm_id)"
+                  >
+                    {{ c.nm_id }}<template v-if="c.avg_pos"> · поз. {{ fmt0(c.avg_pos) }}</template>
+                  </router-link>
+                </div>
               </td>
               <td class="t-center num">{{ fmt0(r.total_clicks) }}</td>
               <td class="t-center num">{{ fmt0(r.total_orders) }}</td>
@@ -103,7 +114,6 @@ import '@/assets/css/pages/page-wb-search-cannibalization.css'
 import { computed, onMounted, ref } from 'vue'
 import { api } from '@/api/client'
 import { wbSearchApi } from '@/api/search'
-import { DEFAULT_PRESETS_UNIVERSAL } from '@/constants/presets'
 import { useNumFmt } from '@/composables/useNumFmt'
 import { exportXlsx } from '@/utils/exportXlsx'
 import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
@@ -118,13 +128,10 @@ const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
 const defaultDates = () => {
   const to = new Date()
   const from = new Date(to.getTime())
-  from.setDate(from.getDate() - 69)
+  from.setDate(from.getDate() - 29)
   return { date_from: iso(from), date_to: iso(to) }
 }
 const defaults = defaultDates()
-
-/** Пресет «70 дней» — период PHP по умолчанию (getDPWidget::getParams(70)). */
-const presets = [...DEFAULT_PRESETS_UNIVERSAL, { id: '70', label: '70 дней' }]
 
 const filters = ref({
   product: '',
@@ -139,6 +146,11 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = 50
 const loading = ref(false)
+/** Порядок строк: orders (заказы) / freq (частотность) / cards (карточки) / phrase (алфавит). */
+const sortKey = ref('orders')
+/** nm_id карточки из фильтра «Товар» — её подсвечиваем в колонке «Ваши товары». */
+const myNmId = ref<number | null>(null)
+const exporting = ref(false)
 /** Справочники для селектов «Бренд» / «Категория» — из карточек компании. */
 const filterLists = ref<{ brands: string[]; categories: string[] }>({ brands: [], categories: [] })
 
@@ -159,7 +171,9 @@ const sumCards = computed(() => rows.value.reduce((s, r) => s + (r.cards_count |
 const sumClicks = computed(() => rows.value.reduce((s, r) => s + (r.total_clicks || 0), 0))
 const sumOrders = computed(() => rows.value.reduce((s, r) => s + (r.total_orders || 0), 0))
 
-const phraseUrl = (phrase: string) => `/wb-search/phrase?phrase=${encodeURIComponent(phrase)}`
+/** Ссылка на разбор фразы: единый параметр (phrase) + период. */
+const phraseUrl = (phrase: string) =>
+  `/wb-search/phrase?phrase=${encodeURIComponent(phrase)}&date_from=${filters.value.date_from}&date_to=${filters.value.date_to}`
 const cardUrl = (nmId: number) => `/wb-search/card?nm_id=${nmId}`
 
 /** WbUniversalFilter отдаёт свободную маску (nm_id/артикул/название) — резолвим в nm_id. */
@@ -182,12 +196,14 @@ const load = async () => {
   loading.value = true
   try {
     const nmId = await resolveNmId(filters.value.product)
+    myNmId.value = nmId
     const data = await wbSearchApi.cannibalization(filters.value.date_from, filters.value.date_to, {
       nmId,
       brand: filters.value.brand || undefined,
       category: filters.value.category || undefined,
       page: page.value,
       pageSize,
+      sort: sortKey.value,
     })
     rows.value = Array.isArray(data?.models) ? data.models : []
     total.value = Number(data?.total || 0)
@@ -210,26 +226,44 @@ const onReset = () => {
   load()
 }
 const goPage = (p: number) => { page.value = p; load() }
+/** Смена сортировки — сразу, без «Применить»; список с первой страницы. */
+const onSortChange = () => { page.value = 1; load() }
 
-/** Excel: русские заголовки + ширины колонок. */
+/** Excel: всё по фильтру (до 5000 строк), русские заголовки + ширины колонок. */
 const exportRows = async () => {
-  const data = rows.value.map((r) => {
-    const row: Record<string, any> = {
-      'Поисковый запрос': r.phrase,
-      'Ср. част': r.avg_freq,
-      'Кол-во артикулов': r.cards_count,
-      'Ваши товары': (r.cards || []).map((c: any) => `${c.nm_id} (поз. ${c.avg_pos ?? '—'})`).join(', '),
-      'Всего кликов': r.total_clicks,
-      'Всего заказов': r.total_orders,
-    }
-    return row
-  })
-  await exportXlsx({
-    rows: data,
-    filename: 'каннибализация-запросов.xlsx',
-    sheetName: 'Каннибализация',
-    cols: [{ wch: 34 }, { wch: 10 }, { wch: 16 }, { wch: 40 }, { wch: 14 }, { wch: 14 }],
-  })
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    const nmId = await resolveNmId(filters.value.product)
+    const data = await wbSearchApi.cannibalization(filters.value.date_from, filters.value.date_to, {
+      nmId,
+      brand: filters.value.brand || undefined,
+      category: filters.value.category || undefined,
+      page: 1,
+      pageSize: 5000,
+      sort: sortKey.value,
+    })
+    const list: any[] = Array.isArray(data?.models) ? data.models : []
+    const rows = list.map((r) => {
+      const row: Record<string, any> = {
+        'Поисковый запрос': r.phrase,
+        'Ср. част': r.avg_freq,
+        'Кол-во артикулов': r.cards_count,
+        'Ваши товары': (r.cards || []).map((c: any) => `${c.nm_id} (поз. ${c.avg_pos ?? '—'})`).join(', '),
+        'Всего кликов': r.total_clicks,
+        'Всего заказов': r.total_orders,
+      }
+      return row
+    })
+    await exportXlsx({
+      rows,
+      filename: `каннибализация-запросов_${filters.value.date_from}_${filters.value.date_to}.xlsx`,
+      sheetName: 'Каннибализация',
+      cols: [{ wch: 34 }, { wch: 10 }, { wch: 16 }, { wch: 40 }, { wch: 14 }, { wch: 14 }],
+    })
+  } finally {
+    exporting.value = false
+  }
 }
 
 onMounted(() => { loadFilterLists(); load() })

@@ -98,7 +98,7 @@
 
 .dropdown-menu a:hover {
     background-color: #f0f0f0;
-    color: #cb11ab; /* Фирменный фиолетовый WB */
+    color: var(--brand); /* фирменный цвет WB */
 }
 
 

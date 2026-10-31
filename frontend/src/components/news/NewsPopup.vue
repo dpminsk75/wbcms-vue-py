@@ -1,26 +1,24 @@
 <template>
-  <div v-if="news" class="news-popup" @mousedown.self="$emit('close')">
-    <div class="card news-popup__card">
-      <div class="card-body">
-        <div class="d-flex justify-content-between align-items-start gap-2">
-          <h4 class="fw-bold mb-1">{{ news.header }}</h4>
-          <button class="btn btn-sm btn-link" @click="$emit('close')" title="Закрыть">✕</button>
+  <div v-if="news" class="wb-modal-backdrop news-popup" @click.self="$emit('close')">
+    <div class="wb-modal-box news-popup__card" role="dialog" aria-modal="true" :aria-label="news.header">
+      <div class="d-flex justify-content-between align-items-start gap-2">
+        <h4 class="fw-bold mb-1">{{ news.header }}</h4>
+        <button class="btn btn--ghost btn-sm" @click="$emit('close')" title="Закрыть"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="text-muted mb-2">{{ newsDate(news.date) }}</div>
+      <div class="news-popup__body">
+        <template v-for="(b, i) in blocks" :key="i">
+          <ul v-if="b.t === 'ul'" class="news-popup__ul">
+            <li v-for="(it, j) in b.items" :key="j"><template v-for="(p, k) in it" :key="k"><a v-if="p.t === 'a'" :href="p.s" target="_blank" rel="noopener">{{ p.s }}</a><template v-else>{{ p.s }}</template></template></li>
+          </ul>
+          <p v-else class="news-popup__p"><template v-for="(p, k) in b.parts" :key="k"><a v-if="p.t === 'a'" :href="p.s" target="_blank" rel="noopener">{{ p.s }}</a><template v-else>{{ p.s }}</template></template></p>
+        </template>
+      </div>
+      <div class="mt-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+          <span v-for="t in news.types" :key="t.id" class="badge me-1" :class="newsBadgeClass(t.name)"><i v-if="newsBadgeIcon(t.name)" :class="newsBadgeIcon(t.name) + ' me-1'"></i>{{ t.name }}</span>
         </div>
-        <div class="text-muted mb-2">{{ newsDate(news.date) }}</div>
-        <div class="news-popup__body">
-          <template v-for="(b, i) in blocks" :key="i">
-            <ul v-if="b.t === 'ul'" class="news-popup__ul">
-              <li v-for="(it, j) in b.items" :key="j"><template v-for="(p, k) in it" :key="k"><a v-if="p.t === 'a'" :href="p.s" target="_blank" rel="noopener">{{ p.s }}</a><template v-else>{{ p.s }}</template></template></li>
-            </ul>
-            <p v-else class="news-popup__p"><template v-for="(p, k) in b.parts" :key="k"><a v-if="p.t === 'a'" :href="p.s" target="_blank" rel="noopener">{{ p.s }}</a><template v-else>{{ p.s }}</template></template></p>
-          </template>
-        </div>
-        <div class="mt-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
-          <div>
-            <span v-for="t in news.types" :key="t.id" class="badge border me-1" :class="{ 'text-bg-light': !newsBadgeStyle(t.name) }" :style="newsBadgeStyle(t.name)"><i v-if="newsBadgeIcon(t.name)" :class="newsBadgeIcon(t.name) + ' me-1'"></i>{{ t.name }}</span>
-          </div>
-          <a :href="`https://seller.wildberries.ru/news-v2/news-details?id=${news.id}`" target="_blank" rel="noopener" class="btn btn-sm btn-link">Читать в WB Partners <i class="bi bi-box-arrow-up-right"></i></a>
-        </div>
+        <a :href="`https://seller.wildberries.ru/news-v2/news-details?id=${news.id}`" target="_blank" rel="noopener" class="btn btn--outline btn-sm">Читать в WB Partners <i class="bi bi-box-arrow-up-right"></i></a>
       </div>
     </div>
   </div>
@@ -29,7 +27,7 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 import { newsApi, type NewsRow } from '../../api/news'
-import { newsBadgeStyle, newsBadgeIcon } from './newsBadges'
+import { newsBadgeClass, newsBadgeIcon } from './newsBadges'
 
 const props = defineProps<{ news: NewsRow | null }>()
 defineEmits<{ close: [] }>()
@@ -86,10 +84,10 @@ watch(() => props.news?.id, (id) => {
 </script>
 
 <style scoped>
-.news-popup { position: fixed; inset: 0; z-index: 1050; background: rgba(0,0,0,.45);
-  display: flex; align-items: flex-start; justify-content: center; padding: 8vh 16px 16px; }
+/* Каркас модалки — общий темы (.wb-modal-backdrop + .wb-modal-box). */
+.news-popup { align-items: flex-start; padding: 8vh 16px 16px; }
 .news-popup__card { max-width: 720px; width: 100%; max-height: 84vh; overflow: auto; }
-.news-popup__body { font-size: 15px; line-height: 1.7; color: #1f2937; }
+.news-popup__body { font-size: calc(13px * var(--fs)); line-height: 1.7; color: var(--ink); }
 .news-popup__p { margin: 0 0 14px; }
 .news-popup__ul { margin: 0 0 14px; padding-left: 20px; }
 .news-popup__ul li { margin-bottom: 6px; }

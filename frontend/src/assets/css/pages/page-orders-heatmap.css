@@ -23,7 +23,7 @@
 
 /* Легенда шкалы */
 .page-orders-heatmap__legend { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: calc(11px * var(--fs)); color: var(--ink-muted); }
-.page-orders-heatmap__legend-bar { flex: 1; height: 10px; background: linear-gradient(to right, #ffffff, rgba(47,107,255,1)); border: 1px solid var(--line); border-radius: 4px; }
+.page-orders-heatmap__legend-bar { flex: 1; height: 10px; background: linear-gradient(to right, var(--surface), rgba(var(--heat-blue-rgb), 1)); border: 1px solid var(--line); border-radius: 4px; }
 .page-orders-heatmap__legend-gap { margin-left: 8px; }
 
 /* Панель деталей часа */

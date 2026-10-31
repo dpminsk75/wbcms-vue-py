@@ -49,7 +49,8 @@
       {"label": "Поисковые запросы", "url": "/competitor/positions", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Затраты ИИ", "url": "/seo/ai-usage", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
-      {"label": "Разбор фраз (фон)", "url": "/competitor/phrase-miner", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]}
+      {"label": "Разбор фраз (фон)", "url": "/competitor/phrase-miner", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
+      {"label": "Фото карточек (фон)", "url": "/competitor/images", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]}
     ]
   },
   {
@@ -90,7 +91,7 @@
       {"label": "Отзывы", "url": "/wb-feedback", "visibleIn": ["top", "side"]},
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Разбор отзывов", "url": "/wb-feedback-review", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
-      {"label": "Вопросы", "url": "#", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]}
+      {"label": "Вопросы", "url": "/wb-questions", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]}
     ]
   },
   {

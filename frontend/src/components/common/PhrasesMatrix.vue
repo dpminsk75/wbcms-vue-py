@@ -1,41 +1,64 @@
 <template>
-  <div class="card" style="border:1px solid var(--bs-border-color-translucent); border-radius:12px; overflow:hidden">
-    <div class="card-header text-white d-flex justify-content-between align-items-center" style="background:#2c7be5; font-weight:700">
-      <span><i class="fas fa-chart-line me-2"></i> {{ heading ?? 'Динамика позиций' }}</span>
-      <button v-if="showExcel" class="btn btn-sm btn-light" style="font-size:12px; padding:4px 12px; border-radius:6px" @click="exportExcel" :disabled="!rows.length"><i class="bi bi-file-earmark-excel me-1"></i> Excel</button>
+  <div class="tbl-card tbl-card--compact">
+    <div class="card__hd">
+      <span><i class="bi bi-graph-up me-2"></i> {{ heading ?? 'Динамика позиций' }}</span>
+      <span class="spacer"></span>
+      <button v-if="showExcel" class="hd-btn" @click="exportExcel" :disabled="!rows.length"><i class="bi bi-file-earmark-excel me-1"></i> Excel</button>
     </div>
     <div v-if="isLoading" class="text-center p-4"><span class="spinner-border spinner-border-sm"></span> Загрузка...</div>
-    <div v-else id="grid-scroll" style="max-height:70vh; overflow:auto; position:relative" ref="wrapRef">
-      <table ref="tbl" class="table table-bordered table-hover kv-grid-table mb-0" style="font-size:12px; width:auto; min-width:100%; table-layout:auto">
-        <thead style="position:sticky; top:0; z-index:10; background:#fff">
+    <div v-else id="grid-scroll" class="tbl-wrap phrases-matrix" ref="wrapRef">
+      <table ref="tbl" class="tbl phrases-matrix__table">
+        <thead>
           <tr>
             <template v-if="props.mode === 'by-card'">
-              <th class="kv-sticky-column" style="width:100px; min-width:80px; white-space:nowrap; text-align:center; background:#fff; cursor:pointer; user-select:none" @click="sortBy('nmID')">Арт WB <span v-if="sortKey==='nmID'">{{ sortDir==='asc'?'▲':'▼' }}</span><span v-else>⇅</span></th>
-              <th class="kv-sticky-column" style="width:300px; min-width:280px; white-space:normal; text-align:left; background:#fff; cursor:pointer; user-select:none" @click="sortBy('title')">Товар / Позиция <span v-if="sortKey==='title'">{{ sortDir==='asc'?'▲':'▼' }}</span><span v-else>⇅</span></th>
+              <th class="t-left phrases-matrix__sticky phrases-matrix__sticky--product phrases-matrix__sort" @click="sortBy('title')">
+                Товар / Позиция <span v-if="sortKey==='title'">{{ sortDir==='asc' ? '▲' : '▼' }}</span><span v-else>⇅</span>
+              </th>
             </template>
             <template v-else>
-              <th class="kv-sticky-column" style="width:220px; min-width:200px; white-space:normal; text-align:left; background:#fff; cursor:pointer; user-select:none" @click="sortBy('phrase')">Поисковый запрос <span v-if="sortKey==='phrase'">{{ sortDir==='asc'?'▲':'▼' }}</span><span v-else>⇅</span></th>
-              <th style="width:100px; white-space:nowrap; text-align:center; cursor:pointer; user-select:none" title="Средняя частотность за неделю" @click="sortBy('avg_freq')">Ср. част <span v-if="sortKey==='avg_freq'">{{ sortDir==='asc'?'▲':'▼' }}</span><span v-else>⇅</span></th>
+              <th class="t-left phrases-matrix__sticky phrases-matrix__sort" @click="sortBy('phrase')">
+                Поисковый запрос <span v-if="sortKey==='phrase'">{{ sortDir==='asc' ? '▲' : '▼' }}</span><span v-else>⇅</span>
+              </th>
+              <th class="num phrases-matrix__col--freq">Ср. част</th>
             </template>
-            <th style="width:100px; white-space:nowrap; text-align:center; cursor:pointer; user-select:none" @click="sortBy('total_clicks')">Клики <span v-if="sortKey==='total_clicks'">{{ sortDir==='asc'?'▲':'▼' }}</span><span v-else>⇅</span></th>
-            <th style="width:95px; white-space:nowrap; text-align:center; cursor:pointer; user-select:none" @click="sortBy('total_orders')">Заказы <span v-if="sortKey==='total_orders'">{{ sortDir==='asc'?'▲':'▼' }}</span><span v-else>⇅</span></th>
-            <th v-for="d in dates" :key="d" class="text-center small" style="min-width:35px; padding:4px 2px; font-size:11px; text-align:center">{{ fmtDate(d) }}</th>
+            <th class="num phrases-matrix__col--num">Клики</th>
+            <th class="num phrases-matrix__col--num">Заказы</th>
+            <th v-for="d in dates" :key="d" class="num phrases-matrix__col--day">{{ d }}</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="!rows.length"><td :colspan="4+dates.length" class="text-center text-muted">Нет данных</td></tr>
-          <tr v-for="r in sortedRows" :key="props.mode === 'by-card' ? r.nmID : r.phrase" class="clickable-row" style="cursor:pointer" @click="sel = props.mode === 'by-card' ? String(r.nmID) : r.phrase" :class="{'selected-row': sel === (props.mode === 'by-card' ? String(r.nmID) : r.phrase)}">
+          <tr
+            v-for="r in sortedRows"
+            :key="props.mode === 'by-card' ? r.nmID : r.phrase"
+            class="clickable-row"
+            :class="{ 'selected-row': sel === (props.mode === 'by-card' ? String(r.nmID) : r.phrase) }"
+            @click="sel = props.mode === 'by-card' ? String(r.nmID) : r.phrase"
+          >
             <template v-if="props.mode === 'by-card'">
-              <td class="kv-sticky-column text-muted small" style="text-align:center; background:#fff"><router-link :to="`/wb/detail?nm_id=${r.nmID}`" target="_blank">{{ r.nmID }}</router-link></td>
-              <td class="kv-sticky-column" style="min-width:300px; white-space:normal; background:#fff"><router-link :to="`/wb-search/card?nm_id=${r.nmID}`">{{ r.title }}</router-link></td>
+              <!-- Карточка товара — общий блок ProductCell (компактный: фото 30×40) -->
+              <td class="t-left phrases-matrix__sticky phrases-matrix__sticky--product">
+                <ProductCell
+                  :photo="r.photos"
+                  :title="r.title"
+                  :sub="r.subject"
+                  :brand="r.brand"
+                  :vendor="r.vendor_code"
+                  :link="'/wb/detail?nm_id=' + r.nmID"
+                  :link-label="'WB: ' + r.nmID"
+                  compact
+                />
+              </td>
             </template>
             <template v-else>
-              <td class="kv-sticky-column text-muted" style="width:220px; white-space:normal; background:#fff"><a :href="'https://www.wildberries.ru/catalog/0/search.aspx?search='+encodeURIComponent(r.phrase)" target="_blank">{{ r.phrase }}</a></td>
-              <td class="text-secondary" style="background:#fcfcfc; text-align:center">{{ r.avg_freq ?? '' }}</td>
+              <td class="t-left phrases-matrix__sticky">
+                <a class="wb-query-link" :href="'https://www.wildberries.ru/catalog/0/search.aspx?search=' + encodeURIComponent(r.phrase)" target="_blank" rel="noopener">{{ r.phrase }}</a>
+              </td>
+              <td class="num col-dim">{{ r.avg_freq ?? '' }}</td>
             </template>
-            <td class="text-primary" style="background:#fcfcfc; text-align:center">{{ r.total_clicks ?? '' }}</td>
-            <td class="text-primary" style="background:#f8f9ff; text-align:center">{{ r.total_orders ?? '' }}</td>
-            <td v-for="d in dates" :key="d" :class="cellCls(r,d)" :title="cellTitle(r,d)" style="text-align:center; padding:4px 2px">{{ cellPos(r,d) }}</td>
+            <td class="num col-dim">{{ r.total_clicks ?? '' }}</td>
+            <td class="num col-accent">{{ r.total_orders ?? '' }}</td>
+            <td v-for="d in dates" :key="d" :class="cellCls(r,d)" :title="cellTitle(r,d)" class="phrases-matrix__day">{{ cellPos(r,d) }}</td>
           </tr>
         </tbody>
       </table>
@@ -45,6 +68,8 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, onMounted } from 'vue'
 import { api } from '@/api/client'
+import { exportXlsx } from '@/utils/exportXlsx'
+import ProductCell from './ProductCell.vue'
 const props = withDefaults(defineProps<{
   rows: any[]
   dates: string[] // uniqueDates yyyy-mm-dd
@@ -72,8 +97,6 @@ const sortBy=(k:'phrase'|'nmID'|'title'|'avg_freq'|'total_clicks'|'total_orders'
   if(sortKey.value===k) sortDir.value=sortDir.value==='asc'?'desc':'asc'
   else{ sortKey.value=k; sortDir.value= (k==='phrase'||k==='title')?'asc':'desc' }
 }
-import { useDateFmt } from '../../composables/useDateFmt'
-const { fmtAxis: fmtDate } = useDateFmt()
 const cellData = (r:any,d:string)=> r[d] ?? null
 const cellPos = (r:any,d:string)=> cellData(r,d)?.pos ?? ''
 const cellTitle = (r:any,d:string)=> { const o=cellData(r,d)?.orders; return o>0?`Заказов: ${o}`:'' }
@@ -103,36 +126,72 @@ const fetchPhrases = async () => {
 onMounted(fetchPhrases)
 const exportExcel = async()=>{
   if(!props.rows.length) return
-  const XLSX=await import('xlsx')
   const data=sortedRows.value.map((r:any)=>{
     if(props.mode==='by-card'){
       const base:any={'Арт WB':r.nmID,'Товар':r.title,'Клики':r.total_clicks,'Заказы':r.total_orders}
-      props.dates.forEach((d:string)=> base[fmtDate(d)] = cellPos(r,d))
+      props.dates.forEach((d:string)=> base[d] = cellPos(r,d))
       return base
     }
     const base:any={'Поисковый запрос':r.phrase,'Ср част':r.avg_freq,'Клики':r.total_clicks,'Заказы':r.total_orders}
-    props.dates.forEach((d:string)=> base[fmtDate(d)] = cellPos(r,d))
+    props.dates.forEach((d:string)=> base[d] = cellPos(r,d))
     return base
   })
-  const ws=XLSX.utils.json_to_sheet(data)
-  const wb=XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb,ws, props.mode==='by-card' ? 'Товары' : 'Фразы')
-  XLSX.writeFile(wb, props.mode==='by-card' ? `phrase-cards_${Date.now()}.xlsx` : `phrases_${Date.now()}.xlsx`)
+  const first=props.dates[0]||'', last=props.dates[props.dates.length-1]||''
+  await exportXlsx({
+    rows: data,
+    filename: props.mode==='by-card' ? `phrase-cards_${first}_${last}.xlsx` : `phrases_${first}_${last}.xlsx`,
+    sheetName: props.mode==='by-card' ? 'Товары' : 'Фразы',
+    cols: [
+      { wch: props.mode==='by-card' ? 12 : 40 }, { wch: props.mode==='by-card' ? 40 : 10 },
+      { wch: 10 }, { wch: 10 },
+      ...props.dates.map(() => ({ wch: 12 })),
+    ],
+  })
 }
 </script>
 <style scoped>
-.table-bordered td, .table-bordered th{border:1px solid #f1f1f1 !important}
-#grid-scroll .kv-sticky-column{position:sticky !important; left:0 !important; background:#fff !important; z-index:5 !important; border-right:2px solid #dee2e6 !important}
-#grid-scroll th.kv-sticky-column{z-index:11 !important; top:0}
-.pos-top-10{background:#ebfbee !important; color:#2b8a3e !important; font-weight:500}
-.pos-top-50{background:#fff9db !important; color:#856404 !important}
-.has-orders{font-weight:900 !important; box-shadow:inset 0 0 0 1px rgba(0,123,255,.1)}
-#grid-scroll td a{text-decoration:none}
-.table>tbody>tr.selected-row>td, .table>tbody>tr.selected-row>th{background:#ffb7f8 !important; color:#000 !important}
-.table>tbody>tr.selected-row>td.pos-top-10{background:#f37be7 !important}
-.table>tbody>tr.selected-row>td.pos-top-50{background:#f897ee !important}
-#grid-scroll .table{table-layout:auto !important; width:auto !important; min-width:100% !important; display:table !important; overflow:visible !important}
-/* condensed как в оригинале: в окно влезает больше строк */
-#grid-scroll th, #grid-scroll td{padding:4px !important}
-#grid-scroll tbody td{font-size:11px}
+/* Матрица фраз/карточек — плотная таблица темы: липкая шапка, липкая первая колонка,
+   свои градации позиции. Селекторы — по id (#grid-scroll), чтобы перебить зебру темы
+   без !important (правило §8.1.9). */
+.phrases-matrix { max-height: 70vh; overflow: auto; position: relative; }
+/* ширины колонок: таблица по содержимому (без min-width:100%), иначе лишнее
+   место расписывается по колонкам и «Ср. част / Клики / Заказы» разъезжаются */
+.phrases-matrix__table { table-layout: auto; width: auto; display: table; overflow: visible; }
+
+/* липкая шапка */
+#grid-scroll thead th { position: sticky; top: 0; z-index: 10; background: var(--surface); }
+
+/* липкая первая колонка */
+#grid-scroll .phrases-matrix__sticky {
+  position: sticky; left: 0; z-index: 5;
+  background: var(--surface);
+  box-shadow: inset -1px 0 0 var(--line-strong);
+}
+#grid-scroll tbody tr:nth-child(even) .phrases-matrix__sticky { background: var(--surface-2); }
+#grid-scroll thead th.phrases-matrix__sticky { z-index: 11; }
+/* первая колонка: фраза (режим by-phrase) — 220px, перенос по словам */
+#grid-scroll .phrases-matrix__sticky { width: 220px; min-width: 200px; max-width: 320px; white-space: normal; }
+/* колонка товара (режим by-card) */
+#grid-scroll .phrases-matrix__sticky--product { width: 300px; min-width: 300px; }
+
+/* ширины колонок */
+#grid-scroll .phrases-matrix__col--num { width: 68px; white-space: nowrap; }
+#grid-scroll .phrases-matrix__col--freq { width: 80px; white-space: nowrap; }
+/* колонки дней: подпись YYYY-MM-DD */
+#grid-scroll .phrases-matrix__col--day { min-width: 64px; padding: 4px 2px; font-size: 11px; white-space: nowrap; }
+#grid-scroll td.phrases-matrix__day { padding: 4px 2px; font-size: 11px; text-align: center; }
+#grid-scroll .phrases-matrix__sort { cursor: pointer; user-select: none; white-space: nowrap; }
+
+/* подсветка позиций — цвета темы */
+#grid-scroll tbody td.pos-top-10 { background: var(--good-tint); color: var(--good-deep); font-weight: 600; }
+#grid-scroll tbody td.pos-top-50 { background: var(--warn-tint); color: var(--warn-deep); }
+/* ячейка с заказом — жирный шрифт */
+#grid-scroll tbody td.has-orders { font-weight: 800; }
+/* приглушённые колонки «Ср. част» и «Клики» */
+#grid-scroll tbody td.col-dim { background: var(--surface-2); }
+#grid-scroll tbody td.col-accent { background: var(--brand-tint); }
+/* выбранная строка — 34% акцента + жирный текст */
+#grid-scroll tbody tr.selected-row > td { background: color-mix(in srgb, var(--brand) 34%, var(--surface)); color: var(--ink); font-weight: 700; }
+/* курсор кликабельной строки */
+#grid-scroll tbody tr.clickable-row { cursor: pointer; }
 </style>

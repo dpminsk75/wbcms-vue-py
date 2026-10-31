@@ -89,7 +89,7 @@
       {"label": "Отзывы", "url": "/wb-feedback", "visibleIn": ["top", "side"], "roles": ["viewFeedback"]},
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Разбор отзывов", "url": "/wb-feedback-review", "visibleIn": ["top", "side"], "roles": ["viewFeedback"]},
-      {"label": "Вопросы", "url": "#", "visibleIn": ["top", "side"], "roles": ["viewFeedback"]},
+      {"label": "Вопросы", "url": "/wb-questions", "visibleIn": ["top", "side"], "roles": ["viewFeedback"]},
       {"label": "Правила ответов", "url": "/wb-feedback-reply-rules", "visibleIn": ["top", "side"], "roles": ["manageFeedback"]}
     ]
   },

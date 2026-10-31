@@ -8,9 +8,16 @@ User=www-data
 WorkingDirectory=/var/www/wb/wbcms-py
 EnvironmentFile=/var/www/wb/wbcms-py/.env
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/var/www/wb/wbcms-py/.venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1
+# timeout-graceful-shutdown: без него uvicorn при остановке ЖДЁТ закрытия всех
+# keep-alive соединений браузера БЕСКОНЕЧНО (таймаут по умолчанию None) —
+# рестарт виснет до TimeoutStopSec, systemd убивает SIGKILL, старые процессы
+# копятся (Restart=always поднимает новые, зависшие не умирают).
+ExecStart=/var/www/wb/wbcms-py/.venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1 --timeout-graceful-shutdown 15
 Restart=always
 RestartSec=5
+# systemd ждёт остановки 45 с (uvicorn уходит за 15), дальше — SIGKILL
+TimeoutStopSec=45
+KillSignal=SIGTERM
 StandardOutput=journal
 StandardError=journal
 

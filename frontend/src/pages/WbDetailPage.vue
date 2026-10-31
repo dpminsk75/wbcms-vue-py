@@ -5,9 +5,9 @@
       <h1 class="mb-0 page-wb-detail__title">{{ card?.title || 'Карточка WB' }}</h1>
       <div v-if="filters.nm_id || card?.nmID" class="page-wb-detail__id-group">
         <span class="text-muted page-wb-detail__id-label">ID:</span>
-        <span class="badge bg-dark page-wb-detail__id-badge">{{ card?.nmID || filters.nm_id }}</span>
-        <button class="btn btn-sm btn-outline-secondary page-wb-detail__icon-btn" @click="copyId"><i class="bi bi-clipboard"></i></button>
-        <a :href="'https://www.wildberries.ru/catalog/'+(card?.nmID||filters.nm_id)+'/detail.aspx'" target="_blank" class="btn btn-sm btn-outline-primary page-wb-detail__icon-btn"><i class="bi bi-eye"></i></a>
+        <span class="badge badge--neutral page-wb-detail__id-badge">{{ card?.nmID || filters.nm_id }}</span>
+        <button class="btn btn-sm btn--outline page-wb-detail__icon-btn" @click="copyId"><i class="bi bi-clipboard"></i></button>
+        <a :href="'https://www.wildberries.ru/catalog/'+(card?.nmID||filters.nm_id)+'/detail.aspx'" target="_blank" class="btn btn-sm btn--outline page-wb-detail__icon-btn"><i class="bi bi-eye"></i></a>
       </div>
     </div>
 
@@ -25,20 +25,21 @@
         <div v-if="!filters.nm_id" class="alert alert-warning">Выберите карточку — укажите артикул WB (nmID) и нажмите Применить.</div>
         <div v-else-if="cardLoading" class="text-center p-4"><span class="spinner-border spinner-border-sm"></span> Загрузка карточки...</div>
         <div v-else-if="cardError" class="alert alert-danger">Карточка {{ filters.nm_id }} не найдена.</div>
-        <div v-else-if="card" class="card page-wb-detail__product-card">
-          <div class="card-header page-wb-detail__product-head">
+        <div v-else-if="card" class="wb-panel page-wb-detail__product-card">
+          <div class="card__hd page-wb-detail__product-head">
             <span>Товар: {{ card.title }}</span>
             <span class="page-wb-detail__product-wb">WB: {{ card.nmID }}</span>
           </div>
           <div>
                 <div class="mt-3 mb-1 d-flex gap-2 px-2">
-                  <a :href="'/seo/index?status=new&q='+filters.nm_id" target="_blank" class="btn btn-sm btn-outline-primary page-wb-detail__card-actions"><i class="fas fa-robot me-1"></i> AI рек.</a>
-                  <button class="btn btn-sm btn-outline-warning page-wb-detail__card-actions" @click="targetsOpen=true"><i class="fas fa-bullseye me-1"></i> Целевые</button>
-                  <button class="btn btn-sm btn-outline-secondary page-wb-detail__card-actions" @click="queriesOpen=true"><i class="bi bi-search me-1"></i> Поиск. запросы</button>
-                  <button class="btn btn-sm btn-outline-secondary page-wb-detail__card-actions" @click="competitorsOpen=true"><i class="bi bi-people me-1"></i> Конкуренты</button>
+                  <a :href="'/seo/index?status=new&q='+filters.nm_id" target="_blank" class="btn btn-sm btn--brand page-wb-detail__card-actions"><i class="fas fa-robot me-1"></i> AI рек.</a>
+                  <button class="btn btn-sm btn--soft page-wb-detail__card-actions" @click="targetsOpen=true"><i class="fas fa-bullseye me-1"></i> Целевые</button>
+                  <button class="btn btn-sm btn--soft page-wb-detail__card-actions" @click="queriesOpen=true"><i class="bi bi-search me-1"></i> Поиск. запросы</button>
+                  <button class="btn btn-sm btn--soft page-wb-detail__card-actions" @click="competitorsOpen=true"><i class="bi bi-people me-1"></i> Конкуренты</button>
+                  <button class="btn btn-sm btn--soft page-wb-detail__card-actions" title="Полки WB, в которых стоит карточка, и бейджи (цены, акции). Полки и баджи появляются после сбора карточки расширением" @click="shelvesOpen=true"><i class="bi bi-collection me-1"></i> Полки и баджи</button>
                 </div>
           </div>
-          <div class="card-body">
+          <div class="wb-panel__bd">
             <div class="row mb-2">
               <div class="col-md-6 card_characteristics">
                 <dl class="mb-0 page-wb-detail__facts">
@@ -87,7 +88,7 @@
               </div>
             </div>
             <div v-if="(characteristics.length || card.description) && (String(card.description||'').length>300 || characteristics.length>8)" class="expand-btn-wrapper page-wb-detail__expand-btn">
-              <button class="btn btn-outline-primary btn-sm page-wb-detail__more-btn" @click="descExpanded=!descExpanded">{{ descExpanded ? 'Свернуть' : 'Увидеть больше' }}</button>
+              <button class="btn btn--outline btn-sm page-wb-detail__more-btn" @click="descExpanded=!descExpanded">{{ descExpanded ? 'Свернуть' : 'Увидеть больше' }}</button>
             </div>
           </div>
         </div>
@@ -116,6 +117,7 @@
     <CompetitorsQueriesModal :open="queriesOpen" :nm-id="filters.nm_id" @close="queriesOpen=false" @changed="fetchCard()" />
     <CompetitorsModal :open="competitorsOpen" :nm-id="filters.nm_id" @close="competitorsOpen=false" @changed="fetchCard()" />
     <PriceHistoryPopup :open="priceOpen" :nm-id="filters.nm_id" :date-from="filters.date_from" :date-to="filters.date_to" @close="priceOpen=false" />
+    <OurCardShelvesModal :open="shelvesOpen" :nm-id="filters.nm_id" @close="shelvesOpen=false" />
   </div>
 </template>
 <script setup lang="ts">
@@ -137,6 +139,7 @@ import CompetitorsQueriesModal from '../components/competitors/CompetitorsQuerie
 import CompetitorsModal from '../components/competitors/CompetitorsModal.vue'
 import PriceBlock from '../components/wb-detail/PriceBlock.vue'
 import PriceHistoryPopup from '../components/wb-detail/PriceHistoryPopup.vue'
+import OurCardShelvesModal from '../components/common/OurCardShelvesModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -145,6 +148,7 @@ const targetsOpen = ref(false)
 const queriesOpen = ref(false)
 const competitorsOpen = ref(false)
 const priceOpen = ref(false)
+const shelvesOpen = ref(false)
 
 function mondayOfWeek(d: Date){
   const day=d.getDay(); const diff = day===0 ? -6 : 1-day
@@ -289,12 +293,12 @@ watch(()=>route.query, ()=>{
 })
 </script>
 <style scoped>
-.card_characteristics dl{font-size:11px; align-items:start}
-.card_characteristics .dl_item{display:grid; grid-template-columns:1fr 2fr; gap:5px; border-bottom:1px dashed #999}
-.card_characteristics__dt{grid-column:1; font-weight:bold; color:#555}
+.card_characteristics dl{font-size:calc(11px * var(--fs)); align-items:start}
+.card_characteristics .dl_item{display:grid; grid-template-columns:1fr 2fr; gap:5px; border-bottom:1px dashed var(--line-strong)}
+.card_characteristics__dt{grid-column:1; font-weight:bold; color:var(--ink-soft)}
 .card_characteristics__dd{grid-column:2; padding-bottom:2px; margin:0}
-/* синий бокс статистики как .panel_stats/.orders_total в detail.php:1115-1132 */
-.panel_stats{background:#aed7ff; padding:5px 10px; border:1px solid rgb(74 128 180); border-radius:10px; font-size:12px; color:#555}
+/* панель статистики заказами — нейтральная, цвета темы */
+.panel_stats{background:var(--surface-2); padding:8px 10px; border:1px solid var(--line); border-radius:var(--radius-md); font-size:calc(12px * var(--fs)); color:var(--ink-soft)}
 .orders_total{display:flex; flex-direction:column}
 .ot-row{display:flex; flex-direction:row; flex-wrap:wrap; justify-content:space-between; gap:8px; width:100%}
 .ot-row span{white-space:nowrap}
@@ -302,5 +306,5 @@ watch(()=>route.query, ()=>{
 .wb-card-gallery-scroll::-webkit-scrollbar{height:6px}
 .wb-card-gallery-scroll::-webkit-scrollbar-thumb{background:#ddd; border-radius:3px}
 .wb-detail-report .card-header{font-size:13px}
-.expandable-container:not(.is-expanded)::after{content:""; position:absolute; bottom:0; left:0; width:100%; height:50px; background:linear-gradient(transparent, white); pointer-events:none}
+.expandable-container:not(.is-expanded)::after{content:""; position:absolute; bottom:0; left:0; width:100%; height:50px; background:linear-gradient(transparent, var(--surface)); pointer-events:none}
 </style>

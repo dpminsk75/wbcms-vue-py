@@ -1,10 +1,62 @@
-/* page-wb-search-trend.css — чанк WbSearchTrendPage. */
-.page-wb-search-trend__title { font-weight: 400; }
-.page-wb-search-trend__table-wrap { max-height: 70vh; overflow: auto; }
-.page-wb-search-trend__table { font-size: 12px; }
-.page-wb-search-trend__table thead th { position: sticky; top: 0; background: #fff; z-index: 10; }
-.page-wb-search-trend__phrase { position: sticky; left: 0; background: #fff; min-width: 300px; white-space: normal; box-shadow: 2px 0 5px rgba(0,0,0,.05); }
-.page-wb-search-trend__table tbody tr:nth-of-type(odd) .page-wb-search-trend__phrase { background-color: #f9f9f9; }
+/* page-wb-search-trend.css — /wb-search/trend: таблица вхождений на блоках темы
+   (.tbl-card → .card__hd → .tbl-wrap → .tbl). Цвета — только токены. */
+.page-wb-search-trend__grid { margin-top: 12px; }
+
+/* ---------- липкие колонки: «#» и «Фраза» ----------
+   Ширина колонки «#» фиксирована (width + min-width): в auto-layout `width`
+   у th — только подсказка, колонка схлопывается, и липкая «Фраза» с
+   left: 44px отодвигается от неё — между колонками появляется зазор.
+   min-width при border-box даёт ровно 44px, поэтому отступ совпадает. */
+.page-wb-search-trend__pos {
+  width: 44px; min-width: 44px;
+  position: sticky; left: 0; z-index: 2;
+  background: var(--surface);
+  box-shadow: inset -1px 0 0 var(--line);
+}
+.page-wb-search-trend__sticky {
+  position: sticky; left: 44px; z-index: 2;
+  background: var(--surface);
+  box-shadow: inset -1px 0 0 var(--line);
+  min-width: 200px;
+}
+
+/* Фон липких колонок повторяет строку: зебра, наведение, выбранная строка —
+   иначе сквозь колонку видна строка, а подсветка выбранной съедается. */
+.tbl tbody tr:nth-child(even) td.page-wb-search-trend__pos,
+.tbl tbody tr:nth-child(even) td.page-wb-search-trend__sticky {
+  background: color-mix(in srgb, var(--ink) 4%, var(--surface));
+}
+.tbl tbody tr:hover td.page-wb-search-trend__pos,
+.tbl tbody tr:hover td.page-wb-search-trend__sticky {
+  background: color-mix(in srgb, var(--ink) 7%, var(--surface));
+}
+.tbl tbody tr.page-wb-search-trend__row--selected td.page-wb-search-trend__pos,
+.tbl tbody tr.page-wb-search-trend__row--selected td.page-wb-search-trend__sticky {
+  background: var(--brand-tint);
+}
+.tbl thead th.page-wb-search-trend__pos,
+.tbl thead th.page-wb-search-trend__sticky {
+  z-index: 4;
+  background: var(--surface);
+}
+
+/* CR-подсветка — токены темы */
+.page-wb-search-trend__cr--good { background: var(--good-tint); color: var(--good-deep); font-weight: 700; }
+.page-wb-search-trend__cr--bad { background: var(--bad-tint); color: var(--bad-deep); }
+
+/* Шкала позиции — 9 ступеней темы (--pos-1…--pos-9); палитра прежняя */
+.page-wb-search-trend__heat--1 { background: var(--pos-1); color: var(--pos-ink-light); }
+.page-wb-search-trend__heat--2 { background: var(--pos-2); color: var(--pos-ink-light); }
+.page-wb-search-trend__heat--3 { background: var(--pos-3); color: var(--pos-ink-mid); }
+.page-wb-search-trend__heat--4 { background: var(--pos-4); color: var(--pos-ink-mid); }
+.page-wb-search-trend__heat--5 { background: var(--pos-5); color: var(--pos-ink-mid); }
+.page-wb-search-trend__heat--6 { background: var(--pos-6); color: var(--pos-ink-dark); }
+.page-wb-search-trend__heat--7 { background: var(--pos-7); color: var(--pos-ink-dark); }
+.page-wb-search-trend__heat--8 { background: var(--pos-8); color: var(--pos-ink-dark); }
+.page-wb-search-trend__heat--9 { background: var(--pos-9); color: var(--pos-ink-dark); }
+
+/* Выбранная строка */
 .page-wb-search-trend__row { cursor: pointer; }
-.page-wb-search-trend__row--selected > td { background-color: #ffb7f8 !important; color: #000 !important; }
+.page-wb-search-trend__row--selected > td { background: var(--brand-tint); color: var(--ink); font-weight: 700; }
+
 .page-wb-search-trend__chart { width: 100%; height: 600px; }

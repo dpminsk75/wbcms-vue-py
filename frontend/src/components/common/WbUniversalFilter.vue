@@ -305,7 +305,7 @@ onBeforeUnmount(() => { if (searchTimer) clearTimeout(searchTimer); reqSeq++ })
 .wb-universal-filter__fields {
   margin-top: 12px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 190px));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 585px));
   gap: 10px;
   align-items: start;
 }

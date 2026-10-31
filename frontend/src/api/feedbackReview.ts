@@ -1,11 +1,56 @@
 import { api } from './client'
 
+export interface ReviewBalanceCompany {
+  company_id: number
+  paused: boolean
+  until: string | null
+  left_sec: number
+  reason: string
+}
+
+export interface ReviewFlags {
+  running: boolean
+  paused: boolean
+  interval_sec: number
+  /** Пауза из-за отсутствия токенов у ИИ-провайдера (3 ч) */
+  balance_paused: boolean
+  balance_pause_until: string | null
+  balance_pause_left_sec: number
+  balance_pause_reason: string
+  balance_companies: ReviewBalanceCompany[]
+  /** Идёт ручной запуск разбора (кнопка «Разобрать порцию») */
+  manual_running: boolean
+}
+
+export interface ReviewQuota {
+  /** Проверка применима (провайдер — MiniMax Token Plan) */
+  applicable: boolean
+  ok: boolean
+  error?: string
+  model?: string
+  /** Остаток 5-часового окна, % */
+  percent?: number | null
+  status?: number
+  active?: boolean | null
+  /** Сброс окна — ISO со смещением */
+  reset_at?: string
+  reset_left?: string
+  reset_left_sec?: number
+  /** Остаток недельного окна, % */
+  weekly_percent?: number | null
+  weekly_reset_at?: string
+  /** Пауза = сброс + 30 мин */
+  pause_until?: string
+  checked_at?: string
+}
+
 export interface ReviewStatus {
-  flags: { running: boolean; paused: boolean; interval_sec: number }
+  flags: ReviewFlags
   counts: { done: number; error: number; pending: number; queue_has_more: boolean }
   settings: { auto: boolean; batch: number }
   prompt_set: boolean
   scenario: string
+  quota?: ReviewQuota
 }
 
 export interface ReviewQueueItem {
@@ -69,11 +114,18 @@ export const feedbackReviewApi = {
     const { data } = await api.get('/api/feedback/review/errors', { params: { limit } })
     return data
   },
-  async pause(paused: boolean): Promise<{ running: boolean; paused: boolean }> {
+  async pause(paused: boolean): Promise<ReviewFlags> {
     const { data } = await api.post('/api/feedback/review/pause', { paused })
     return data
   },
-  async run(limit = 20): Promise<{ taken: number; ok: number; errors: number; fatal: string }> {
+  async run(limit = 20): Promise<{
+    started?: boolean
+    limit?: number
+    reason?: string
+    paused?: boolean
+    pause_until?: string | null
+    pause_reason?: string
+  }> {
     const { data } = await api.post('/api/feedback/review/run', { limit })
     return data
   },

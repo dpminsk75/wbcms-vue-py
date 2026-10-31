@@ -1,74 +1,77 @@
 <template>
   <div class="container-xxl page-wb-search-trend">
-    <div class="row mb-3">
-      <h2 class="page-wb-search-trend__title">{{ pageTitle }}</h2>
-    </div>
+    <h1 class="page-title">{{ pageTitle }}</h1>
 
-    <div class="row mb-3">
-      <div class="col-md-12">
-        <WbSearchFilter
-          label="Корень фразы"
-          :data="phraseOptions"
-          placeholder="Введите корень фразы..."
-          v-model:phrase="filters.phrase_text"
-          v-model:date-from="filters.date_from"
-          v-model:date-to="filters.date_to"
-          default-preset="90"
-          preset-end="yesterday"
-          @apply="onApply"
-          @reset="onReset"
-        />
-      </div>
-    </div>
+    <!-- Фильтр: общий WbUniversalFilter (пресеты дат + «Применить/Сбросить»),
+         корень фразы — в слоте #fields (общий WbPhraseSelect). -->
+    <WbUniversalFilter
+      v-model:date-from="filters.date_from"
+      v-model:date-to="filters.date_to"
+      :show-product="false"
+      :show-brand-category="false"
+      :show-quick="false"
+      @apply="onApply"
+      @reset="onReset"
+    >
+      <template #fields>
+        <div class="wb-field wb-field--wide">
+          <label class="wb-field__label">Корень фразы</label>
+          <WbPhraseSelect v-model="filters.phrase_text" :options="phraseOptions" placeholder="Введите корень фразы..." />
+        </div>
+      </template>
+    </WbUniversalFilter>
 
     <div class="row page-wb-search-trend__grid mb-3 mt-3">
       <div class="col-md-12">
-        <div class="card">
-          <div class="card-header">Анализ вхождений</div>
-          <div v-if="isLoading" class="text-center p-5">
-            <div class="spinner-border text-primary" role="status"></div>
-            <div class="mt-2 text-muted">Загрузка данных...</div>
+        <div class="tbl-card tbl-card--compact">
+          <div class="card__hd">
+            <span><i class="bi bi-graph-up me-2"></i>Анализ вхождений</span>
+            <span class="spacer"></span>
+            <span class="hd-badge">Стр {{ page }} / {{ totalPages }}</span>
+            <ExcelButton :disabled="!models.length || exporting" @click="exportExcel" />
           </div>
-          <div v-else class="wb-table-wrap page-wb-search-trend__table-wrap">
-            <table class="table table-bordered table-hover mb-0 page-wb-search-trend__table">
+          <div v-if="isLoading" class="text-center p-4">
+            <span class="spinner-border spinner-border-sm"></span> Загрузка...
+          </div>
+          <div v-else class="tbl-wrap">
+            <table class="tbl">
               <thead>
                 <tr>
-                  <th class="page-wb-search-trend__th--num">#</th>
-                  <th class="page-wb-search-trend__phrase">Фраза</th>
-                  <th>Част</th>
-                  <th>Клики</th>
-                  <th>Заказы</th>
-                  <th>CR %</th>
-                  <th v-for="w in weeks" :key="w" class="text-center small">{{ w.slice(2) }}</th>
+                  <th class="t-center page-wb-search-trend__pos">#</th>
+                  <th class="t-left page-wb-search-trend__sticky">Фраза</th>
+                  <th class="num">Част</th>
+                  <th class="num">Клики</th>
+                  <th class="num">Заказы</th>
+                  <th class="num">CR %</th>
+                  <th v-for="w in weeks" :key="w" class="num">{{ w.slice(2) }}</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="!models.length"><td :colspan="6 + weeks.length" class="text-center text-muted p-4">Нет данных</td></tr>
                 <tr v-for="(m, i) in models" :key="m.phrase" class="page-wb-search-trend__row" @click="sel = m.phrase" :class="{ 'page-wb-search-trend__row--selected': sel === m.phrase }">
-                  <td class="text-center">{{ (page - 1) * pageSize + i + 1 }}</td>
-                  <td class="page-wb-search-trend__phrase">
-                    <router-link :to="`/wb-search/phrase?phrase_id=${m.phrase_id ?? ''}&date_from=${filters.date_from}&date_to=${filters.date_to}`" target="_blank">{{ m.phrase }}</router-link>
+                  <td class="t-center page-wb-search-trend__pos">{{ (page - 1) * pageSize + i + 1 }}</td>
+                  <td class="t-left page-wb-search-trend__sticky">
+                    <router-link class="wb-query-link" :to="phraseUrl(m.phrase)">{{ m.phrase }}</router-link>
                   </td>
-                  <td class="text-end">{{ fmt0(m.avg_freq) }}</td>
-                  <td class="text-end">{{ fmt0(m.total_clicks) }}</td>
-                  <td class="text-end">{{ fmt0(m.total_orders) }}</td>
-                  <td class="text-center" :style="crStyle(m)">{{ m.conversion }}</td>
-                  <td v-for="w in weeks" :key="w" class="text-center" :style="heatStyle(m, w)">{{ heatVal(m, w) }}</td>
+                  <td class="num">{{ fmt0(m.avg_freq) }}</td>
+                  <td class="num">{{ fmt0(m.total_clicks) }}</td>
+                  <td class="num">{{ fmt0(m.total_orders) }}</td>
+                  <td class="num" :class="crClass(m)">{{ m.conversion }}</td>
+                  <td v-for="w in weeks" :key="w" class="num" :class="heatClass(m, w)">{{ heatVal(m, w) }}</td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <div v-if="totalPages > 1" class="card-footer d-flex gap-2 align-items-center">
-            <button class="btn btn-sm btn-outline-secondary" :disabled="page <= 1" @click="goPage(page - 1)">‹ Назад</button>
-            <span class="text-muted">Стр {{ page }} / {{ totalPages }}</span>
-            <button class="btn btn-sm btn-outline-secondary" :disabled="page >= totalPages" @click="goPage(page + 1)">Вперед ›</button>
-          </div>
+          <Pager :page="page" :total-pages="totalPages" :total="total" @change="goPage" />
         </div>
       </div>
     </div>
 
-    <div v-if="chartData.length" class="card my-3 shadow-sm">
-      <div class="card-body">
+    <div v-if="chartData.length" class="wb-panel my-3">
+      <div class="card__hd">
+        <span><i class="bi bi-graph-up me-2"></i>Динамика ТОП фраз</span>
+      </div>
+      <div class="wb-panel__bd">
         <v-chart :option="chartOption" autoresize class="page-wb-search-trend__chart" />
       </div>
     </div>
@@ -84,7 +87,11 @@ import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import WbSearchFilter from '@/components/common/WbSearchFilter.vue'
+import WbUniversalFilter from '@/components/common/WbUniversalFilter.vue'
+import WbPhraseSelect from '@/components/common/WbPhraseSelect.vue'
+import ExcelButton from '@/components/common/ExcelButton.vue'
+import Pager from '@/components/common/Pager.vue'
+import { exportXlsx } from '@/utils/exportXlsx'
 import { wbSearchApi } from '@/api/search'
 
 use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
@@ -95,7 +102,7 @@ const router = useRouter()
 const today = new Date()
 const yesterday = new Date(today.getTime() - 864e5)
 const defTo = yesterday.toISOString().slice(0, 10)
-const defFrom = new Date(today.getTime() - 90 * 864e5).toISOString().slice(0, 10)
+const defFrom = new Date(today.getTime() - 30 * 864e5).toISOString().slice(0, 10)
 
 const filters = reactive({
   phrase_text: String(route.query.phrase_text || ''),
@@ -112,6 +119,7 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = ref(50)
 const isLoading = ref(false)
+const exporting = ref(false)
 const sel = ref('')
 
 const pageTitle = computed(() => `Анализ фразы: ${filters.phrase_text || 'выберите запрос'}`)
@@ -119,28 +127,32 @@ const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.v
 
 const fmt0 = (v: any) => new Intl.NumberFormat('ru-RU').format(Math.round(Number(v) || 0))
 
-// CR-подсветка как trend.php:80-86
-const crStyle = (m: any) => {
-  if (Number(m.conversion) > 10) return { backgroundColor: '#d4edda', color: '#155724', fontWeight: 'bold' }
-  if (Number(m.total_orders) === 0 && Number(m.total_clicks) > 50) return { backgroundColor: '#f8d7da', color: '#721c24' }
-  return {}
+/** Ссылка на разбор фразы: единый параметр (phrase) + период. */
+const phraseUrl = (phrase: string) =>
+  `/wb-search/phrase?phrase=${encodeURIComponent(phrase)}&date_from=${filters.date_from}&date_to=${filters.date_to}`
+
+/** CR-подсветка — классами темы (--good-tint / --bad-tint). */
+const crClass = (m: any) => {
+  if (Number(m.conversion) > 10) return 'page-wb-search-trend__cr--good'
+  if (Number(m.total_orders) === 0 && Number(m.total_clicks) > 50) return 'page-wb-search-trend__cr--bad'
+  return ''
 }
 
-// heatmap 9 градаций как trend.php:109-127 (динамика из JS)
-const heatStyle = (m: any, w: string) => {
+/** Шкала позиции — 9 ступеней темы (--pos-1…--pos-9), пороги те же. */
+const heatClass = (m: any, w: string) => {
   const val = Number(m[w]) || 0
-  if (val <= 0) return {}
+  if (val <= 0) return ''
   const avg = Number(m.avg_freq) || 1
   const ratio = val / avg
-  if (ratio > 2.5) return { backgroundColor: '#1862aa', color: '#fff' }
-  if (ratio > 1.95) return { backgroundColor: '#2171b5', color: '#fff' }
-  if (ratio > 1.3) return { backgroundColor: '#4292c6', color: '#fff' }
-  if (ratio > 1.1) return { backgroundColor: '#6baed6', color: '#fff' }
-  if (ratio > 0.9) return { backgroundColor: '#9ecae1', color: '#333' }
-  if (ratio > 0.4) return { backgroundColor: '#c6dbef', color: '#333' }
-  if (ratio > 0.2) return { backgroundColor: '#cedff1', color: '#333' }
-  if (ratio > 0.1) return { backgroundColor: '#d6e5f4', color: '#555' }
-  return { backgroundColor: '#deebf7', color: '#555' }
+  if (ratio > 2.5) return 'page-wb-search-trend__heat--9'
+  if (ratio > 1.95) return 'page-wb-search-trend__heat--8'
+  if (ratio > 1.3) return 'page-wb-search-trend__heat--7'
+  if (ratio > 1.1) return 'page-wb-search-trend__heat--6'
+  if (ratio > 0.9) return 'page-wb-search-trend__heat--5'
+  if (ratio > 0.4) return 'page-wb-search-trend__heat--4'
+  if (ratio > 0.2) return 'page-wb-search-trend__heat--3'
+  if (ratio > 0.1) return 'page-wb-search-trend__heat--2'
+  return 'page-wb-search-trend__heat--1'
 }
 const heatVal = (m: any, w: string) => {
   const val = Number(m[w]) || 0
@@ -216,6 +228,36 @@ function onReset() {
 function goPage(p: number) {
   page.value = p
   fetchData()
+}
+
+/** Выгрузка таблицы «Анализ вхождений» — всё по фильтру (до 5000 строк), только значения. */
+async function exportExcel() {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    const data = await wbSearchApi.trend(filters.phrase_text, filters.date_from, filters.date_to, 1, 5000)
+    const list: any[] = data.models || []
+    const wks: string[] = data.weeks || []
+    const rows = list.map((m: any) => {
+      const row: Record<string, any> = {
+        'Фраза': m.phrase,
+        'Част': m.avg_freq,
+        'Клики': m.total_clicks,
+        'Заказы': m.total_orders,
+        'CR %': m.conversion,
+      }
+      wks.forEach((w: string) => { row[w.slice(2)] = m[w] ?? '' })
+      return row
+    })
+    await exportXlsx({
+      rows,
+      filename: `wb-search-trend_${filters.date_from}_${filters.date_to}.xlsx`,
+      sheetName: 'Анализ вхождений',
+      cols: [{ wch: 40 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, ...wks.map(() => ({ wch: 11 }))],
+    })
+  } finally {
+    exporting.value = false
+  }
 }
 
 onMounted(async () => {

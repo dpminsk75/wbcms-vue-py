@@ -35,11 +35,12 @@ async def search_trend(
     date_from: str = Query(...),
     date_to: str = Query(...),
     page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=5000),
     db: AsyncSession = Depends(get_db),
     company_id: int | None = Depends(get_current_company),
 ):
     svc = WbSearchService(db, company_id=company_id)
-    data = await svc.trend(phrase_text, date_from, date_to, page, 50)
+    data = await svc.trend(phrase_text, date_from, date_to, page, page_size)
     return {**data, "phrase_text": phrase_text, "date_from": date_from, "date_to": date_to}
 
 
@@ -108,8 +109,9 @@ async def search_cannibalization(
     nm_id: int | None = Query(default=None, ge=1),
     brand: str | None = Query(default=None),
     category: str | None = Query(default=None),
+    sort: str = Query(default="orders"),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=50, ge=1, le=200),
+    page_size: int = Query(default=50, ge=1, le=5000),
     db: AsyncSession = Depends(get_db),
     company_id: int | None = Depends(get_current_company),
 ):
@@ -117,7 +119,11 @@ async def search_cannibalization(
 
     Фильтр по карточке (nm_id) не меняет условие «≥2 карточек» — он отбирает
     фразы, в которых эта карточка участвует.
+
+    sort — порядок строк: orders (заказы, по умолчанию) / freq (частотность) /
+    cards (кол-во карточек) / phrase (алфавит).
     """
     svc = WbSearchService(db, company_id=company_id)
     return await svc.cannibalization(
-        date_from, date_to, q, nm_id, brand, category, page, page_size)
+        date_from, date_to, q, nm_id, brand, category, page, page_size,
+        sort if sort in ("orders", "freq", "cards", "phrase") else "orders")

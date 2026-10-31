@@ -1,12 +1,12 @@
 <template>
   <div class="row mb-3">
     <div class="d-flex col-md-10">
-      <h1 style="font-size:20px; font-weight:700; margin:0">{{ title }}</h1>
+      <h1 class="page-header-widget__title">{{ title }}</h1>
     </div>
-    <div class="nm-id-container col-md-2 d-flex justify-content-end align-items-center" style="color:#555; font-size:12px;">
+    <div class="nm-id-container col-md-2 d-flex justify-content-end align-items-center page-header-widget__id">
       ID:&nbsp;<b><span id="nmId-value">{{ nmId }}</span></b>
-      <i class="bi bi-copy" style="cursor:pointer; margin-left:5px;" @click="copyId" title="Копировать ID"></i>
-      <a v-if="nmId" :href="eyeHref" target="_blank" class="btn-eye" style="margin-left:6px; text-decoration:none;" title="Открыть карточку"><i class="bi bi-eye"></i></a>
+      <i class="bi bi-copy page-header-widget__copy" title="Копировать ID" @click="copyId"></i>
+      <a v-if="nmId" :href="eyeHref" target="_blank" class="btn-eye page-header-widget__eye" title="Открыть карточку"><i class="bi bi-eye"></i></a>
     </div>
   </div>
 </template>
@@ -24,6 +24,10 @@ const copyId = async()=>{
 }
 </script>
 <style scoped>
-.btn-eye { color:#6c757d; }
-.btn-eye:hover { color:#0d6efd; }
+.page-header-widget__title { font-size: calc(20px * var(--fs)); font-weight: 700; margin: 0; color: var(--ink); }
+.page-header-widget__id { color: var(--ink-soft); font-size: calc(12px * var(--fs)); }
+.page-header-widget__copy { cursor: pointer; margin-left: 5px; color: var(--ink-muted); }
+.page-header-widget__copy:hover { color: var(--brand); }
+.page-header-widget__eye { color: var(--ink-muted); margin-left: 6px; text-decoration: none; }
+.page-header-widget__eye:hover { color: var(--brand); }
 </style>

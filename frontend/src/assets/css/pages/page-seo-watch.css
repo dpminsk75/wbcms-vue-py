@@ -441,6 +441,25 @@
   flex-wrap: wrap;
   padding: 2px 0 0;
 }
+/* Наши карточки — отдельная строка под сеткой действий: это другой объект
+   (наши карточки, а не конкуренты выдачи), поэтому своя подпись и свой
+   счётчик глубины, а не третья кнопка в общей сетке. */
+.page-seo-watch__own {
+  display: flex;
+  align-items: center;
+  gap: 10px 16px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e5e7eb;
+}
+.page-seo-watch__own-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: #8a90a0;
+}
 .page-seo-watch__actions-body {
   display: flex;
   align-items: center;

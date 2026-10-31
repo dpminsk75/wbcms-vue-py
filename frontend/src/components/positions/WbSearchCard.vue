@@ -101,9 +101,10 @@ const img = computed(() => {
 })
 
 /* Бейджи WB: «−50%» — красный, «Хорошая цена» — жёлтый, «11.11» — розовый,
-   «ПРЕМУМ…» — тёмный, «с кэшбэком» — фиолетовый. */
+   «ПРЕМУМ…» — тёмный, «с кэшбэком» — фиолетовый, «ресейл» — мятный. */
 function badgeClass(b: string): string {
   const s = String(b || '').toLowerCase()
+  if (/ресейл|resale/.test(s)) return 'wb-scard__badge--resale'
   if (/%/.test(s) || /^[-−]/.test(s)) return 'wb-scard__badge--sale'
   if (/кэшбэк|cashback/.test(s)) return 'wb-scard__badge--cash'
   if (/цена|выгод|дешев/.test(s)) return 'wb-scard__badge--price'
@@ -219,6 +220,9 @@ const reviews = computed(() => props.card.reviews ?? props.card.feedbacks ?? 0)
 .wb-scard__badge--promo { background: #dd3a93; color: #fff; }
 .wb-scard__badge--vip { background: #3d4451; color: #fff; }
 .wb-scard__badge--cash { background: #7c3aed; color: #fff; }
+/* Ресейл (товар от частного лица) — мятный, чтобы сразу видеть: это не наш
+   конкурент, карточку не собираем. */
+.wb-scard__badge--resale { background: #8bf7d0; color: #063d2c; }
 
 .wb-scard__body { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 4px; }
 

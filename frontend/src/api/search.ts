@@ -36,9 +36,9 @@ export const wbSearchApi = {
     const { data } = await api.get('/api/wb-search/phrase', { params })
     return data
   },
-  async trend(phraseText: string, dateFrom: string, dateTo: string, page = 1): Promise<any> {
+  async trend(phraseText: string, dateFrom: string, dateTo: string, page = 1, pageSize = 50): Promise<any> {
     const { data } = await api.get('/api/wb-search/trend', {
-      params: { phrase_text: phraseText || undefined, date_from: dateFrom, date_to: dateTo, page },
+      params: { phrase_text: phraseText || undefined, date_from: dateFrom, date_to: dateTo, page, page_size: pageSize },
     })
     return data
   },
@@ -59,6 +59,8 @@ export const wbSearchApi = {
       category?: string
       page?: number
       pageSize?: number
+      /** Порядок строк: orders (по умолчанию) / freq / cards / phrase. */
+      sort?: string
     } = {},
   ): Promise<any> {
     const { data } = await api.get('/api/wb-search/cannibalization', {
@@ -71,6 +73,7 @@ export const wbSearchApi = {
         category: opts.category || undefined,
         page: opts.page ?? 1,
         page_size: opts.pageSize ?? 50,
+        sort: opts.sort || undefined,
       },
     })
     return data

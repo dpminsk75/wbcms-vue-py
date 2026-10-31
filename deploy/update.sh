@@ -39,6 +39,7 @@ sudo cp "$DEPLOY"/wbcms-py.service "$DEPLOY"/wbcms-web.service \
   "$DEPLOY"/wbcms-finance-detail.service "$DEPLOY"/wbcms-finance-detail.timer \
   "$DEPLOY"/wbcms-price-sync.service "$DEPLOY"/wbcms-price-sync.timer \
   "$DEPLOY"/wbcms-aggregate.service "$DEPLOY"/wbcms-aggregate.timer \
+  "$DEPLOY"/wbcms-questions-sync.service "$DEPLOY"/wbcms-questions-sync.timer \
   /etc/systemd/system/
 
 if [ -f "$DEPLOY/wbcms-timers.sudoers" ]; then
@@ -58,7 +59,8 @@ sudo systemctl enable --now \
   wbcms-stocks-all.timer wbcms-paid-storage.timer wbcms-acceptance.timer \
   wbcms-fbs-all.timer wbcms-orders-sync.timer wbcms-sales-fetch.timer \
   wbcms-search-report.timer wbcms-fbs-supplies.timer \
-  wbcms-finance-detail.timer wbcms-price-sync.timer wbcms-aggregate.timer
+  wbcms-finance-detail.timer wbcms-price-sync.timer wbcms-aggregate.timer \
+  wbcms-questions-sync.timer
 systemctl list-timers 'wbcms-*' --no-pager
 
 echo "== 5. рестарт сервисов + health"

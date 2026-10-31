@@ -677,9 +677,11 @@ const compareRows = computed<CompareRow[]>(() => {
   return rows
 })
 
-/** Бейдж акции — подсветить скидку/распродажу, остальное нейтрально. */
+/** Бейдж акции — подсветить скидку/распродажу, остальное нейтрально.
+ *  «ресейл» (товар от частного лица) — мятный, как в карточке выдачи. */
 function badgeClass(b: string): string {
   const t = String(b).toLowerCase()
+  if (/ресейл|resale/.test(t)) return 'comp-details__badge--resale'
   if (/распродаж|скидк|−|-/.test(t)) return 'bg-danger'
   if (/хорошая цена|кешбэк|выгодн/.test(t)) return 'bg-success'
   return 'bg-light text-dark'
@@ -929,6 +931,11 @@ watch(
 .comp-details__attached-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .comp-details__section { border-top: 1px solid #eee; margin-top: 16px; padding-top: 12px; }
 .comp-details__badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+/* Ресейл (товар от частного лица) — мятный, как бейдж в карточке выдачи. */
+.comp-details__badge--resale {
+  background: #8bf7d0;
+  color: #063d2c;
+}
 .comp-details__section-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
 .comp-details__subtitle { font-size: 12px; font-weight: 600; color: #555; margin: 12px 0 6px; }
 .comp-details__stats { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: #555; margin-bottom: 8px; }
