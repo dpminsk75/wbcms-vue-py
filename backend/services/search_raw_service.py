@@ -29,11 +29,51 @@ from urllib.parse import parse_qs, urlparse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.services import capture_service
+from backend.services import capture_service, sql_bulk
 
 RAW_ROOT = pathlib.Path(__file__).resolve().parents[1] / "runtime" / "seo_search_raw"
 
 KINDS = ("catalog", "filters", "shelfs", "suggest")
+
+# Позиции выдачи из JSON-каталога WB — пакетная вставка (было по одному INSERT
+# на строку: до 1000 round-trip'ов в одной транзакции → долгие блокировки).
+_POSITION_COLUMNS = [
+    "company_id", "source_nm_id", "query_phrase", "position", "position_api",
+    "nm_id", "title", "brand", "brand_id", "subject_id", "root_id", "match_id",
+    "seller", "seller_id", "seller_rating", "price", "old_price", "price_api",
+    "old_price_api", "rating", "review_rating", "reviews", "feedbacks",
+    "feedback_points", "total_qty", "time1", "time2", "wh", "dist", "volume",
+    "weight", "pics", "is_new", "promo_id", "sale_conditions", "dtype_mask",
+    "semantic_id", "option_id", "mtype", "supplier_flags", "view_flags",
+    "created_by", "ext_token_id", "collected_at", "slice_stamp",
+]
+
+_POSITION_ODKU = """
+AS new
+ON DUPLICATE KEY UPDATE
+  position_api=new.position_api,
+  brand_id=new.brand_id, subject_id=new.subject_id, root_id=new.root_id,
+  match_id=new.match_id,
+  seller=IF(new.seller='', wb_competitor_position.seller, new.seller),
+  seller_id=new.seller_id, seller_rating=new.seller_rating,
+  price=IF(wb_competitor_position.price IS NULL OR wb_competitor_position.price=0,
+           new.price, wb_competitor_position.price),
+  old_price=IF(wb_competitor_position.old_price IS NULL OR wb_competitor_position.old_price=0,
+               new.old_price, wb_competitor_position.old_price),
+  price_api=new.price_api, old_price_api=new.old_price_api,
+  rating=IF(new.rating>0, new.rating, wb_competitor_position.rating),
+  review_rating=IF(new.review_rating>0, new.review_rating, wb_competitor_position.review_rating),
+  reviews=IF(new.reviews>0, new.reviews, wb_competitor_position.reviews),
+  feedbacks=IF(new.feedbacks>0, new.feedbacks, wb_competitor_position.feedbacks),
+  feedback_points=new.feedback_points, total_qty=new.total_qty,
+  time1=new.time1, time2=new.time2, wh=new.wh, dist=new.dist,
+  volume=new.volume, weight=new.weight, pics=new.pics,
+  is_new=new.is_new, promo_id=new.promo_id,
+  sale_conditions=new.sale_conditions, dtype_mask=new.dtype_mask,
+  semantic_id=new.semantic_id, option_id=new.option_id,
+  mtype=new.mtype, supplier_flags=new.supplier_flags,
+  view_flags=new.view_flags
+"""
 
 # Буквы, которые оставляем в имени файла: латиница, цифры, кириллица, дефис.
 _SLUG_RE = re.compile(r"[^0-9a-zA-Zа-яА-ЯёЁ]+")
@@ -430,11 +470,13 @@ async def _enrich_positions(
     # (DOM-запись раньше/позже сырого каталога) не должен влиять.
     if stamp:
         try:
+            # Равенство по колонке (без LEFT()) — иначе индекс по фразе не
+            # используется и запрос перебирает строки компании (см. idx_position_slice).
             ex_rows = (await db.execute(text(
                 "SELECT DISTINCT source_nm_id FROM wb_competitor_position "
                 "WHERE company_id=:cid AND slice_stamp=:st "
-                "AND LEFT(query_phrase,200)=LEFT(:ph,200)"
-            ), {"cid": cid, "st": stamp, "ph": _norm_phrase(phrase)})).scalars().all()
+                "AND query_phrase=:ph"
+            ), {"cid": cid, "st": stamp, "ph": _norm_phrase(phrase)[:500]})).scalars().all()
             sources = sorted(set(sources) | {int(x) for x in ex_rows if x})
         except Exception:
             pass
@@ -495,71 +537,39 @@ async def _enrich_positions(
         })
 
     saved = 0
+    # Пишем пачками: по одному INSERT на строку это до 1000 round-trip'ов в одной
+    # транзакции (долгие блокировки → deadlock 1213/1205 с DOM-писателем).
+    day_value = day if day else sql_bulk.Raw("CURDATE()")
     for src in sources:
+        payload = []
         for r in rows:
-            await db.execute(text("""
-                INSERT INTO wb_competitor_position
-                  (company_id, source_nm_id, query_phrase, position, position_api, nm_id, title, brand,
-                   brand_id, subject_id, root_id, match_id, seller, seller_id, seller_rating,
-                   price, old_price, price_api, old_price_api, rating, review_rating, reviews, feedbacks, feedback_points, total_qty,
-                   time1, time2, wh, dist, volume, weight, pics, is_new, promo_id, sale_conditions,
-                   dtype_mask, semantic_id, option_id, mtype, supplier_flags, view_flags,
-                   created_by, ext_token_id, collected_at, slice_stamp)
-                VALUES (:cid, :src, :ph, :pos, :pos_api, :nm, :t, :b,
-                        :brand_id, :subject_id, :root_id, :match_id, :seller, :seller_id, :seller_rating,
-                        :price, :old_price, :price_api, :old_price_api,
-                        :rating, :review_rating, :reviews, :feedbacks,
-                        :feedback_points, :total_qty,
-                        :time1, :time2, :wh, :dist, :volume, :weight, :pics, :is_new, :promo_id,
-                        :sale_conditions, :dtype_mask, :semantic_id, :option_id,
-                        :mtype, :supplier_flags, :view_flags,
-                        :uid, :tok, COALESCE(:day, CURDATE()), :slice_stamp) AS new
-                ON DUPLICATE KEY UPDATE
-                  position_api=new.position_api,
-                  brand_id=new.brand_id, subject_id=new.subject_id, root_id=new.root_id,
-                  match_id=new.match_id,
-                  seller=IF(new.seller='', wb_competitor_position.seller, new.seller),
-                  seller_id=new.seller_id, seller_rating=new.seller_rating,
-                  price=IF(wb_competitor_position.price IS NULL OR wb_competitor_position.price=0,
-                           new.price, wb_competitor_position.price),
-                  old_price=IF(wb_competitor_position.old_price IS NULL OR wb_competitor_position.old_price=0,
-                               new.old_price, wb_competitor_position.old_price),
-                  price_api=new.price_api, old_price_api=new.old_price_api,
-                  rating=IF(new.rating>0, new.rating, wb_competitor_position.rating),
-                  review_rating=IF(new.review_rating>0, new.review_rating, wb_competitor_position.review_rating),
-                  reviews=IF(new.reviews>0, new.reviews, wb_competitor_position.reviews),
-                  feedbacks=IF(new.feedbacks>0, new.feedbacks, wb_competitor_position.feedbacks),
-                  feedback_points=new.feedback_points, total_qty=new.total_qty,
-                  time1=new.time1, time2=new.time2, wh=new.wh, dist=new.dist,
-                  volume=new.volume, weight=new.weight, pics=new.pics,
-                  is_new=new.is_new, promo_id=new.promo_id,
-                  sale_conditions=new.sale_conditions, dtype_mask=new.dtype_mask,
-                  semantic_id=new.semantic_id, option_id=new.option_id,
-                  mtype=new.mtype, supplier_flags=new.supplier_flags,
-                  view_flags=new.view_flags
-            """), {
-                "cid": cid, "src": src, "ph": _norm_phrase(phrase)[:500],
-                "pos": r["position_api"], "pos_api": r["position_api"],
-                "nm": r["nm_id"], "t": r["title"], "b": r["brand"],
-                "brand_id": r["brand_id"], "subject_id": r["subject_id"], "root_id": r["root_id"],
-                "match_id": r["match_id"], "seller": r["seller"], "seller_id": r["seller_id"],
+            payload.append({
+                "company_id": cid, "source_nm_id": int(src),
+                "query_phrase": _norm_phrase(phrase)[:500],
+                "position": r["position_api"], "position_api": r["position_api"],
+                "nm_id": r["nm_id"], "title": r["title"], "brand": r["brand"],
+                "brand_id": r["brand_id"], "subject_id": r["subject_id"],
+                "root_id": r["root_id"], "match_id": r["match_id"],
+                "seller": r["seller"], "seller_id": r["seller_id"],
                 "seller_rating": r["seller_rating"],
                 # price/old_price — цена из WB-каталога; если DOM уже записал свою,
                 # не перетираем (см. ON DUPLICATE KEY UPDATE)
                 "price": r["price_api"], "old_price": r["old_price_api"],
-                "price_api": r["price_api"],
-                "old_price_api": r["old_price_api"], "rating": r["rating"],
-                "review_rating": r["review_rating"],
+                "price_api": r["price_api"], "old_price_api": r["old_price_api"],
+                "rating": r["rating"], "review_rating": r["review_rating"],
                 "reviews": r["reviews"], "feedbacks": r["feedbacks"],
-                "feedback_points": r["feedback_points"],
-                "total_qty": r["total_qty"], "time1": r["time1"], "time2": r["time2"], "wh": r["wh"],
-                "dist": r["dist"], "volume": r["volume"], "weight": r["weight"], "pics": r["pics"],
-                "is_new": r["is_new"], "promo_id": r["promo_id"], "sale_conditions": r["sale_conditions"],
-                "dtype_mask": r["dtype_mask"], "semantic_id": r["semantic_id"], "option_id": r["option_id"],
-                "mtype": r["mtype"], "supplier_flags": r["supplier_flags"], "view_flags": r["view_flags"],
-                "uid": uid, "tok": tok, "day": day, "slice_stamp": stamp[:20],
+                "feedback_points": r["feedback_points"], "total_qty": r["total_qty"],
+                "time1": r["time1"], "time2": r["time2"], "wh": r["wh"],
+                "dist": r["dist"], "volume": r["volume"], "weight": r["weight"],
+                "pics": r["pics"], "is_new": r["is_new"], "promo_id": r["promo_id"],
+                "sale_conditions": r["sale_conditions"], "dtype_mask": r["dtype_mask"],
+                "semantic_id": r["semantic_id"], "option_id": r["option_id"],
+                "mtype": r["mtype"], "supplier_flags": r["supplier_flags"],
+                "view_flags": r["view_flags"], "created_by": uid, "ext_token_id": tok,
+                "collected_at": day_value, "slice_stamp": stamp[:20],
             })
-            saved += 1
+        saved += await sql_bulk.exec_bulk_insert(
+            db, "wb_competitor_position", _POSITION_COLUMNS, payload, suffix=_POSITION_ODKU)
     return saved
 
 

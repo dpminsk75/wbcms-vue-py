@@ -32,7 +32,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
 from backend.deps import get_current_company, get_current_user, require_ext_token, require_seo
-from backend.services import ext_service, capture_service, shelves_service, search_raw_service
+from backend.services import (ext_service, capture_service, shelves_service,
+                              search_raw_service, queue_service, sql_bulk)
 
 router = APIRouter(prefix="/api/ext", tags=["ext"])
 admin_router = APIRouter(prefix="/api/companies/{company_id}/ext-tokens", tags=["ext-tokens"])
@@ -45,6 +46,126 @@ OWNED_CARDS = "SELECT nmID FROM wbcards WHERE company_id=:cid"
 # Позиции выдачи, которые становятся нашими конкурентами (wb_competitor_cards).
 # Всё, что ниже, пишется только в wb_competitor_position (наблюдение выдачи).
 TOP_COMPETITORS = 20
+
+
+def _in_params(prefix: str, values: list) -> tuple[str, dict]:
+    """Плейсхолдеры IN (:p0, :p1, ...) + словарь параметров."""
+    vals = list(values)
+    ph = ",".join(f":{prefix}{i}" for i in range(len(vals)))
+    params = {f"{prefix}{i}": v for i, v in enumerate(vals)}
+    return ph, params
+
+
+# ---------------------------------------------------------------------------
+# Пакетная запись выдачи (было: по одному INSERT на строку — сотни await'ов
+# в одной транзакции → длинные блокировки и deadlock'и 1213/1205)
+# ---------------------------------------------------------------------------
+
+_POSITION_COLUMNS = [
+    "company_id", "source_nm_id", "query_phrase", "position", "nm_id", "title",
+    "brand", "seller", "price", "old_price", "rating", "feedbacks", "reviews",
+    "badges", "promo_id", "image_url", "sold_out", "is_resale", "created_by",
+    "ext_token_id", "collected_at", "slice_stamp",
+]
+
+# ODKU: новое значение — из алиаса строки (`new`), старое — с префиксом таблицы
+# (иначе MySQL: 1052 «ambiguous», см. AGENTS.md).
+_POSITION_ODKU = """
+AS new
+ON DUPLICATE KEY UPDATE
+  position=new.position, title=new.title, brand=new.brand,
+  seller=IF(new.seller='', wb_competitor_position.seller, new.seller),
+  price=IF(new.sold_out=1, 0, IF(new.price>0, new.price, wb_competitor_position.price)),
+  old_price=IF(new.sold_out=1, 0, IF(new.old_price>0, new.old_price, wb_competitor_position.old_price)),
+  rating=IF(new.rating>0, new.rating, wb_competitor_position.rating),
+  feedbacks=IF(new.feedbacks>0, new.feedbacks, wb_competitor_position.feedbacks),
+  reviews=IF(new.reviews>0, new.reviews, wb_competitor_position.reviews),
+  badges=IF(new.badges='[]', wb_competitor_position.badges, new.badges),
+  promo_id=new.promo_id,
+  image_url=IF(new.image_url='', wb_competitor_position.image_url, new.image_url),
+  sold_out=new.sold_out,
+  is_resale=IF(new.is_resale=1, 1, wb_competitor_position.is_resale),
+  created_by=COALESCE(wb_competitor_position.created_by, new.created_by),
+  ext_token_id=COALESCE(wb_competitor_position.ext_token_id, new.ext_token_id)
+"""
+
+_CARD_COLUMNS = [
+    "source_nm_id", "query_phrase", "position", "nm_id", "title", "brand",
+    "seller", "price", "old_price", "rating", "feedbacks", "badges", "image_url",
+    "source", "added_by", "ext_token_id", "sold_out",
+]
+
+_CARD_ODKU = """
+AS new
+ON DUPLICATE KEY UPDATE
+  position=new.position, title=new.title, brand=new.brand,
+  seller=IF(new.seller='', wb_competitor_cards.seller, new.seller),
+  price=new.price, old_price=new.old_price, rating=new.rating,
+  feedbacks=new.feedbacks,
+  badges=IF(new.badges='[]', wb_competitor_cards.badges, new.badges),
+  image_url=IF(new.image_url='', wb_competitor_cards.image_url, new.image_url),
+  sold_out=new.sold_out,
+  added_by=COALESCE(wb_competitor_cards.added_by, new.added_by),
+  ext_token_id=COALESCE(wb_competitor_cards.ext_token_id, new.ext_token_id)
+"""
+
+_DETAIL_COLUMNS = [
+    "nm_id", "title", "brand", "seller", "price", "old_price", "rating",
+    "feedbacks", "badges", "images", "preview_image", "url", "sold_out",
+    "is_resale", "collected_at", "first_collected_at", "captured_company_id",
+    "captured_by",
+]
+
+_DETAIL_ODKU = """
+AS new
+ON DUPLICATE KEY UPDATE
+  title=IF(new.title IS NULL OR new.title='', wb_competitor_details.title, new.title),
+  brand=IF(new.brand IS NULL OR new.brand='', wb_competitor_details.brand, new.brand),
+  seller=IF(new.seller IS NULL OR new.seller='', wb_competitor_details.seller, new.seller),
+  price=IF(new.price IS NULL, wb_competitor_details.price, new.price),
+  old_price=IF(new.old_price IS NULL, wb_competitor_details.old_price, new.old_price),
+  rating=IF(new.rating IS NULL, wb_competitor_details.rating, new.rating),
+  feedbacks=IF(new.feedbacks IS NULL, wb_competitor_details.feedbacks, new.feedbacks),
+  badges=IF(new.badges='[]', wb_competitor_details.badges, new.badges),
+  preview_image=IF(new.preview_image IS NULL OR new.preview_image='',
+                    wb_competitor_details.preview_image, new.preview_image),
+  sold_out=new.sold_out,
+  is_resale=IF(new.is_resale=1, 1, wb_competitor_details.is_resale),
+  collected_at=NOW(),
+  first_collected_at=COALESCE(wb_competitor_details.first_collected_at, NOW()),
+  captured_company_id=COALESCE(wb_competitor_details.captured_company_id, new.captured_company_id),
+  captured_by=COALESCE(wb_competitor_details.captured_by, new.captured_by)
+"""
+
+
+async def _insert_positions(db: AsyncSession, rows_by_src: dict[int, list[dict]]) -> int:
+    """Позиции выдачи — пачками по источнику (source_nm_id)."""
+    total = 0
+    for src, rows in rows_by_src.items():
+        if not rows:
+            continue
+        total += await sql_bulk.exec_bulk_insert(
+            db, "wb_competitor_position", _POSITION_COLUMNS, rows, suffix=_POSITION_ODKU)
+    return total
+
+
+async def _insert_cards(db: AsyncSession, rows_by_src: dict[int, list[dict]]) -> int:
+    """Карточки конкурентов — пачками по источнику."""
+    total = 0
+    for src, rows in rows_by_src.items():
+        if not rows:
+            continue
+        total += await sql_bulk.exec_bulk_insert(
+            db, "wb_competitor_cards", _CARD_COLUMNS, rows, suffix=_CARD_ODKU)
+    return total
+
+
+async def _insert_details(db: AsyncSession, rows: list[dict]) -> int:
+    """Контент карточек из выдачи (цены/рейтинги/бейджи) — пачкой."""
+    if not rows:
+        return 0
+    return await sql_bulk.exec_bulk_insert(
+        db, "wb_competitor_details", _DETAIL_COLUMNS, rows, suffix=_DETAIL_ODKU)
 
 
 async def _owns_card(db: AsyncSession, cid: int, nm_id: int) -> bool:
@@ -72,7 +193,7 @@ async def _badge_history_write(db: AsyncSession, cid: int, nm_id: int,
             return
         last = (await db.execute(text("""
             SELECT badges FROM wb_card_badges_history
-            WHERE nm_id=:n AND (company_id=:c OR company_id=0)
+            WHERE nm_id=:n AND company_id IN (:c, 0)
             ORDER BY id DESC LIMIT 1
         """), {"n": nm_id, "c": cid})).first()
         if last:
@@ -190,36 +311,32 @@ async def ext_status(
     """
     cid = int(ext["company_id"])
     src = (source or "").strip().lower()
-    if src == "watch":
-        src_cond = "q.source='watch'"
-    else:
-        src_cond = "(q.source='' OR q.source IS NULL)"
+    # source — NOT NULL DEFAULT '' (миграция 20261035), поэтому «общая куча» это
+    # ровно source='': вариант «='' OR IS NULL» ломал бы индекс по source.
+    src_cond = "q.source='watch'" if src == "watch" else "q.source=''"
     # Исключённые из сбора не считаем: /next их всё равно не отдаст, а рассинхрон
     # счётчика и выдачи пугал («очередь пуста», а счётчик показывает pending).
     hidden_cond = ("NOT EXISTS (SELECT 1 FROM wb_competitor_capture cap"
                    " WHERE cap.nm_id=q.nm_id AND cap.company_id=:cid AND cap.is_hidden=1)")
+    params: dict = {"cid": cid}
+    cols = "q.status AS status, q.id AS id"
+    join = ""
     if nm_id:
         if not await _owns_card(db, cid, nm_id):
             raise HTTPException(status_code=403, detail="foreign source_nm_id")
-        rows = (await db.execute(text(f"""
-            SELECT q.status, COUNT(DISTINCT q.id) as cnt FROM wb_enrich_queue q
-            JOIN wb_competitor_cards c ON c.nm_id=q.nm_id AND c.source_nm_id=:nm
-            WHERE (q.company_id=:cid OR q.company_id IS NULL OR q.status='need_update')
-              AND q.nm_id > 0
-              AND {src_cond}
-              AND c.source_nm_id IN ({OWNED_CARDS.replace(':cid', ':cid2')})
-              AND {hidden_cond}
-            GROUP BY q.status
-        """), {"nm": nm_id, "cid": cid, "cid2": cid})).mappings().all()
-    else:
-        rows = (await db.execute(text(f"""
-            SELECT status, COUNT(*) as cnt FROM wb_enrich_queue q
-            WHERE (q.company_id=:cid OR q.company_id IS NULL OR q.status='need_update')
-              AND q.nm_id > 0
-              AND {src_cond}
-              AND {hidden_cond}
-            GROUP BY status
-        """), {"cid": cid})).mappings().all()
+        join = ("JOIN wb_competitor_cards c ON c.nm_id=q.nm_id AND c.source_nm_id=:nm"
+                f" AND c.source_nm_id IN ({OWNED_CARDS.replace(':cid', ':cid2')})")
+        params["nm"] = nm_id
+        params["cid2"] = cid
+    # Владелец строки — 3 ветки UNION ALL вместо OR: тот же набор строк,
+    # но каждая ветка берётся по индексу (был фулл-скан очереди на каждый
+    # опрос расширения — 72 с, БД вставал).
+    extra = f"q.nm_id > 0 AND {src_cond} AND {hidden_cond}"
+    rows = (await db.execute(text(f"""
+        SELECT t.status, COUNT(DISTINCT t.id) AS cnt
+        FROM {queue_service.enrich_owner_union(cols, extra_where=extra, join=join)} t
+        GROUP BY t.status
+    """), params)).mappings().all()
     counts = {r["status"]: r["cnt"] for r in rows}
     return {"total": sum(counts.values()), **counts}
 
@@ -303,13 +420,23 @@ async def ext_next(
     # claimed_at=NULL = claim до миграции/старым кодом — тоже считается зависшим.
     # Скоуп — только свой company_id: чужие строки поднимает тот, кто их клал.
     # need_update не трогаем — это флаг «контент устарел», его отдаём как есть.
-    await db.execute(text("""
-        UPDATE wb_enrich_queue SET status='pending', claimed_at=NULL
-        WHERE status='processing'
-          AND company_id=:cid
+    #
+    # Расширение поллит /next каждые 0.5-2 с: безусловный UPDATE+commit на каждом
+    # тике — лишние записи в binlog и блокировки строк. Поэтому сначала дешёвый
+    # SELECT (индекс company_id,status) и UPDATE только если есть что сбрасывать.
+    stale = (await db.execute(text("""
+        SELECT id FROM wb_enrich_queue
+        WHERE status='processing' AND company_id=:cid
           AND (claimed_at IS NULL OR claimed_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE))
-    """), {"cid": cid})
-    await db.commit()
+        LIMIT 20
+    """), {"cid": cid})).scalars().all()
+    if stale:
+        stale_ph, stale_params = _in_params("sq", list(stale))
+        await db.execute(text(f"""
+            UPDATE wb_enrich_queue SET status='pending', claimed_at=NULL
+            WHERE id IN ({stale_ph}) AND status='processing'
+        """), stale_params)
+        await db.commit()
     # Сюда же нулевые артикулы не отдаём: строку с nm_id=0 расширение трактует
     # как «nm_is falsy» → «очередь пуста», а на деле — битая строка (баг 26.10).
     if mode == "new":
@@ -685,6 +812,14 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
     # запрос = две фразы в БД и в отчёте.
     phrase = capture_service._norm_phrase(data.get("phrase"))[:500]
     products = data.get("products") or []
+    if not phrase or not products:
+        # 400 — чтобы в журнале сервера было видно, что расширение прислало пустую выдачу.
+        # Проверка ДО запросов в БД: поллер дёргает канал часто, лишний SELECT среза
+        # по пустому payload — чистые потери.
+        raise HTTPException(
+            status_code=400,
+            detail=f"empty observation: phrase={phrase!r} products={len(products)}",
+        )
     # Метка захода в поиск: расширение присылает search_stamp (один на все каналы
     # одного поиска). Если её нет — берём последний срез по этой фразе (заход был
     # минуту назад, JSON-каталог уже записался).
@@ -702,12 +837,6 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
             slice_stamp = ""
     # Не плодим срезы: заход в течение часа перезаписывает последний срез по фразе
     slice_stamp = await capture_service.resolve_slice_stamp(db, cid, phrase, slice_stamp)
-    if not phrase or not products:
-        # 400 — чтобы в журнале сервера было видно, что расширение прислало пустую выдачу
-        raise HTTPException(
-            status_code=400,
-            detail=f"empty observation: phrase={phrase!r} products={len(products)}",
-        )
 
     # наши карточки среди выдачи (определяем на сервере — расширение о компании не знает)
     ids = [int(p.get("id")) for p in products[:200] if p.get("id")]
@@ -728,13 +857,23 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
         top_pids.append(int(pid))
     excluded = await capture_service.excluded_nms(db, cid, top_pids)
 
+    uid = ext.get("created_by")
+    tok = ext.get("id")
+    # Пишем пачками: позиции/карточки/контент по одной строке = сотни round-trip'ов
+    # в одной транзакции (долгие блокировки → deadlock 1213/1205 → ретрай всей пачки).
+    pos_rows: dict[int, list[dict]] = {int(s): [] for s in sources}
+    card_rows: dict[int, list[dict]] = {int(s): [] for s in sorted(our)}
+    detail_rows: list[dict] = []
+    captured_pids: list[int] = []
+    resale_pids: list[int] = []
     saved = 0
+
     for idx, p in enumerate(products[:200], 1):
         pid = p.get("id")
         if not pid:
             continue
         pos = int(p.get("position") or idx)
-        img = p.get("imageUrl") or p.get("photourl") or ""
+        img = str(p.get("imageUrl") or p.get("photourl") or "")
         if img.startswith("//"):
             img = "https:" + img
         price = capture_service._to_int(p.get("price", p.get("salePriceU", p.get("priceU", 0))))
@@ -755,41 +894,22 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
         if sold_out:
             price = 0
             old_price = 0
-        uid = ext.get("created_by")
-        tok = ext.get("id")
+        title = str(p.get("name") or "")
+        brand = str(p.get("brand") or "")
+        badges_json = json.dumps(badges, ensure_ascii=False)
 
+        pos_row = {
+            "company_id": cid, "source_nm_id": 0, "query_phrase": phrase,
+            "position": pos, "nm_id": int(pid), "title": title, "brand": brand,
+            "seller": seller, "price": price, "old_price": old_price,
+            "rating": rating, "feedbacks": fb, "reviews": reviews,
+            "badges": badges_json, "promo_id": promo_id, "image_url": img,
+            "sold_out": sold_out, "is_resale": is_resale, "created_by": uid,
+            "ext_token_id": tok, "collected_at": sql_bulk.Raw("CURDATE()"),
+            "slice_stamp": slice_stamp,
+        }
         for src in sources:
-            await db.execute(text("""
-                INSERT INTO wb_competitor_position
-                  (company_id, source_nm_id, query_phrase, position, nm_id, title, brand, seller,
-                   price, old_price, rating, feedbacks, reviews, badges, promo_id, image_url,
-                   sold_out, is_resale, created_by, ext_token_id, collected_at, slice_stamp)
-                VALUES (:cid, :s, :ph, :pos, :pid, :t, :b, :seller, :price, :old_price, :rating,
-                    :fb, :rev, :bg, :promo, :img, :so, :rs, :uid, :tok, CURDATE(), :slice_stamp)
-                AS new
-                ON DUPLICATE KEY UPDATE
-                  position=new.position, title=new.title, brand=new.brand,
-                  seller=IF(new.seller='', wb_competitor_position.seller, new.seller),
-                  price=IF(:so=1, 0, IF(new.price>0, new.price, wb_competitor_position.price)),
-                  old_price=IF(:so=1, 0, IF(new.old_price>0, new.old_price, wb_competitor_position.old_price)),
-                  rating=IF(new.rating>0, new.rating, wb_competitor_position.rating),
-                  feedbacks=IF(new.feedbacks>0, new.feedbacks, wb_competitor_position.feedbacks),
-                  reviews=IF(new.reviews>0, new.reviews, wb_competitor_position.reviews),
-                  badges=IF(new.badges='[]', wb_competitor_position.badges, new.badges),
-                  promo_id=new.promo_id,
-                  image_url=IF(:img='', wb_competitor_position.image_url, new.image_url),
-                  sold_out=new.sold_out,
-                  is_resale=IF(new.is_resale=1, 1, wb_competitor_position.is_resale),
-                  created_by=COALESCE(wb_competitor_position.created_by, new.created_by),
-                  ext_token_id=COALESCE(wb_competitor_position.ext_token_id, new.ext_token_id)
-            """), {"cid": cid, "s": src, "ph": phrase, "pos": pos, "pid": pid,
-                   "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
-                   "price": price, "old_price": old_price, "rating": rating,
-                   "fb": fb, "rev": reviews,
-                   "bg": json.dumps(badges, ensure_ascii=False),
-                   "promo": promo_id, "img": img, "so": sold_out, "rs": is_resale,
-                   "uid": uid, "tok": tok,
-                   "slice_stamp": slice_stamp})
+            pos_rows[int(src)].append({**pos_row, "source_nm_id": int(src)})
 
         # конкуренты нашей карточки — топ-N (позиции 1..N → wb_competitor_cards)
         if pos > TOP_COMPETITORS:
@@ -798,73 +918,48 @@ async def _observe_search_impl(payload: dict, db: AsyncSession, ext: dict):
         if int(pid) in excluded:
             continue
         if our:
+            card_row = {
+                "source_nm_id": 0, "query_phrase": phrase, "position": pos,
+                "nm_id": int(pid), "title": title, "brand": brand, "seller": seller,
+                "price": price, "old_price": old_price, "rating": rating,
+                "feedbacks": fb, "badges": badges_json, "image_url": img,
+                "source": "search", "added_by": uid, "ext_token_id": tok,
+                "sold_out": sold_out,
+            }
             for src in sorted(our):
-                await db.execute(text("""
-                    INSERT INTO wb_competitor_cards
-                      (source_nm_id, query_phrase, position, nm_id, title, brand, seller,
-                       price, old_price, rating, feedbacks, badges, image_url, source, added_by,
-                       ext_token_id, sold_out)
-                    VALUES (:s, :ph, :pos, :pid, :t, :b, :seller, :price, :old_price, :rating,
-                            :fb, :bg, :img, 'search', :uid, :tok, :so) AS new
-                    ON DUPLICATE KEY UPDATE
-                      position=new.position, title=new.title, brand=new.brand,
-                      seller=IF(new.seller='', wb_competitor_cards.seller, new.seller),
-                      price=new.price, old_price=new.old_price, rating=new.rating,
-                      feedbacks=new.feedbacks,
-                      badges=IF(new.badges='[]', wb_competitor_cards.badges, new.badges),
-                      image_url=IF(:img='', wb_competitor_cards.image_url, new.image_url),
-                      sold_out=new.sold_out,
-                      added_by=COALESCE(wb_competitor_cards.added_by, new.added_by),
-                      ext_token_id=COALESCE(wb_competitor_cards.ext_token_id, new.ext_token_id)
-                """), {"s": src, "ph": phrase, "pos": pos, "pid": pid,
-                       "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
-                       "price": price, "old_price": old_price, "rating": rating,
-                       "fb": fb, "bg": json.dumps(badges, ensure_ascii=False),
-                       "img": img, "uid": uid, "tok": tok, "so": sold_out})
+                card_rows[int(src)].append({**card_row, "source_nm_id": int(src)})
         # Контент карточки из выдачи: цена/рейтинг/бейджи + превью.
         # Галерею (`images`) пишет только сбор с карточки (/result, /capture) —
         # наблюдение выдачи её не трогает, иначе одно превью затирает весь массив.
-        await db.execute(text("""
-            INSERT INTO wb_competitor_details
-              (nm_id, title, brand, seller, price, old_price, rating, feedbacks, badges,
-               images, preview_image, url, sold_out, is_resale,
-               collected_at, first_collected_at, captured_company_id, captured_by)
-            VALUES (:n, :t, :b, :seller, :p, :o, :r, :fb, :bg,
-                    JSON_ARRAY(), NULLIF(:prev, ''), :u, :so, :rs,
-                    NOW(), NOW(), :cid, :uid)
-            AS new
-            ON DUPLICATE KEY UPDATE
-              title=IF(:t='', wb_competitor_details.title, :t),
-              brand=IF(:b='', wb_competitor_details.brand, :b),
-              seller=IF(:seller='', wb_competitor_details.seller, :seller),
-              price=IF(:p IS NULL, wb_competitor_details.price, :p),
-              old_price=IF(:o IS NULL, wb_competitor_details.old_price, :o),
-              rating=IF(:r IS NULL, wb_competitor_details.rating, :r),
-              feedbacks=IF(:fb IS NULL, wb_competitor_details.feedbacks, :fb),
-              badges=IF(:bg='[]', wb_competitor_details.badges, :bg),
-              preview_image=IF(:prev='', wb_competitor_details.preview_image, :prev),
-              sold_out=:so,
-              is_resale=IF(new.is_resale=1, 1, wb_competitor_details.is_resale),
-              collected_at=NOW(),
-              first_collected_at=COALESCE(wb_competitor_details.first_collected_at, NOW()),
-              captured_company_id=COALESCE(wb_competitor_details.captured_company_id, :cid),
-              captured_by=COALESCE(wb_competitor_details.captured_by, :uid)
-        """), {"n": pid, "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
-               "p": price, "o": old_price, "r": rating, "fb": fb, "so": sold_out,
-               "rs": is_resale,
-               "bg": json.dumps(badges, ensure_ascii=False),
-               "prev": str(img or "")[:1000],
-               "u": f"https://www.wildberries.ru/catalog/{pid}/detail.aspx",
-               "cid": cid, "uid": ext.get("created_by")})
+        detail_rows.append({
+            "nm_id": int(pid), "title": title, "brand": brand, "seller": seller,
+            "price": price, "old_price": old_price, "rating": rating,
+            "feedbacks": fb, "badges": badges_json,
+            "images": sql_bulk.Raw("JSON_ARRAY()"),
+            "preview_image": (str(img or "")[:1000] or None),
+            "url": f"https://www.wildberries.ru/catalog/{pid}/detail.aspx",
+            "sold_out": sold_out, "is_resale": is_resale,
+            "collected_at": sql_bulk.Raw("NOW()"),
+            "first_collected_at": sql_bulk.Raw("NOW()"),
+            "captured_company_id": cid, "captured_by": uid,
+        })
         # видимость: конкурента мы «собрали» (позиция, цена, акции) — он попадает
         # в «Собранные карточки» и в попап; описание доберёт очередь.
-        # Единственная точка записи в реестр — capture_service.register_capture().
-        await capture_service.register_capture(db, cid, int(pid), ext.get("created_by"))
+        # Единственная точка записи в реестр — capture_service.register_capture*().
+        captured_pids.append(int(pid))
         if is_resale:
-            # Ресейл — не наш конкурент: исключаем из сбора (и из разбора фраз).
-            # Снимается только явной кнопкой «Вернуть» на сайте.
-            await capture_service.set_hidden(db, cid, int(pid), True, ext.get("created_by"))
+            resale_pids.append(int(pid))
         saved += 1
+
+    await _insert_positions(db, pos_rows)
+    await _insert_cards(db, card_rows)
+    await _insert_details(db, detail_rows)
+    if captured_pids:
+        await capture_service.register_capture_many(db, cid, captured_pids, uid)
+    for pid in resale_pids:
+        # Ресейл — не наш конкурент: исключаем из сбора (и из разбора фраз).
+        # Снимается только явной кнопкой «Вернуть» на сайте.
+        await capture_service.set_hidden(db, cid, pid, True, uid)
 
     await db.commit()
     return {"ok": True, "saved": saved, "positions": len(products),
@@ -922,18 +1017,17 @@ async def ext_search_status(
     async def _report_counts() -> dict:
         if not nm_id:
             return {"total": 0, "pending": 0, "done": 0}
-        phrases = (await db.execute(text("""
-            SELECT phrase FROM wb_sr_report_item_phrases WHERE nmID=:n AND orders>0 GROUP BY phrase
-        """), {"n": nm_id})).mappings().all()
+        phrases = [str(x["phrase"]) for x in (await db.execute(text("""
+            SELECT phrase FROM wb_sr_report_item_phrases
+            WHERE nmID=:n AND orders>0
+            GROUP BY phrase ORDER BY SUM(orders) DESC LIMIT 20
+        """), {"n": nm_id})).mappings().all()]
+        # Проверка «фраза уже собрана» — ОДИН запрос на все фразы (было N+1:
+        # до 20 отдельных SELECT на каждый опрос расширения).
+        hits = await _report_phrase_hits(db, int(nm_id), phrases)
         pending, done = 0, 0
-        for r in [x["phrase"] for x in phrases[:20]]:
-            # фраза в отчёте может быть с дефисами/подчёркиваниями — маркер «(empty)»
-            # пишется нормализованной (:np), проверяем оба варианта
-            hit = (await db.execute(text("""
-                SELECT 1 FROM wb_competitor_cards
-                WHERE source_nm_id=:n AND (query_phrase=:p OR query_phrase=:np) LIMIT 1
-            """), {"n": nm_id, "p": r, "np": capture_service._norm_phrase(r)})).first()
-            if hit:
+        for r in phrases:
+            if r in hits or capture_service._norm_phrase(r) in hits:
                 done += 1
             else:
                 pending += 1
@@ -972,9 +1066,30 @@ async def ext_search_status(
     return {"total": sum(rows.values()), **rows}
 
 
+async def _report_phrase_hits(db: AsyncSession, nm_id: int, phrases: list[str]) -> set[str]:
+    """Фразы отчёта, по которым уже есть запись в wb_competitor_cards — одним запросом.
+
+    В отчёте фраза может быть с дефисами/подчёркиваниями, а в cards пишется
+    нормализованная — проверяем оба варианта (маркер «(empty)» тоже нормализованный).
+    """
+    variants: list[str] = []
+    for r in phrases or []:
+        for v in (str(r), capture_service._norm_phrase(r)):
+            if v and v not in variants:
+                variants.append(v)
+    if not variants:
+        return set()
+    ph, params = _in_params("rp", variants)
+    rows = (await db.execute(text(
+        f"SELECT DISTINCT query_phrase FROM wb_competitor_cards "
+        f"WHERE source_nm_id=:n AND query_phrase IN ({ph})"
+    ), {**params, "n": int(nm_id)})).scalars().all()
+    return {str(x) for x in rows}
+
+
 async def _next_report_phrase(db: AsyncSession, nm_id: int) -> dict | None:
     """Следующая фраза из отчёта, которой ещё нет в cards. LIMIT 20 как в main.py парсера."""
-    phrases = (await db.execute(text("""
+    rows = (await db.execute(text("""
         SELECT phrase, MAX(orders) as orders
         FROM wb_sr_report_item_phrases
         WHERE nmID=:n AND orders>0
@@ -982,14 +1097,13 @@ async def _next_report_phrase(db: AsyncSession, nm_id: int) -> dict | None:
         ORDER BY SUM(orders) DESC
         LIMIT 20
     """), {"n": nm_id})).mappings().all()
+    phrases = [str(r["phrase"]) for r in rows]
+    hits = await _report_phrase_hits(db, int(nm_id), phrases)
     for r in phrases:
         # маркер «(empty)» пишется нормализованной фразой — проверяем оба варианта
-        hit = (await db.execute(text("""
-            SELECT 1 FROM wb_competitor_cards
-            WHERE source_nm_id=:n AND (query_phrase=:p OR query_phrase=:np) LIMIT 1
-        """), {"n": nm_id, "p": r["phrase"], "np": capture_service._norm_phrase(r["phrase"])})).first()
-        if not hit:
-            return {"queue_id": None, "nm_id": int(nm_id), "phrase": r["phrase"]}
+        if r in hits or capture_service._norm_phrase(r) in hits:
+            continue
+        return {"queue_id": None, "nm_id": int(nm_id), "phrase": r}
     return None
 
 
@@ -1009,13 +1123,22 @@ async def ext_search_next(
         if nm_id:
             where += " AND source_nm_id=:n"
             params["n"] = nm_id
-        # расширение могли закрыть в середине поиска — снимаем зависший processing
-        await db.execute(text(f"""
-            UPDATE wb_competitor_query SET status='pending'
+        # расширение могли закрыть в середине поиска — снимаем зависший processing.
+        # Поллинг идёт каждые 0.5-2 с: сначала дешёвый SELECT, UPDATE — только если
+        # есть что сбрасывать (иначе пустая запись на каждом тике).
+        stale = (await db.execute(text(f"""
+            SELECT id FROM wb_competitor_query
             WHERE {where} AND status='processing'
               AND updated_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE)
-        """), params)
-        await db.commit()
+            LIMIT 20
+        """), params)).scalars().all()
+        if stale:
+            stale_ph, stale_params = _in_params("cq", list(stale))
+            await db.execute(text(f"""
+                UPDATE wb_competitor_query SET status='pending'
+                WHERE id IN ({stale_ph}) AND status='processing'
+            """), stale_params)
+            await db.commit()
         row = (await db.execute(text(f"""
             SELECT id, source_nm_id, phrase FROM wb_competitor_query
             WHERE {where} AND status='pending'
@@ -1032,12 +1155,19 @@ async def ext_search_next(
         return {"nm_id": None}
     if source == "phrases":
         # Очередь фраз на пересборку выдачи (из отчёта «Выдача WB»).
-        await db.execute(text("""
-            UPDATE wb_search_phrase_queue SET status='pending', updated_at=NOW()
+        stale = (await db.execute(text("""
+            SELECT id FROM wb_search_phrase_queue
             WHERE company_id=:c AND status='processing'
               AND updated_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE)
-        """), {"c": cid})
-        await db.commit()
+            LIMIT 20
+        """), {"c": cid})).scalars().all()
+        if stale:
+            stale_ph, stale_params = _in_params("pq", list(stale))
+            await db.execute(text(f"""
+                UPDATE wb_search_phrase_queue SET status='pending', updated_at=NOW()
+                WHERE id IN ({stale_ph}) AND status='processing'
+            """), stale_params)
+            await db.commit()
         row = (await db.execute(text("""
             SELECT id, source_nm_id, query_phrase FROM wb_search_phrase_queue
             WHERE company_id=:c AND status='pending'
@@ -1058,21 +1188,30 @@ async def ext_search_next(
         # зависший processing: расширение могло закрыться посреди поиска —
         # снимаем в pending (тот же 30-минутный reset, что у compquery).
         # updated_at при claim проставляется явно (см. ниже) — по нему и сверяем.
+        # Как и в /next: сначала SELECT, UPDATE — только если есть что сбрасывать.
         if nm_id:
-            await db.execute(text(f"""
-                UPDATE wb_seo_target SET status='pending', updated_at=NOW()
+            stale = (await db.execute(text(f"""
+                SELECT id FROM wb_seo_target
                 WHERE status='processing' AND nmID=:n
                   AND nmID IN ({OWNED_CARDS.replace(':cid', ':c2')})
                   AND updated_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE)
-            """), {"n": nm_id, "c2": cid})
+                LIMIT 20
+            """), {"n": nm_id, "c2": cid})).scalars().all()
         else:
-            await db.execute(text(f"""
-                UPDATE wb_seo_target SET status='pending', updated_at=NOW()
+            stale = (await db.execute(text(f"""
+                SELECT id FROM wb_seo_target
                 WHERE status='processing'
                   AND nmID IN ({OWNED_CARDS.replace(':cid', ':c2')})
                   AND updated_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE)
-            """), {"c2": cid})
-        await db.commit()
+                LIMIT 20
+            """), {"c2": cid})).scalars().all()
+        if stale:
+            stale_ph, stale_params = _in_params("st", list(stale))
+            await db.execute(text(f"""
+                UPDATE wb_seo_target SET status='pending', updated_at=NOW()
+                WHERE id IN ({stale_ph}) AND status='processing'
+            """), stale_params)
+            await db.commit()
         if nm_id:
             row = (await db.execute(text(f"""
                 SELECT id, nmID, phrase FROM wb_seo_target
@@ -1154,13 +1293,18 @@ async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
     # распадались на два набора записей с разными source_nm_id.
     pids = [int(p.get("id") or 0) for p in products if p.get("id")]
     sources = await search_raw_service.position_sources(db, cid, pids, extra_nm=nm_id)
+    # Пишем пачками (позиции/карточки) — по одному INSERT на строку это сотни
+    # round-trip'ов в одной транзакции: долгие блокировки → deadlock 1213/1205.
+    pos_rows: dict[int, list[dict]] = {int(s): [] for s in sources}
+    card_rows: dict[int, list[dict]] = {}
+    resale_pids: list[int] = []
     for idx, p in enumerate(products, 1):
         pid = p.get("id")
         if not pid:
             continue
         pos = int(p.get("position") or idx)
-        img = p.get("imageUrl", p.get("photourl", ""))
-        if img and img.startswith("//"):
+        img = str(p.get("imageUrl") or p.get("photourl") or "")
+        if img.startswith("//"):
             img = "https:" + img
         price = capture_service._to_int(p.get("price", p.get("salePriceU", p.get("priceU", 0))))
         old_price = capture_service._to_int(p.get("old_price"))
@@ -1178,69 +1322,44 @@ async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
         if sold_out:
             price = 0
             old_price = 0
+        title = str(p.get("name") or "")
+        brand = str(p.get("brand") or "")
+        badges_json = json.dumps(badges, ensure_ascii=False)
         # Позиции выдачи — дневные срезы (все позиции, хвост не теряем).
         # По каждому источнику — своя строка (uq_position_company_date).
+        pos_row = {
+            "company_id": cid, "source_nm_id": 0, "query_phrase": phrase,
+            "position": pos, "nm_id": int(pid), "title": title, "brand": brand,
+            "seller": seller, "price": price, "old_price": old_price,
+            "rating": rating, "feedbacks": fb, "reviews": reviews,
+            "badges": badges_json, "promo_id": promo_id, "image_url": img,
+            "sold_out": sold_out, "is_resale": is_resale, "created_by": uid,
+            "ext_token_id": tok, "collected_at": sql_bulk.Raw("CURDATE()"),
+            "slice_stamp": slice_stamp,
+        }
         for src in sources:
-            await db.execute(text("""
-                INSERT INTO wb_competitor_position
-                  (company_id, source_nm_id, query_phrase, position, nm_id, title, brand, seller,
-                   price, old_price, rating, feedbacks, reviews, badges, promo_id, image_url,
-                   sold_out, is_resale, created_by, ext_token_id, collected_at, slice_stamp)
-                VALUES (:cid, :s, :ph, :pos, :pid, :t, :b, :seller, :price, :old_price, :rating,
-                        :fb, :rev, :bg, :promo, :img, :so, :rs, :uid, :tok, CURDATE(), :slice_stamp)
-                AS new
-                ON DUPLICATE KEY UPDATE
-                  position=new.position, title=new.title, brand=new.brand,
-                  seller=IF(new.seller='', wb_competitor_position.seller, new.seller),
-                  price=IF(:so=1, 0, IF(new.price>0, new.price, wb_competitor_position.price)),
-                  old_price=IF(:so=1, 0, IF(new.old_price>0, new.old_price, wb_competitor_position.old_price)),
-                  rating=IF(new.rating>0, new.rating, wb_competitor_position.rating),
-                  feedbacks=IF(new.feedbacks>0, new.feedbacks, wb_competitor_position.feedbacks),
-                  reviews=IF(new.reviews>0, new.reviews, wb_competitor_position.reviews),
-                  badges=IF(new.badges='[]', wb_competitor_position.badges, new.badges),
-                  promo_id=new.promo_id,
-                  image_url=IF(:img='', wb_competitor_position.image_url, new.image_url),
-                  sold_out=new.sold_out,
-                  is_resale=IF(new.is_resale=1, 1, wb_competitor_position.is_resale),
-                  created_by=COALESCE(wb_competitor_position.created_by, new.created_by),
-                  ext_token_id=COALESCE(wb_competitor_position.ext_token_id, new.ext_token_id)
-            """), {"cid": cid, "s": src, "ph": phrase, "pos": pos, "pid": pid,
-                   "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
-                   "price": price, "old_price": old_price, "rating": rating, "fb": fb, "rev": reviews,
-                   "bg": json.dumps(badges, ensure_ascii=False),
-                   "promo": promo_id, "img": img, "so": sold_out, "rs": is_resale,
-                   "uid": uid, "tok": tok, "slice_stamp": slice_stamp})
+            pos_rows[int(src)].append({**pos_row, "source_nm_id": int(src)})
         # Конкуренты нашей карточки — топ-N (позиции 1..N → wb_competitor_cards)
         if pos > TOP_COMPETITORS:
             continue
         if not nm_id:
             # фраза без привязки к нашей карточке: позиции пишем, конкурентов — некуда
             continue
-        await db.execute(text("""
-            INSERT INTO wb_competitor_cards
-              (source_nm_id, query_phrase, position, nm_id, title, brand, seller,
-               price, old_price, rating, feedbacks, badges, image_url, source, added_by,
-               ext_token_id, sold_out)
-            VALUES (:s, :ph, :pos, :pid, :t, :b, :seller, :price, :old_price, :rating,
-                    :fb, :bg, :img, 'search', :uid, :tok, :so) AS new
-            ON DUPLICATE KEY UPDATE
-              position=new.position, title=new.title, brand=new.brand,
-              seller=IF(new.seller='', wb_competitor_cards.seller, new.seller),
-              price=new.price, old_price=new.old_price, rating=new.rating,
-              feedbacks=new.feedbacks,
-              badges=IF(new.badges='[]', wb_competitor_cards.badges, new.badges),
-              image_url=IF(:img='', wb_competitor_cards.image_url, new.image_url),
-              sold_out=new.sold_out,
-              added_by=COALESCE(wb_competitor_cards.added_by, new.added_by),
-              ext_token_id=COALESCE(wb_competitor_cards.ext_token_id, new.ext_token_id)
-        """), {"s": nm_id, "ph": phrase, "pos": pos, "pid": pid,
-               "t": p.get("name", ""), "b": p.get("brand", ""), "seller": seller,
-               "price": price, "old_price": old_price, "rating": rating, "fb": fb,
-               "bg": json.dumps(badges, ensure_ascii=False),
-               "img": img, "uid": uid, "tok": tok, "so": sold_out})
+        card_rows.setdefault(int(nm_id), []).append({
+            "source_nm_id": int(nm_id), "query_phrase": phrase, "position": pos,
+            "nm_id": int(pid), "title": title, "brand": brand, "seller": seller,
+            "price": price, "old_price": old_price, "rating": rating,
+            "feedbacks": fb, "badges": badges_json, "image_url": img,
+            "source": "search", "added_by": uid, "ext_token_id": tok,
+            "sold_out": sold_out,
+        })
         if is_resale:
-            # Ресейл — не наш конкурент: исключаем из сбора (и из разбора фраз).
-            await capture_service.set_hidden(db, cid, int(pid), True, ext.get("created_by"))
+            resale_pids.append(int(pid))
+    await _insert_positions(db, pos_rows)
+    await _insert_cards(db, card_rows)
+    for pid in resale_pids:
+        # Ресейл — не наш конкурент: исключаем из сбора (и из разбора фраз).
+        await capture_service.set_hidden(db, cid, pid, True, uid)
     # JSON-досыпка из строки-сиблинга. Ситуация: сырой каталог (/search_raw)
     # пришёл позже DOM-записи или без метки карточки очереди — тогда JSON-поля
     # легли не во все source_nm_id этого среза. Копируем из сиблинга (та же
@@ -1248,6 +1367,12 @@ async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
     # И обратно: DOM-поля (картинка, бейджи…), которых нет в enrich-строках —
     # их DOM-писатель не видел, если наши карточки не в топ-40 DOM-выдачи.
     # position НЕ копируем: DOM-позиция и API-ранг — разные вещи.
+    #
+    # Скоуп: только строки ЭТОГО среза и ЭТИХ товаров (nm_id IN payload).
+    # Раньше условие было LEFT(query_phrase,200)=LEFT(...) — из-за функции над
+    # колонкой индекс не использовался, и UPDATE перебирал всю историю
+    # компании (EXPLAIN: key_len=4, только company_id). Теперь равенство по
+    # колонке → idx_position_slice (company_id, query_phrase, slice_stamp).
     _jcols = ("position_api", "brand_id", "subject_id", "root_id", "match_id",
               "seller_id", "seller_rating", "price_api", "old_price_api",
               "review_rating", "feedback_points", "total_qty", "time1", "time2",
@@ -1266,16 +1391,19 @@ async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
     _sets += ["dst.badges=IF(dst.badges IS NULL OR dst.badges IN ('', '[]'), src.badges, dst.badges)",
               "dst.image_url=IF(dst.image_url IS NULL OR dst.image_url='', src.image_url, dst.image_url)",
               "dst.sold_out=IF(dst.sold_out=0 AND src.sold_out=1, 1, dst.sold_out)"]
-    await db.execute(text(
-        "UPDATE wb_competitor_position dst "
-        "JOIN wb_competitor_position src "
-        "  ON src.company_id=dst.company_id AND src.nm_id=dst.nm_id "
-        " AND LEFT(src.query_phrase,200)=LEFT(dst.query_phrase,200) "
-        " AND src.slice_stamp=dst.slice_stamp AND src.source_nm_id<>dst.source_nm_id "
-        "SET " + ", ".join(_sets) +
-        " WHERE dst.company_id=:cid AND dst.slice_stamp=:st "
-        "AND LEFT(dst.query_phrase,200)=LEFT(:ph,200)"
-    ), {"cid": cid, "st": slice_stamp, "ph": phrase})
+    slice_pids = sorted({int(x) for x in pids if int(x) > 0})
+    if slice_stamp and slice_pids:
+        nm_ph, nm_params = _in_params("sn", slice_pids)
+        await db.execute(text(
+            "UPDATE wb_competitor_position dst "
+            "JOIN wb_competitor_position src "
+            "  ON src.company_id=dst.company_id AND src.nm_id=dst.nm_id "
+            " AND src.query_phrase=dst.query_phrase "
+            " AND src.slice_stamp=dst.slice_stamp AND src.source_nm_id<>dst.source_nm_id "
+            "SET " + ", ".join(_sets) +
+            f" WHERE dst.company_id=:cid AND dst.slice_stamp=:st "
+            f"AND dst.query_phrase=:ph AND dst.nm_id IN ({nm_ph})"
+        ), {**nm_params, "cid": cid, "st": slice_stamp, "ph": phrase})
     if queue_id:
         if source == "phrases":
             await db.execute(text("""
@@ -1308,16 +1436,17 @@ async def _search_result_impl(payload: dict, db: AsyncSession, ext: dict):
             VALUES (:s, :ph, 0, 0, '(empty)')
         """), {"s": nm_id, "ph": phrase})
     if source == "compquery":
-        # найденные поиском карточки сразу ставим в очередь на сбор описаний
+        # найденные поиском карточки сразу ставим в очередь на сбор описаний.
+        # NOT EXISTS по PK (uq_nm_id) вместо NOT IN — подзапрос-anti-join дешевле
+        # и не требует полного списка nm.
         await db.execute(text("""
             INSERT INTO wb_enrich_queue (nm_id, company_id)
             SELECT DISTINCT c.nm_id, :c
             FROM wb_competitor_cards c
             WHERE c.source_nm_id=:s AND c.query_phrase=:ph AND c.nm_id>0
-              AND c.nm_id NOT IN (
-                  SELECT d.nm_id FROM wb_competitor_details d
-                  WHERE d.collected_at > NOW() - INTERVAL 24 HOUR
-              )
+              AND NOT EXISTS (SELECT 1 FROM wb_competitor_details d
+                              WHERE d.nm_id=c.nm_id
+                                AND d.collected_at > NOW() - INTERVAL 24 HOUR)
               AND NOT EXISTS (SELECT 1 FROM wb_competitor_capture cap
                               WHERE cap.nm_id=c.nm_id
                                 AND cap.company_id=:c AND cap.is_hidden=1)

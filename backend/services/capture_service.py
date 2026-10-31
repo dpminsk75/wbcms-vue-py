@@ -35,6 +35,8 @@ from datetime import datetime
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.services import sql_bulk
+
 FRESH_HOURS = 24
 
 
@@ -287,6 +289,64 @@ async def register_capture(db: AsyncSession, company_id: int, nm_id: int,
           last_seen_by=:uid,
           is_own=:own
     """), {"n": nm_id, "cid": company_id, "own": is_own, "uid": user_id})
+
+
+_CAPTURE_COLUMNS = ["nm_id", "company_id", "is_own", "is_hidden",
+                    "first_seen_by", "last_seen_by"]
+_CAPTURE_ODKU = """
+AS new
+ON DUPLICATE KEY UPDATE
+  last_seen_at=NOW(),
+  last_seen_by=new.last_seen_by,
+  is_own=new.is_own
+"""
+
+
+async def register_capture_many(db: AsyncSession, company_id: int,
+                                nm_ids: list[int], user_id: int | None = None) -> int:
+    """Пакетная регистрация в `wb_competitor_capture` (тот же инвариант §19.2).
+
+    Выдача расширения — до 200 карточек за раз; поштучный register_capture давал
+    по 2 запроса на карточку (lookup wbcards + upsert) внутри одной транзакции.
+    Здесь: один SELECT по wbcards (PK, IN-список) + один upsert на пачку.
+
+    `is_hidden` НЕ трогаем (и при вставке 0, и при обновлении) — исключение
+    снимает только явная кнопка «Вернуть».
+    """
+    ids: list[int] = []
+    for x in (nm_ids or []):
+        try:
+            n = int(x)
+        except (TypeError, ValueError):
+            continue
+        if n > 0 and n not in ids:
+            ids.append(n)
+    if not ids:
+        return 0
+    cid = int(company_id)
+    own: set[int] = set()
+    for part in [ids[i:i + 400] for i in range(0, len(ids), 400)]:
+        ph = ",".join(f":n{i}" for i in range(len(part)))
+        params = {f"n{i}": v for i, v in enumerate(part)}
+        rows = (await db.execute(text(
+            f"SELECT nmID, company_id FROM wbcards WHERE nmID IN ({ph})"
+        ), params)).all()
+        for nm, card_cid in rows:
+            if nm is None:
+                continue
+            if card_cid is None or int(card_cid) == cid:
+                own.add(int(nm))
+    payload = [{
+        "nm_id": n,
+        "company_id": cid,
+        "is_own": 1 if n in own else 0,
+        "is_hidden": 0,
+        "first_seen_by": user_id,
+        "last_seen_by": user_id,
+    } for n in ids]
+    await sql_bulk.exec_bulk_insert(db, "wb_competitor_capture", _CAPTURE_COLUMNS,
+                                    payload, suffix=_CAPTURE_ODKU)
+    return len(payload)
 
 
 async def capture(db: AsyncSession, company_id: int, user_id: int | None, payload: dict) -> dict:
