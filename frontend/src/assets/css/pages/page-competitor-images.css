@@ -1,0 +1,16 @@
+/* page-competitor-images.css — чанк CompetitorImagesPage.
+   Оформление — классами темы (.tile, .tbl-card, .tbl, .wb-panel); здесь
+   только то, чего в теме и в Bootstrap нет. */
+
+/* Заголовок страницы: у соседних страниц — отступ снизу 4px (theme.md §5). */
+.page-competitor-images__title { margin-bottom: 4px; }
+
+/* Длинная ссылка на фото в таблице: колонка не должна раздувать таблицу,
+   а текст — обрезается многоточием. Утилиты BS так не умеют (text-truncate
+   режет по ширине родителя, а нужна фиксированная ширина колонки). */
+.page-competitor-images__url {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
