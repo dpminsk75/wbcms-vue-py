@@ -446,6 +446,12 @@ async def _process(db: AsyncSession, job: dict) -> dict:
         _current = None
         return {"done": False, "phrases": 0, "error": "нет моделей"}
 
+    # Чтения (company_row, model_candidates) открыли транзакцию — закрываем:
+    # иначе её read view держится через HTTP-вызов первого кандидата
+    # (до 90 с) и тормозит InnoDB purge. После каждой попытки txn закрывает
+    # mark_model-коммит (:465).
+    await db.commit()
+
     phrases: list[str] = []
     model_used: str | None = None
     err: str | None = None

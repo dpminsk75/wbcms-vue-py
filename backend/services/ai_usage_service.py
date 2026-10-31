@@ -10,6 +10,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.database import get_session
+
 # Группировки отчёта. Значения — SQL-выражения (в SELECT и GROUP BY — одинаково,
 # иначе ONLY_FULL_GROUP_BY ругается).
 GROUP_EXPR: dict[str, str] = {
@@ -99,34 +101,35 @@ async def record_usage(
     try:
         p_tok = int(prompt_tokens or 0)
         c_tok = int(completion_tokens or 0)
-        await db.execute(text("""
-            INSERT INTO ai_usage (
-              company_id, user_id, provider, model, scenario, nm_id, job_id,
-              prompt_tokens, completion_tokens, total_tokens, cost, preview,
-              http_status, ok, error
-            ) VALUES (
-              :c, :u, :p, :m, :s, :n, :j,
-              :pt, :ct, :tt, :cost, :pv,
-              :hs, :ok, :err
-            )
-        """), {
-            "c": company_id, "u": user_id, "p": provider or "openrouter",
-            "m": (model or "unknown")[:120], "s": scenario or "other",
-            "n": nm_id, "j": job_id,
-            "pt": p_tok, "ct": c_tok, "tt": p_tok + c_tok,
-            "cost": float(cost or 0.0),
-            "pv": (preview or "")[:PREVIEW_CHARS] or None,
-            "hs": _http_status(http),
-            "ok": 1 if ok else 0,
-            "err": (error or "")[:500] or None,
-        })
-        await db.commit()
+        # Журнал пишем на СВОЕЙ сессии: чужую db не трогаем. Раньше INSERT
+        # открывал txn вызывающего, а commit мог неожиданно закрыть его
+        # несвязанные pending-изменения (или rollback после сбоя — отбросить).
+        async with get_session() as jdb:
+            await jdb.execute(text("""
+                INSERT INTO ai_usage (
+                  company_id, user_id, provider, model, scenario, nm_id, job_id,
+                  prompt_tokens, completion_tokens, total_tokens, cost, preview,
+                  http_status, ok, error
+                ) VALUES (
+                  :c, :u, :p, :m, :s, :n, :j,
+                  :pt, :ct, :tt, :cost, :pv,
+                  :hs, :ok, :err
+                )
+            """), {
+                "c": company_id, "u": user_id, "p": provider or "openrouter",
+                "m": (model or "unknown")[:120], "s": scenario or "other",
+                "n": nm_id, "j": job_id,
+                "pt": p_tok, "ct": c_tok, "tt": p_tok + c_tok,
+                "cost": float(cost or 0.0),
+                "pv": (preview or "")[:PREVIEW_CHARS] or None,
+                "hs": _http_status(http),
+                "ok": 1 if ok else 0,
+                "err": (error or "")[:500] or None,
+            })
+            await jdb.commit()
         _table_ok = True
     except Exception as exc:
-        try:
-            await db.rollback()
-        except Exception:
-            pass
+        # свою сессию при сбое закрывает контекст (изменения откатываются)
         if _table_missing(exc):
             _table_ok = False
 

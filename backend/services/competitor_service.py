@@ -477,6 +477,9 @@ class CompetitorService:
         models = llm_provider.model_list(company, "summary")
         model = models[0] if models else None
         max_tokens = int(company.get("seo_summary_max_tokens") or 4000)
+        # Чтения (card/analyses/details/company) открыли read view — закрываем
+        # до сети (до 90+ с ожидания); после ответа уже rollback+begin на запись.
+        await self.db.rollback()
         res = await llm.chat(self.db, [{"role": "system", "content": system}, {"role": "user", "content": up}],
                              company_id, temperature=0.7, max_tokens=max_tokens, model=model,
                              scenario="summary", user_id=user_id, nm_id=nm_id)

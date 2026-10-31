@@ -428,6 +428,12 @@ class FeedbackReviewService:
         if not cands:
             return {"ok": False, "error": "нет доступных моделей", "fatal": True}
 
+        # Все данные уже материализованы (fb, messages, модели): закрываем
+        # открытую чтениями транзакцию — иначе её read view держится через ВСЕ
+        # попытки LLM (60 с × моделей) и тормозит InnoDB purge всего сервера.
+        # В batch-режиме от этого страдает и очередь review_pending (SELECT :581).
+        await self.db.rollback()
+
         last_err = "все модели не ответили"
         balance_reason = ""
         for try_model in cands:
@@ -469,7 +475,10 @@ class FeedbackReviewService:
                            f"отзыв {feedback_id} разобран: {parsed.get('emotion')}/"
                            f"{parsed.get('constructiveness')}/{parsed.get('tone')}",
                            action="manual", company_id=fb_company)
-                await self.db.commit()
+            # Коммитим в обоих режимах: конец транзакции после каждого отзыва.
+            # Раньше в batch-режиме _save висел pending до случайного чужого
+            # commit (record_usage внутри llm.chat) — ненадёжно и держит txn.
+            await self.db.commit()
             return {"ok": True, **parsed, "model": try_model}
 
         if balance_reason:

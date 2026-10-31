@@ -18,6 +18,7 @@ import time
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.database import get_session
 from backend.services import llm_balance
 from backend.services import llm_provider
 
@@ -125,7 +126,12 @@ async def _chat_inner(db: AsyncSession, messages: list[dict], company_id: int | 
                        reasoning_effort: str | None = None,
                        send_max_tokens: bool = False) -> dict:
     """Сам запрос (без журнала) — тело без изменений с 2026-10-21."""
-    row = await llm_provider.company_row(db, company_id)
+    # Настройки компании читаем на КОРОТКОЙ сессии: если оставить SELECT на db
+    # вызывающего, autobegin-транзакция откроется ПОД HTTP-ожидание (до 90 с × 2-3
+    # попытки) — её read view будет держать InnoDB purge у всего сервера
+    # (растёт history list) — тот самый «повесило сервер».
+    async with get_session() as sdb:
+        row = await llm_provider.company_row(sdb, company_id)
     cfg = llm_provider.config_from_row(row)
     if cfg.provider != "openrouter":
         # «другой сервис» — свой транспорт (URL/ключ/формат из companies.seo_llm_*).
@@ -147,7 +153,8 @@ async def _chat_inner(db: AsyncSession, messages: list[dict], company_id: int | 
                                        timeout=timeout, retry_429=retry_429,
                                        reasoning_effort=reasoning_effort,
                                        send_max_tokens=send_max_tokens)
-    api_key, resolved = await resolve_company_llm(db, company_id, row=row)
+    async with get_session() as sdb:
+        api_key, resolved = await resolve_company_llm(sdb, company_id, row=row)
     model = (model or resolved).split(",")[0].strip() or DEFAULT_MODEL
     if not api_key:
         return {"error": "openrouter key is empty (env OPENROUTER_API_KEY / companies.seo_openrouter_key)",

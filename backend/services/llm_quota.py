@@ -36,6 +36,8 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timedelta
 
+from backend.database import get_session
+
 # Порог: остаток 5-часового окна ниже — встаём на паузу до сброса.
 MIN_PERCENT = 10.0
 # Запас после сброса окна (окно «rolling»: первые минуты могут быть не полными).
@@ -242,7 +244,12 @@ async def check(db, company_id: int | None, force: bool = False) -> dict:
     state = dict(EMPTY)
     try:
         from backend.services import llm_provider
-        row = await llm_provider.company_row(db, cid)
+        # Настройки читаем на отдельной короткой сессии: иначе SELECT company_row
+        # открывает txn на сессии вызывающего, и она остаётся открытой через
+        # сеть ниже (to_thread, до HTTP_TIMEOUT с) — read view держит InnoDB
+        # purge у всего сервера.
+        async with get_session() as sdb:
+            row = await llm_provider.company_row(sdb, cid)
         cfg = llm_provider.config_from_row(row)
         if cfg.provider != "custom" or not cfg.api_key:
             state = dict(EMPTY)
