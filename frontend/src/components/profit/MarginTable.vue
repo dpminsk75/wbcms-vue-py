@@ -1,31 +1,31 @@
 <template>
-  <div class="margin-table__wrap wb-table-wrap" ref="wrapRef">
-    <table ref="tableRef" class="table table-bordered table-striped table-hover margin-table">
+  <div class="tbl-wrap margin-table__wrap" ref="wrapRef">
+    <table ref="tableRef" class="tbl margin-table">
       <thead>
         <tr>
           <th class="margin-table__th--num">#</th>
-          <th class="margin-table__th--product">Товар</th>
-          <th>Кол-во</th>
-          <th>Выручка</th>
-          <th>Ком. WB</th>
-          <th>Экв.</th>
-          <th>Приёмка</th>
-          <th>Лог-ка</th>
-          <th>Хранение</th>
-          <th>Штрафы</th>
-          <th>Отзывы</th>
-          <th>Реклама</th>
-          <th>Кэшбек</th>
-          <th class="margin-table__net-cell">Итого</th>
-          <th>НДС</th>
-          <th>Себ-ть</th>
-          <th class="margin-table__profit-cell">Прибыль</th>
-          <th>Налог (7%)</th>
-          <th class="margin-table__margin-cell">Маржа</th>
-          <th class="margin-table__per-item">Цена</th>
-          <th class="margin-table__per-item">Итог/шт</th>
-          <th class="margin-table__per-item">Маржа/шт</th>
-          <th v-if="showStock" class="margin-table__stock-cell">Остаток</th>
+          <th class="t-left">Товар</th>
+          <th class="num">Кол-во</th>
+          <th class="num">Выручка</th>
+          <th class="num">Ком. WB</th>
+          <th class="num">Экв.</th>
+          <th class="num">Приёмка</th>
+          <th class="num">Лог-ка</th>
+          <th class="num">Хранение</th>
+          <th class="num">Штрафы</th>
+          <th class="num">Отзывы</th>
+          <th class="num">Реклама</th>
+          <th class="num">Кэшбек</th>
+          <th class="num margin-table__net-cell">Итого</th>
+          <th class="num">НДС</th>
+          <th class="num">Себ-ть</th>
+          <th class="num margin-table__profit-cell">Прибыль</th>
+          <th class="num">Налог (7%)</th>
+          <th class="num margin-table__margin-cell">Маржа</th>
+          <th class="num margin-table__per-item">Цена</th>
+          <th class="num margin-table__per-item">Итог/шт</th>
+          <th class="num margin-table__per-item">Маржа/шт</th>
+          <th v-if="showStock" class="num margin-table__stock-cell">Остаток</th>
         </tr>
       </thead>
       <tbody>
@@ -44,79 +44,83 @@
               <i class="bi bi-eye"></i>
             </button>
           </td>
-          <td class="margin-table__cell-product">
-            <div class="margin-table__order-text">
-              <div class="margin-table__title" :title="r.title || ''">{{ formatTitle(r.title) }}</div>
-              <div class="margin-table__details">{{ r.brand || '' }} • {{ r.vendor_code || '' }}</div>
-              <div class="margin-table__details">
-                <a :href="`/wb/detail?nm_id=${r.nm_id}`" target="_blank" class="margin-table__wb-link">WB: {{ r.nm_id }}</a>
-              </div>
-            </div>
+          <td class="t-left margin-table__cell-product">
+            <ProductCell
+              :photo="r.photos"
+              :title="r.title"
+              :sub="subLine(r)"
+              :brand="r.brand"
+              :subject="r.subject"
+              :vendor="r.vendor_code"
+              :link="'/wb/detail?nm_id=' + r.nm_id"
+              :link-label="'WB: ' + r.nm_id"
+              :compact="compact"
+            />
           </td>
-          <td class="text-center fw-bold">{{ fmt0(r.qnt) }}</td>
-          <td class="text-end">{{ fmt0(r.amount) }}</td>
-          <td class="text-end text-danger">{{ fmt0(r.commission) }}</td>
-          <td class="text-end text-danger">{{ fmt0(r.f_acquiring_fee) }}</td>
-          <td class="text-end text-danger">
+          <td class="num">{{ fmt0(r.qnt) }}</td>
+          <td class="num">{{ fmt0(r.amount) }}</td>
+          <td class="num t-neg">{{ fmt0(r.commission) }}</td>
+          <td class="num t-neg">{{ fmt0(r.f_acquiring_fee) }}</td>
+          <td class="num t-neg">
             <button v-if="num(r.f_acceptance)" class="wb-cell-link" title="Детализация приёмки" @click="openCell('acceptance', r)">{{ fmt0(r.f_acceptance) }}</button>
             <template v-else>{{ fmt0(r.f_acceptance) }}</template>
           </td>
-          <td class="text-end text-danger fw-medium">
+          <td class="num t-neg">
             <button v-if="num(r.f_delivery)" class="wb-cell-link" title="Детализация логистики" @click="openCell('delivery', r)">{{ fmt0(r.f_delivery) }}</button>
             <template v-else>{{ fmt0(r.f_delivery) }}</template>
           </td>
-          <td class="text-end text-danger fw-medium">
+          <td class="num t-neg">
             <button v-if="num(r.f_storage_fee)" class="wb-cell-link" title="Детализация хранения" @click="openCell('storage', r)">{{ fmt0(r.f_storage_fee) }}</button>
             <template v-else>{{ fmt0(r.f_storage_fee) }}</template>
           </td>
-          <td class="text-end text-danger">
+          <td class="num t-neg">
             <button v-if="num(r.f_penalty)" class="wb-cell-link" title="Детализация штрафов" @click="openCell('penalty', r)">{{ fmt0(r.f_penalty) }}</button>
             <template v-else>{{ fmt0(r.f_penalty) }}</template>
           </td>
-          <td class="text-end text-success">
+          <td class="num t-pos">
             <button v-if="num(r.f_otziv)" class="wb-cell-link" title="Детализация отзывов" @click="openCell('otziv', r)">{{ fmt0(r.f_otziv) }}</button>
             <template v-else>{{ fmt0(r.f_otziv) }}</template>
           </td>
-          <td class="text-end text-primary">
+          <td class="num">
             <button v-if="num(r.f_adv)" class="wb-cell-link" title="Детализация рекламы" @click="openCell('adv', r)">{{ fmt0(r.f_adv) }}</button>
             <template v-else>{{ fmt0(r.f_adv) }}</template>
           </td>
-          <td class="text-end text-danger">
+          <td class="num t-neg">
             <button v-if="num(r.f_cashback)" class="wb-cell-link" title="Детализация кэшбека" @click="openCell('cashback', r)">{{ fmt0(r.f_cashback) }}</button>
             <template v-else>{{ fmt0(r.f_cashback) }}</template>
           </td>
-          <td class="text-end fw-bold" :class="r.net_profit < 0 ? 'text-danger' : 'text-success'">{{ fmt0(r.net_profit) }}</td>
-          <td class="text-end">{{ fmt0(r.total_nds) }}</td>
-          <td class="text-end">{{ fmt0(r.total_cost) }}</td>
-          <td class="text-end fw-bold" :class="r.profit_before_tax < 0 ? 'text-danger' : ''">{{ fmt0(r.profit_before_tax) }}</td>
-          <td class="text-end margin-table__orange">{{ fmt0(r.tax_amount) }}</td>
-          <td class="text-end fw-bold" :class="r.clean_margin < 0 ? 'text-danger' : 'text-success'">{{ fmt0(r.clean_margin) }}</td>
-          <td class="text-end margin-table__per-item">{{ fmt2(r.amount_per_item) }}</td>
-          <td class="text-end margin-table__per-item fw-bold" :class="r.profit_per_item < 0 ? 'text-danger' : 'text-success'">{{ fmt2(r.profit_per_item) }}</td>
-          <td class="text-end margin-table__per-item fw-bold" :class="r.clear_per_item < 0 ? 'text-danger' : 'text-success'">{{ fmt2(r.clear_per_item) }}</td>
-          <td v-if="showStock" class="text-end margin-table__stock-cell">{{ fmt0(r.stock || 0) }}</td>
+          <td class="num" :class="r.net_profit < 0 ? 't-neg' : 't-pos'">{{ fmt0(r.net_profit) }}</td>
+          <td class="num">{{ fmt0(r.total_nds) }}</td>
+          <td class="num">{{ fmt0(r.total_cost) }}</td>
+          <td class="num" :class="r.profit_before_tax < 0 ? 't-neg' : ''">{{ fmt0(r.profit_before_tax) }}</td>
+          <td class="num t-neg">{{ fmt0(r.tax_amount) }}</td>
+          <td class="num" :class="r.clean_margin < 0 ? 't-neg' : 't-pos'">{{ fmt0(r.clean_margin) }}</td>
+          <td class="num margin-table__per-item">{{ fmt2(r.amount_per_item) }}</td>
+          <td class="num margin-table__per-item" :class="r.profit_per_item < 0 ? 't-neg' : 't-pos'">{{ fmt2(r.profit_per_item) }}</td>
+          <td class="num margin-table__per-item" :class="r.clear_per_item < 0 ? 't-neg' : 't-pos'">{{ fmt2(r.clear_per_item) }}</td>
+          <td v-if="showStock" class="num margin-table__stock-cell">{{ fmt0(r.stock || 0) }}</td>
         </tr>
       </tbody>
-      <tfoot v-if="rows.length" class="margin-table__total-row">
-        <tr>
-          <td colspan="2" class="text-center">{{ footerLabel }}</td>
-          <td class="text-center">{{ fmt0(totals.qnt) }}</td>
-          <td class="text-end">{{ fmt0(totals.amount) }}</td>
-          <td class="text-end">{{ fmt0(totals.commission) }}</td>
-          <td class="text-end">{{ fmt0(totals.f_acquiring_fee) }}</td>
-          <td class="text-end">{{ fmt0(totals.f_acceptance) }}</td>
-          <td class="text-end">{{ fmt0(totals.f_delivery) }}</td>
-          <td class="text-end">{{ fmt0(totals.f_storage_fee) }}</td>
-          <td class="text-end">{{ fmt0(totals.f_penalty) }}</td>
-          <td class="text-end">{{ fmt0(totals.f_otziv) }}</td>
-          <td class="text-end">{{ fmt0(totals.f_adv) }}</td>
-          <td class="text-end">{{ fmt0(totals.f_cashback) }}</td>
-          <td class="text-end" :class="totals.net_profit < 0 ? 'text-danger' : 'text-success'">{{ fmt0(totals.net_profit) }}</td>
-          <td class="text-end">{{ fmt0(totals.total_nds) }}</td>
-          <td class="text-end">{{ fmt0(totals.total_cost) }}</td>
-          <td class="text-end" :class="totals.profit_before_tax < 0 ? 'text-danger' : ''">{{ fmt0(totals.profit_before_tax) }}</td>
-          <td class="text-end">{{ fmt0(totals.tax_amount) }}</td>
-          <td class="text-end" :class="totals.clean_margin < 0 ? 'text-danger' : 'text-success'">{{ fmt0(totals.clean_margin) }}</td>
+      <tfoot v-if="rows.length">
+        <tr class="tbl__total">
+          <td colspan="2" class="t-left">{{ footerLabel }}</td>
+          <td class="num">{{ fmt0(totals.qnt) }}</td>
+          <td class="num">{{ fmt0(totals.amount) }}</td>
+          <td class="num">{{ fmt0(totals.commission) }}</td>
+          <td class="num">{{ fmt0(totals.f_acquiring_fee) }}</td>
+          <td class="num">{{ fmt0(totals.f_acceptance) }}</td>
+          <td class="num">{{ fmt0(totals.f_delivery) }}</td>
+          <td class="num">{{ fmt0(totals.f_storage_fee) }}</td>
+          <td class="num">{{ fmt0(totals.f_penalty) }}</td>
+          <td class="num">{{ fmt0(totals.f_otziv) }}</td>
+          <td class="num">{{ fmt0(totals.f_adv) }}</td>
+          <td class="num">{{ fmt0(totals.f_cashback) }}</td>
+          <td class="num" :class="totals.net_profit < 0 ? 't-neg' : 't-pos'">{{ fmt0(totals.net_profit) }}</td>
+          <td class="num">{{ fmt0(totals.total_nds) }}</td>
+          <td class="num">{{ fmt0(totals.total_cost) }}</td>
+          <td class="num" :class="totals.profit_before_tax < 0 ? 't-neg' : ''">{{ fmt0(totals.profit_before_tax) }}</td>
+          <td class="num">{{ fmt0(totals.tax_amount) }}</td>
+          <td class="num" :class="totals.clean_margin < 0 ? 't-neg' : 't-pos'">{{ fmt0(totals.clean_margin) }}</td>
           <td colspan="3"></td>
           <td v-if="showStock"></td>
         </tr>
@@ -137,10 +141,13 @@
 </template>
 
 <script setup lang="ts">
+import '@/assets/css/components/margin-table.css'
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useMoneyFmt } from '@/composables/useMoneyFmt'
+import { useTableResize } from '@/composables/useTableResize'
 import { marginTotals } from '@/api/profit'
 import type { MarginKind } from '@/api/margin'
+import ProductCell from '@/components/common/ProductCell.vue'
 import MarginBreakdownPopup from './MarginBreakdownPopup.vue'
 import MarginBreakdownModal from './MarginBreakdownModal.vue'
 
@@ -154,13 +161,28 @@ const props = withDefaults(defineProps<{
   dateTo?: string
   basis?: 'month' | 'product'
   detail?: 0 | 1
-}>(), { basis: 'product', detail: 1 })
+  /** Ключ сохранения ширин колонок (у разных страниц — свой). */
+  resizeKey?: string
+  /** Плотный вариант (широкие реестры): карточка товара — 30×40, одна строка. */
+  compact?: boolean
+}>(), { basis: 'product', detail: 1, resizeKey: 'profit-margin', compact: false })
 
-const { fmt0, fmt2, formatTitle } = useMoneyFmt()
+const { fmt0, fmt2 } = useMoneyFmt()
 const totals = computed(() => marginTotals(props.rows))
 
 const tableRef = ref<HTMLTableElement | null>(null)
 const wrapRef = ref<HTMLDivElement | null>(null)
+
+// ресайзер колонок — общий (ширины запоминаются, слушатели снимаются)
+useTableResize(tableRef, { storeKey: props.resizeKey })
+
+/** Подпись под названием товара: предмет и бренд одной строкой (как на остальных страницах). */
+const subLine = (r: any) => {
+  const subject = String(r.subject || '')
+  const brandName = String(r.brand || '')
+  if (subject && brandName) return subject + ' • ' + brandName
+  return subject || brandName
+}
 
 // Попап «Структура затрат» по строке (только при showBreakdown)
 const breakdownRow = ref<any>(null)
@@ -186,83 +208,13 @@ const onLogistics = (p: { dateFrom: string, dateTo: string }) => {
   breakdownRow.value = null
   cellModal.value = { kind: 'delivery', dateFrom: p.dateFrom, dateTo: p.dateTo, nmId: nm }
 }
-
-const fit = () => {
-  const table = tableRef.value
-  if (!table || table.style.tableLayout === 'fixed') return
-  table.style.width = '100%'
-}
-
-const enableResize = () => {
-  const table = tableRef.value
-  if (!table) return
-  const ths = table.querySelectorAll('th') as NodeListOf<HTMLTableCellElement>
-  ths.forEach((th) => {
-    if (th.querySelector('.col-resizer')) return
-    th.style.position = 'relative'
-    const r = document.createElement('div')
-    r.className = 'col-resizer'
-    r.style.cssText = 'position:absolute; top:0; right:0; width:6px; height:100%; cursor:col-resize; user-select:none; z-index:1'
-    th.appendChild(r)
-    let startX = 0, startW = 0
-    const onMove = (e: MouseEvent) => {
-      const w = Math.max(40, startW + e.clientX - startX)
-      th.style.width = w + 'px'
-      th.style.minWidth = w + 'px'
-    }
-    const onUp = () => {
-      table.style.tableLayout = 'fixed'
-      table.style.width = '100%'
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-      document.body.style.cursor = ''
-    }
-    r.addEventListener('mousedown', (e: MouseEvent) => {
-      startX = e.clientX
-      startW = th.offsetWidth
-      document.body.style.cursor = 'col-resize'
-      document.addEventListener('mousemove', onMove)
-      document.addEventListener('mouseup', onUp)
-      e.preventDefault()
-    })
-  })
-}
-
-onMounted(() => {
-  nextTick(enableResize)
-  window.addEventListener('resize', fit)
-  fit()
-})
-
-watch(() => props.rows, () => {
-  nextTick(enableResize)
-  fit()
-})
 </script>
 
 <style scoped>
-.margin-table__wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #dee2e6; background: #fff; }
-.margin-table { font-size: 12px; margin-bottom: 0; white-space: nowrap; table-layout: auto; width: 100%; }
-.margin-table th { background-color: #f8f9fa; font-weight: 500; vertical-align: middle; text-align: center; padding: 8px 4px; font-size: 11px; white-space: normal; word-break: break-word; }
-.margin-table td { vertical-align: middle; padding: 4px 3px; font-size: 13px; }
-.margin-table__th--num { width: 25px; min-width: 25px; }
-/* Позиция+глазик: flex на <td> ломает высоту строки, поэтому глазик — absolute от низа ячейки */
-.margin-table td.margin-table__pos { position: relative; vertical-align: top; text-align: center; padding-top: 3px; padding-bottom: 15px; }
-.margin-table__num { display: block; line-height: 1.1; }
-.margin-table__eye { position: absolute; left: 0; right: 0; bottom: 2px; text-align: center; border: 0; background: transparent; color: #9aa0a8; padding: 0; font-size: 12px; line-height: 1; cursor: pointer; }
-.margin-table__eye:hover { color: #8a2be0; }
-.margin-table__th--product { width: 280px; min-width: 220px; }
-.margin-table__cell-product { max-width: 280px; white-space: normal; word-wrap: break-word; }
-.margin-table__order-text { display: flex; flex-direction: column; gap: 2px; }
-.margin-table__title { font-weight: 700; font-size: 12px; }
-.margin-table__details { font-size: 10px; }
-.margin-table__wb-link { font-weight: 700; color: #2980b9; text-decoration: none; }
-.margin-table__wb-link:hover { text-decoration: underline; }
-.margin-table__total-row { background-color: #f8f9fa; font-weight: 700; }
-.margin-table__profit-cell { background-color: #fcf3cf; }
-.margin-table__margin-cell { background-color: #d4efdf; }
-.margin-table__net-cell { background-color: #e8f8f5; }
-.margin-table__per-item { font-style: italic; background-color: #fafafa; }
-.margin-table__orange { color: #d35400; }
-.margin-table__stock-cell { background-color: #eef4fb; }
+/* Общие правила таблиц маржи — вынесены в assets/css/components/margin-table.css
+   (общие для MarginTable и ProductMarginTable, чтобы не дублировать):
+   плотные отступы, первая колонка (номер + глаз), тоны колонок, правая
+   крайняя колонка, ширина колонки товара, отступ фото карточки.
+   Здесь — только то, что есть в этой таблице. */
+.margin-table__stock-cell { background: color-mix(in srgb, var(--info) 6%, transparent); }
 </style>

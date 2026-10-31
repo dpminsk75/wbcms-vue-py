@@ -4,13 +4,14 @@
       <h1 class="page-title mb-0">{{ 'Маржинальный учёт' }}</h1>
     </div>
 
-    <ul class="nav nav-tabs mb-3 page-wb-profit__tabs">
-      <li class="nav-item" v-for="t in TABS" :key="t.key">
-        <button class="nav-link" :class="{ active: tab === t.key }" @click="setTab(t.key)">
-          <i :class="t.icon" class="me-1"></i>{{ t.label }}
-        </button>
-      </li>
-    </ul>
+    <!-- Вкладки раздела — чипы темы (.stab--line) -->
+    <div class="page-wb-profit__tabs">
+      <button v-for="t in TABS" :key="t.key" type="button"
+              class="stab stab--line" :class="{ 'stab--on': tab === t.key }"
+              @click="setTab(t.key)">
+        <i :class="t.icon" class="me-1"></i>{{ t.label }}
+      </button>
+    </div>
 
     <!-- 1. Год к году (график + карточки) -->
     <div v-if="tab === 'yoy'">
@@ -23,65 +24,65 @@
     </div>
 
     <!-- 3. Топ товаров -->
-    <div v-else-if="tab === 'top'" class="card shadow-sm">
-      <div class="card-header text-white bg-wb-green-deep-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="bi bi-crown me-2"></i>Топ 20 товаров</h5>
-        <div class="d-flex gap-2">
-          <span class="badge bg-light text-dark align-self-center">{{ topPeriod }}</span>
-          <button class="btn btn-sm btn-light wb-excel-btn" @click="exportTop" :disabled="!topRows.length">
-            <i class="bi bi-file-earmark-excel me-1"></i> Excel
-          </button>
+    <div v-else-if="tab === 'top'" class="tbl-card tbl-card--compact page-wb-profit__block">
+      <div class="card__hd">
+        <span><i class="bi bi-crown me-2"></i>Топ 20 товаров</span>
+        <span class="spacer"></span>
+        <span class="hd-badge">{{ topPeriod }}</span>
+        <ExcelButton :disabled="!topRows.length" @click="exportTop" />
+      </div>
+      <div class="page-wb-profit__filter">
+        <WbDateRangeFilter v-model:from="topFrom" v-model:to="topTo" default-preset="90" bare />
+        <div class="wb-filter-panel__btns">
+          <button class="btn btn--brand wb-filter-panel__apply" @click="onTopApply">Применить</button>
+          <button class="btn btn--outline wb-filter-panel__apply" @click="onTopReset">Сбросить</button>
         </div>
       </div>
-      <div class="card-body p-0">
-        <div class="p-3 pb-0">
-          <WbDateRangeFilter :from="topFrom" :to="topTo" @apply="onTopApply" />
-        </div>
-        <div v-if="topLoading" class="text-center p-5">
-          <div class="spinner-border text-primary" role="status"></div>
-          <div class="mt-2 text-muted">Загрузка данных...</div>
-        </div>
-        <MarginTable
-          v-else
-          :rows="topRows"
-          footer-label="Итого по ТОП-20:"
-          :period="topPeriod"
-          :date-from="topFrom"
-          :date-to="topTo"
-          show-breakdown
-        />
+      <div v-if="topLoading" class="text-center p-4 text-muted">
+        <span class="spinner-border spinner-border-sm"></span> Загрузка данных...
       </div>
+      <MarginTable
+        v-else
+        :rows="topRows"
+        footer-label="Итого по ТОП-20:"
+        :period="topPeriod"
+        :date-from="topFrom"
+        :date-to="topTo"
+        resize-key="profit-sku-rank-top"
+        compact
+        show-breakdown
+      />
     </div>
 
     <!-- 4. Худшие товары -->
-    <div v-else class="card shadow-sm">
-      <div class="card-header text-white bg-wb-danger-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="bi bi-exclamation-triangle me-2"></i>Худшие 20 товаров</h5>
-        <div class="d-flex gap-2">
-          <span class="badge bg-light text-dark align-self-center">{{ worstPeriod }}</span>
-          <button class="btn btn-sm btn-light wb-excel-btn" @click="exportWorst" :disabled="!worstRows.length">
-            <i class="bi bi-file-earmark-excel me-1"></i> Excel
-          </button>
+    <div v-else class="tbl-card tbl-card--compact page-wb-profit__block">
+      <div class="card__hd">
+        <span><i class="bi bi-exclamation-triangle me-2"></i>Худшие 20 товаров</span>
+        <span class="spacer"></span>
+        <span class="hd-badge">{{ worstPeriod }}</span>
+        <ExcelButton :disabled="!worstRows.length" @click="exportWorst" />
+      </div>
+      <div class="page-wb-profit__filter">
+        <WbDateRangeFilter v-model:from="worstFrom" v-model:to="worstTo" default-preset="90" bare />
+        <div class="wb-filter-panel__btns">
+          <button class="btn btn--brand wb-filter-panel__apply" @click="onWorstApply">Применить</button>
+          <button class="btn btn--outline wb-filter-panel__apply" @click="onWorstReset">Сбросить</button>
         </div>
       </div>
-      <div class="card-body p-0">
-        <div class="p-3 pb-0">
-          <WbDateRangeFilter :from="worstFrom" :to="worstTo" @apply="onWorstApply" />
-        </div>
-        <div v-if="worstLoading" class="text-center p-5">
-          <div class="spinner-border text-danger" role="status"></div>
-          <div class="mt-2 text-muted">Загрузка данных...</div>
-        </div>
-        <MarginTable
-          v-else
-          :rows="worstRows"
-          footer-label="Итого по худшим-20:"
-          :period="worstPeriod"
-          :date-from="worstFrom"
-          :date-to="worstTo"
-          show-breakdown
-        />
+      <div v-if="worstLoading" class="text-center p-4 text-muted">
+        <span class="spinner-border spinner-border-sm"></span> Загрузка данных...
       </div>
+      <MarginTable
+        v-else
+        :rows="worstRows"
+        footer-label="Итого по худшим-20:"
+        :period="worstPeriod"
+        :date-from="worstFrom"
+        :date-to="worstTo"
+        resize-key="profit-sku-rank-worst"
+        compact
+        show-breakdown
+      />
     </div>
   </div>
 </template>
@@ -96,6 +97,7 @@ import { exportMarginExcel } from '@/api/profit'
 import MarginTable from '@/components/profit/MarginTable.vue'
 import MonthlyProfitTable from '@/components/profit/MonthlyProfitTable.vue'
 import YoyTab from '@/components/profit/YoyTab.vue'
+import ExcelButton from '@/components/common/ExcelButton.vue'
 import WbDateRangeFilter from '@/components/common/WbDateRangeFilter.vue'
 
 type TabKey = 'yoy' | 'monthly' | 'top' | 'worst'
@@ -150,6 +152,9 @@ const topFrom = ref(qDate(route.query.top_from) || defFrom)
 const topTo = ref(qDate(route.query.top_to) || defTo)
 const worstFrom = ref(qDate(route.query.worst_from) || defFrom)
 const worstTo = ref(qDate(route.query.worst_to) || defTo)
+// applied — периоды, по которым реально запрошены данные (запрос — по кнопке «Применить»)
+const topApplied = ref({ from: topFrom.value, to: topTo.value })
+const worstApplied = ref({ from: worstFrom.value, to: worstTo.value })
 
 /** Записать периоды в URL (replace — чтобы не засорять историю браузера). */
 const pushDates = (patch: Record<string, string>) => {
@@ -157,15 +162,23 @@ const pushDates = (patch: Record<string, string>) => {
   router.replace({ path: route.path, query: q })
 }
 
-const onTopApply = (r: { from: string, to: string }) => {
-  topFrom.value = r.from
-  topTo.value = r.to
-  pushDates({ top_from: r.from, top_to: r.to })
+const onTopApply = () => {
+  topApplied.value = { from: topFrom.value, to: topTo.value }
+  pushDates({ top_from: topFrom.value, top_to: topTo.value })
 }
-const onWorstApply = (r: { from: string, to: string }) => {
-  worstFrom.value = r.from
-  worstTo.value = r.to
-  pushDates({ worst_from: r.from, worst_to: r.to })
+const onTopReset = () => {
+  topFrom.value = defFrom
+  topTo.value = defTo
+  onTopApply()
+}
+const onWorstApply = () => {
+  worstApplied.value = { from: worstFrom.value, to: worstTo.value }
+  pushDates({ worst_from: worstFrom.value, worst_to: worstTo.value })
+}
+const onWorstReset = () => {
+  worstFrom.value = defFrom
+  worstTo.value = defTo
+  onWorstApply()
 }
 
 // Назад/вперёд в браузере — периоды подхватываются из URL.
@@ -202,17 +215,17 @@ onMounted(() => {
 })
 
 const { data: topData, isLoading: topLoading } = useQuery({
-  queryKey: computed(() => ['wb-profit-sku-rank', 'desc', topFrom.value, topTo.value] as const),
+  queryKey: computed(() => ['wb-profit-sku-rank', 'desc', topApplied.value.from, topApplied.value.to] as const),
   queryFn: () => api.get('/api/wb-profit/sku-rank', {
-    params: { order: 'desc', date_from: topFrom.value, date_to: topTo.value, limit: 20 },
+    params: { order: 'desc', date_from: topApplied.value.from, date_to: topApplied.value.to, limit: 20 },
   }).then(r => r.data),
   enabled: computed(() => tab.value === 'top'),
 })
 
 const { data: worstData, isLoading: worstLoading } = useQuery({
-  queryKey: computed(() => ['wb-profit-sku-rank', 'asc', worstFrom.value, worstTo.value] as const),
+  queryKey: computed(() => ['wb-profit-sku-rank', 'asc', worstApplied.value.from, worstApplied.value.to] as const),
   queryFn: () => api.get('/api/wb-profit/sku-rank', {
-    params: { order: 'asc', date_from: worstFrom.value, date_to: worstTo.value, limit: 20 },
+    params: { order: 'asc', date_from: worstApplied.value.from, date_to: worstApplied.value.to, limit: 20 },
   }).then(r => r.data),
   enabled: computed(() => tab.value === 'worst'),
 })

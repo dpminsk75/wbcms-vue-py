@@ -74,6 +74,8 @@
           footer-label="Итого по тегу:"
           :show-stock="filters.with_stock"
           :period="`${filters.date_from} — ${filters.date_to}`"
+          :date-from="filters.date_from"
+          :date-to="filters.date_to"
           show-breakdown
         />
       </div>

@@ -1,18 +1,14 @@
 <template>
-  <div class="card shadow-sm h-100 profit-chart-card">
-    <div
-      class="card-header d-flex justify-content-between align-items-center text-white bg-wb-green-deep-header"
-      style="padding:6px 10px; font-size:12px; font-weight:700; font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
-    >
+  <div class="wb-panel profit-chart-card">
+    <div class="card__hd">
       <span class="text-truncate">{{ title }}</span>
+      <span class="spacer"></span>
       <div class="d-flex align-items-center gap-1 flex-shrink-0">
         <slot name="header" />
         <!-- Глаз: показать/скрыть значения (подписи) на графике -->
         <button
           type="button"
-          class="btn btn-sm"
-          :class="showLabels ? 'btn-light' : 'btn-outline-light'"
-          style="width:30px; height:26px; padding:0"
+          class="ch-icon-btn"
           :title="showLabels ? 'Скрыть значения' : 'Показать значения'"
           @click="showLabels = !showLabels"
         >
@@ -21,8 +17,7 @@
         <!-- Распахнуть: во всю ширину строки -->
         <button
           type="button"
-          class="btn btn-sm btn-outline-light"
-          style="width:30px; height:26px; padding:0"
+          class="ch-icon-btn"
           :title="expanded ? 'Свернуть' : 'На всю ширину'"
           @click="emit('toggle-expand')"
         >
@@ -30,9 +25,9 @@
         </button>
       </div>
     </div>
-    <div class="card-body p-2">
+    <div class="wb-panel__bd">
       <slot name="legend" />
-      <VChart :option="effectiveOption" autoresize :style="{ height: chartHeight + 'px' }" />
+      <VChart :option="effectiveOption" autoresize class="profit-chart-card__canvas" :style="{ height: chartHeight + 'px' }" />
     </div>
   </div>
 </template>
@@ -90,5 +85,6 @@ const effectiveOption = computed(() => {
 </script>
 
 <style scoped>
-.profit-chart-card { overflow: hidden; }
+.profit-chart-card { overflow: hidden; height: 100%; }
+.profit-chart-card__canvas { width: 100%; }
 </style>
