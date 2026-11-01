@@ -182,13 +182,19 @@ def _hours_since(dt: datetime | None, now: datetime | None = None) -> int | None
         return None
 
 
-class WatchService:
+class SeoWatchService:
     # Не больше стольких фраз берём в одну очередь enrich (расширение обходит
     # очередь по одной — много карточек = долго и капча).
     REFRESH_PHRASES_LIMIT = 30
     # Сколько верхних позиций выдачи берём в анализ (в сборе WB лист ~100
     # карточек — работаем с ТОП-40, решение менеджера 2026-10-23).
     TOP_POSITIONS = 40
+    # Потолок строк среза, который приложение готово принять из MySQL.
+    # Норма — ~5 300 строк (88 фраз × 2 захода × ТОП-40, свёрнутых по
+    # (фраза, заход, nm_id)). Если свёртка развалится (было: JOIN по позиции
+    # вернул 56 758 строк), приложение обрежет выдачу и напишет в лог, а не
+    # утянет ~400 МБ и не убьёт mysqld OOM-ом (сервер 1 ГБ, запас ~130 МБ).
+    MAX_SLICE_ROWS = 20000
     # Порог «контент есть»: длина описания. Тот же, что DESC_MIN_LEN в
     # competitors_newcard_service.py:28 и MIN_DESC_LEN в phrase_miner_service.py:51.
     DESC_MIN_LEN = 50
@@ -474,6 +480,18 @@ class WatchService:
         выгружаем: срезы большие (замер 2026-10-24: среднее 689 строк на заход,
         максимум 8740). Строки без меток (`slice_stamp=''`) не нужны: всё легаси
         перезалито псевдо-метками UPDATE'ом 2026-10-24.
+
+        СВЁРТКА В SQL (2026-11-01): одна и та же выдача лежит в таблице копиями по
+        каждой нашей карточке (`source_nm_id`) — на пару (фраза, заход) приходится
+        ~7 копий одних и тех же позиций. Раньше копии свёртывались уже в Python
+        (словарь `best` ниже) и до этого ехали в Python десятки тысяч строк:
+        замер 2026-11-01 — 56 594 строки на одно открытие `/seo-watch`
+        (~400 МБ в uvicorn → OOM на сервере 1 ГБ). Теперь GROUP BY
+        (фраза, заход, nm_id) + MIN(position) делают это в MySQL, и в Python
+        приезжает ~8 тыс. строк — то же самое, что оставлял цикл `best`.
+        Позиция — точный минимум (как в Python), остальные поля берутся из одной
+        из копий того же среза (это один и тот же товар, копии различаются лишь
+        карточкой-источником сбора).
         """
         if not phrases:
             return {}
@@ -485,22 +503,52 @@ class WatchService:
             sph, sp = self._inlist("s", stamps)
             pph, pp = self._inlist("p", phrases)
             rows += (await self.db.execute(text(f"""
-                SELECT p.query_phrase AS phrase, p.slice_stamp, p.collected_at, p.nm_id,
-                       p.title, p.brand, p.seller, p.position, p.position_api,
-                       p.price, p.price_api, p.old_price, p.old_price_api,
-                       p.rating, p.review_rating, p.reviews, p.feedbacks, p.badges,
-                       p.sale_conditions, p.dtype_mask, p.mtype, p.supplier_flags, p.view_flags,
-                       p.is_resale,
+                SELECT p.query_phrase AS phrase, p.slice_stamp,
+                       p.nm_id AS nm_id,
+                       MIN(p.position) AS position,
+                       ANY_VALUE(p.collected_at) AS collected_at,
+                       ANY_VALUE(p.title) AS title,
+                       ANY_VALUE(p.brand) AS brand,
+                       ANY_VALUE(p.seller) AS seller,
+                       ANY_VALUE(p.position_api) AS position_api,
+                       ANY_VALUE(p.price) AS price,
+                       ANY_VALUE(p.price_api) AS price_api,
+                       ANY_VALUE(p.old_price) AS old_price,
+                       ANY_VALUE(p.old_price_api) AS old_price_api,
+                       ANY_VALUE(p.rating) AS rating,
+                       ANY_VALUE(p.review_rating) AS review_rating,
+                       ANY_VALUE(p.reviews) AS reviews,
+                       ANY_VALUE(p.feedbacks) AS feedbacks,
+                       ANY_VALUE(p.badges) AS badges,
+                       ANY_VALUE(p.is_resale) AS is_resale,
                        -- срез хранит превью из DOM выдачи не всегда (лейзи-лоад
                        -- в момент захода) → дубль из сборов контента
-                       COALESCE(NULLIF(p.image_url, ''), d.preview_image) AS image_url,
-                       p.source_nm_id
+                       COALESCE(NULLIF(ANY_VALUE(p.image_url), ''),
+                                ANY_VALUE(d.preview_image)) AS image_url,
+                       ANY_VALUE(p.source_nm_id) AS source_nm_id,
+                       -- карточка конкурента собрана? (есть запись в wb_competitor_details)
+                       MAX(d.nm_id IS NOT NULL) AS is_collected,
+                       -- тип/предмет конкурента (из собранной карточки) — для подписи
+                       ANY_VALUE(d.subject_name) AS subject_name
                 FROM wb_competitor_position p FORCE INDEX (idx_position_slice)
                 LEFT JOIN wb_competitor_details d ON d.nm_id = p.nm_id
                 WHERE p.company_id = :cid AND p.slice_stamp IN ({sph})
                   AND p.query_phrase IN ({pph})
                   AND p.position BETWEEN 1 AND {top}
+                GROUP BY p.query_phrase, p.slice_stamp, p.nm_id
+                LIMIT {self.MAX_SLICE_ROWS}
             """), {"cid": self.company_id or 0, **sp, **pp})).mappings().all()
+            if len(rows) >= self.MAX_SLICE_ROWS:
+                # Страховка: если свёртка развалится (как с JOIN по позиции —
+                # там пришло 56 758 строк вместо 5 322), лучше показать
+                # обрезанную матрицу с предупреждением, чем утянуть ~400 МБ
+                # и убить mysqld OOM-ом (сервер 1 ГБ, запас ~130 МБ).
+                print(json.dumps({"watch_slice_truncated": True,
+                                  "rows": len(rows),
+                                  "limit": self.MAX_SLICE_ROWS,
+                                  "phrases": len(phrases),
+                                  "stamps": len(stamps)}, ensure_ascii=False),
+                      flush=True)
         # один товар в заходе — одна строка (привязка к нескольким нашим карточкам
         # даёт дубли; оставляем вариант с лучшей позицией)
         best: dict[tuple[str, str, int], dict] = {}
@@ -532,6 +580,11 @@ class WatchService:
                 "badges": _json_list(r["badges"]),
                 "image_url": r["image_url"] or "",
                 "source_nm_id": int(r["source_nm_id"] or 0),
+                # карточка собрана (есть запись в wb_competitor_details) — по этому
+                # фронт красит подложку: собрана — белая, не собрана — серая
+                "is_collected": 1 if r["is_collected"] else 0,
+                # тип/предмет конкурента (есть только у собранных карточек)
+                "subject_name": r["subject_name"] or "",
                 # ресейл (товар от частного лица) — парсить нечего
                 "is_resale": 1 if r["is_resale"] else 0,
                 "_pos": pos,
@@ -587,6 +640,10 @@ class WatchService:
         MySQL делает loose index scan — индекс-only, без чтения строк. Сканить
         срез по периоду нельзя: индекса (company, date, phrase) у этой таблицы
         нет, и такой GROUP BY уводил сервер 1 ГБ в своп.
+
+        Пробовали заменить на агрегаты MAX(slice_stamp) + JOIN (2026-11-01) — на
+        замере вышло 1.7-1.9 с против 0.43-0.59 с у этого варианта: JOIN не
+        использует loose index scan и сканит индекс целиком. Вернули как было.
         """
         if not phrases:
             return {}

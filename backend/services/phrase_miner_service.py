@@ -209,7 +209,13 @@ async def refill(db: AsyncSession) -> int:
           (company_id, source_nm_id, competitor_nm_id, content_hash, priority, status)
         SELECT x.company_id, x.source_nm_id, x.nm_id, x.h, 2, 'pending'
         FROM (
-            SELECT w.company_id AS company_id, c.source_nm_id, c.nm_id,
+            -- DISTINCT обязателен: у конкурента бывает несколько строк в
+            -- wb_competitor_cards (разные query_phrase) → в одном INSERT
+            -- появлялись одинаковые ключи (source_nm_id, competitor_nm_id,
+            -- content_hash), и MySQL 8 отдавал 1062 «Duplicate entry» даже с
+            -- INSERT IGNORE (дубликаты ВНУТРИ одного набора не гасятся) —
+            -- весь батч наполнения падал (спам в журнале, очередь не пополнялась).
+            SELECT DISTINCT w.company_id AS company_id, c.source_nm_id, c.nm_id,
                    MD5(CONCAT_WS('\n', d.nm_id, COALESCE(d.title,''),
                                  COALESCE(d.description,''))) AS h,
                    COALESCE(d.full_collected_at, d.collected_at) AS fc

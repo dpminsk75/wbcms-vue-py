@@ -38,6 +38,12 @@ def get_session():
 # уже подозреваемый на перебор строк/нет индекса. Пишем в stderr → journald.
 SLOW_SQL_SECONDS = 2.0
 
+# Порог числа строк в ответе: выше — отдельное предупреждение. Норма для
+# выборок этого проекта — сотни-тысячи строк; десятки тысяч означают, что
+# приложение тащит в память то, что должно было свернуться в SQL (см.
+# MAX_SLICE_ROWS в seo_watch_service.py).
+MANY_ROWS_THRESHOLD = 20000
+
 _slow_sql_log = logging.getLogger("wbcms.slow_sql")
 if not _slow_sql_log.handlers:      # uvicorn корневой logger не настраивает
     _h = logging.StreamHandler()
@@ -70,3 +76,12 @@ def _slow_sql_done(conn, cursor, statement, parameters, context, executemany):
         took, rows, bool(executemany),
         " ".join(str(statement or "").split())[:400],
     )
+    # Много строк в ответе — главный признак регрессии по памяти: на сервере
+    # 1 ГБ выборка в ~50 тыс. строк × 20 колонок = ~400 МБ в Python → OOM и
+    # 40 минут офлайна (2026-11-01). Поэтому отдельным WARNING.
+    if rows > MANY_ROWS_THRESHOLD:
+        _slow_sql_log.warning(
+            "slow_sql MANY_ROWS %s > %s :: %s",
+            rows, MANY_ROWS_THRESHOLD,
+            " ".join(str(statement or "").split())[:400],
+        )
