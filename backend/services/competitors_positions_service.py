@@ -19,6 +19,8 @@ import re
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.services.competitor_content import has_content_sql
+
 
 def _norm_phrase(raw) -> str:
     """Нормализация фразы — как при записи (capture_service._norm_phrase)."""
@@ -249,6 +251,24 @@ class CompetitorsPositionsService:
         )).mappings().all()
         return {int(r["nmID"]): (r["title"] or "") for r in rows}
 
+    async def _card_subjects(self, nm_ids: list[int]) -> dict[int, str]:
+        """Предмет (тип) наших карточек — из синка карточек WB (`wbcards.subjectName`).
+
+        У КОНКУРЕНТОВ предмета нет: расширение его не присылает
+        (`_DETAIL_COLUMNS` в `routers/ext.py` без `subject_name`), поэтому
+        в `wb_competitor_details.subject_name` пусто. Для наших карточек
+        предмет есть — берём оттуда.
+        """
+        nm_ids = [int(i) for i in {int(x) for x in nm_ids if x}]
+        if not nm_ids:
+            return {}
+        ph = ",".join(f":s{i}" for i in range(len(nm_ids)))
+        rows = (await self.db.execute(
+            text(f"SELECT nmID, subjectName FROM wbcards WHERE nmID IN ({ph})"),
+            {f"s{i}": v for i, v in enumerate(nm_ids)},
+        )).mappings().all()
+        return {int(r["nmID"]): (r["subjectName"] or "") for r in rows}
+
     async def _tokens(self, token_ids: list[int]) -> dict[int, str]:
         """Имена ext-токенов (машин/авторов парсинга) по их id."""
         ids = [int(i) for i in {int(x) for x in token_ids if x}]
@@ -347,9 +367,15 @@ class CompetitorsPositionsService:
                    p.promo_id, p.is_adv, p.match_id, p.seller_id, p.seller_rating,
                    p.image_url,
                    p.source_nm_id, p.created_by, p.ext_token_id, p.collected_at, p.slice_stamp,
-                   w.title AS source_title, w.vendorCode AS source_vendor
+                   w.title AS source_title, w.vendorCode AS source_vendor,
+                   -- карточка конкурента собрана? (есть содержание: описание
+                   -- не короче общего порога competitor_content.DESC_MIN_LEN)
+                   {has_content_sql('d')} AS is_collected,
+                   -- тип/предмет конкурента (из собранной карточки) — для подписи
+                   d.subject_name AS subject_name
             FROM wb_competitor_position p
             LEFT JOIN wbcards w ON w.nmID = p.source_nm_id
+            LEFT JOIN wb_competitor_details d ON d.nm_id = p.nm_id
             WHERE {' AND '.join(where)} {scope}
             ORDER BY p.collected_at DESC, p.position, p.id
         """), params)).mappings().all()
@@ -378,6 +404,11 @@ class CompetitorsPositionsService:
                 "promo_id": r["promo_id"],
                 "is_adv": int(r["is_adv"] or 0),
                 "image_url": r["image_url"] or "",
+                # карточка собрана (есть запись в wb_competitor_details) — по этому
+                # фронт красит подложку: собрана — белая, не собрана — серая
+                "is_collected": int(r["is_collected"] or 0),
+                # тип/предмет конкурента (есть только у собранных карточек)
+                "subject_name": r["subject_name"] or "",
                 "match_id": r["match_id"],
                 "source_nm_id": int(r["source_nm_id"] or 0),
                 "source_title": r["source_title"] or "",
@@ -392,6 +423,8 @@ class CompetitorsPositionsService:
         ours = sorted({i["source_nm_id"] for i in items if i["source_nm_id"]})
         ours_set = set(ours)
         titles = await self._card_titles(ours)
+        # предмет наших карточек (у конкурентов расширение его не собирает)
+        our_subjects = await self._card_subjects(ours)
         tokens = await self._tokens([i["ext_token_id"] for i in items])
         for i in items:
             i["token_name"] = tokens.get(int(i["ext_token_id"] or 0), "")
@@ -444,6 +477,10 @@ class CompetitorsPositionsService:
             for i in day_items:
                 # наш товар — тот, кто сам был в выдаче (а не просто конкурент)
                 i["is_ours"] = int(i["nm_id"] or 0) in ours_set
+                # предмет: у конкурента — из собранной карточки (пусто: расширение
+                # его не присылает), у нашего — из синка карточек WB
+                if not i.get("subject_name") and i["is_ours"]:
+                    i["subject_name"] = our_subjects.get(int(i["nm_id"] or 0), "")
             slices.append({
                 "date": d,
                 "time": _stamp_time(by_slice[key][0].get("slice_stamp")),

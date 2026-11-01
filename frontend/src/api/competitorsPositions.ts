@@ -66,6 +66,10 @@ export interface PositionsItem {
   image_url?: string
   /** Наш товар — тот, кто сам был в выдаче (а не просто конкурент). */
   is_ours?: boolean
+  /** Карточка конкурента собрана (есть запись в wb_competitor_details). */
+  is_collected?: number
+  /** Тип/предмет конкурента (из собранной карточки). */
+  subject_name?: string
   source_nm_id: number
   /** Наши карточки, к которым привязан этот товар в выдаче (одна строка на товар). */
   source_nm_ids?: number[]

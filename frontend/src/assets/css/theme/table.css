@@ -90,6 +90,11 @@
 .tbl tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 .tbl tbody tr:hover td { background: color-mix(in srgb, var(--ink) 7%, transparent); }
 
+/* Строка-карточка конкурента, который НЕ собран (нет записи в
+   wb_competitor_details): серая подложка ячейки. Красим ячейку, а не блок
+   внутри неё — иначе серый не покроет поля ячейки и не будет бить по зебре. */
+.tbl td:has(> .prod-cell--muted) { background: #E9ECEF; }
+
 /* выравнивание ячеек (правила ниже — после first-child, поэтому побеждают по порядку при равной специфичности) */
 .tbl td.t-left, .tbl th.t-left { text-align: left; font-variant-numeric: normal; }
 .tbl td.t-center, .tbl th.t-center { text-align: center; }

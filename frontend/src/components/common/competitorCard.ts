@@ -12,6 +12,8 @@ export interface CompetitorCardData {
   title: string
   brand: string
   seller: string
+  /** Тип/предмет — первая часть подписи. */
+  subject?: string
   price: number | null
   oldPrice: number | null
   priceApi: number | null
@@ -25,10 +27,27 @@ export interface CompetitorCardData {
   isNew: boolean
   /** Наша позиция в полке конкурента (только для полок). */
   ourPosition?: number | null
+  /** Собрана ли карточка конкурента (есть запись в wb_competitor_details).
+   *  null — неизвестно: подложку не красим. */
+  collected?: boolean | null
   /** Дата среза полки. */
   snapDate?: string
   /** Подпись блока полки (например «Смотрите также»). */
   shelfTitle?: string
+}
+
+/** Собрана ли карточка конкурента: есть запись в `wb_competitor_details`.
+ *
+ *  `null` — неизвестно (флага нет): подложку не красим.
+ *  Наши карточки не гасим никогда — в `wb_competitor_details` их нет.
+ */
+export function collectedFlag(
+  isCollected?: number | null,
+  isOurs?: boolean,
+): boolean | null {
+  if (isOurs) return null
+  if (isCollected === undefined || isCollected === null) return null
+  return !!isCollected
 }
 
 /** Строка выдачи WB (`/api/competitors/positions`). */
@@ -38,6 +57,7 @@ export function fromPositionsItem(it: PositionsItem): CompetitorCardData {
     title: it.title || '',
     brand: it.brand || '',
     seller: it.seller || '',
+    subject: it.subject_name || '',
     price: it.price ?? null,
     oldPrice: it.old_price ?? null,
     priceApi: it.price_api ?? null,
@@ -49,6 +69,7 @@ export function fromPositionsItem(it: PositionsItem): CompetitorCardData {
     position: it.position_api ?? it.position ?? null,
     isOurs: !!it.is_ours,
     isNew: false,
+    collected: collectedFlag(it.is_collected, !!it.is_ours),
   }
 }
 

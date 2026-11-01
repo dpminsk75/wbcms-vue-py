@@ -5,6 +5,7 @@
       'cmp-card--ours': isOurs,
       'cmp-card--new': isNew,
       'cmp-card--price': priceChanged,
+      'cmp-card--muted': collected === false,
       'cmp-card--shelf': variant === 'shelf',
       'cmp-card--shelves': variant === 'shelves',
     }"
@@ -79,8 +80,15 @@
       <template v-else>
         <div class="cmp-card__title" :title="fullTitle">{{ title || ('nm ' + nmId) }}</div>
 
-        <div v-if="seller" class="cmp-card__seller">{{ seller }}</div>
-        <div v-if="brandLine" class="cmp-card__brand">{{ brandLine }}</div>
+        <!-- одна строка под названием: бренд • продавец (без дублей:
+             у конкурентов WB продавец часто = бренд) -->
+        <div v-if="metaParts.length" class="cmp-card__meta">
+          <span
+            v-for="(p, i) in metaParts"
+            :key="i"
+            :class="p.cls"
+          >{{ p.text }}</span>
+        </div>
 
         <div class="cmp-card__price">
           <b>{{ money(price) }}</b>
@@ -113,6 +121,39 @@
  * конкурента, ~ShelfItemCard) и `shelves` (модалка «Полки и баджи» →
  * «Где мы на полках»: квадратное фото с обрезкой, синий круг позиции,
  * название блока над товаром). Фото идёт через общий `CardPhoto`.
+ *
+ * ── КАК ПЕРЕДАВАТЬ (вариант `feed`, выдача) ───────────────────────────
+ *   <CompetitorCard
+ *     variant="feed"
+ *     :nm-id="c.nm_id"                 <!-- артикул WB (обязательно) -->
+ *     :title="c.title"                 <!-- название -->
+ *     :subject="c.subject_name || ''"  <!-- тип/предмет: «Журналы» -->
+ *     :seller="c.seller"               <!-- продавец: «АСТ» -->
+ *     :price="c.price"                 <!-- цена -->
+ *     :old-price="c.old_price ?? null" <!-- старая цена (зачёркнутая) -->
+ *     :price-api="c.price_api ?? null" <!-- цена «без кошелька» -->
+ *     :rating="c.rating ?? null"       <!-- средняя оценка WB -->
+ *     :review-rating="c.review_rating ?? null" <!-- рейтинг отзывов (★) -->
+ *     :reviews="c.reviews ?? c.feedbacks ?? null"
+ *     :badges="c.badges || []"         <!-- бейджи WB поверх фото -->
+ *     :image-url="c.image_url"         <!-- фото (пусто — заглушка) -->
+ *     :position="c.position_api ?? c.position"  <!-- номер в выдаче -->
+ *     :is-ours="!!c.is_ours"           <!-- наша карточка -->
+ *     :is-new="!!c.is_new"             <!-- новая в выдаче -->
+ *     :price-changed="!!c.price_changed"
+ *     :price-prev="c.price_prev ?? null"
+ *     :price-pct="c.price_pct ?? null"
+ *     :collected="collectedFlag(c.is_collected, !!c.is_ours)" <!-- серая подложка -->
+ *     @open="openCard(c)"
+ *   />
+ *
+ *   Подпись под названием — ОДНА строка: Тип/Предмет • Продавец, без дублей
+ *   (продавец = бренд → одно слово) и с многоточием, если не влезает.
+ *   Бренд в подпись не входит (у конкурента он = продавец).
+ *   `collected`: false → серая подложка #E9ECEF (карточка конкурента не
+ *   собрана, нет записи в wb_competitor_details); null → как обычно.
+ *   Хелпер `collectedFlag()` — в `competitorCard.ts` (наши карточки → null).
+ * ──────────────────────────────────────────────────────────────────────
  */
 import { computed } from 'vue'
 import CardPhoto from './CardPhoto.vue'
@@ -126,6 +167,8 @@ const props = withDefaults(defineProps<{
   title?: string
   brand?: string
   seller?: string
+  /** Тип/предмет — первая часть подписи («Журналы»). */
+  subject?: string
   price?: number | null
   oldPrice?: number | null
   /** Цена из WB API (когда основной цены нет — «без кошелька»). */
@@ -152,6 +195,9 @@ const props = withDefaults(defineProps<{
   snapDate?: string
   /** Подпись блока полки (например «Смотрите также»). */
   shelfTitle?: string
+  /** Собрана ли карточка конкурента (есть запись в wb_competitor_details).
+   *  false — подложка серая; null/undefined — неизвестно, подложка как обычно. */
+  collected?: boolean | null
   /** Ширина карточки, px (0 = свой размер варианта). */
   width?: number
 }>(), {
@@ -159,6 +205,7 @@ const props = withDefaults(defineProps<{
   title: '',
   brand: '',
   seller: '',
+  subject: '',
   price: null,
   oldPrice: null,
   priceApi: null,
@@ -176,6 +223,7 @@ const props = withDefaults(defineProps<{
   ourPosition: null,
   snapDate: '',
   shelfTitle: '',
+  collected: null,
   width: 0,
 })
 
@@ -197,6 +245,26 @@ function money(v: number | null | undefined): string {
 const rate = computed(() => props.reviewRating ?? props.rating ?? null)
 
 const brandLine = computed(() => (props.shelfTitle || props.brand || '').trim())
+
+/** Строка под названием в выдаче: Тип/Предмет • Продавец — ОДНА строка.
+ *
+ *  Без дублей: у конкурентов WB продавец часто = бренд («Издательство АСТ»),
+ *  и раньше подряд шли две строки с одним и тем же названием.
+ *  Бренд в подпись не входит: у конкурента он обычно = продавец
+ *  («ЭКСМО» и «ТД ЭкСМО» → «ЭКСМО • ТД ЭкСМО» лишнее).
+ */
+const metaParts = computed(() => {
+  const out: Array<{ text: string; cls: string }> = []
+  const push = (text: string) => {
+    const s = String(text || '').trim()
+    if (!s) return
+    if (out.some((x) => x.text.toLowerCase() === s.toLowerCase())) return
+    out.push({ text: s, cls: '' })
+  }
+  push(props.subject)
+  push(props.seller)
+  return out
+})
 
 /** Полный текст названия — в подсказке, если обрезано до 2 строк. */
 const fullTitle = computed(() => props.title || `nm ${props.nmId}`)
@@ -255,6 +323,10 @@ function badgeClass(b: string): string {
 .cmp-card--new.cmp-card--ours { border: 2px solid #16a34a; }
 /* модалка «Полки и баджи»: клик не на всю карточку, а только на круг позиции */
 .cmp-card--shelves { cursor: pointer; }
+/* Карточка конкурента НЕ собрана (нет записи в wb_competitor_details) —
+   серая подложка: фото и текст не трогаем, видно, что карточку ещё не собрали.
+   Наши карточки сюда не попадают (у них записей в wb_competitor_details нет). */
+.cmp-card--muted { background: #E9ECEF; }
 
 .cmp-card__img {
   position: relative;
@@ -374,7 +446,9 @@ function badgeClass(b: string): string {
    конкурент, карточку не собираем. */
 .cmp-card__badge--resale { background: #8bf7d0; color: #063d2c; }
 
-.cmp-card__body { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 4px; }
+/* text-align: left — карточка не зависит от выравнивания контейнера
+   (в выдаче /seo-watch карточки лежат в <td colspan>, где ячейка центрирована). */
+.cmp-card__body { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 4px; text-align: left; }
 
 .cmp-card__title {
   font-size: 14px;
@@ -389,6 +463,16 @@ function badgeClass(b: string): string {
   overflow-wrap: anywhere;
 }
 .cmp-card__seller { font-size: 13px; color: #9ca3af; }
+/* строка под названием: Тип/Предмет • Продавец — ОДНА строка, многоточие.
+   Спаны инлайновые: flex здесь разносил два текста по колонкам. */
+.cmp-card__meta {
+  font-size: 13px;
+  color: #9ca3af;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cmp-card__meta > span + span::before { content: ' • '; color: #cbd2d9; }
 .cmp-card__brand {
   font-size: 11px;
   color: #9ca3af;

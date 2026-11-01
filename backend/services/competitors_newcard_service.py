@@ -24,9 +24,11 @@ from backend.database import SessionLocal
 from backend.services import openrouter_service as llm
 from backend.services import llm_provider
 from backend.services.like_mask import escape_like
+from backend.services.competitor_content import DESC_MIN_LEN
 
 # Порог «описания нет»: короче 50 символов считаем пустым (как в §11.2 плана).
-DESC_MIN_LEN = 50
+# Порог «контент есть» — общий (services/competitor_content.py):
+# длина описания ≥ порога; от него зависят и счётчики, и кнопки сбора.
 # §17.2: через сколько дней контент конкурента считаем устаревшим.
 REFRESH_AFTER_DAYS = 30
 # §13: окно для поведения в таблице конкурентов (полки/поиск/дубликаты).
@@ -2268,6 +2270,10 @@ class CompetitorsNewcardService:
             d["sold_out"] = 1 if row.get("sold_out") else 0
             images = _images(row.get("images"))
             d["images"] = images
+            # «Контент есть» — по общему порогу (services/competitor_content.py):
+            # описание не короче DESC_MIN_LEN. Лёгкие строки наблюдения выдачи
+            # (цена/рейтинг/превью) описания не содержат — значит контента ещё нет.
+            d["has_content"] = len(str(d.get("description") or "")) >= DESC_MIN_LEN
             # Галерея — только с карточки; если её ещё нет, показываем превью из выдачи.
             d["photo"] = images[0] if images else (d.get("preview_image") or None)
             chars = _j(d.get("characteristics")) or []
@@ -2690,7 +2696,12 @@ class CompetitorsNewcardService:
         return dict(r) if r else None
 
     async def positions_fallback(self, nm_id: int) -> dict | None:
-        """Последняя строка конкурента в выдаче (wb_competitor_position)."""
+        """Последняя строка конкурента в выдаче (wb_competitor_position).
+
+        Берём не просто последнюю строку, а **заполненную**: срез мог сохранить
+        пустые title/price/image_url (WB грузит фото лениво) — тогда досье
+        открывалось совсем пустым, хотя данные в выдаче есть.
+        """
         scope, params = "", {"n": nm_id}
         if self.company_id is not None:
             scope = "AND company_id=:cid"
@@ -2701,7 +2712,8 @@ class CompetitorsNewcardService:
                    collected_at, slice_stamp
             FROM wb_competitor_position
             WHERE nm_id=:n {scope}
-            ORDER BY id DESC LIMIT 1
+            ORDER BY (title<>'') + (price>0) + (image_url<>'') DESC, id DESC
+            LIMIT 1
         """), params)).mappings().first()
         return dict(r) if r else None
 

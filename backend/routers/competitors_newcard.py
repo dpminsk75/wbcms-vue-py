@@ -483,15 +483,21 @@ async def captured_details(
 ):
     """Полная карточка собранного конкурента для попапа.
 
-    Лестница источников (все company-scoped): контент (wb_competitor_details,
-    видимый через wb_competitor_capture) → запись выдачи (wb_competitor_cards) →
-    строка выдачи (wb_competitor_position). Нет полного сбора — отдаём частичные
-    данные с флагом found != "details": фронт показывает кнопку «Собрать в
-    расширении» вместо 404.
+    Лестница источников: контент (`wb_competitor_details`, если есть содержание)
+    → запись выдачи (`wb_competitor_cards`) → строка выдачи (`wb_competitor_position`).
+    Нет содержания — отдаём частичные данные с флагом found != "details": фронт
+    показывает баннер и кнопку «Собрать в расширении».
+
+    Содержание = описание не короче общего порога `competitor_content.DESC_MIN_LEN`.
+    Уже собранный контент показываем всем: план 2026-10-20 §19.1 — «вторая
+    компания берёт описание из кэша, а не сканирует заново».
     """
     svc = CompetitorsNewcardService(db, company_id)
-    data = await svc.details(nm_id) if await svc.capture_visible(nm_id) else None
-    if data:
+    # Содержание есть? (признак — по общему порогу competitor_content.DESC_MIN_LEN,
+    # его считает details()). Уже собранный контент показываем всем: план
+    # 2026-10-20 §19.1 — «вторая компания берёт описание из кэша».
+    data = await svc.details(nm_id)
+    if data and data.get("has_content"):
         data["found"] = "details"
         return data
     for found, row, extra in (
