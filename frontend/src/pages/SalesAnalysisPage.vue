@@ -82,6 +82,15 @@
       <div class="card__hd">
         <span>Результаты анализа продаж</span>
         <span class="spacer"></span>
+        <PngExportGroup
+          title="ТОП продаж WB"
+          :filters="[
+            { label: 'Период', value: `${dateFrom} — ${dateTo}` },
+            { label: 'Тип', value: reportType === 'qty' ? 'По количеству' : 'По выручке' },
+            { label: 'Показано', value: `ТОП-${topLimit}` },
+            { label: 'Бренд', value: brand || 'все' },
+          ]"
+        />
         <ExcelButton :disabled="!rows.length" @click="exportExcel" />
       </div>
       <div v-if="isLoading" class="text-center p-4"><span class="spinner-border spinner-border-sm"></span> Загрузка...</div>
@@ -143,6 +152,7 @@ import { api } from '../api/client'
 import WbDateRangeFilter from '../components/common/WbDateRangeFilter.vue'
 import ProductCell from '../components/common/ProductCell.vue'
 import ExcelButton from '../components/common/ExcelButton.vue'
+import PngExportGroup from '../components/common/PngExportGroup.vue'
 import { useTableResize } from '../composables/useTableResize'
 import { useNumFmt } from '../composables/useNumFmt'
 import { exportXlsx } from '../utils/exportXlsx'

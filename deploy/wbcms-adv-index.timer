@@ -3,7 +3,7 @@ Description=Run wbcms adv index sync every 4h at :10
 
 [Timer]
 OnCalendar=00,04,08,12,16,20:10
-Persistent=true
+Persistent=false
 
 [Install]
 WantedBy=timers.target

@@ -64,7 +64,7 @@
       <div class="card mb-4 shadow-sm">
         <div class="card-header bg-light"><h5 class="card-title mb-0">Текст ответа</h5></div>
         <div class="card-body">
-          <p class="text-muted small">Можно использовать переменную <code>{{ '{{имя}}' }}</code> — вместо неё подставится имя покупателя.</p>
+          <p class="text-muted small">Можно использовать переменную <code v-text="'{{имя}}'"></code> — вместо неё подставится имя покупателя.</p>
           <div v-for="sec in sections" :key="sec.key" class="mb-4">
             <label class="form-label fw-bold">{{ sec.title }}</label>
             <div v-for="(t, i) in sec.list" :key="i" class="d-flex align-items-start gap-2 mb-2">

@@ -63,8 +63,8 @@
 .hd-btn:disabled { opacity: .5; cursor: not-allowed; }
 
 /* ---------- группа кнопок в шапке блока (.hd-grp) ----------
-   Переключатель варианта и иконки действий — одной рамкой: так
-   «выгрузка в PNG» читается как один инструмент, а не как россыпь.
+   Кнопки выгрузки в PNG — одной рамкой: так «выгрузка» читается
+   как один инструмент, а не как россыпь.
    Всё на currentColor — работает и на тёмной, и на светлой шапке. */
 .hd-grp {
   display: inline-flex;
@@ -73,25 +73,6 @@
   border-radius: var(--radius-sm);
   overflow: hidden;
   background: color-mix(in srgb, currentColor 12%, transparent);
-}
-.hd-seg { display: inline-flex; align-items: stretch; }
-.hd-seg__btn {
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: calc(11.5px * var(--fs));
-  font-weight: 500;
-  padding: 4px 10px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
-}
-.hd-seg__btn.is-on {
-  background: color-mix(in srgb, currentColor 24%, transparent);
-  font-weight: 700;
 }
 .hd-grp__btn {
   border: 0;
@@ -106,6 +87,13 @@
   align-items: center;
   gap: 5px;
   line-height: 1;
+}
+/* кнопка с подписью («PNG») — шире и с кеглем как у .hd-btn */
+.hd-grp__btn--wide {
+  border-left: 0;
+  font-size: calc(11.5px * var(--fs));
+  font-weight: 500;
+  padding: 4px 10px;
 }
 .hd-grp__btn:hover { background: color-mix(in srgb, currentColor 22%, transparent); }
 .hd-grp__btn:disabled { opacity: .45; cursor: not-allowed; }

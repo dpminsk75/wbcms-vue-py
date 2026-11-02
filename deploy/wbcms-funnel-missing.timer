@@ -3,7 +3,7 @@ Description=Run wbcms funnel missing backfill daily 03:20
 
 [Timer]
 OnCalendar=03:20
-Persistent=true
+Persistent=false
 
 [Install]
 WantedBy=timers.target

@@ -29,6 +29,10 @@
         <span><i class="bi bi-crown me-2"></i>Топ 20 товаров</span>
         <span class="spacer"></span>
         <span class="hd-badge">{{ topPeriod }}</span>
+        <PngExportGroup
+          title="Маржинальный учёт — Топ-20"
+          :filters="[{ label: 'Период', value: topPeriod }]"
+        />
         <ExcelButton :disabled="!topRows.length" @click="exportTop" />
       </div>
       <div class="page-wb-profit__filter">
@@ -60,6 +64,10 @@
         <span><i class="bi bi-exclamation-triangle me-2"></i>Худшие 20 товаров</span>
         <span class="spacer"></span>
         <span class="hd-badge">{{ worstPeriod }}</span>
+        <PngExportGroup
+          title="Маржинальный учёт — Худшие-20"
+          :filters="[{ label: 'Период', value: worstPeriod }]"
+        />
         <ExcelButton :disabled="!worstRows.length" @click="exportWorst" />
       </div>
       <div class="page-wb-profit__filter">
@@ -98,6 +106,7 @@ import MarginTable from '@/components/profit/MarginTable.vue'
 import MonthlyProfitTable from '@/components/profit/MonthlyProfitTable.vue'
 import YoyTab from '@/components/profit/YoyTab.vue'
 import ExcelButton from '@/components/common/ExcelButton.vue'
+import PngExportGroup from '@/components/common/PngExportGroup.vue'
 import WbDateRangeFilter from '@/components/common/WbDateRangeFilter.vue'
 
 type TabKey = 'yoy' | 'monthly' | 'top' | 'worst'

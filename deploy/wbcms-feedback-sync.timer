@@ -2,8 +2,8 @@
 Description=Run wbcms feedback sync every 30 minutes
 
 [Timer]
-OnCalendar=*:00,30
-Persistent=true
+OnCalendar=*:08,38
+Persistent=false
 
 [Install]
 WantedBy=timers.target

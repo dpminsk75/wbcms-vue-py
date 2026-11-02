@@ -3,7 +3,7 @@ Description=Run wbcms cards sync chain daily 04:10
 
 [Timer]
 OnCalendar=04:10
-Persistent=true
+Persistent=false
 
 [Install]
 WantedBy=timers.target

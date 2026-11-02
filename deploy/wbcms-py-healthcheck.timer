@@ -4,7 +4,7 @@ Description=Probe wbcms-py /health every 5 min
 [Timer]
 OnBootSec=5min
 OnUnitActiveSec=5min
-Persistent=true
+Persistent=false
 
 [Install]
 WantedBy=timers.target

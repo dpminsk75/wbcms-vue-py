@@ -3,7 +3,7 @@ Description=Run wbcms adv queries sync daily 03:45
 
 [Timer]
 OnCalendar=03:45
-Persistent=true
+Persistent=false
 
 [Install]
 WantedBy=timers.target

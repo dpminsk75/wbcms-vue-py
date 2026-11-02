@@ -51,6 +51,14 @@
         <span><i class="bi bi-crown me-2"></i>ТОП-{{ filters.limit }} товаров</span>
         <span class="spacer"></span>
         <span class="hd-badge">{{ filters.date_from }} — {{ filters.date_to }}</span>
+        <PngExportGroup
+          title="ТОП товаров за период"
+          :filters="[
+            { label: 'Период', value: `${filters.date_from} — ${filters.date_to}` },
+            { label: 'Показано', value: `ТОП-${filters.limit}` },
+            { label: 'Остаток', value: filters.with_stock ? 'да' : 'нет' },
+          ]"
+        />
         <ExcelButton :disabled="!rows.length" @click="exportExcel" />
       </div>
       <div v-if="isLoading" class="text-center p-4 text-muted">
@@ -80,6 +88,7 @@ import { useQuery } from '@tanstack/vue-query'
 import { api } from '@/api/client'
 import MarginTable from '@/components/profit/MarginTable.vue'
 import ExcelButton from '@/components/common/ExcelButton.vue'
+import PngExportGroup from '@/components/common/PngExportGroup.vue'
 import WbDateRangeFilter from '@/components/common/WbDateRangeFilter.vue'
 import { exportMarginExcel } from '@/api/profit'
 

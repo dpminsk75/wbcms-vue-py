@@ -3,7 +3,7 @@ Description=Run wbcms WB tokens health-check daily
 
 [Timer]
 OnCalendar=daily
-Persistent=true
+Persistent=false
 
 [Install]
 WantedBy=timers.target

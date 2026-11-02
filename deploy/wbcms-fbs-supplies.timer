@@ -2,8 +2,8 @@
 Description=Run wbcms FBS supplies sync every 30 min
 
 [Timer]
-OnCalendar=*:00,30
-Persistent=true
+OnCalendar=*:06,36
+Persistent=false
 
 [Install]
 WantedBy=timers.target

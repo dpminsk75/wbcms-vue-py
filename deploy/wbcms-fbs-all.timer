@@ -1,9 +1,9 @@
 [Unit]
-Description=Run wbcms FBS chain sync every 5 min
+Description=Run wbcms FBS chain sync every 15 min
 
 [Timer]
-OnCalendar=*:02/5
-Persistent=true
+OnCalendar=*:03/15
+Persistent=false
 
 [Install]
 WantedBy=timers.target

@@ -3,7 +3,7 @@ Description=Run wbcms finance detail sync daily 01:00
 
 [Timer]
 OnCalendar=01:00
-Persistent=true
+Persistent=false
 
 [Install]
 WantedBy=timers.target

@@ -37,7 +37,12 @@
 
 /* --- Правая крайняя колонка — 5px справа: значения не липнут к краю.
    По последней ячейке строки, а не по классу колонки: с фильтром
-   «Остаток» последней становится колонка остатка. --- */
+   «Остаток» последней становится колонка остатка.
+   Селектор с префиксом .tbl-card — с запасом по специфичности: глобальная
+   плотность темы ([data-table="compact"] .tbl-card .tbl td) иначе перебивала
+   бы правило, и значения снова липли бы к краю. --- */
+.tbl-card .margin-table.tbl > thead > tr > th:last-child { padding-right: 5px; }
+.tbl-card .margin-table.tbl > tbody > tr > td:last-child { padding-right: 5px; }
 .margin-table.tbl > thead > tr > th:last-child { padding-right: 5px; }
 .margin-table.tbl > tbody > tr > td:last-child { padding-right: 5px; }
 

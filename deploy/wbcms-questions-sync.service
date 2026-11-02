@@ -3,6 +3,15 @@ Description=wbcms questions sync (вопросы WB, каждые 30 минут)
 After=network.target mysql.service
 
 [Service]
+# Память воркера: сервер 1 ГБ, базовая нагрузка ~765 МБ (mysqld, vite, legacy
+# PHP). Воркер не должен съесть RAM, из-за которого OOM-killer убьёт mysqld —
+# это ~40 минут офлайна (crash recovery + ожидание).
+MemoryMax=300M
+# Вес жертвы для OOM-killer'а: 1000 = умирать первым. Для mysqld выставлен
+# OOMScoreAdjust=-1000 (systemctl edit mysql), поэтому при нехватке памяти
+# умирает воркер, а база выживает. Воркер упадёт с 'oom-kill' и повторится
+# по таймеру.
+OOMScoreAdjust=1000
 Type=oneshot
 User=www-data
 WorkingDirectory=/var/www/wb/wbcms-py
@@ -10,4 +19,6 @@ EnvironmentFile=/var/www/wb/wbcms-py/.env
 Environment=PYTHONUNBUFFERED=1
 # свежие вопросы за последние 7 дней (окно шире 2 дней: ответ продавца может
 # прийти позже даты вопроса — иначе ответ не обновится)
-ExecStart=/var/www/wb/wbcms-py/.venv/bin/python backend/workers/questions_sync.py --mode fresh --date-from -7
+# Не больше одного воркера одновременно: общий flock. Ждать до 15 мин (900 с),
+# иначе пропустить этот запуск (exit 0) - повторится по таймеру.
+ExecStart=/usr/bin/flock -w 900 -E 0 /tmp/wbcms-workers.lock /var/www/wb/wbcms-py/.venv/bin/python backend/workers/questions_sync.py --mode fresh --date-from -7

@@ -3,7 +3,7 @@ Description=Run wbcms acceptance sync daily 05:15
 
 [Timer]
 OnCalendar=05:15
-Persistent=true
+Persistent=false
 
 [Install]
 WantedBy=timers.target

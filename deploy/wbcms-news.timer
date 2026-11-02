@@ -1,9 +1,9 @@
 [Unit]
-Description=Run wbcms WB news sync hourly at :05
+Description=Run wbcms WB news sync hourly at :11
 
 [Timer]
-OnCalendar=*:05
-Persistent=true
+OnCalendar=*:11
+Persistent=false
 
 [Install]
 WantedBy=timers.target

@@ -1,9 +1,9 @@
 [Unit]
-Description=Run wbcms orders chain sync every 5 min
+Description=Run wbcms orders chain sync every 15 min
 
 [Timer]
-OnCalendar=*:00/5
-Persistent=true
+OnCalendar=*:01/15
+Persistent=false
 
 [Install]
 WantedBy=timers.target
