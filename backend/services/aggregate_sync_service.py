@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 SALES_SQL = """
 INSERT INTO agg_sales_daily_sku (
     company_id, sale_date, nmID, subject_name, brand_name,
-    sales_qty, returns_qty, retail_amount_sum,
+    sales_qty, returns_qty, retail_amount_sum, returns_amount_sum,
     ppvz_for_pay_sum, delivery_rub_sum, penalty_sum)
 SELECT * FROM (
     SELECT company_id AS company_id, DATE(sale_dt) AS sale_date, nm_id AS nmID,
@@ -27,6 +27,12 @@ SELECT * FROM (
            SUM(CASE WHEN doc_type_name = 'Продажа' THEN quantity ELSE 0 END) AS sales_qty,
            SUM(CASE WHEN doc_type_name = 'Возврат' THEN quantity ELSE 0 END) AS returns_qty,
            SUM(retail_amount) AS retail_amount_sum,
+           /* Сумма возвратов отдельной колонкой (2026-11-02): retail_amount_sum —
+              ВАЛ (продажи + возвраты, знак не разделен, как в Yii2 —
+              AggregateController.php:310), net = retail_amount_sum - returns_amount_sum.
+              Нужна, чтобы отчёт отдавал выручку за вычетом возвратов (как
+              /wb-sales-analysis), не ломая смысл retail_amount_sum. */
+           COALESCE(SUM(CASE WHEN doc_type_name = 'Возврат' THEN retail_amount END), 0) AS returns_amount_sum,
            SUM(ppvz_for_pay) AS ppvz_for_pay_sum,
            SUM(delivery_rub) AS delivery_rub_sum,
            SUM(penalty) AS penalty_sum
@@ -38,6 +44,7 @@ ON DUPLICATE KEY UPDATE
     sales_qty = dt.sales_qty,
     returns_qty = dt.returns_qty,
     retail_amount_sum = dt.retail_amount_sum,
+    returns_amount_sum = dt.returns_amount_sum,
     ppvz_for_pay_sum = dt.ppvz_for_pay_sum,
     delivery_rub_sum = dt.delivery_rub_sum,
     penalty_sum = dt.penalty_sum"""

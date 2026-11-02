@@ -10,6 +10,21 @@ export interface YearCompareRow {
   qty: Record<string, number>
   amount: Record<string, number>
   avg_price: Record<string, number>
+  /** Штуки возвратов по году (вкладка «Продажи»). */
+  returns_qty: Record<string, number>
+  /** Сумма возвратов по году, ₽. */
+  returns_amount: Record<string, number>
+}
+
+export interface YearCompareSummary {
+  year: number
+  /** Количество NET (продажи минус возвраты), шт. */
+  qty: number
+  /** Сумма NET (продажи минус возвраты), ₽. */
+  amount: number
+  returns_qty: number
+  returns_amount: number
+  change: number | null
 }
 
 export interface YearCompareResponse {
@@ -21,10 +36,12 @@ export interface YearCompareResponse {
     curr_month?: { num: number; name: string; day: number }
     today?: string
     nm_id?: number | null
+    /** Есть ли возвраты в отчёте (в кубе заказов их нет). */
+    has_returns?: boolean
   }
-  summary_prev: Array<{ year: number; qty: number; amount: number; change: number | null }>
-  summary_curr: Array<{ year: number; qty: number; amount: number; change: number | null }>
-  summary_year: Array<{ year: number; qty: number; amount: number; change: number | null }>
+  summary_prev: YearCompareSummary[]
+  summary_curr: YearCompareSummary[]
+  summary_year: YearCompareSummary[]
   months: Array<Record<string, any>>
   top_prev: YearCompareRow[]
   top_curr: YearCompareRow[]

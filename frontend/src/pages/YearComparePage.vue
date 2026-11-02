@@ -40,13 +40,14 @@
         :class="i === summaryYear.length - 1 ? 'tile--3' : 'tile--1'"
       >
         <div class="tile__label">{{ tabLabel }} · {{ s.year }}</div>
-        <div class="tile__value">{{ fmtMoney(s.amount) }}</div>
+        <div class="tile__value">{{ fmtMoney2(s.amount) }}</div>
         <div class="tile__foot">
           <span v-if="s.change === null" class="tile__delta">база</span>
           <span v-else class="tile__delta" :class="s.change < 0 ? 'tile__delta--down' : ''">
             {{ s.change > 0 ? '+' : '' }}{{ fmt1(s.change) }} %
           </span>
           {{ fmt0(s.qty) }} шт
+          <span v-if="showReturns && s.returns_qty">· возврат {{ fmt0(s.returns_qty) }} шт</span>
         </div>
       </div>
     </div>
@@ -71,6 +72,7 @@
                   <th class="t-left">Год</th>
                   <th class="num">Кол-во</th>
                   <th class="num">Сумма</th>
+                  <th v-if="showReturns" class="num">Возвраты</th>
                   <th class="num">Изм. %</th>
                 </tr>
               </thead>
@@ -78,7 +80,8 @@
                 <tr v-for="s in summaryPrev" :key="`p${s.year}`">
                   <td class="t-left">{{ s.year }}</td>
                   <td class="num">{{ fmt0(s.qty) }}</td>
-                  <td class="num">{{ fmtMoney(s.amount) }}</td>
+                  <td class="num">{{ fmtMoney2(s.amount) }}</td>
+                  <td v-if="showReturns" class="num">{{ fmt0(s.returns_qty) }}</td>
                   <td class="num" :class="s.change === null ? '' : (s.change < 0 ? 't-neg' : 't-pos')">
                     {{ s.change === null ? '—' : `${s.change > 0 ? '+' : ''}${fmt1(s.change)} %` }}
                   </td>
@@ -101,6 +104,7 @@
                   <th class="t-left">Год</th>
                   <th class="num">Кол-во</th>
                   <th class="num">Сумма</th>
+                  <th v-if="showReturns" class="num">Возвраты</th>
                   <th class="num">Изм. %</th>
                 </tr>
               </thead>
@@ -108,7 +112,8 @@
                 <tr v-for="s in summaryCurr" :key="`c${s.year}`">
                   <td class="t-left">{{ s.year }}</td>
                   <td class="num">{{ fmt0(s.qty) }}</td>
-                  <td class="num">{{ fmtMoney(s.amount) }}</td>
+                  <td class="num">{{ fmtMoney2(s.amount) }}</td>
+                  <td v-if="showReturns" class="num">{{ fmt0(s.returns_qty) }}</td>
                   <td class="num" :class="s.change === null ? '' : (s.change < 0 ? 't-neg' : 't-pos')">
                     {{ s.change === null ? '—' : `${s.change > 0 ? '+' : ''}${fmt1(s.change)} %` }}
                   </td>
@@ -127,7 +132,12 @@
         :years="years"
         :months="months"
         title="Таблица сравнения по месяцам"
+        :has-returns="showReturns"
         show-excel
+        show-png
+        :png-title="reportTitle"
+        :png-subtitle="reportSubtitle"
+        :png-filters="pngFilters"
         @excel="exportMonths"
       />
     </div>
@@ -140,7 +150,12 @@
         :rows="topPrev"
         :title="`ТОП за прошлый месяц (${prevMonthName})`"
         :badge="years.join(' / ')"
+        :has-returns="showReturns"
         show-excel
+        show-png
+        :png-title="reportTitle"
+        :png-subtitle="reportSubtitle"
+        :png-filters="pngFilters"
         @excel="exportTopPrev"
       />
     </div>
@@ -151,7 +166,12 @@
         :rows="topCurr"
         :title="`ТОП за текущий месяц (${currMonthName}, с 01 по ${day})`"
         badge="MTD"
+        :has-returns="showReturns"
         show-excel
+        show-png
+        :png-title="reportTitle"
+        :png-subtitle="reportSubtitle"
+        :png-filters="pngFilters"
         @excel="exportTopCurr"
       />
     </div>
@@ -181,7 +201,9 @@ import YearPicker from '@/components/common/YearPicker.vue'
 import YearCompareChart from '@/components/reports/YearCompareChart.vue'
 import YearCompareTable from '@/components/reports/YearCompareTable.vue'
 
-const { fmt0, fmt1, fmtMoney } = useNumFmt()
+const { fmt0, fmt1, fmt2 } = useNumFmt()
+/** Деньги с копейками: «118 656,75 ₽» — как в /wb-sales-analysis. */
+const fmtMoney2 = (v: any): string => fmt2(v) + ' ₽'
 const route = useRoute()
 
 const SUB_TABS = [
@@ -233,6 +255,30 @@ const topCurr = computed<any[]>(() => data.value?.top_curr || [])
 const prevMonthName = computed(() => data.value?.meta?.prev_month?.name || '')
 const currMonthName = computed(() => data.value?.meta?.curr_month?.name || '')
 const day = computed(() => data.value?.meta?.curr_month?.day || 1)
+/** Возвраты есть только в кубе продаж — на вкладке «Заказы» колонки нет. */
+const showReturns = computed(() => !!data.value?.meta?.has_returns)
+
+/* --- метаданные для шапки PNG-картинки --- */
+
+/** Название отчёта — как заголовок блока на странице. */
+const reportTitle = computed(() => 'Сравнение по годам')
+
+/** Подзаголовок: какая вкладка (Заказы/Продажи) и какой срез. */
+const reportSubtitle = computed(() => `Отчёт «ТОП товаров» · вкладка «${tabLabel.value}»`)
+
+/**
+ * Фильтры для шапки — только значимые.
+ * Период и карточка у таблиц свои (ТОП за прошлый месяц / за текущий),
+ * поэтому здесь — общие для отчёта: годы и выбранная карточка.
+ */
+const pngFilters = computed(() => {
+  const list: { label: string; value: string }[] = []
+  if (years.value.length) {
+    list.push({ label: 'Годы', value: years.value.join(' / ') })
+  }
+  list.push({ label: 'Карточка', value: nmId.value ? String(nmId.value) : 'все' })
+  return list
+})
 
 /** Загрузка с дебаунсом — чтобы «Сформировать» (годы + карточка) не давал два GET. */
 let loadTimer: ReturnType<typeof setTimeout> | null = null
@@ -285,6 +331,7 @@ const exportMonths = async () => {
     for (const y of years.value) {
       row[`${y} кол-во`] = m[`qty_${y}`]
       row[`${y} сумма`] = m[`amount_${y}`]
+      if (showReturns.value) row[`${y} возвраты`] = m[`returns_qty_${y}`]
     }
     return row
   })
@@ -292,7 +339,12 @@ const exportMonths = async () => {
     rows,
     filename: `сравнение-по-годам-${tab.value}-месяцы.xlsx`,
     sheetName: 'По месяцам',
-    cols: [{ wch: 16 }, ...years.value.flatMap(() => [{ wch: 12 }, { wch: 16 }])],
+    cols: [
+      { wch: 16 },
+      ...years.value.flatMap(() => (showReturns.value
+        ? [{ wch: 12 }, { wch: 16 }, { wch: 12 }]
+        : [{ wch: 12 }, { wch: 16 }])),
+    ],
   })
 }
 
@@ -308,6 +360,7 @@ const exportTop = async (list: any[], name: string) => {
     for (const y of years.value) {
       row[`${y} кол-во`] = r[`qty_${y}`]
       row[`${y} сумма`] = r[`amount_${y}`]
+      if (showReturns.value) row[`${y} возвраты`] = r[`returns_qty_${y}`]
       row[`${y} ср. цена`] = r[`avg_price_${y}`]
     }
     return row
@@ -316,7 +369,12 @@ const exportTop = async (list: any[], name: string) => {
     rows,
     filename: `сравнение-по-годам-${tab.value}-${name}.xlsx`,
     sheetName: 'ТОП товаров',
-    cols: [{ wch: 12 }, { wch: 34 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, ...years.value.flatMap(() => [{ wch: 10 }, { wch: 14 }, { wch: 12 }])],
+    cols: [
+      { wch: 12 }, { wch: 34 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
+      ...years.value.flatMap(() => (showReturns.value
+        ? [{ wch: 10 }, { wch: 16 }, { wch: 10 }, { wch: 12 }]
+        : [{ wch: 10 }, { wch: 16 }, { wch: 12 }])),
+    ],
   })
 }
 const exportTopPrev = () => exportTop(topPrev.value, 'предыдущий-месяц')

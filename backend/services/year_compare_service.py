@@ -20,6 +20,19 @@ aggregate_sync (backend/workers/aggregate_sync.py) — см. aggregate_sync_serv
   * добавлен фильтр по карточке (nm_id) — он влияет на все таблицы и графики;
   * в сводках добавлена колонка «К перечислению» для продаж и возвраты.
 
+СЕМАНТИКА ВОЗВРАТОВ (2026-11-02):
+  * В кубе продаж retail_amount_sum — ВАЛ: SUM(retail_amount) по всем строкам
+    (продажи + возвраты) без разделения знака. Так было и в Yii2
+    (AggregateController.php:310), поэтому отчёт «Сумма» показывал вал, а
+    /wb-sales-analysis (net, возвраты вычитаются) — расходились на сумму
+    возвратов (проверено: nmID 526443466, окт. 2026 — 120 094,75 против 118 656,75).
+  * В кубе добавлена колонка returns_amount_sum (сумма возвратов), returns_qty
+    (штуки возвратов) в кубе была и раньше.
+  * Отчёт теперь отдаёт NET: qty = sales_qty - returns_qty,
+    amount = retail_amount_sum - 2 * returns_amount_sum (см. _net_amount),
+    возвраты видны отдельной колонкой (returns_qty / returns_amount).
+  * В кубе заказов возвратов нет (doc_type_name='Продажа') — там всё как было.
+
 БЮДЖЕТ: кубы за 3 года — 111k (orders) / 191k (sales) строк на компанию,
 15 запросов на страницу, суммарно < 250k просмотренных строк — в бюджете
 AGENTS.md (500k строк / 60 с) с запасом.
@@ -43,6 +56,10 @@ TABLES = {
         "date": "order_date",
         "qty": "orders_qty",
         "amount": "retail_amount_sum",
+        # В кубе заказов возвратов нет (doc_type_name='Продажа') — заказ был,
+        # даже если его потом вернули.
+        "returns_qty": None,
+        "returns_amount": None,
         # PHP усреднял среднюю цену по странам внутри группы (nmID, title, m, y) —
         # воспроизводим site_country в группировке внутреннего запроса.
         "group_extra": ", site_country",
@@ -52,11 +69,31 @@ TABLES = {
         "date": "sale_date",
         "qty": "sales_qty",
         "amount": "retail_amount_sum",
+        "returns_qty": "returns_qty",
+        "returns_amount": "returns_amount_sum",
         "group_extra": "",
     },
 }
 
 TOP_LIMIT = 20
+
+
+def _net_amount(gross: float, returns: float) -> float:
+    """Net-сумма из валовой суммы куба и суммы возвратов.
+
+    В кубе продаж retail_amount_sum = SUM(retail_amount) по ВСЕМ строкам, т.е.
+    ВАЛ = Σп + Σв (возвраты прибавлены со знаком «+»). Net, как считает
+    /wb-sales-analysis, — это Σп − Σв, поэтому возвраты вычитаются ДВАЖДЫ:
+        net = вал − 2 × возвраты
+    (один раз убираем их из продаж, второй — из результата).
+
+    Проверено на nmID 526443466, окт. 2026:
+        вал 120 094,75 − 2 × 719,00 = 118 656,75 → /wb-sales-analysis «118 656,75».
+
+    Количество так не требует двойного вычитания: sales_qty и returns_qty в
+    кубе — РАЗДЕЛЬНЫЕ колонки, там net = sales_qty − returns_qty.
+    """
+    return round(float(gross or 0) - 2 * float(returns or 0), 2)
 
 
 def _days_in_month(year: int, month: int) -> int:
@@ -109,6 +146,11 @@ class YearCompareService:
         cfg = TABLES.get(tab) or TABLES["orders"]
         tab = tab if tab in TABLES else "orders"
         tbl, dcol, qcol, acol = cfg["table"], cfg["date"], cfg["qty"], cfg["amount"]
+        r_qty_col, r_amt_col = cfg["returns_qty"], cfg["returns_amount"]
+        # Возвраты есть только в кубе продаж; в кубе заказов их нет.
+        has_returns = bool(r_qty_col and r_amt_col)
+        extra_sel = (f", SUM({r_qty_col}) AS r_qty, SUM({r_amt_col}) AS r_amount"
+                     if has_returns else ", 0 AS r_qty, 0 AS r_amount")
 
         available = await self.available_years()
         if not available:
@@ -141,7 +183,7 @@ class YearCompareService:
         d2 = date(sel[-1], 12, 31)
         grid_sql = text(f"""
             SELECT YEAR({dcol}) AS y, MONTH({dcol}) AS m,
-                   SUM({qcol}) AS qty, SUM({acol}) AS amount
+                   SUM({qcol}) AS qty, SUM({acol}) AS amount{extra_sel}
             FROM {tbl}
             WHERE 1=1{self._cid()} AND {dcol} BETWEEN :d1 AND :d2{nm_where} AND nmID > 0
             GROUP BY YEAR({dcol}), MONTH({dcol})
@@ -155,25 +197,35 @@ class YearCompareService:
             row: dict = {"m": m, "name": MONTH_NAMES[m - 1]}
             for y in sel:
                 r = grid_map.get((y, m))
-                row[f"qty_{y}"] = int(r["qty"] or 0) if r else 0
-                row[f"amount_{y}"] = float(r["amount"] or 0) if r else 0.0
+                g_qty = int(r["qty"] or 0) if r else 0
+                g_amt = float(r["amount"] or 0) if r else 0.0
+                r_qty = int(r["r_qty"] or 0) if r else 0
+                r_amt = float(r["r_amount"] or 0) if r else 0.0
+                # NET: минус возвраты (в кубе сумма — вал, продажи + возвраты).
+                row[f"qty_{y}"] = g_qty - r_qty
+                row[f"amount_{y}"] = _net_amount(g_amt, r_amt)
+                row[f"returns_qty_{y}"] = r_qty
+                row[f"returns_amount_{y}"] = round(r_amt, 2)
             months.append(row)
 
         # --- 2. сводки: полный прошлый месяц, текущий месяц (MTD) и год целиком
         summary_prev = await self._summary(
-            tbl, dcol, qcol, acol, sel, prev_month_num, pm_year_shift, nm_where, params)
+            tbl, dcol, qcol, acol, r_qty_col, r_amt_col, sel, prev_month_num,
+            pm_year_shift, nm_where, params)
         summary_curr = await self._summary(
-            tbl, dcol, qcol, acol, sel, month, 0, nm_where, params, mtd=True, day=day)
+            tbl, dcol, qcol, acol, r_qty_col, r_amt_col, sel, month, 0,
+            nm_where, params, mtd=True, day=day)
         summary_year = await self._summary(
-            tbl, dcol, qcol, acol, sel, month, 0, nm_where, params, full_year=True)
+            tbl, dcol, qcol, acol, r_qty_col, r_amt_col, sel, month, 0,
+            nm_where, params, full_year=True)
 
         # --- 3. ТОП товаров: по каждому (месяц, год) — свой запрос
         top_prev = await self._top(
-            tbl, dcol, qcol, acol, cfg["group_extra"], sel, prev_month_num,
-            pm_year_shift, nm_where, params)
+            tbl, dcol, qcol, acol, cfg["group_extra"], r_qty_col, r_amt_col, sel,
+            prev_month_num, pm_year_shift, nm_where, params)
         top_curr = await self._top(
-            tbl, dcol, qcol, acol, cfg["group_extra"], sel, month, 0,
-            nm_where, params, mtd=True, day=day)
+            tbl, dcol, qcol, acol, cfg["group_extra"], r_qty_col, r_amt_col, sel,
+            month, 0, nm_where, params, mtd=True, day=day)
 
         # --- 4. товары (для карточки в таблице)
         nms = sorted({int(r["nm_id"]) for r in top_prev} | {int(r["nm_id"]) for r in top_curr})
@@ -192,6 +244,8 @@ class YearCompareService:
                 "curr_month": {"num": month, "name": MONTH_NAMES[month - 1], "day": day},
                 "today": date.today().isoformat(),
                 "nm_id": nm_id,
+                # Показывать ли колонку «Возвраты» (в кубе заказов возвратов нет).
+                "has_returns": has_returns,
             },
             "summary_prev": summary_prev,
             "summary_curr": summary_curr,
@@ -204,11 +258,18 @@ class YearCompareService:
     # ------------------------------------------------------------------ части
 
     async def _summary(self, tbl: str, dcol: str, qcol: str, acol: str,
+                        r_qty_col: str | None, r_amt_col: str | None,
                         sel: list[int], month: int, year_shift: int,
                         nm_where: str, params: dict,
                         mtd: bool = False, day: int = 0,
                         full_year: bool = False) -> list[dict]:
-        """Сводка по годам: количество, сумма и Δ% к предыдущему выбранному году."""
+        """Сводка по годам: количество, сумма и Δ% к предыдущему выбранному году.
+
+        Количество и сумма — NET (минус возвраты). Возвраты отдаются отдельно
+        (returns_qty / returns_amount), т.к. в кубе сумма валовая.
+        """
+        extra_sel = (f", SUM({r_qty_col}) AS r_qty, SUM({r_amt_col}) AS r_amount"
+                     if r_qty_col and r_amt_col else ", 0 AS r_qty, 0 AS r_amount")
         out: list[dict] = []
         prev_amt: float | None = None
         for y in sel:
@@ -223,28 +284,42 @@ class YearCompareService:
                 d1 = date(yy, month, 1)
                 d2 = date(yy, month, _days_in_month(yy, month))
             sql = text(f"""
-                SELECT SUM({qcol}) AS qty, SUM({acol}) AS amount
+                SELECT SUM({qcol}) AS qty, SUM({acol}) AS amount{extra_sel}
                 FROM {tbl}
                 WHERE 1=1{self._cid()} AND {dcol} BETWEEN :d1 AND :d2{nm_where} AND nmID > 0
             """)
             r = (await self.db.execute(
                 sql, {**params, "d1": d1.isoformat(), "d2": d2.isoformat()})).mappings().first()
-            qty = int(r["qty"] or 0) if r else 0
-            amt = float(r["amount"] or 0) if r else 0.0
-            change = None if prev_amt is None else self._change(amt, prev_amt)
-            out.append({"year": y, "qty": qty, "amount": amt, "change": change})
-            prev_amt = amt
+            g_qty = int(r["qty"] or 0) if r else 0
+            g_amt = float(r["amount"] or 0) if r else 0.0
+            r_qty = int(r["r_qty"] or 0) if r else 0
+            r_amt = float(r["r_amount"] or 0) if r else 0.0
+            qty = g_qty - r_qty
+            amount = _net_amount(g_amt, r_amt)
+            change = None if prev_amt is None else self._change(amount, prev_amt)
+            out.append({"year": y, "qty": qty, "amount": amount,
+                        "returns_qty": r_qty, "returns_amount": round(r_amt, 2),
+                        "change": change})
+            prev_amt = amount
         return out
 
     async def _top(self, tbl: str, dcol: str, qcol: str, acol: str, group_extra: str,
+                   r_qty_col: str | None, r_amt_col: str | None,
                    sel: list[int], month: int, year_shift: int,
                    nm_where: str, params: dict,
                    mtd: bool = False, day: int = 0) -> list[dict]:
         """ТОП товаров: по каждому году — свои значения, объединённые по nmID.
 
-        Средняя цена — как в PHP: AVG(retail_amount_sum / orders_qty) внутри группы.
+        Средняя цена — как в PHP: среднее по дням от (amount / qty) внутри группы;
+        количество и сумма — NET (минус возвраты), возвраты — отдельными полями.
         Для orders группировка дополнительно включает site_country (как в PHP).
         """
+        if r_qty_col and r_amt_col:
+            rq_expr = f"SUM({r_qty_col})"
+            ra_expr = f"SUM({r_amt_col})"
+        else:
+            rq_expr = "0"
+            ra_expr = "0"
         per_year: dict[int, dict[int, dict]] = {}
         for y in sel:
             yy = y + year_shift
@@ -255,12 +330,16 @@ class YearCompareService:
                 d1 = date(yy, month, 1)
                 d2 = date(yy, month, _days_in_month(yy, month))
             sql = text(f"""
-                SELECT nmID, SUM(qty) AS qty, SUM(amount) AS amount, AVG(avg_price) AS avg_price
+                SELECT nmID, SUM(qty) AS qty, SUM(amount) AS amount,
+                       SUM(r_qty) AS r_qty, SUM(r_amount) AS r_amount,
+                       AVG(avg_price) AS avg_price
                 FROM (
                     SELECT nmID, {dcol} AS d,
                            SUM({qcol}) AS qty, SUM({acol}) AS amount,
-                           CASE WHEN SUM({qcol}) > 0
-                                THEN SUM({acol}) / SUM({qcol}) END AS avg_price
+                           {rq_expr} AS r_qty, {ra_expr} AS r_amount,
+                           CASE WHEN SUM({qcol}) - ({rq_expr}) > 0
+                                THEN (SUM({acol}) - 2 * ({ra_expr})) / (SUM({qcol}) - ({rq_expr}))
+                           END AS avg_price
                     FROM {tbl}
                     WHERE 1=1{self._cid()} AND {dcol} BETWEEN :d1 AND :d2{nm_where} AND nmID > 0
                     GROUP BY nmID, {dcol}{group_extra}
@@ -271,9 +350,15 @@ class YearCompareService:
                 sql, {**params, "d1": d1.isoformat(), "d2": d2.isoformat()})).mappings().all()
             bucket: dict[int, dict] = {}
             for r in rows:
+                g_qty = int(r["qty"] or 0)
+                g_amt = float(r["amount"] or 0)
+                r_qty = int(r["r_qty"] or 0)
+                r_amt = float(r["r_amount"] or 0)
                 bucket[int(r["nmID"])] = {
-                    "qty": int(r["qty"] or 0),
-                    "amount": float(r["amount"] or 0),
+                    "qty": g_qty - r_qty,
+                    "amount": _net_amount(g_amt, r_amt),
+                    "returns_qty": r_qty,
+                    "returns_amount": round(r_amt, 2),
                     "avg_price": round(float(r["avg_price"]), 2) if r["avg_price"] is not None else 0.0,
                 }
             per_year[y] = bucket
@@ -289,9 +374,13 @@ class YearCompareService:
         for nm in chosen:
             row: dict = {"nm_id": nm}
             for y in sel:
-                v = per_year.get(y, {}).get(nm, {"qty": 0, "amount": 0.0, "avg_price": 0.0})
+                v = per_year.get(y, {}).get(nm, {
+                    "qty": 0, "amount": 0.0, "returns_qty": 0,
+                    "returns_amount": 0.0, "avg_price": 0.0})
                 row[f"qty_{y}"] = v["qty"]
                 row[f"amount_{y}"] = v["amount"]
+                row[f"returns_qty_{y}"] = v["returns_qty"]
+                row[f"returns_amount_{y}"] = v["returns_amount"]
                 row[f"avg_price_{y}"] = v["avg_price"]
             # сортировка как в PHP — по сумме последнего (текущего) года, убыванию
             last = sel[-1]
@@ -328,5 +417,7 @@ class YearCompareService:
         for y in sel:
             out[f"qty_{y}"] = row.get(f"qty_{y}", 0)
             out[f"amount_{y}"] = row.get(f"amount_{y}", 0.0)
+            out[f"returns_qty_{y}"] = row.get(f"returns_qty_{y}", 0)
+            out[f"returns_amount_{y}"] = row.get(f"returns_amount_{y}", 0.0)
             out[f"avg_price_{y}"] = row.get(f"avg_price_{y}", 0.0)
         return out
