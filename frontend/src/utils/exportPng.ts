@@ -112,7 +112,7 @@ export function pngFileBase(title: string): string {
  * кнопки — «тишина». Фильтр применяется к КОПИИ узла (clone-node.js:277),
  * живой DOM остаётся видимым.
  */
-const HIDE_IN_PNG = [
+const HIDE_IN_PNG: string[] = [
   '.hd-grp',             // наш блок PNG
   '.hd-btn',             // кнопка Excel и прочие .hd-btn в шапке
   '.expand-btn-wrapper', // «Увидеть ещё N»
@@ -171,8 +171,9 @@ export async function captureElementPng(
   }
 
   // 2) кнопки в картинке не нужны — исключаются из КЛОНА через `filter`
-  //    (см. HIDE_IN_PNG), живой DOM не трогается
-  const hideClone = (node: HTMLElement): boolean =>
+  //    (см. HIDE_IN_PNG), живой DOM не трогается. Фильтр вызывается и для
+  //    текстовых узлов — matches() есть только у Element.
+  const hideClone = (node: Element): boolean =>
     !HIDE_IN_PNG.some((s) => node.matches(s))
 
   try {
@@ -194,7 +195,8 @@ export async function captureElementPng(
         backgroundColor: '#FFFFFF',
         fontEmbedCSS: fontCss,
         width,
-        filter: (node) => hideClone(node as HTMLElement),
+        filter: (node) =>
+          node instanceof Element ? hideClone(node) : true,
         style: { width: `${width}px`, margin: '0' },
       })
     } finally {
