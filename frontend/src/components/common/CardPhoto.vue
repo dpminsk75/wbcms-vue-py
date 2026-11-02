@@ -27,6 +27,7 @@
  * здесь это сделано один раз.
  */
 import { computed, ref, watch } from 'vue'
+import { firstPhotoUrl } from '@/utils/photoUrl'
 
 const props = withDefaults(defineProps<{
   /** URL фото (строка) либо JSON-массив с фото — разбирается на всякий случай. */
@@ -49,31 +50,8 @@ const props = withDefaults(defineProps<{
 
 const failed = ref(false)
 
-/** Первый URL фото из строки/массива/JSON (в т.ч. дважды закодированного). */
-function resolve(raw: any): string {
-  let p: any = raw
-  for (let i = 0; i < 2; i++) {
-    if (Array.isArray(p) || typeof p !== 'string') break
-    try {
-      p = JSON.parse(p)
-    } catch {
-      break
-    }
-  }
-  if (Array.isArray(p)) {
-    const first = p[0]
-    if (typeof first === 'string') return first
-    if (first && typeof first === 'object') {
-      return String(first.photo || first.big || first.c516x688 || first.url || '')
-    }
-    return ''
-  }
-  if (typeof p === 'string') return p.trim()
-  return ''
-}
-
 const imgSrc = computed(() => {
-  const url = resolve(props.src)
+  const url = firstPhotoUrl(props.src)
   if (!url) return ''
   // свой путь (заглушка, уже наш /api/img) — не переписываем
   if (url.startsWith('/')) return url
