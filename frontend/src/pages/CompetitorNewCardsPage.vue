@@ -9,19 +9,19 @@
     <div class="page-competitor__toolbar">
       <input
         v-model="q"
-        class="form-control form-control-sm page-competitor__search"
+        class="wb-input page-competitor__search"
         placeholder="Поиск в работе: nmID, vendorCode, название, бренд"
         @keyup.enter="load"
       />
-      <button class="btn btn-sm btn-primary" :disabled="loading" @click="load">
+      <button class="btn btn-sm btn--brand" :disabled="loading" @click="load">
         <i class="bi bi-search"></i> Найти
       </button>
-      <button class="btn btn-sm btn-outline-secondary" :disabled="loading" @click="reset">Сброс</button>
+      <button class="btn btn-sm btn--outline" :disabled="loading" @click="reset">Сброс</button>
       <label class="page-competitor__check">
         <input v-model="includeAll" type="checkbox" @change="load()" />
         все карточки
       </label>
-      <span class="badge bg-secondary">В работе: {{ rows.length }}</span>
+      <span class="badge badge--neutral">В работе: {{ rows.length }}</span>
     </div>
 
     <div class="page-competitor__picker">
@@ -32,7 +32,7 @@
         <input
           v-model="pick"
           :list="pickListId"
-          class="form-control form-control-sm"
+          class="wb-input"
           placeholder="nmID, артикул или часть названия…"
           autocomplete="off"
           @keyup.enter="openPicked"
@@ -42,7 +42,7 @@
             {{ c.vendorCode || '—' }} | {{ c.title || 'без названия' }}
           </option>
         </datalist>
-        <button class="btn btn-sm btn-outline-primary" :disabled="!pickedNm" @click="openPicked">
+        <button class="btn btn-sm btn--outline" :disabled="!pickedNm" @click="openPicked">
           <i class="bi bi-arrow-right"></i> Открыть
         </button>
       </div>
@@ -57,76 +57,92 @@
       <span class="spinner-border spinner-border-sm"></span> Загрузка…
     </div>
 
-    <div v-else-if="!rows.length" class="alert alert-info">
-      <template v-if="q || includeAll">Ничего не найдено.</template>
-      <template v-else>
-        Карточек в работе нет. Добавьте поисковые запросы или конкурентов в карточке товара
-        (или откройте любую карточку через поле выше).
-      </template>
+    <div v-else-if="!rows.length" class="wb-panel page-competitor__empty">
+      <div class="wb-panel__bd">
+        <template v-if="q || includeAll">Ничего не найдено.</template>
+        <template v-else>
+          Карточек в работе нет. Добавьте поисковые запросы или конкурентов в карточке товара
+          (или откройте любую карточку через поле выше).
+        </template>
+      </div>
     </div>
 
-    <table v-else class="wb-admin-table page-competitor__grid">
+    <div v-else class="tbl-card">
+      <div class="card__hd">
+        <span>Карточки в работе</span>
+        <span class="spacer"></span>
+        <span class="hd-badge">Карточек: {{ rows.length }}</span>
+      </div>
+      <div class="tbl-wrap">
+      <table class="tbl page-competitor__grid">
       <thead>
         <tr>
-          <th class="page-competitor__col-product">Товар</th>
-          <th class="text-center page-competitor__col-num" title="Поисковые запросы (широкие, для сбора конкурентов)">Запросы</th>
-          <th class="text-center page-competitor__col-num" title="Привязанные конкуренты">Конкуренты</th>
-          <th class="text-center page-competitor__col-num" title="Конкуренты с собранным описанием">С контентом</th>
-          <th class="text-center page-competitor__col-num" title="Фразы из описаний конкурентов: выбрано / всего">Фразы</th>
-          <th class="text-center page-competitor__col-num" title="Есть сгенерированные title + description">Сводка</th>
-          <th class="page-competitor__col-actions">Действия</th>
+          <th class="t-left page-competitor__col-product">Товар</th>
+          <th class="t-center page-competitor__col-num" title="Поисковые запросы (широкие, для сбора конкурентов)">Запросы</th>
+          <th class="t-center page-competitor__col-num" title="Привязанные конкуренты">Конкуренты</th>
+          <th class="t-center page-competitor__col-num" title="Конкуренты с собранным описанием">С контентом</th>
+          <th class="t-center page-competitor__col-num" title="Фразы из описаний конкурентов: выбрано / всего">Фразы</th>
+          <th class="t-center page-competitor__col-num" title="Есть сгенерированные title + description">Сводка</th>
+          <th class="t-left page-competitor__col-actions">Действия</th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="r in rows" :key="r.nmID">
           <td>
-            <div class="page-competitor__product">
-              <img :src="r.photo || '/images/no-photo.png'" alt="" class="page-competitor__thumb" loading="lazy" />
-              <div class="page-competitor__product-text">
-                <div class="page-competitor__product-title" :title="r.title || ''">{{ r.title || '—' }}</div>
-                <div class="page-competitor__product-sub">
-                  <a
-                    :href="`/wb/detail?nm_id=${r.nmID}`"
-                    target="_blank"
-                    class="page-competitor__wb-link"
-                    title="Карточка WB в SelBI"
-                  >WB: {{ r.nmID }}</a>
-                  <span v-if="r.vendor_code"> · {{ r.vendor_code }}</span>
-                </div>
-                <div class="page-competitor__product-sub">
-                  <span>{{ r.brand || '—' }}</span>
-                  <span v-if="r.subject_name"> · {{ r.subject_name }}</span>
-                  <span v-if="r.desc_len < descMinLen" class="badge bg-warning text-dark page-competitor__mini">без описания</span>
-                </div>
-              </div>
-            </div>
+            <ProductCell
+              compact
+              :nm-id="r.nmID"
+              :photo="r.photo || ''"
+              :title="r.title || ''"
+              :vendor="r.vendor_code || ''"
+              :brand="r.brand || ''"
+              :subject="r.subject_name || ''"
+              :link="`/wb/detail?nm_id=${r.nmID}`"
+              :link-label="'WB: ' + r.nmID"
+              copy-nm
+              copy-link
+            />
           </td>
-          <td class="text-center">
-            <span class="badge" :class="r.queries_cnt ? 'bg-primary' : 'bg-light text-dark'">{{ r.queries_cnt }}</span>
+          <td class="t-center">
+            <span class="badge" :class="r.queries_cnt ? 'badge--brand' : 'badge--neutral'">{{ r.queries_cnt }}</span>
           </td>
-          <td class="text-center">
-            <span class="badge" :class="r.competitors_cnt ? 'bg-primary' : 'bg-light text-dark'">{{ r.competitors_cnt }}</span>
+          <td class="t-center">
+            <span class="badge" :class="r.competitors_cnt ? 'badge--brand' : 'badge--neutral'">{{ r.competitors_cnt }}</span>
           </td>
-          <td class="text-center">
-            <span class="badge" :class="r.content_cnt ? 'bg-success' : 'bg-light text-dark'">{{ r.content_cnt }}</span>
+          <td class="t-center">
+            <span class="badge" :class="r.content_cnt ? 'badge--ok' : 'badge--neutral'">{{ r.content_cnt }}</span>
           </td>
-          <td class="text-center">
-            <span class="badge" :class="r.phrases_cnt ? 'bg-primary' : 'bg-light text-dark'">
-              {{ r.selected_cnt }}/{{ r.phrases_cnt }}
-            </span>
+          <td class="t-center">
+            <button
+              type="button"
+              class="badge page-competitor-new-cards__phrases"
+              :class="r.phrases_cnt ? 'badge--brand' : 'badge--neutral'"
+              title="Фразы из описаний конкурентов (ИИ-разбор) — выбрано / всего"
+              @click="openPhrases(r)"
+            >{{ r.selected_cnt }}/{{ r.phrases_cnt }}</button>
           </td>
-          <td class="text-center">
-            <span v-if="r.summary_cnt" class="badge bg-success"><i class="bi bi-check-lg"></i></span>
+          <td class="t-center">
+            <span v-if="r.summary_cnt" class="badge badge--ok"><i class="bi bi-check-lg"></i></span>
             <span v-else class="page-competitor__dash">—</span>
           </td>
           <td class="page-competitor__actions">
-            <router-link :to="`/competitor/new-cards/${r.nmID}`" class="btn btn-sm btn-primary">
+            <router-link :to="`/competitor/new-cards/${r.nmID}`" class="btn btn-sm btn--brand">
               <i class="bi bi-magic"></i> Открыть
             </router-link>
           </td>
         </tr>
       </tbody>
-    </table>
+      </table>
+      </div>
+    </div>
+    <CompetitorPhrasesModal
+      :open="phrasesOpen"
+      :nm-id="phrasesRow?.nmID"
+      :title="phrasesRow?.title"
+      source="comp"
+      :count="phrasesCount"
+      @close="phrasesOpen = false"
+    />
   </div>
 </template>
 
@@ -134,16 +150,23 @@
 import '@/assets/css/pages/page-competitor.css'
 import '@/assets/css/pages/page-competitor-new-cards.css'
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import ProductCell from '@/components/common/ProductCell.vue'
+import { useRoute, useRouter } from 'vue-router'
 import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import CompetitorPhrasesModal from '@/components/competitors/CompetitorPhrasesModal.vue'
 import { COMPETITOR_SUB_TABS } from '@/components/common/workspaceTabs'
 import { api } from '../api/client'
 import { competitorsNewcardApi, type NewCardRow } from '../api/competitorsNewcard'
 
+const route = useRoute()
 const router = useRouter()
 const rows = ref<NewCardRow[]>([])
 const q = ref('')
 const includeAll = ref(false)
+/** Модалка «Фразы карточки» (заготовка). */
+const phrasesOpen = ref(false)
+const phrasesRow = ref<NewCardRow | null>(null)
+const phrasesCount = ref<number | null>(null)
 const loading = ref(false)
 const error = ref('')
 const descMinLen = ref(50)
@@ -193,6 +216,7 @@ function openPicked() {
 }
 
 async function load() {
+  syncUrl()
   loading.value = true
   error.value = ''
   try {
@@ -218,5 +242,50 @@ onBeforeUnmount(() => {
   pickSeq++
 })
 
-onMounted(load)
+onMounted(() => {
+  applyQuery()
+  load()
+})
+
+/** Состояние страницы → адресная строка: поиск и фильтр переживают перезагрузку. */
+function syncUrl() {
+  const qs: Record<string, any> = { ...route.query }
+  const put = (k: string, v: any) => {
+    if (v === '' || v === null || v === undefined || v === false) delete qs[k]
+    else qs[k] = String(v)
+  }
+  put('q', q.value.trim())
+  put('all', includeAll.value ? '1' : '')
+  const target = { path: route.path, query: qs }
+  if (route.fullPath === router.resolve(target).fullPath) return
+  router.replace(target).catch(() => {})
+}
+
+/** Адресная строка → состояние. true — что-то изменилось (нужен перезагруз). */
+function applyQuery(): boolean {
+  const p = route.query
+  let changed = false
+  if (p.q !== undefined) {
+    const v = String(p.q ?? '')
+    if (v !== q.value.trim()) { q.value = v; changed = true }
+  }
+  if (p.all !== undefined) {
+    const a = String(p.all ?? '') === '1'
+    if (a !== includeAll.value) { includeAll.value = a; changed = true }
+  }
+  return changed
+}
+
+// «назад/вперёд» в браузере и переход по ссылке — применяем состояние из адресной строки
+watch(() => route.query, () => {
+  if (applyQuery()) load()
+})
+
+/** Модалка «Фразы карточки» (заготовка). */
+function openPhrases(r: NewCardRow) {
+  phrasesRow.value = r
+  phrasesCount.value = r.phrases_cnt ?? null
+  phrasesOpen.value = true
+}
+
 </script>

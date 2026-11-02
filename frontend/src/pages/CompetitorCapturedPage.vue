@@ -1,9 +1,7 @@
 <template>
   <div class="container-xxl page-competitor page-captured">
-    <div class="wb-workspace-head">
-      <h2 class="page-competitor__title">Собранные карточки</h2>
-      <WbWorkspaceTabs active="captured" :tabs="WORKSPACE_TABS" />
-    </div>
+    <!-- Шапка рабочего места: заголовок + меню рабочих мест (общий компонент темы) -->
+    <WbWorkspaceHead title="Собранные карточки" workspace-active="captured" />
     <p class="text-muted">
       Контент конкурентов, который расширение собрало в общую базу. Привязка, отвязка и
       исключение из сбора — только отсюда. Исключённая карточка больше не собирается:
@@ -14,11 +12,11 @@
     <div class="page-captured__toolbar">
       <input
         v-model="q"
-        class="form-control form-control-sm page-captured__search"
+        class="wb-input page-captured__search"
         placeholder="Название, бренд, продавец, nmID"
         @keyup.enter="applyFilters"
       />
-      <button class="btn btn-sm btn-primary" :disabled="loading" @click="applyFilters">
+      <button class="btn btn-sm btn--brand" :disabled="loading" @click="applyFilters">
         <i class="bi bi-search"></i> Найти
       </button>
     </div>
@@ -33,42 +31,42 @@
         <div class="page-captured__filters-list">
           <label class="page-captured__field">
             <span>Сбор: с</span>
-            <input v-model="collectedFrom" type="date" class="form-control form-control-sm" @change="applyFilters" />
+            <input v-model="collectedFrom" type="date" class="wb-input" @change="applyFilters" />
             <span>по</span>
-            <input v-model="collectedTo" type="date" class="form-control form-control-sm" @change="applyFilters" />
+            <input v-model="collectedTo" type="date" class="wb-input" @change="applyFilters" />
           </label>
           <label class="page-captured__field">
             <span>Появление: с</span>
-            <input v-model="firstSeenFrom" type="date" class="form-control form-control-sm" @change="applyFilters" />
+            <input v-model="firstSeenFrom" type="date" class="wb-input" @change="applyFilters" />
             <span>по</span>
-            <input v-model="firstSeenTo" type="date" class="form-control form-control-sm" @change="applyFilters" />
+            <input v-model="firstSeenTo" type="date" class="wb-input" @change="applyFilters" />
           </label>
           <label class="page-captured__field">
             <span>Фраза</span>
             <input
               v-model="phraseFilter"
-              class="form-control form-control-sm"
+              class="wb-input"
               placeholder="фраза из выдачи или формулировка конкурента"
               @keyup.enter="applyFilters"
               @change="applyFilters"
             />
           </label>
           <label class="page-captured__field">
-            <span>Привязка</span>
+            <span>Привязка вручную</span>
             <select v-model="attachedFilter" class="form-select form-select-sm" @change="applyFilters">
               <option value="">любая</option>
-              <option value="yes">привязана</option>
-              <option value="no">не привязана</option>
+              <option value="yes">привязана вручную</option>
+              <option value="no">не привязана вручную</option>
             </select>
           </label>
           <label class="page-captured__field">
             <span>Источник</span>
             <select v-model="sourceFilter" class="form-select form-select-sm" @change="applyFilters">
               <option value="">любой</option>
-              <option value="search">выдача</option>
-              <option value="manual">вручную</option>
-              <option value="sibling">с карточки</option>
-              <option value="capture">привязка</option>
+              <option value="manual">карточка</option>
+              <option value="sibling">аналог</option>
+              <option value="capture">сбор</option>
+              <option value="search">поиск</option>
             </select>
           </label>
         </div>
@@ -87,7 +85,7 @@
           </label>
         </div>
         <div class="page-captured__filters-actions">
-          <button class="btn btn-sm btn-outline-secondary" @click="resetFilters">Сбросить фильтры</button>
+          <button class="btn btn-sm btn--outline" @click="resetFilters">Сбросить фильтры</button>
         </div>
       </details>
 
@@ -104,15 +102,16 @@
         </select>
         <div class="page-captured__panel-hint">что показываем в списке</div>
         <button
-          class="btn btn-sm btn-outline-success"
+          class="btn btn-sm btn--outline"
           :disabled="!!collecting || !selectedRows.length"
           title="Все помеченные — в очередь сбора («SEO-мониторинг»)"
           @click="collectSelected()"
         >
-          <i class="bi bi-cloud-download"></i> Собрать ({{ selectedRows.length }})
+          <span v-if="collecting === 'bulk'" class="spinner-border spinner-border-sm"></span>
+          <i v-else class="bi bi-cloud-download"></i> Собрать ({{ selectedRows.length }})
         </button>
         <button
-          class="btn btn-sm btn-outline-primary"
+          class="btn btn-sm btn--outline"
           :disabled="!selectedRows.length"
           title="Привязать помеченные к нашим карточкам"
           @click="bulkOpen = true"
@@ -134,11 +133,20 @@
       <span class="spinner-border spinner-border-sm"></span> Загрузка…
     </div>
 
-    <div v-else-if="!rows.length" class="alert alert-info">
+    <div v-else-if="!rows.length" class="wb-panel page-captured__empty">
+      <div class="wb-panel__bd">
       Пока ничего не собрано. Откройте карточку конкурента на WB — расширение пришлёт контент автоматически.
     </div>
+    </div>
 
-    <table v-else class="wb-admin-table page-captured__grid">
+    <div v-else class="tbl-card">
+      <div class="card__hd">
+        <span>Собранные карточки</span>
+        <span class="spacer"></span>
+        <span class="hd-badge">Карточек: {{ rows.length }}</span>
+      </div>
+      <div class="tbl-wrap">
+    <table class="tbl page-captured__grid">
       <thead>
         <tr>
           <th class="page-pick__col-check">
@@ -150,36 +158,39 @@
               @change="toggleSelectAll"
             />
           </th>
-          <th class="page-captured__col-product">
+          <th class="t-left page-captured__col-product">
             <button type="button" class="page-captured__sort" @click="toggleSort('title')">
               Товар <i class="bi" :class="sortIcon('title')"></i>
             </button>
           </th>
-          <th class="text-center page-captured__col-num">
+          <th class="t-center page-captured__col-num">
             <button type="button" class="page-captured__sort" @click="toggleSort('price')">
               Цена <i class="bi" :class="sortIcon('price')"></i>
             </button>
           </th>
-          <th class="text-center page-captured__col-desc" title="Длина описания">
+          <th class="t-center page-captured__col-desc" title="Длина описания">
             <button type="button" class="page-captured__sort" @click="toggleSort('desc_len')">
               Описание <i class="bi" :class="sortIcon('desc_len')"></i>
             </button>
           </th>
-          <th class="text-center page-captured__col-num" title="Количество характеристик">
+          <th class="t-center page-captured__col-num" title="Количество характеристик">
             <button type="button" class="page-captured__sort" @click="toggleSort('chars_cnt')">
               Хар-ки <i class="bi" :class="sortIcon('chars_cnt')"></i>
             </button>
           </th>
-          <th class="text-center page-captured__col-phrase" title="серая — фразы в выдаче, синяя — формулировки после разбора (/competitor/phrase-miner)">Фразы</th>
+          <th class="t-center page-captured__col-phrase" title="серая — фразы в выдаче, синяя — формулировок после ИИ-разбора (/competitor/phrase-miner)">Фразы</th>
           <th class="page-captured__col-date" title="Когда контент собран последний раз">
             <button type="button" class="page-captured__sort" @click="toggleSort('collected_at')">
               Собрано <i class="bi" :class="sortIcon('collected_at')"></i>
             </button>
           </th>
-          <th class="text-center page-captured__col-chg" title="Снимков с изменённым контентом">Изменений</th>
-          <th class="page-captured__col-attach">
+          <th class="t-center page-captured__col-chg" title="Снимков с изменённым контентом">Изменений</th>
+          <th
+            class="page-captured__col-attach"
+            title="Ручные привязки к нашим карточкам (привязка вручную: из «Собранных карточек» или из пула подбора). В досье конкурента — те же привязки с пометкой источника"
+          >
             <button type="button" class="page-captured__sort" @click="toggleSort('attached_cnt')">
-              Привязка <i class="bi" :class="sortIcon('attached_cnt')"></i>
+              Привязана вручную <i class="bi" :class="sortIcon('attached_cnt')"></i>
             </button>
           </th>
           <th class="page-competitor__col-actions">Действия</th>
@@ -187,7 +198,7 @@
       </thead>
       <tbody>
         <tr v-for="r in rows" :key="r.nm_id" :class="{ 'page-captured__row--hidden': r.is_hidden, 'page-pick__row--picked': isSelected(r.nm_id) }">
-          <td class="text-center">
+          <td class="t-center">
             <input
               type="checkbox"
               :checked="isSelected(r.nm_id)"
@@ -196,52 +207,49 @@
               @change="toggleSelect(r)"
             />
           </td>
-          <td>
-            <div class="page-competitor__product">
-              <img :src="r.photo || '/images/no-photo.png'" alt="" class="page-competitor__thumb" loading="lazy" />
-              <div class="page-competitor__product-text">
-                <div class="page-competitor__product-title" :title="r.title || ''">{{ r.title || '—' }}</div>
-                <div class="page-competitor__product-sub">
-                  <a :href="wbUrl(r)" target="_blank" rel="noopener" class="page-competitor__wb-link">WB: {{ r.nm_id }}</a>
-                  <button
-                    type="button"
-                    class="page-captured__copy"
-                    :title="copiedNm === r.nm_id ? 'Ссылка скопирована' : 'Скопировать ссылку на WB'"
-                    @click="copyWb(r)"
-                  >
-                    <i class="bi" :class="copiedNm === r.nm_id ? 'bi-check2' : 'bi-clipboard'"></i>
-                  </button>
-                  <span v-if="r.brand"> · {{ r.brand }}</span>
-                  <span v-if="r.seller && r.seller !== r.brand"> · {{ r.seller }}</span>
-                </div>
-                <div class="page-captured__badges">
-                  <span v-if="r.is_own" class="badge bg-warning text-dark" title="nm есть в wbcards нашей компании">наша карточка</span>
-                  <span v-if="r.is_hidden" class="badge bg-secondary" title="Исключена из сбора — расширение её не собирает">исключено</span>
-                  <span v-if="scope === 'all_details' && r.captured_by_us" class="badge bg-info text-dark" title="Собрали мы">собрано нами</span>
-                  <span v-if="r.companies_cnt > 1" class="badge bg-light text-dark" :title="`видна компаниям: ${r.companies_cnt}`">компаний: {{ r.companies_cnt }}</span>
-                </div>
-              </div>
+          <td class="t-left">
+            <!-- Клик по названию или по фото открывает досье конкурента — как «глазик». -->
+            <div class="page-captured__cell" @click="onCellClick($event, r)">
+              <CompetitorRow
+                compact
+                :nm-id="r.nm_id"
+                :title="r.title || ''"
+                :photo="r.photo || ''"
+                :seller="r.seller || ''"
+                :brand="r.brand || ''"
+                :badges="capturedBadges(r)"
+                :wb-url="wbUrl(r)"
+                :phrases-url="'/competitor/phrase-miner'"
+                show-nm
+                copy-nm
+                copy-wb-link
+                @open="openDetails(r)"
+              />
             </div>
           </td>
-          <td class="text-center page-captured__price">{{ r.price ? `${r.price} ₽` : '—' }}</td>
-          <td class="text-center">
-            <span class="badge" :class="r.desc_len ? 'bg-success' : 'bg-danger'">{{ r.desc_len }}</span>
+          <td class="t-center page-captured__price">{{ r.price ? `${r.price} ₽` : '—' }}</td>
+          <td class="t-center">
+            <span class="badge" :class="r.desc_len ? 'badge--ok' : 'badge--bad'">{{ r.desc_len }}</span>
           </td>
-          <td class="text-center">
-            <span class="badge" :class="r.chars_cnt ? 'bg-success' : 'bg-danger'">{{ r.chars_cnt }}</span>
+          <td class="t-center">
+            <span class="badge" :class="r.chars_cnt ? 'badge--ok' : 'badge--bad'">{{ r.chars_cnt }}</span>
           </td>
-          <td class="text-center page-captured__phrases">
+          <td class="t-center page-captured__phrases">
             <template v-if="r.positions_cnt || r.phrases_cnt">
-              <span
+              <button
                 v-if="r.positions_cnt"
-                class="badge bg-secondary page-captured__phrase-badge"
+                type="button"
+                class="badge badge--neutral page-captured__phrase-badge page-captured__phrase-badge--btn"
                 title="Фраз, по которым карточка замечена в выдаче (wb_competitor_position)"
-              >{{ r.positions_cnt }}</span>
-              <span
+                @click="openPhrases(r, 'search', r.positions_cnt)"
+              >{{ r.positions_cnt }}</button>
+              <button
                 v-if="r.phrases_cnt"
-                class="badge bg-primary page-captured__phrase-badge"
-                title="Формулировок после разбора (wb_competitor_phrase_comp) — разбор идёт фоном: /competitor/phrase-miner"
-              >{{ r.phrases_cnt }}</span>
+                type="button"
+                class="badge badge--info page-captured__phrase-badge page-captured__phrase-badge--btn"
+                title="Формулировок после ИИ-разбора (wb_competitor_phrase_comp)"
+                @click="openPhrases(r, 'comp', r.phrases_cnt)"
+              >{{ r.phrases_cnt }}</button>
             </template>
             <span
               v-else
@@ -250,7 +258,7 @@
             >—</span>
           </td>
           <td class="page-captured__date" :title="collectedTitle(r)">{{ fmtDateTime(collectedAt(r)) }}</td>
-          <td class="text-center">
+          <td class="t-center">
             <button
               v-if="r.history_cnt"
               class="btn btn-link btn-sm page-captured__hist-btn"
@@ -266,39 +274,42 @@
                 :key="a.nm_id"
                 :href="`/wb/detail?nm_id=${a.nm_id}`"
                 target="_blank"
-                class="badge bg-primary page-captured__attach-tag"
+                class="badge badge--brand page-captured__attach-tag"
                 :title="a.title || ''"
               >{{ a.nm_id }}</a>
             </div>
-            <span v-else class="text-muted small">не привязан</span>
+            <span v-else class="text-muted small">не привязана вручную</span>
           </td>
           <td class="page-competitor__actions">
             <div class="page-captured__acts">
               <button
-                class="btn btn-sm btn-outline-primary"
+                class="btn btn-sm page-captured__act page-captured__act--attach"
                 :disabled="busy === r.nm_id"
                 title="Привязать к нашей карточке"
                 @click="openAttach(r)"
               ><i class="bi bi-link-45deg"></i></button>
               <button
-                class="btn btn-sm btn-outline-success"
+                class="btn btn-sm page-captured__act page-captured__act--collect"
                 :disabled="!!collecting || !canCollect(r)"
                 :title="canCollect(r) ? 'В очередь сбора («SEO-мониторинг») — соберёт расширение фоном' : 'Исключена из сбора — сначала верните'"
                 @click="collectOne(r)"
-              ><i class="bi bi-cloud-download"></i></button>
+              >
+                <span v-if="collecting === r.nm_id" class="spinner-border spinner-border-sm"></span>
+                <i v-else class="bi bi-cloud-download"></i>
+              </button>
               <button
-                class="btn btn-sm btn-outline-secondary"
+                class="btn btn-sm page-captured__act page-captured__act--view"
                 title="Открыть контент карточки"
                 @click="openDetails(r)"
               ><i class="bi bi-eye"></i></button>
               <button
-                class="btn btn-sm btn-outline-secondary"
+                class="btn btn-sm page-captured__act page-captured__act--history"
                 title="История изменений контента"
                 @click="openHistory(r)"
               ><i class="bi bi-clock-history"></i></button>
               <button
-                class="btn btn-sm"
-                :class="r.is_hidden ? 'btn-outline-success' : 'btn-outline-warning'"
+                class="btn btn-sm page-captured__act"
+                :class="r.is_hidden ? 'page-captured__act--restore' : 'page-captured__act--exclude'"
                 :disabled="busy === r.nm_id || !canExclude(r)"
                 :title="r.is_hidden ? 'Вернуть в сбор' : (canExclude(r) ? 'Исключить из сбора — расширение её больше не собирает' : 'Карточка не в нашем реестре — исключать нечего')"
                 @click="toggleHidden(r)"
@@ -308,16 +319,18 @@
         </tr>
       </tbody>
     </table>
+    </div>
+    </div>
 
     <!-- Пагинация -->
-    <div v-if="!loading" class="page-captured__pager">
-      <button class="btn btn-sm btn-outline-secondary" :disabled="page <= 1" @click="goPage(page - 1)">
+    <div v-if="!loading" class="wb-pager">
+      <button class="btn btn-sm btn--outline" :disabled="page <= 1" @click="goPage(page - 1)">
         <i class="bi bi-chevron-left"></i> Назад
       </button>
-      <span class="page-captured__pager-label">
+      <span class="wb-pager__label">
         Стр. {{ page }} из {{ totalPages }} · показано {{ rows.length }} из {{ total }}
       </span>
-      <button class="btn btn-sm btn-outline-secondary" :disabled="page >= totalPages" @click="goPage(page + 1)">
+      <button class="btn btn-sm btn--outline" :disabled="page >= totalPages" @click="goPage(page + 1)">
         Вперёд <i class="bi bi-chevron-right"></i>
       </button>
       <select v-model.number="pageSize" class="form-select form-select-sm page-captured__pagesize" @change="applyFilters">
@@ -354,6 +367,15 @@
       :nm-id="active?.nm_id"
       @close="detailsOpen = false"
     />
+
+    <CompetitorPhrasesModal
+      :open="phrasesOpen"
+      :nm-id="phrasesRow?.nm_id"
+      :title="phrasesRow?.title"
+      :source="phrasesSource"
+      :count="phrasesCount"
+      @close="phrasesOpen = false"
+    />
   </div>
 </template>
 
@@ -361,19 +383,23 @@
 import '@/assets/css/pages/page-competitor.css'
 import '@/assets/css/pages/page-competitor-captured.css'
 import '@/assets/css/pages/page-competitor-pick.css'
+import CompetitorRow from '@/components/common/CompetitorRow.vue'
 import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { competitorsNewcardApi, type CapturedRow, type PickAttachResult } from '../api/competitorsNewcard'
 import { seoWatchApi } from '../api/seoWatch'
 import { useAuthStore } from '../stores/auth'
 import { copyText } from '../utils/clipboard'
 import CompetitorAttachModal from '../components/competitors/CompetitorAttachModal.vue'
 import CompetitorBulkAttachModal from '../components/competitors/CompetitorBulkAttachModal.vue'
-import WbWorkspaceTabs from '@/components/common/WbWorkspaceTabs.vue'
-import { WORKSPACE_TABS } from '@/components/common/workspaceTabs'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
 import CompetitorDetailsModal from '../components/competitors/CompetitorDetailsModal.vue'
+import CompetitorPhrasesModal from '../components/competitors/CompetitorPhrasesModal.vue'
 import CompetitorHistoryModal from '../components/competitors/CompetitorHistoryModal.vue'
 
 const auth = useAuthStore()
+const route = useRoute()
+const router = useRouter()
 
 const rows = ref<CapturedRow[]>([])
 const q = ref('')
@@ -428,12 +454,17 @@ const allSelected = computed(() =>
 
 const active = ref<CapturedRow | null>(null)
 const attachOpen = ref(false)
+const phrasesOpen = ref(false)
+const phrasesRow = ref<CapturedRow | null>(null)
+const phrasesSource = ref<'capture' | 'comp' | 'search'>('comp')
+const phrasesCount = ref<number | null>(null)
 const detailsOpen = ref(false)
 const historyOpen = ref(false)
 const copiedNm = ref<number | null>(null)
 let copiedTimer: ReturnType<typeof setTimeout> | null = null
 
 async function load(silent = false) {
+  syncUrl()
   if (!silent) loading.value = true
   error.value = ''
   try {
@@ -594,9 +625,87 @@ function resetFilters(andLoad = true) {
   if (andLoad) applyFilters()
 }
 
+/** Состояние страницы → адресная строка: фильтры переживают перезагрузку, ссылкой можно поделиться. */
+function syncUrl() {
+  const qs: Record<string, any> = { ...route.query }
+  const put = (k: string, v: any) => {
+    if (v === '' || v === null || v === undefined || v === false) delete qs[k]
+    else qs[k] = String(v)
+  }
+  put('q', q.value)
+  put('scope', scope.value)
+  put('sort', sortKey.value)
+  put('dir', sortDir.value)
+  put('page', page.value > 1 ? page.value : '')
+  put('size', pageSize.value)
+  put('collected_from', collectedFrom.value)
+  put('collected_to', collectedTo.value)
+  put('seen_from', firstSeenFrom.value)
+  put('seen_to', firstSeenTo.value)
+  put('content', contentFilter.value)
+  put('attached', attachedFilter.value)
+  put('source', sourceFilter.value)
+  put('phrase', phraseFilter.value)
+  put('hidden', includeHidden.value ? '1' : '')
+  const target = { path: route.path, query: qs }
+  if (route.fullPath === router.resolve(target).fullPath) return
+  router.replace(target).catch(() => {})
+}
+
+/** Адресная строка → состояние. true — что-то изменилось (нужен перезагруз). */
+function applyQuery(): boolean {
+  const p = route.query
+  const s = (k: string) => (p[k] === undefined ? '' : String(p[k]))
+  let changed = false
+  const set = (cur: any, val: string) => {
+    if (String(cur ?? '') !== String(val ?? '')) changed = true
+  }
+  if (p.q !== undefined) { set(q.value, s('q')); q.value = s('q') }
+  if (p.scope !== undefined) {
+    const sc = s('scope')
+    if (sc === 'captured' || sc === 'all_details') { set(scope.value, sc); scope.value = sc }
+  }
+  if (p.sort !== undefined) { set(sortKey.value, s('sort')); sortKey.value = s('sort') }
+  if (p.dir !== undefined) {
+    const d = s('dir')
+    if (d === 'asc' || d === 'desc') { set(sortDir.value, d); sortDir.value = d }
+  }
+  if (p.page !== undefined) {
+    const pg = Math.max(1, Number(s('page')) || 1)
+    if (pg !== page.value) { changed = true; page.value = pg }
+  }
+  if (p.size !== undefined) {
+    const sz = Number(s('size')) || 50
+    if (sz !== pageSize.value) { changed = true; pageSize.value = sz }
+  }
+  if (p.collected_from !== undefined) { set(collectedFrom.value, s('collected_from')); collectedFrom.value = s('collected_from') }
+  if (p.collected_to !== undefined) { set(collectedTo.value, s('collected_to')); collectedTo.value = s('collected_to') }
+  if (p.seen_from !== undefined) { set(firstSeenFrom.value, s('seen_from')); firstSeenFrom.value = s('seen_from') }
+  if (p.seen_to !== undefined) { set(firstSeenTo.value, s('seen_to')); firstSeenTo.value = s('seen_to') }
+  if (p.content !== undefined) { set(contentFilter.value, s('content')); contentFilter.value = s('content') }
+  if (p.attached !== undefined) { set(attachedFilter.value, s('attached')); attachedFilter.value = s('attached') }
+  if (p.source !== undefined) { set(sourceFilter.value, s('source')); sourceFilter.value = s('source') }
+  if (p.phrase !== undefined) { set(phraseFilter.value, s('phrase')); phraseFilter.value = s('phrase') }
+  if (p.hidden !== undefined) {
+    const hh = s('hidden') === '1'
+    if (hh !== includeHidden.value) { changed = true; includeHidden.value = hh }
+  }
+  return changed
+}
+
 /** Глобальный админ в режиме «все компании» — по умолчанию общий кэш. */
 function defaultScope(): 'captured' | 'all_details' {
   return auth.companyId === 'all' ? 'all_details' : 'captured'
+}
+
+/** Бейджи состояния карточки (общий формат CompetitorRow: {label, tone}). */
+function capturedBadges(r: any): Array<{ label: string; tone: string }> {
+  const out: Array<{ label: string; tone: string }> = []
+  if (r.is_own) out.push({ label: 'наша карточка', tone: 'warn' })
+  if (r.is_hidden) out.push({ label: 'исключено', tone: 'gray' })
+  if (scope.value === 'all_details' && r.captured_by_us) out.push({ label: 'собрано нами', tone: 'info' })
+  if (r.companies_cnt > 1) out.push({ label: 'компаний: ' + r.companies_cnt, tone: 'gray' })
+  return out
 }
 
 function wbUrl(r: CapturedRow): string {
@@ -646,6 +755,29 @@ function openDetails(r: CapturedRow) {
   detailsOpen.value = true
 }
 
+/** Клик по названию или по фото карточки — то же, что «глазик»: открыть досье конкурента.
+ *  Только название и фото: подпись, бейджи и ссылки остаются неактивными. */
+function onCellClick(e: MouseEvent, r: CapturedRow) {
+  const t = e.target as HTMLElement | null
+  if (!t) return
+  // ссылка «фразы» в строке — открываем модалку фраз (общий компонент не перехватываем)
+  if (t.closest('.prod-cell__more')) {
+    e.preventDefault()
+    openPhrases(r, 'comp', r.phrases_cnt)
+    return
+  }
+  if (!t.closest('.prod-cell__title, .prod-cell__img')) return
+  openDetails(r)
+}
+
+/** Модалка «Фразы карточки» (заготовка): из строки, из цифр колонки «Фразы». */
+function openPhrases(r: CapturedRow, source: 'capture' | 'comp' | 'search', count?: number | null) {
+  phrasesRow.value = r
+  phrasesSource.value = source
+  phrasesCount.value = count ?? null
+  phrasesOpen.value = true
+}
+
 function openHistory(r: CapturedRow) {
   active.value = r
   historyOpen.value = true
@@ -677,8 +809,15 @@ watch(() => auth.companyId, () => {
 })
 
 onMounted(() => {
+  // скоуп из ссылки, иначе — по компании
   scope.value = defaultScope()
+  applyQuery()
   load()
+})
+
+// «назад/вперёд» в браузере и переход по ссылке — применяем состояние из адресной строки
+watch(() => route.query, () => {
+  if (applyQuery()) load()
 })
 onBeforeUnmount(() => {
   if (copiedTimer) clearTimeout(copiedTimer)

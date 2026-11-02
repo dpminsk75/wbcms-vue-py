@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+import json
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,6 +37,33 @@ def _inlist(pref: str, ids: list[int]) -> tuple[str, dict]:
     return ph, {f"{pref}{i}": v for i, v in enumerate(ids)}
 
 
+def _first_photo(raw) -> str:
+    """Первый URL фото карточки (`wb_competitor_details.images` / `preview_image`).
+
+    `images` — JSON-массив URL, `preview_image` — уже строка с URL.
+    """
+    if raw is None:
+        return ""
+    ph = raw
+    if isinstance(ph, str):
+        s = ph.strip()
+        if not s:
+            return ""
+        if not s.startswith("["):
+            return s
+        try:
+            ph = json.loads(s)
+        except ValueError:
+            return ""
+    if isinstance(ph, list):
+        for p in ph:
+            if isinstance(p, str) and p.strip():
+                return p.strip()
+            if isinstance(p, dict) and isinstance(p.get("photo"), str) and p["photo"].strip():
+                return p["photo"].strip()
+    return ""
+
+
 def _like(q: str) -> str:
     """Маска LIKE: % и _ в данных — литеральные, как на остальных страницах."""
     s = (q or "").strip()
@@ -42,7 +71,8 @@ def _like(q: str) -> str:
     return f"%{s}%"
 
 
-def enrich_owner_union(cols: str, extra_where: str = "", join: str = "") -> str:
+def enrich_owner_union(cols: str, extra_where: str = "", join: str = "",
+                       tail: str = "") -> str:
     """Владелец строки очереди — 3 непересекающиеся ветки (UNION ALL).
 
     Было одним условием: (q.company_id=:cid OR q.company_id IS NULL OR
@@ -55,12 +85,18 @@ def enrich_owner_union(cols: str, extra_where: str = "", join: str = "") -> str:
       2) «ничьи» строки (company_id IS NULL);
       3) need_update чужих компаний — глобальный флаг «контент устарел».
     Каждая ветка берётся по индексу (company_id,status) или (source,status).
+
+    `tail` — ORDER BY/LIMIT внутрь каждой ветки: производная таблица тогда
+    содержит не всю очередь, а 3×(limit+offset) строк. Без этого MySQL
+    материализует все строки и считает коррелированные подзапросы для каждой
+    (а они идут по неиндексированному nm_id — фулл-скан на строку).
     """
     def br(cond: str) -> str:
         w = f"WHERE {cond}"
         if extra_where:
             w += f" AND {extra_where}"
-        return f"SELECT {cols} FROM wb_enrich_queue q {join} {w}"
+        t = f" {tail}" if tail else ""
+        return f"SELECT {cols} FROM wb_enrich_queue q {join} {w}{t}"
     return ("("
             + br("q.company_id = :cid")
             + " UNION ALL "
@@ -185,12 +221,13 @@ async def enrich_list(db: AsyncSession, cid: int | None, *, status: str = "",
             ORDER BY c2.id DESC LIMIT 1)
     """
     page_sql = "LIMIT :lim OFFSET :off" if limit else ""
-    item_cols = """q.id, q.nm_id, q.status, q.source, q.company_id AS owner_company_id,
+    item_cols = f"""q.id, q.nm_id, q.status, q.source, q.company_id AS owner_company_id,
                q.requested_at, q.claimed_at, q.processed_at,
                COALESCE(NULLIF(d.title,''),  NULLIF(pp.title,''),  NULLIF(pc.title,'')) AS title,
                COALESCE(NULLIF(d.brand,''),  NULLIF(pp.brand,''),  NULLIF(pc.brand,'')) AS brand,
                COALESCE(NULLIF(d.seller,''), NULLIF(pp.seller,'')) AS seller,
                COALESCE(NULLIF(d.price,0), NULLIF(pp.price,0), NULLIF(pc.price,0)) AS price,
+               COALESCE(NULLIF(d.images,''), NULLIF(d.preview_image,'')) AS photos,
                {hidden_col}"""
     joins = (f"LEFT JOIN wb_competitor_details d ON d.nm_id=q.nm_id {fb_joins}")
     if owner_in_union:
@@ -213,14 +250,18 @@ async def enrich_list(db: AsyncSession, cid: int | None, *, status: str = "",
         """
         total_sql = f"""
             SELECT COUNT(*) FROM wb_enrich_queue q
-            {joins}
             WHERE {base_where}
         """
     items = (await db.execute(text(items_sql), params)).mappings().all()
     total = int((await db.execute(text(total_sql),
                                   {k: v for k, v in params.items()
                                    if k not in ("lim", "off")})).scalar() or 0)
-    return {"items": [dict(r) for r in items], "total": total,
+    out = []
+    for r in items:
+        d = dict(r)
+        d["photo"] = _first_photo(d.pop("photos", None))
+        out.append(d)
+    return {"items": out, "total": total,
             "limit": limit, "offset": offset}
 
 

@@ -477,6 +477,7 @@ async def captured_history(
 @captured_router.get("/{nm_id}/details")
 async def captured_details(
     nm_id: int = Path(..., ge=1),
+    our_nm: int | None = Query(default=None, ge=1),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(require_seo),
     company_id: int | None = Depends(get_current_company),
@@ -491,15 +492,20 @@ async def captured_details(
     Содержание = описание не короче общего порога `competitor_content.DESC_MIN_LEN`.
     Уже собранный контент показываем всем: план 2026-10-20 §19.1 — «вторая
     компания берёт описание из кэша, а не сканирует заново».
+
+    `our_nm` — наша карточка (если открыли из выдачи/мониторинга): для неё
+    считается «Сравнение с нашей карточкой».
     """
     svc = CompetitorsNewcardService(db, company_id)
     # Содержание есть? (признак — по общему порогу competitor_content.DESC_MIN_LEN,
     # его считает details()). Уже собранный контент показываем всем: план
     # 2026-10-20 §19.1 — «вторая компания берёт описание из кэша».
-    data = await svc.details(nm_id)
+    data = await svc.details(nm_id, our_nm=our_nm)
     if data and data.get("has_content"):
         data["found"] = "details"
         return data
+    # Содержания нет — НЕ заменяем details() пустышкой: привязки, позиции,
+    # полки, клипы, дубликаты и фразы в базе есть и должны быть видны.
     for found, row, extra in (
         ("cards", await svc.cards_fallback(nm_id), ("phrase",)),
         ("position", await svc.positions_fallback(nm_id), ("phrase", "position", "position_api")),
@@ -513,35 +519,77 @@ async def captured_details(
             except Exception:
                 bad = []
         img = row.get("image_url") or None
-        out = {
-            "found": found,
+        out = dict(data) if data else {
             "nm_id": nm_id,
-            "title": row.get("title") or "",
+            "title": "",
             "description": "",
-            "brand": row.get("brand") or "",
-            "seller": row.get("seller") or "",
+            "brand": "",
+            "seller": "",
             "subject_name": None,
-            "photo": img,
-            "preview_image": img,
-            "images": [img] if img else [],
+            "photo": None,
+            "preview_image": None,
+            "images": [],
             "characteristics": [],
-            "badges": bad if isinstance(bad, list) else [],
-            "price": row.get("price"),
-            "old_price": row.get("old_price"),
-            "rating": row.get("rating"),
-            "feedbacks": row.get("feedbacks"),
+            "badges": [],
+            "price": None,
+            "old_price": None,
+            "rating": None,
+            "feedbacks": None,
             "questions": None,
-            "sold_out": 1 if row.get("sold_out") else 0,
+            "sold_out": 0,
             "url": f"https://www.wildberries.ru/catalog/{nm_id}/detail.aspx",
-            "collected_at": row.get("collected_at"),
+            "collected_at": None,
             "first_collected_at": None,
             "full_collected_at": None,
-            "source_nm_id": row.get("source_nm_id"),
-            "slice_stamp": row.get("slice_stamp") or "",
+            "attached_to": [],
+            "attached_cnt": 0,
+            "capture": {},
+            "price_history": [],
+            "positions": [],
+            "phrases": [],
+            "shelves": {"as_item": [], "as_anchor": [],
+                        "counts": {"shelves_cnt": 0, "anchors_cnt": 0,
+                                   "avg_pos": None, "best_pos": None}},
+            "clips": [],
+            "clips_cnt": 0,
+            "clips_authors_cnt": 0,
+            "clips_last_at": None,
+            "duplicates": None,
+            "compare": None,
+            "recommendations": [],
         }
+        out["found"] = found
+        # Наблюдения из выдачи — поверх собранного контента (свежее), но без
+        # затирания уже собранного описания/характеристик.
+        for key, val in (
+            ("title", row.get("title")),
+            ("brand", row.get("brand")),
+            ("seller", row.get("seller")),
+            ("price", row.get("price")),
+            ("old_price", row.get("old_price")),
+            ("rating", row.get("rating")),
+            ("feedbacks", row.get("feedbacks")),
+            ("collected_at", row.get("collected_at")),
+        ):
+            if val not in (None, "", 0):
+                out[key] = val
+        if isinstance(bad, list) and bad:
+            out["badges"] = bad
+        if img:
+            out["photo"] = img
+            out["preview_image"] = out.get("preview_image") or img
+            if not out.get("images"):
+                out["images"] = [img]
+        if row.get("sold_out"):
+            out["sold_out"] = 1
+        out["source_nm_id"] = row.get("source_nm_id")
+        out["slice_stamp"] = row.get("slice_stamp") or ""
         for k in extra:
             out[k] = row.get(k)
         return out
+    if data:
+        data["found"] = "cards"
+        return data
     raise HTTPException(status_code=404, detail="card not found")
 
 

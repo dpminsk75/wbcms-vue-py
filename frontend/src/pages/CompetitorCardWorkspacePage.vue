@@ -179,7 +179,7 @@
       </section>
 
       <!-- шаг 2: фразы -->
-      <section class="page-workspace__step">
+      <section id="phrases" class="page-workspace__step">
         <div class="page-workspace__step-head">
           <h4><span class="page-workspace__step-num">2</span> Фразы для генерации</h4>
           <span class="badge bg-primary">выбрано: {{ selectedCnt }}</span>

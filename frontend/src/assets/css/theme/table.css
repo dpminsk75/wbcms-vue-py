@@ -62,6 +62,55 @@
 .hd-btn:hover { background: color-mix(in srgb, currentColor 20%, transparent); }
 .hd-btn:disabled { opacity: .5; cursor: not-allowed; }
 
+/* ---------- группа кнопок в шапке блока (.hd-grp) ----------
+   Переключатель варианта и иконки действий — одной рамкой: так
+   «выгрузка в PNG» читается как один инструмент, а не как россыпь.
+   Всё на currentColor — работает и на тёмной, и на светлой шапке. */
+.hd-grp {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.hd-seg { display: inline-flex; align-items: stretch; }
+.hd-seg__btn {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: calc(11.5px * var(--fs));
+  font-weight: 500;
+  padding: 4px 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.hd-seg__btn.is-on {
+  background: color-mix(in srgb, currentColor 24%, transparent);
+  font-weight: 700;
+}
+.hd-grp__btn {
+  border: 0;
+  border-left: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: calc(12px * var(--fs));
+  padding: 4px 9px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  line-height: 1;
+}
+.hd-grp__btn:hover { background: color-mix(in srgb, currentColor 22%, transparent); }
+.hd-grp__btn:disabled { opacity: .45; cursor: not-allowed; }
+.hd-grp:disabled { opacity: .55; }
+
 /* ---------- сама таблица ---------- */
 .tbl { width: 100%; border-collapse: collapse; font-size: calc(12.5px * var(--fs)); }
 
@@ -105,6 +154,14 @@
 /* Числа не переносятся — иначе «28 664,13 ₽» ломается на две строки
    и колонка выглядит неопрятно (в оригинале числа были одной строкой). */
 .tbl td.num, .tbl th.num { white-space: nowrap; }
+
+/* ---------- пагинация таблицы ----------
+   Общий блок для страниц отчётов: подпись + кнопки «Назад/Вперёд». */
+.wb-pager {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 10px 14px; border-top: 1px solid var(--line);
+}
+.wb-pager__label { color: var(--ink-soft); font-size: calc(12.5px * var(--fs)); }
 
 /* ---------- строка итогов ---------- */
 .tbl tfoot td,

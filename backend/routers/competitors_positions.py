@@ -55,14 +55,15 @@ async def positions_phrase(
 async def positions_cards(
     date_from: str = Query(default=""),
     date_to: str = Query(default=""),
-    limit: int = Query(default=300, ge=1, le=1000),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(require_seo),
     company_id: int | None = Depends(get_current_company),
 ):
     """Наши карточки, по которым есть наблюдения выдачи."""
     return await CompetitorsPositionsService(db, company_id).cards(
-        date_from or None, date_to or None, limit
+        date_from or None, date_to or None, limit, offset
     )
 
 
@@ -70,14 +71,15 @@ async def positions_cards(
 async def positions_niches(
     date_from: str = Query(default=""),
     date_to: str = Query(default=""),
-    limit: int = Query(default=300, ge=1, le=1000),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(require_seo),
     company_id: int | None = Depends(get_current_company),
 ):
     """Профиль ниш по фразам (разбор `resultset=filters`): цены, бренды, продавцы, акции."""
     return await CompetitorsPositionsService(db, company_id).niches(
-        date_from or None, date_to or None, limit
+        date_from or None, date_to or None, limit, offset
     )
 
 
@@ -85,14 +87,15 @@ async def positions_niches(
 async def positions_ads(
     date_from: str = Query(default=""),
     date_to: str = Query(default=""),
-    limit: int = Query(default=200, ge=1, le=1000),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(require_seo),
     company_id: int | None = Depends(get_current_company),
 ):
     """Реклама и брендовые полки В ПОИСКЕ (разбор `banners/shelfs/search`)."""
     return await CompetitorsPositionsService(db, company_id).ads(
-        date_from or None, date_to or None, limit
+        date_from or None, date_to or None, limit, offset
     )
 
 

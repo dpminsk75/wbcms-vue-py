@@ -195,6 +195,10 @@ export interface WatchPhraseItem {
   image_url?: string
   /** Наш товар — тот, кто сам был в выдаче. */
   is_ours?: number
+  /** Карточка конкурента собрана (есть запись в wb_competitor_details). */
+  is_collected?: number
+  /** Тип/предмет конкурента (из собранной карточки). */
+  subject_name?: string
   /** Впервые появился в выдаче (светло-голубой фон). */
   is_new?: number
   /** Цена изменилась против прошлого захода (оранжевая подпись). */
@@ -296,6 +300,14 @@ export const seoWatchApi = {
 
   matrix: (params: WatchFilterParams) =>
     api.get('/api/seo-watch/matrix', { params, timeout: seoWatchApi.TIMEOUT })
+      .then((r) => r.data as WatchMatrix),
+
+  /** Выгрузка матрицы в Excel: те же фильтры, limit ≤ 5000. Расчёт не дублируется. */
+  exportRows: (params: WatchFilterParams & { limit?: number }) =>
+    api.get('/api/seo-watch/export', {
+      params: { ...params, limit: params.limit ?? 5000 },
+      timeout: seoWatchApi.TIMEOUT,
+    })
       .then((r) => r.data as WatchMatrix),
 
   phrase: (params: { phrase: string; date_from?: string; date_to?: string }) =>

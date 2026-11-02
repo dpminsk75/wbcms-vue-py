@@ -98,6 +98,8 @@ export interface PositionsCardRow {
   title: string
   vendor: string
   brand: string
+  /** Предмет (тип) нашей карточки (wbcards.subjectName). */
+  subject?: string
   phrases: number
   days: number
   first_at: string
@@ -112,6 +114,8 @@ export interface PositionsCompetitor {
   title: string
   brand: string
   seller: string
+  /** Фото конкурента (из выдачи). */
+  image_url?: string
   seller_id?: number | null
   seller_rating?: number | null
   price: number | null
@@ -242,7 +246,7 @@ export const competitorsPositionsApi = {
     api.get('/api/competitors/positions/phrase', { params })
       .then((r) => r.data as PositionsPhraseDetail),
 
-  cards: (params: { date_from?: string; date_to?: string; limit?: number }) =>
+  cards: (params: { date_from?: string; date_to?: string; limit?: number; offset?: number }) =>
     api.get('/api/competitors/positions/cards', { params })
       .then((r) => r.data as { items: PositionsCardRow[]; total: number }),
 
@@ -250,11 +254,11 @@ export const competitorsPositionsApi = {
     api.get('/api/competitors/positions/card', { params })
       .then((r) => r.data as PositionsCardDetail),
 
-  niches: (params: { date_from?: string; date_to?: string; limit?: number }) =>
+  niches: (params: { date_from?: string; date_to?: string; limit?: number; offset?: number }) =>
     api.get('/api/competitors/positions/niches', { params })
       .then((r) => r.data as { items: NicheRow[]; total: number }),
 
-  ads: (params: { date_from?: string; date_to?: string; limit?: number }) =>
+  ads: (params: { date_from?: string; date_to?: string; limit?: number; offset?: number }) =>
     api.get('/api/competitors/positions/ads', { params })
       .then((r) => r.data as { items: SearchAdsRow[]; total: number }),
 

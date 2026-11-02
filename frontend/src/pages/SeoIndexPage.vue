@@ -7,12 +7,12 @@
         <form @submit.prevent="applyQ" class="page-seo__filter-form">
           <div>
             <label class="form-label small">Поиск (nmID / название / артикул)</label>
-            <input v-model="qInput" type="text" class="form-control form-control-sm page-seo__q" placeholder="526443466, Сваты, 11/25 ..." />
+            <input v-model="qInput" type="text" class="wb-input page-seo__q" placeholder="526443466, Сваты, 11/25 ..." />
           </div>
           <div class="page-seo__filter-btns">
-            <button type="submit" class="btn btn-sm btn-outline-secondary">Фильтр</button>
-            <button type="button" class="btn btn-sm btn-link" @click="resetFilters">Сброс</button>
-            <button type="button" class="btn btn-sm btn-outline-warning" :class="{ active: showUnprocessed }" @click="toggleUnprocessed" title="Карточки по запросу без рекомендации (если пусто — топ 20)">
+            <button type="submit" class="btn btn-sm btn--outline">Фильтр</button>
+            <button type="button" class="btn btn-sm btn--ghost" @click="resetFilters">Сброс</button>
+            <button type="button" class="btn btn-sm btn--outline" :class="{ active: showUnprocessed }" @click="toggleUnprocessed" title="Карточки по запросу без рекомендации (если пусто — топ 20)">
               <i class="bi bi-exclamation-circle"></i> Необработанные
             </button>
           </div>
@@ -21,38 +21,48 @@
       </div>
     </div>
 
-    <div v-if="showUnprocessed" class="card page-seo__unprocessed">
-      <div class="card-header page-seo__unprocessed-head">
+    <div v-if="showUnprocessed" class="tbl-card page-seo__unprocessed">
+      <div class="card__hd page-seo__unprocessed-head">
         <span><i class="bi bi-exclamation-circle text-warning"></i> Необработанные{{ q ? ` по “${q}”` : '' }} — {{ unprocessed.length }} шт</span>
-        <button v-if="unprocessed.length" @click="startBatch(unprocessed.map((c) => c.nmID))" class="btn btn-sm btn-warning">
+        <button v-if="unprocessed.length" @click="startBatch(unprocessed.map((c) => c.nmID))" class="btn btn-sm btn--outline">
           <i class="bi bi-robot"></i> Обработать показанные
         </button>
       </div>
       <div v-if="!unprocessed.length" class="page-seo__empty">Необработанных не найдено — все уже в обработке (анти-спам 14д).</div>
-      <div v-else class="wb-table-wrap">
-        <table class="table table-bordered table-hover align-middle page-seo__mini-table">
-          <thead class="table-light"><tr><th class="page-seo__photo-col">Фото</th><th>Товар</th><th>Продажи 30д</th><th class="page-seo__act-col"></th></tr></thead>
+      <div v-else class="tbl-wrap">
+        <table class="tbl page-seo__mini-table">
+          <thead><tr><th class="t-left">Товар</th><th class="num">Продажи 30д</th><th class="page-seo__act-col"></th></tr></thead>
           <tbody>
             <tr v-for="c in unprocessed" :key="c.nmID">
-              <td><img :src="c.photo || '/images/no-photo.png'" alt="" class="page-seo__thumb" /></td>
-              <td>
-                <div class="fw-semibold">{{ c.title }}</div>
-                <div class="small text-muted">nmID {{ c.nmID }} • {{ c.subjectName || '' }} • {{ c.brand || '' }} • {{ c.vendorCode || '' }}</div>
+              <td class="t-left">
+                <ProductCell
+                  compact
+                  :nm-id="c.nmID"
+                  :photo="c.photo || ''"
+                  :title="c.title || ''"
+                  :subject="c.subjectName || ''"
+                  :brand="c.brand || ''"
+                  :vendor="c.vendorCode || ''"
+                  :link="`/wb/detail?nm_id=${c.nmID}`"
+                  :link-label="'WB: ' + c.nmID"
+                  copy-nm
+                  copy-link
+                />
               </td>
-              <td class="text-end">{{ c.total_qnt }}</td>
-              <td class="text-center"><button @click="startBatch([c.nmID])" class="btn btn-sm btn-outline-primary"><i class="bi bi-robot"></i> Обработать с AI</button></td>
+              <td class="num">{{ c.total_qnt }}</td>
+              <td class="t-center"><button @click="startBatch([c.nmID])" class="btn btn-sm btn--outline"><i class="bi bi-robot"></i> Обработать с AI</button></td>
             </tr>
           </tbody>
         </table>
       </div>
-      <div class="card-footer small text-muted">Топ необработанные по <code>agg_daily_summary 30д</code> • Кнопка обработает видимые (до 20) фоном с опросом.</div>
+      <div class="page-seo__foot small text-muted">Топ необработанные по <code>agg_daily_summary 30д</code> • Кнопка обработает видимые (до 20) фоном с опросом.</div>
     </div>
 
     <div v-if="error" class="wb-error">{{ error }}</div>
     <div v-if="loading" class="text-muted">Загрузка…</div>
 
-    <div v-if="!loading" class="wb-table-wrap">
-      <table class="page-seo__table page-seo__feed">
+    <div v-if="!loading" class="tbl-wrap">
+      <table class="tbl page-seo__table page-seo__feed">
         <colgroup><col class="page-seo__feed-col-product" /><col /></colgroup>
         <thead><tr><th>Товар</th><th>Что изменится</th></tr></thead>
         <tbody>
@@ -60,26 +70,34 @@
             <!-- Сводная строка: карточка + что поменялось (как в мокапе 1b) -->
             <tr class="page-seo__feed-row">
               <td class="page-seo__feed-product">
-                <div class="page-seo__product-top">
-                  <img :src="m.card?.photo || '/images/no-photo.png'" class="page-seo__thumb" alt="" />
-                  <div class="page-seo__product-text">
-                    <div class="page-seo__product-title" :title="m.card?.title || ''">{{ shortTitle(m.card?.title) }}</div>
-                    <div class="page-seo__product-sub">{{ (m.card?.subjectName || '') + ' • ' + (m.card?.brand || '') }}</div>
-                    <div>
-                      <a :href="`/wb/detail?nm_id=${m.nmID}`" target="_blank" class="page-seo__ext-link">WB:{{ m.nmID }}</a>
-                      <a :href="`/wb-search/card?nm_id=${m.nmID}`" target="_blank" class="page-seo__ext-link">фразы</a>
-                    </div>
-                  </div>
-                </div>
+                <ProductCell
+                  compact
+                  :nm-id="m.nmID"
+                  :photo="m.card?.photo || ''"
+                  :title="shortTitle(m.card?.title)"
+                  :subject="m.card?.subjectName || ''"
+                  :brand="m.card?.brand || ''"
+                  :vendor="m.card?.vendorCode || ''"
+                  :link="`/wb/detail?nm_id=${m.nmID}`"
+                  :link-label="'WB: ' + m.nmID"
+                  copy-nm
+                  copy-link
+                />
                 <div class="page-seo__row-btns">
-                  <router-link :to="`/seo/view/${m.id}`" class="btn btn-xs btn-outline-primary" title="Открыть"><i class="bi bi-eye"></i></router-link>
-                  <button v-if="m.status === 'new'" class="btn btn-xs btn-outline-success" title="Отметить просмотренным" @click.stop="markViewed(m.id)"><i class="bi bi-check"></i></button>
-                  <span v-else class="btn btn-xs btn-success" title="Просмотрено"><i class="bi bi-check"></i></span>
-                  <button class="btn btn-xs" :class="m.status === 'viewed' ? 'btn-warning' : 'btn-outline-warning'" title="Вернуть в обработку" @click.stop="requeue(m.id)"><i class="bi bi-arrow-counterclockwise"></i></button>
+                  <a
+                    :href="`/wb-search/card?nm_id=${m.nmID}`"
+                    target="_blank"
+                    class="btn btn-xs btn--outline"
+                    title="Фразы карточки (поисковые запросы)"
+                  ><i class="bi bi-chat-left-text"></i></a>
+                  <router-link :to="`/seo/view/${m.id}`" class="btn btn-xs btn--outline" title="Открыть"><i class="bi bi-eye"></i></router-link>
+                  <button v-if="m.status === 'new'" class="btn btn-xs btn--outline" title="Отметить просмотренным" @click.stop="markViewed(m.id)"><i class="bi bi-check"></i></button>
+                  <span v-else class="btn btn-xs btn--brand" title="Просмотрено"><i class="bi bi-check"></i></span>
+                  <button class="btn btn-xs" :class="m.status === 'viewed' ? 'btn--outline' : 'btn--outline'" title="Вернуть в обработку" @click.stop="requeue(m.id)"><i class="bi bi-arrow-counterclockwise"></i></button>
                 </div>
                 <div class="page-seo__rec-id">#{{ m.id }} • {{ fmtDT(m.created_at) }} • conf {{ confPct(m.confidence) }}</div>
               </td>
-              <td class="page-seo__feed-changes">
+              <td class="t-left page-seo__feed-changes">
                 <div class="page-seo__feed-metric">
                   <span class="page-seo__feed-label">Заголовок</span>
                   <template v-if="titleChanged(m)">
@@ -181,23 +199,37 @@
       </nav>
     </div>
 
-    <div v-if="status === 'new' && !loading && !total && q" class="card page-seo__cards-card">
-      <div class="card-header page-seo__cards-head">
+    <div v-if="status === 'new' && !loading && !total && q" class="tbl-card page-seo__cards-card">
+      <div class="card__hd page-seo__cards-head">
         <span>Карточки по запросу “{{ q }}” — {{ cardsTotal }} шт</span>
-        <button v-if="cards.length" @click="startBatch(allIds)" class="btn btn-sm btn-primary"><i class="bi bi-robot"></i> Обработать все ({{ cardsTotal }})</button>
+        <button v-if="cards.length" @click="startBatch(allIds)" class="btn btn-sm btn--brand"><i class="bi bi-robot"></i> Обработать все ({{ cardsTotal }})</button>
       </div>
       <div v-if="!cards.length" class="page-seo__empty">Карточек не найдено. Попробуй другой запрос.</div>
-      <div v-else class="wb-table-wrap">
-        <table class="table table-bordered table-hover align-middle page-seo__mini-table">
-          <thead class="table-light"><tr><th class="page-seo__photo-col">Фото</th><th>Товар</th><th class="page-seo__act-col"></th></tr></thead>
+      <div v-else class="tbl-wrap">
+        <table class="tbl page-seo__mini-table">
+          <thead class=""><tr><th class="page-seo__photo-col">Фото</th><th>Товар</th><th class="page-seo__act-col"></th></tr></thead>
           <tbody>
             <tr v-for="c in cards" :key="c.nmID">
-              <td><img :src="c.photo || '/images/no-photo.png'" alt="" class="page-seo__thumb" /></td>
+              <td class="t-left">
+                <ProductCell
+                  compact
+                  :nm-id="c.nmID"
+                  :photo="c.photo || ''"
+                  :title="c.title || ''"
+                  :subject="c.subjectName || ''"
+                  :brand="c.brand || ''"
+                  :vendor="c.vendorCode || ''"
+                  :link="`/wb/detail?nm_id=${c.nmID}`"
+                  :link-label="'WB: ' + c.nmID"
+                  copy-nm
+                  copy-link
+                />
+              </td>
               <td>
                 <div class="fw-semibold">{{ c.title }}</div>
                 <div class="small text-muted">nmID {{ c.nmID }} • {{ c.subjectName || '' }} • {{ c.brand || '' }} • {{ c.vendorCode || '' }}</div>
               </td>
-              <td class="text-center"><button @click="startBatch([c.nmID])" class="btn btn-sm btn-outline-primary"><i class="bi bi-robot"></i> Обработать с AI</button></td>
+              <td class="t-center"><button @click="startBatch([c.nmID])" class="btn btn-sm btn--outline"><i class="bi bi-robot"></i> Обработать с AI</button></td>
             </tr>
           </tbody>
         </table>
@@ -219,6 +251,7 @@
 
 <script setup lang="ts">
 import '@/assets/css/pages/page-seo.css'
+import ProductCell from '@/components/common/ProductCell.vue'
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { seoApi, type SeoRec } from '../api/seo'

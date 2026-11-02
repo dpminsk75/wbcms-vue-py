@@ -58,6 +58,19 @@
   --bs-btn-disabled-border-color: var(--brand);
 }
 
+/* Опасное действие (удалить, заблокировать) — красная кнопка на токенах. */
+.btn--danger {
+  --bs-btn-bg: var(--bad);
+  --bs-btn-border-color: var(--bad);
+  --bs-btn-color: var(--brand-ink);
+  --bs-btn-hover-bg: var(--bad-deep);
+  --bs-btn-hover-border-color: var(--bad-deep);
+  --bs-btn-hover-color: var(--brand-ink);
+  --bs-btn-active-bg: var(--bad-deep);
+  --bs-btn-active-border-color: var(--bad-deep);
+  --bs-btn-active-color: var(--brand-ink);
+}
+
 .btn--soft {
   --bs-btn-bg: var(--surface-2);
   --bs-btn-border-color: var(--line);
@@ -121,6 +134,26 @@
 .badge--info    { background: var(--info-tint); color: var(--info-deep); }
 .badge--neutral { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink-soft); }
 .badge--brand   { background: var(--brand-tint); color: var(--brand-deep); }
+
+/* ---------- селект ---------- */
+/* Как .wb-input, но со системной стрелкой браузера (свою рисуем токеном
+   через mask — но у select маска съела бы фон поля, поэтому стрелка системная). */
+.wb-select {
+  font-family: inherit;
+  font-size: calc(12.5px * var(--fs));
+  color: var(--ink);
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background-color: var(--surface);
+  outline: none;
+  width: 100%;
+  transition: border-color .14s ease, box-shadow .14s ease;
+}
+.wb-select:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-tint);
+}
 
 /* ---------- поля ---------- */
 .wb-field { display: flex; flex-direction: column; gap: 5px; }

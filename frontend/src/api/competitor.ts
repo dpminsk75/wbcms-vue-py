@@ -3,6 +3,8 @@ import { api } from './client'
 export interface CompetitorSourceRow {
   source_nm_id: number; cnt: number; phrases: number; analyzed: number;
   title: string | null; brand: string | null; vendor_code: string | null; photo: string | null;
+  /** Предмет (тип) нашей карточки (wbcards.subjectName). */
+  subject_name?: string | null;
 }
 
 export interface CompetitorQuery { phrase: string; position: number | null; status?: string; id?: number }

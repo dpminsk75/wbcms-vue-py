@@ -57,7 +57,9 @@ def _merge_by_phrase(items: list[dict]) -> list[dict]:
     """
     groups: dict[tuple, list[dict]] = {}
     for it in items:
-        key = (it.get("phrase") or "", it.get("date") or "")
+        # ключ группы — нормализованная фраза из БД (`phrase_norm`),
+        # чтобы слияние в Python совпадало с группировкой в SQL (пагинация)
+        key = (it.get("_grp") or it.get("phrase") or "", it.get("date") or "")
         groups.setdefault(key, []).append(it)
 
     out: list[dict] = []
@@ -86,6 +88,24 @@ def _json_list(v) -> list:
             return []
         return d if isinstance(d, list) else []
     return []
+
+
+def _first_photo(raw) -> str:
+    """Первый URL фото из `wbcards.photos` (JSON-массив или строка).
+
+    Фото отдаём нашим карточкам в отчёте «По нашим товарам» — вывод идёт
+    через общий `CardPhoto` (локальный кэш `/api/img`).
+    """
+    if isinstance(raw, str):
+        s = raw.strip()
+        if s and not s.startswith("["):
+            return s
+    for p in _json_list(raw):
+        if isinstance(p, str) and p.strip():
+            return p.strip()
+        if isinstance(p, dict) and isinstance(p.get("photo"), str) and p["photo"].strip():
+            return p["photo"].strip()
+    return ""
 
 
 def _json_dict(v) -> dict:
@@ -510,17 +530,22 @@ class CompetitorsPositionsService:
         }
     # ---------- 3. сводка по нашим карточкам ----------
 
-    async def cards(self, date_from=None, date_to=None, limit: int = 300) -> dict:
-        """Наши карточки, по которым есть наблюдения выдачи."""
+    async def cards(self, date_from=None, date_to=None, limit: int = 50, offset: int = 0) -> dict:
+        """Наши карточки, по которым есть наблюдения выдачи.
+
+        Постранично: страница — наши карточки (группы по `source_nm_id`),
+        счётчик — число таких карточек за период.
+        """
         scope, sparams = self._scope()
         where, params = self._period(date_from, date_to)
         where.append("p.source_nm_id > 0")
         params.update(sparams)
-        params["lim"] = max(1, min(int(limit or 300), 1000))
+        params["lim"] = max(1, min(int(limit or 50), 200))
+        params["off"] = max(0, int(offset or 0))
 
         rows = (await self.db.execute(text(f"""
             SELECT p.source_nm_id AS nm_id, w.title AS title, w.vendorCode AS vendor,
-                   w.brand AS brand,
+                   w.brand AS brand, w.subjectName AS subject, w.photos AS photos,
                    COUNT(DISTINCT {_NORM_SQL}) AS phrases,
                    COUNT(DISTINCT p.collected_at) AS days,
                    MIN(p.collected_at) AS first_at,
@@ -529,23 +554,30 @@ class CompetitorsPositionsService:
             FROM wb_competitor_position p
             LEFT JOIN wbcards w ON w.nmID = p.source_nm_id
             WHERE {' AND '.join(where)} {scope}
-            GROUP BY p.source_nm_id, w.title, w.vendorCode, w.brand
+            GROUP BY p.source_nm_id, w.title, w.vendorCode, w.brand, w.subjectName, w.photos
             ORDER BY last_at DESC
-            LIMIT :lim
+            LIMIT :lim OFFSET :off
         """), params)).mappings().all()
+        total = int((await self.db.execute(text(f"""
+            SELECT COUNT(DISTINCT p.source_nm_id)
+            FROM wb_competitor_position p
+            WHERE {' AND '.join(where)} {scope}
+        """), params)).scalar() or 0)
 
         items = [{
             "nm_id": int(r["nm_id"] or 0),
             "title": r["title"] or "",
             "vendor": r["vendor"] or "",
             "brand": r["brand"] or "",
+            "subject": r["subject"] or "",
+            "photo": _first_photo(r["photos"]),
             "phrases": int(r["phrases"] or 0),
             "days": int(r["days"] or 0),
             "first_at": _d(r["first_at"]),
             "last_at": _d(r["last_at"]),
             "best_position": r["best_position"],
         } for r in rows]
-        return {"items": items, "total": len(items)}
+        return {"items": items, "total": total, "limit": params["lim"], "offset": params["off"]}
 
     # ---------- 5. профиль ниш (фильтры выдачи) ----------
 
@@ -567,25 +599,53 @@ class CompetitorsPositionsService:
             params["dto"] = date_to
         return where, params
 
-    async def niches(self, date_from=None, date_to=None, limit: int = 300) -> dict:
+    async def niches(self, date_from=None, date_to=None, limit: int = 50, offset: int = 0) -> dict:
         """Профиль ниши по фразе: рамки цен, бренды, продавцы, категории, акции.
 
         Источник — `wb_seo_search_filters` (разбор `resultset=filters`).
+
+        Постранично: страница — группы (фраза+день), счётчик — число групп.
+        Группировка по `phrase_norm` совпадает с ключом слияния в Python.
         """
         scope, sparams = self._scope_plain()
         where, params = self._period_plain(date_from, date_to)
         params.update(sparams)
-        params["lim"] = max(1, min(int(limit or 300), 1000))
-        rows = (await self.db.execute(text(f"""
-            SELECT query_phrase, phrase_norm, snapshot_date, collected_at, file_name, total,
-                   price_min, price_max, delivery_min, delivery_max,
-                   brands, sellers, subjects, sale_factions, countries, ages, delivery_types,
-                   flags, facets, created_by, ext_token_id
+        params["lim"] = max(1, min(int(limit or 50), 200))
+        params["off"] = max(0, int(offset or 0))
+        where_sql = ' AND '.join(where)
+        groups = (await self.db.execute(text(f"""
+            SELECT phrase_norm, snapshot_date
             FROM wb_seo_search_filters
-            WHERE {' AND '.join(where)} {scope}
-            ORDER BY collected_at DESC
-            LIMIT :lim
+            WHERE {where_sql} {scope}
+            GROUP BY phrase_norm, snapshot_date
+            ORDER BY MAX(collected_at) DESC, phrase_norm
+            LIMIT :lim OFFSET :off
         """), params)).mappings().all()
+        total = int((await self.db.execute(text(f"""
+            SELECT COUNT(*) FROM (
+                SELECT phrase_norm, snapshot_date
+                FROM wb_seo_search_filters
+                WHERE {where_sql} {scope}
+                GROUP BY phrase_norm, snapshot_date
+            ) t
+        """), params)).scalar() or 0)
+        rows = []
+        if groups:
+            conds = []
+            gp = {}
+            for i, g in enumerate(groups):
+                conds.append("(phrase_norm = :gp{i} AND snapshot_date = :gd{i})".format(i=i))
+                gp[f"gp{i}"] = g["phrase_norm"]
+                gp[f"gd{i}"] = g["snapshot_date"]
+            rows = (await self.db.execute(text(f"""
+                SELECT query_phrase, phrase_norm, snapshot_date, collected_at, file_name, total,
+                       price_min, price_max, delivery_min, delivery_max,
+                       brands, sellers, subjects, sale_factions, countries, ages, delivery_types,
+                       flags, facets, created_by, ext_token_id
+                FROM wb_seo_search_filters
+                WHERE {where_sql} {scope} AND ({' OR '.join(conds)})
+                ORDER BY collected_at DESC
+            """), {**params, **gp})).mappings().all()
 
         items = []
         for r in rows:
@@ -593,6 +653,7 @@ class CompetitorsPositionsService:
                 "phrase": _norm_phrase(r["query_phrase"]),
                 "phrase_raw": r["query_phrase"] or "",
                 "phrase_norm": r["phrase_norm"] or "",
+                "_grp": r["phrase_norm"] or _norm_phrase(r["query_phrase"]),
                 "date": _d(r["snapshot_date"]),
                 "collected_at": _d(r["collected_at"]),
                 "file_name": r["file_name"] or "",
@@ -614,27 +675,56 @@ class CompetitorsPositionsService:
                 "ext_token_id": r["ext_token_id"],
             })
         items = _merge_by_phrase(items)
-        return {"items": items, "total": len(items)}
+        return {"items": items, "total": total, "limit": params["lim"], "offset": params["off"]}
 
     # ---------- 6. реклама и полки в поиске ----------
 
-    async def ads(self, date_from=None, date_to=None, limit: int = 200) -> dict:
+    async def ads(self, date_from=None, date_to=None, limit: int = 50, offset: int = 0) -> dict:
         """Баннеры (реклама продавцов) и брендовые полки В ПОИСКЕ.
 
         Источник — `wb_seo_search_shelfs` (разбор `banners/shelfs/search`).
+
+        Только запросы с рекламой (`banner_cnt > 0`) — без баннеров раздел пустой.
+        Постранично: страница — группы (фраза+день), счётчик — число групп.
         """
         scope, sparams = self._scope_plain()
         where, params = self._period_plain(date_from, date_to)
         params.update(sparams)
-        params["lim"] = max(1, min(int(limit or 200), 1000))
-        rows = (await self.db.execute(text(f"""
-            SELECT query_phrase, snapshot_date, collected_at, file_name,
-                   banners, shelfs, banner_cnt, shelf_cnt, shelf_products_cnt, sellers, created_by
+        params["lim"] = max(1, min(int(limit or 50), 200))
+        params["off"] = max(0, int(offset or 0))
+        where_sql = ' AND '.join(where)
+        groups = (await self.db.execute(text(f"""
+            SELECT query_phrase, snapshot_date
             FROM wb_seo_search_shelfs
-            WHERE {' AND '.join(where)} {scope}
-            ORDER BY collected_at DESC
-            LIMIT :lim
+            WHERE {where_sql} {scope} AND banner_cnt > 0
+            GROUP BY query_phrase, snapshot_date
+            ORDER BY MAX(collected_at) DESC, query_phrase
+            LIMIT :lim OFFSET :off
         """), params)).mappings().all()
+        total = int((await self.db.execute(text(f"""
+            SELECT COUNT(*) FROM (
+                SELECT query_phrase, snapshot_date
+                FROM wb_seo_search_shelfs
+                WHERE {where_sql} {scope} AND banner_cnt > 0
+                GROUP BY query_phrase, snapshot_date
+            ) t
+        """), params)).scalar() or 0)
+        rows = []
+        if groups:
+            conds = []
+            gp = {}
+            for i, g in enumerate(groups):
+                conds.append("(query_phrase = :gp{i} AND snapshot_date = :gd{i})".format(i=i))
+                gp[f"gp{i}"] = g["query_phrase"]
+                gp[f"gd{i}"] = g["snapshot_date"]
+            rows = (await self.db.execute(text(f"""
+                SELECT query_phrase, snapshot_date, collected_at, file_name,
+                       banners, shelfs, banner_cnt, shelf_cnt, shelf_products_cnt, sellers, created_by
+                FROM wb_seo_search_shelfs
+                WHERE {where_sql} {scope} AND banner_cnt > 0
+                  AND ({' OR '.join(conds)})
+                ORDER BY collected_at DESC
+            """), {**params, **gp})).mappings().all()
 
         items = []
         for r in rows:
@@ -643,6 +733,7 @@ class CompetitorsPositionsService:
             items.append({
                 "phrase": _norm_phrase(r["query_phrase"]),
                 "phrase_raw": r["query_phrase"] or "",
+                "_grp": r["query_phrase"] or "",
                 "date": _d(r["snapshot_date"]),
                 "collected_at": _d(r["collected_at"]),
                 "file_name": r["file_name"] or "",
@@ -664,7 +755,7 @@ class CompetitorsPositionsService:
                 "created_by": r["created_by"],
             })
         items = _merge_by_phrase(items)
-        return {"items": items, "total": len(items)}
+        return {"items": items, "total": total, "limit": params["lim"], "offset": params["off"]}
 
     # ---------- 8. очередь пересборки выдачи ----------
 

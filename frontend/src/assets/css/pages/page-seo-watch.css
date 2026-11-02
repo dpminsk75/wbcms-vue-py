@@ -1,217 +1,197 @@
-/* SEO-мониторинг (/seo-watch) — план 2026-10-23. Своя статика страницы (AGENTS.md),
-   инлайн-стилей нет; динамика (цвета/ширины) — только :style в шаблоне. */
+/* page-seo-watch.css — /seo-watch (SEO-мониторинг) на блоках темы:
+   фильтр — общий WbUniversalFilter, KPI — .tile, матрица и события —
+   .tbl-card → .card__hd → .tbl-wrap → .tbl. Цвета — только токены темы. */
 
-/* ---------- шапка + табы ---------- */
-/* Шапка — общая .wb-workspace-head (wb-ui.css): меню рабочего места справа. */
-
-/* ---------- фильтр: пресеты + даты ---------- */
-.page-seo-watch__filters {
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  background: #fff;
-  padding: 10px 12px;
-  margin-bottom: 12px;
-}
-.page-seo-watch__presets {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
-}
-.page-seo-watch__label {
-  font-size: 13px;
-  color: #6b7280;
-}
-/* новые фильтры панели (карточка / запросы / ранг) — правый блок строки дат */
-.page-seo-watch__fcol {
-  display: flex;
-  flex-direction: column;
-}
-/* поле поиска карточки — фиксированная ширина (min() по контенту схлопывается) */
-.page-seo-watch__fcol-card {
-  width: min(420px, 100%);
-  flex: 0 1 420px;
-}
-.page-seo-watch__fcol-card .wb-card-select,
-.page-seo-watch__fcol-card .wb-card-select__input {
-  width: 100%;
-}
-.page-seo-watch__fsel {
-  min-width: 200px;
-}
+/* ---------- подпись активного среза фильтра (слот #extra) ---------- */
 .page-seo-watch__filter-note {
-  font-size: 12px;
-  color: #15835e;
+  font-size: calc(12px * var(--fs));
+  color: var(--good);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 480px;
 }
-/* колонка «Запросов» — компактно под «Заказы» */
-.page-seo-watch__col-freq {
-  font-variant-numeric: tabular-nums;
-  color: #4b5563;
-  white-space: nowrap;
-}
-.page-seo-watch__loading {
-  padding: 8px 2px;
+
+/* ---------- ошибка загрузки ---------- */
+.page-seo-watch__error { border-color: var(--bad); }
+.page-seo-watch__error .wb-panel__bd {
+  background: var(--bad-tint);
+  color: var(--bad-deep);
+  font-weight: 600;
 }
 
-/* ---------- KPI ---------- */
-.page-seo-watch__kpi {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 10px;
-  margin-bottom: 14px;
+/* Кнопки панели действий — светло-синие: --info-tint фон, --info-deep текст,
+   --info рамка. Общие .btn--* темы не трогаем — только свои классы на странице. */
+.page-seo-watch__actions .page-seo-watch__act-btn {
+  --bs-btn-bg: var(--info-tint);
+  --bs-btn-border-color: var(--info);
+  --bs-btn-color: var(--info-deep);
+  --bs-btn-hover-bg: color-mix(in srgb, var(--info) 16%, var(--surface));
+  --bs-btn-hover-border-color: var(--info);
+  --bs-btn-hover-color: var(--info-deep);
+  --bs-btn-active-bg: var(--info-tint);
+  --bs-btn-active-border-color: var(--info);
+  --bs-btn-active-color: var(--info-deep);
 }
-.page-seo-watch__kpi-card {
-  border: 1px solid #e0e0e0;
-  border-radius: 12px;
-  background: #fff;
-  padding: 10px 12px;
+/* Недоступная кнопка: тема гасит через opacity .5 — на светлом тине это
+   выглядит белой. Поэтому гасим цветом (bootstrap берёт --bs-btn-disabled-*). */
+.page-seo-watch__actions .page-seo-watch__act-btn:disabled {
+  --bs-btn-disabled-bg: color-mix(in srgb, var(--info) 9%, var(--surface));
+  --bs-btn-disabled-border-color: color-mix(in srgb, var(--info) 28%, var(--surface));
+  --bs-btn-disabled-color: color-mix(in srgb, var(--info) 45%, var(--surface));
+  --bs-btn-disabled-opacity: 1;
 }
-.page-seo-watch__kpi-card--warn {
-  border-color: #f0c36d;
-  background: #fffdf5;
+
+/* Индикатор операции — в шапке матрицы (шапка тёмная → цвет --hd-fg) */
+.page-seo-watch__busy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: calc(11.5px * var(--fs));
+  font-weight: 500;
+  color: var(--hd-fg);
+  opacity: .9;
 }
-.page-seo-watch__kpi-label {
-  font-size: 12px;
-  color: #6b7280;
+.page-seo-watch__busy .spinner-border { color: var(--hd-fg); }
+
+/* Поиск по фразе в шапке матрицы */
+.page-seo-watch__search {
+  width: 220px;
+  padding: 4px 8px;
+  font-size: calc(12px * var(--fs));
+  flex: none;
 }
-.page-seo-watch__kpi-value {
-  font-size: 22px;
-  font-weight: 700;
-  color: #4a3a8c;
-  line-height: 1.2;
-}
-.page-seo-watch__kpi-note {
-  font-size: 11px;
-  color: #9ca3af;
-}
+
+/* ---------- KPI (плитки темы) ---------- */
+.page-seo-watch__kpi { margin-bottom: 14px; }
 
 /* ---------- блоки ---------- */
-.page-seo-watch__block {
-  margin-bottom: 14px;
-}
+.page-seo-watch__block { margin-bottom: 14px; }
 
-/* ---------- шапка матрицы: действия рядом с чекбоксами ---------- */
-.page-seo-watch__matrix-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  /* фон не задаём — шапка карточки остаётся градиентной (.wb-card-header) */
-}
+/* ---------- шапка матрицы: заметки справа ---------- */
 .page-seo-watch__head-actions {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  font-size: 12px;
+  font-size: calc(12px * var(--fs));
 }
 .page-seo-watch__head-note {
-  color: #ffffffcc;
+  color: var(--hd-fg);
+  opacity: .8;
 }
 
-/* ---------- матрица (резина, правило B: 10+ узких колонок) ---------- */
+/* ---------- матрица (14 колонок) ---------- */
 .page-seo-watch__grid {
   width: 100%;
   table-layout: auto;
-  font-size: 12px;
 }
 .page-seo-watch__grid thead th {
   white-space: normal;
   overflow-wrap: break-word;
   font-weight: 500;
-  font-size: 11px;
+  font-size: calc(11px * var(--fs));
   text-align: center;
   vertical-align: middle;
-  padding: 4px !important;
+  padding: 4px;
 }
+/* 14 колонок в одну строку: отступы плотнее темы (тема — 7px/10px),
+   иначе минимальная ширина таблицы не влезает в контейнер. */
 .page-seo-watch__grid tbody td {
-  font-size: 12px;
+  padding: 4px 6px;
   vertical-align: middle;
 }
-/* бейджи значений «Сбор / Новые / Цены / Очередь» — дефолт bootstrap 0.75em
-   съедается; поднимаем до размера текста ячейки */
+/* колонка «Запросов» — компактно под «Заказы» */
+.page-seo-watch__col-freq {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+/* Первая загрузка отчёта: данных ещё нет — спиннер по центру области контента */
+.page-seo-watch__loading {
+  padding: 28px 12px;
+  text-align: center;
+  color: var(--ink-muted);
+  font-size: calc(12.5px * var(--fs));
+}
+.page-seo-watch__loading .spinner-border {
+  color: var(--brand);
+  vertical-align: -2px;
+  margin-right: 6px;
+}
+/* бейджи значений «Сбор / Новые / Цены / Очередь» — размер текста ячейки */
 .page-seo-watch__grid tbody td .badge {
-  font-size: 12px;
+  font-size: calc(12px * var(--fs));
   padding: 3px 8px;
 }
-.page-seo-watch__col-check {
-  width: 32px;
-}
-/* Первая колонка («Фраза») — растянутая: главная колонка строки, контент не
-   меняли — сюда уходит место, высвобожденное из «Наших позиций». */
+.page-seo-watch__col-check { width: 32px; }
+/* Колонка чекбоксов — по центру (в теме первая колонка выравнивается влево) */
+.page-seo-watch__grid thead th:first-child,
+.page-seo-watch__grid tbody td:first-child { text-align: center; }
+/* Первая колонка («Фраза») — главная колонка строки: коридор 220–300px
+   (не % — от ширины окна ширина колонки не зависит).
+   Слева: в теме первая колонка — чекбокс, а фраза вторая, и на неё действует
+   общее правило `.tbl td { text-align: right }` — поэтому специфичность выше. */
 .page-seo-watch__col-phrase {
-  width: 30%;
+  min-width: 220px;
+  max-width: 300px;
 }
+.page-seo-watch__grid td.page-seo-watch__col-phrase { text-align: left; }
 .page-seo-watch__phrase {
   display: block;
-  max-width: 420px;
+  max-width: 300px;
   font-weight: 600;
-  font-size: 12px;
+  font-size: calc(12px * var(--fs));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* Строка «наши карточки + дата захода»: мельче, чтобы колонка дышала. */
+/* Строка «наши карточки + дата захода» — мельче, чтобы колонка дышала;
+   ширина ограничена, иначе длинный список nm_id растягивал колонку. */
 .page-seo-watch__cards-line {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 6px;
-  font-size: 10px;
+  font-size: calc(10px * var(--fs));
+  max-width: 300px;
 }
-/* Колонка «А|У|Н»: ширина «14 / 4 / 22» на одной строке; колонку нельзя
-   ужать — иначе числа рвались в столбик (когда «Наши позиции» разрастались). */
+.page-seo-watch__cards-line > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Колонка «А|У|Н»: ширина фиксированная, иначе числа рвались в столбик. */
 .page-seo-watch__col-cards {
   width: 68px;
   min-width: 68px;
 }
-/* Колонка «Наши позиции» — по содержимому, но с потолком: при «много наших»
-   (30+ позиций) nowrap растягивал колонку на пол-таблицы и ломал «А|У|Н».
-   Позиции переносятся на несколько строк внутри ~220px. */
+/* Колонка «Наши позиции» — тот же коридор 220–300px, чипы по центру. */
 .page-seo-watch__col-ours {
-  width: 1%;
+  min-width: 220px;
+  max-width: 300px;
 }
-.page-seo-watch__col-ours .page-seo-watch__ours {
-  max-width: 220px;
-}
+.page-seo-watch__grid td.page-seo-watch__col-ours { text-align: center; }
+.page-seo-watch__col-ours .page-seo-watch__ours { max-width: 280px; }
 .page-seo-watch__cards-state {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
-  font-size: 12px;
+  font-size: calc(12px * var(--fs));
   white-space: nowrap;
 }
-.page-seo-watch__cards-state--warn {
-  color: #d07a1f;
-}
-/* есть карточки без контента вовсе (Н > 0) — красноватый оттенок числа */
-.page-seo-watch__cards-state--missing {
-  color: #c0392b;
-}
-.page-seo-watch__row:hover {
-  background: #f6f8fc;
-}
-.page-seo-watch__row--stale {
-  background: #fff8f0;
-}
-.page-seo-watch__row--open {
-  background: #eef2ff;
-}
+.page-seo-watch__cards-state--warn { color: var(--warn-deep); }
+/* есть карточки без контента вовсе (Н > 0) */
+.page-seo-watch__cards-state--missing { color: var(--bad-deep); }
+/* Состояния строк — фон на ячейках (зебра темы задаёт фон тоже ячейкам). */
+.tbl.page-seo-watch__grid tbody tr.page-seo-watch__row--stale td { background: var(--warn-tint); }
+.tbl.page-seo-watch__grid tbody tr.page-seo-watch__row--open td { background: var(--brand-tint); }
 .page-seo-watch__note {
-  color: #9ca3af;
-  font-size: 11px;
+  color: var(--ink-muted);
+  font-size: calc(11px * var(--fs));
 }
 /* Дата/время последнего захода прижаты к правому краю строки «наши карточки». */
-.page-seo-watch__collected {
-  white-space: nowrap;
-}
+.page-seo-watch__collected { white-space: nowrap; }
 .page-seo-watch__ours {
   display: inline-flex;
   gap: 4px;
@@ -220,8 +200,8 @@
 }
 .page-seo-watch__ours-pos {
   font-weight: 700;
-  font-size: 12px;
-  color: #1f6fd0;
+  font-size: calc(12px * var(--fs));
+  color: var(--brand);
   text-decoration: none;
 }
 /* Колонка «Цена vs ТОП-40»: цена нашей карточки-лидера + бейдж дельты к медиане
@@ -229,28 +209,28 @@
    10..50%, пастельный красный 50..100%, красный > 100%. */
 .page-seo-watch__price-val {
   font-weight: 600;
-  font-size: 13px;
+  font-size: calc(13px * var(--fs));
 }
 .page-seo-watch__price-badge {
   display: inline-block;
   font-weight: 700;
-  font-size: 11px;
+  font-size: calc(11px * var(--fs));
   line-height: 1.6;
 }
-.page-seo-watch__price--green { color: #16a34a; }
-.page-seo-watch__price--gray { color: #6b7280; }
-.page-seo-watch__price--orange { color: #d97706; }
-.page-seo-watch__price--pale { color: #f87171; }
-.page-seo-watch__price--red { color: #dc2626; }
+.page-seo-watch__price--green { color: var(--good); }
+.page-seo-watch__price--gray { color: var(--ink-muted); }
+.page-seo-watch__price--orange { color: var(--warn-deep); }
+.page-seo-watch__price--pale { color: var(--bad); }
+.page-seo-watch__price--red { color: var(--bad-deep); }
 .page-seo-watch__ours-flag {
   display: inline-block;
   min-width: 26px;
   padding: 0 5px;
   margin-right: 4px;
   border-radius: 10px;
-  background: #e8f0fe;
-  color: #1f6fd0;
-  font-size: 11px;
+  background: var(--brand-tint);
+  color: var(--brand-deep);
+  font-size: calc(11px * var(--fs));
   text-align: center;
 }
 .page-seo-watch__chev {
@@ -260,8 +240,8 @@
 
 /* ---------- раскрытие строки: выдача по фразе (карточки, как в «Выдаче WB») ---------- */
 .page-seo-watch__detail-row > td {
-  background: #fafbfe;
-  padding: 10px 12px !important;
+  background: var(--surface-2);
+  padding: 10px 12px;
 }
 .page-seo-watch__detail {
   display: flex;
@@ -269,7 +249,7 @@
   gap: 14px;
 }
 .page-seo-watch__slice {
-  border-top: 1px solid #eef0f3;
+  border-top: 1px solid var(--line);
   padding-top: 10px;
 }
 .page-seo-watch__slice:first-child {
@@ -283,9 +263,7 @@
   flex-wrap: wrap;
   margin-bottom: 8px;
 }
-/* фильтры среза в раскрытии: «изменилась цена» / «новые карточки» —
-   отдельный класс! имя page-seo-watch__filters занято блоком дат на шапке;
-   раньше был тот же класс и margin-left:auto сдвигал/сжимал блок фильтров */
+/* фильтры среза в раскрытии: «изменилась цена» / «новые карточки» */
 .page-seo-watch__detail-filters {
   display: flex;
   align-items: center;
@@ -293,15 +271,15 @@
 }
 .page-seo-watch__slice-day {
   font-weight: 700;
-  font-size: 13px;
+  font-size: calc(13px * var(--fs));
 }
 .page-seo-watch__slice-time {
   font-weight: 700;
-  font-size: 13px;
-  color: #1f6fd0;
+  font-size: calc(13px * var(--fs));
+  color: var(--brand);
 }
-/* карточки выдачи: 5 в ряд. Фиксированная ширина (как в «Выдаче WB») —
-   проценты внутри таблицы растягивают её. */
+/* карточки выдачи: 5 в ряд. Ширину (210px) и flex задаёт сам общий
+   компонент CompetitorCard инлайном — здесь только раскладка. */
 .page-seo-watch__cards {
   display: flex;
   flex-wrap: wrap;
@@ -310,21 +288,14 @@
   max-width: 1090px;
   margin: 0 auto;
 }
-.page-seo-watch__cards .wb-scard.wb-scard {
-  width: 210px;
-  max-width: 210px;
-  min-width: 0;
-  flex: 0 0 210px;
-}
 .page-seo-watch__more {
   text-align: center;
   margin: 10px 0 20px;
 }
-/* Кнопка «Увидеть больше» — как на дашборде (LastOrders и др.) */
 .page-seo-watch__more-btn {
-  font-size: 12px;
+  font-size: calc(12px * var(--fs));
   padding: 4px 16px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 /* ---------- события ---------- */
@@ -332,7 +303,7 @@
   padding: 8px 12px;
 }
 .page-seo-watch__event {
-  border-bottom: 1px solid #eef0f3;
+  border-bottom: 1px solid var(--line);
   padding: 6px 0;
 }
 .page-seo-watch__event:last-child {
@@ -340,41 +311,33 @@
 }
 .page-seo-watch__event-phrase {
   font-weight: 600;
-  font-size: 13px;
+  font-size: calc(13px * var(--fs));
 }
 .page-seo-watch__event-line {
-  font-size: 12px;
-  color: #374151;
+  font-size: calc(12px * var(--fs));
+  color: var(--ink-soft);
   margin-top: 3px;
 }
 .page-seo-watch__event-item {
   margin-right: 10px;
 }
 .page-seo-watch__event-link {
-  font-size: 12px;
+  font-size: calc(12px * var(--fs));
   padding: 0;
   vertical-align: baseline;
 }
 
 /* ---------- действия менеджера ---------- */
-/* Панель без яркой заливки: светлый фон блока + мини-заголовок. */
-.page-seo-watch__actions {
-  background: #f8f9fb;
-  padding: 0 12px 8px;
-}
 .page-seo-watch__actions-title {
-  font-size: 11px;
+  font-size: calc(11px * var(--fs));
   font-weight: 700;
   letter-spacing: .04em;
   text-transform: uppercase;
-  color: #8a90a0;
-  padding: 8px 0 2px;
+  color: var(--ink-muted);
+  padding: 0 0 6px;
 }
 /* Сетка действий: раскладка предопределена, переносов «влезает/не влезает»
-   нет. Слева — «фразы», справа — кнопки карточек (всегда 2 строки).
-   Раньше был flex с переносом: ширина блока менялась вслед за цифрами
-   счётчиков («(1366)» против «(4)» или скрытый при нуле), подгруппы то
-   складывались в одну строку, то в две — кнопки прыгали по вертикали. */
+   нет. Слева — «фразы», справа — кнопки карточек (всегда 2 строки). */
 .page-seo-watch__actions-groups {
   display: grid;
   grid-template-columns: max-content max-content;
@@ -383,25 +346,17 @@
   overflow-x: auto; /* на узком экране — горизонтальный скролл без переверстки */
 }
 /* «Фразы»: растягиваем на высоту карточного блока (2 строки), чтобы
-   вертикальный разделитель шёл на всю высоту, а не обрывался у чекбокса.
-   Раскладку внутри (flex-колонка, 2 строки) задают утилиты Bootstrap
-   d-flex flex-column gap-2 в шаблоне. */
+   вертикальный разделитель шёл на всю высоту, а не обрывался у чекбокса. */
 .page-seo-watch__actions-phrases {
   align-self: stretch;
   padding-left: 2px;
   padding-right: 16px;
-  border-right: 1px solid #e5e7eb;
+  border-right: 1px solid var(--line);
 }
-/* Календарь «Пересобрать старше даты»: у Bootstrap нет фиксированной ширины
-   для input-group (он всегда width:100%) — без ограничения поле раздувает
-   панель действий. */
-.page-seo-watch__older-date {
-/*  width: 150px;*/
-  flex: 0 0 auto;
-}
+/* Календарь «Пересобрать старше даты»: без ограничения поле раздувает панель. */
+.page-seo-watch__older-date { flex: 0 0 auto; }
 /* Карточные кнопки: три колонки, именованные области — каждая кнопка всегда
-   в своём месте: строка 1 «собрать», строка 2 «обновить». Пустая ячейка в
-   правом верхнем углу — по ширине колонки «Обновить ТОП-10». */
+   в своём месте: строка 1 «собрать», строка 2 «обновить». */
 .page-seo-watch__actions-cards {
   display: grid;
   grid-template-columns: max-content max-content max-content;
@@ -451,35 +406,28 @@
   flex-wrap: wrap;
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--line);
 }
 .page-seo-watch__own-label {
-  font-size: 11px;
+  font-size: calc(11px * var(--fs));
   font-weight: 700;
   letter-spacing: .04em;
   text-transform: uppercase;
-  color: #8a90a0;
-}
-.page-seo-watch__actions-body {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 10px 12px;
+  color: var(--ink-muted);
 }
 .page-seo-watch__check {
   display: flex;
   gap: 6px;
   align-items: center;
-  font-size: 13px;
-  color: #4b5563;
+  font-size: calc(13px * var(--fs));
+  color: var(--ink-soft);
 }
 .page-seo-watch__notice {
-  font-size: 12px;
-  color: #1e9e7c;
+  font-size: calc(12px * var(--fs));
+  color: var(--good);
 }
 .page-seo-watch__matrix-head .page-seo-watch__notice {
-  color: #fff;
+  color: var(--hd-fg);
 }
 
 /* Глубина захода для «Обновить устаревшие» (ТОП-10/20/40). */
@@ -487,17 +435,23 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
-  color: #4b5563;
+  font-size: calc(13px * var(--fs));
+  color: var(--ink-soft);
   white-space: nowrap;
 }
 .page-seo-watch__depth select {
   width: auto;
   min-width: 92px;
-  font-size: 12px;
+  font-size: calc(12px * var(--fs));
   padding: 3px 8px;
 }
 
-.wb-admin-table td {
-  padding: 7px;
+/* ---------- пустое состояние матрицы ---------- */
+.page-seo-watch__empty {
+  margin: 12px 14px;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--ink-soft);
+  font-size: calc(12.5px * var(--fs));
 }

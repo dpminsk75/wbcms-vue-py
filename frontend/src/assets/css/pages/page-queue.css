@@ -1,0 +1,89 @@
+/* page-queue.css — /competitor/queue (Очередь): каркас фильтров и действий,
+   подсказки карточки, таблицы очереди. Только токены темы. */
+
+/* ---------- каркас: фильтры слева, действия справа ---------- */
+.page-queue__filters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  height: 100%;
+}
+.page-queue__field { display: flex; flex-direction: column; gap: 4px; }
+.page-queue__lbl { font-size: calc(11.5px * var(--fs)); font-weight: 600; color: var(--ink-soft); }
+.page-queue__apply { width: 100%; }
+
+.page-queue__actions { display: flex; flex-direction: column; gap: 10px; height: 100%; }
+.page-queue__ttl { font-size: calc(11.5px * var(--fs)); font-weight: 700; color: var(--ink); }
+.page-queue__actbox {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.page-queue__actlbl { font-size: calc(11.5px * var(--fs)); font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.page-queue__chosen {
+  font-size: calc(12px * var(--fs)); color: var(--ink-soft); margin-top: 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.page-queue__cnt { color: var(--brand-deep); }
+.page-queue__hint { font-size: calc(11.5px * var(--fs)); color: var(--ink-muted); margin-top: 6px; }
+
+/* ---------- подсказки и сообщения ---------- */
+.page-queue__notebox {
+  background: var(--warn-tint);
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: calc(12px * var(--fs));
+  color: var(--warn-deep);
+  margin-bottom: 10px;
+}
+.page-queue__msg--bad {
+  background: var(--bad-tint);
+  border-color: color-mix(in srgb, var(--bad) 30%, transparent);
+}
+.page-queue__msg--ok {
+  background: var(--good-tint);
+  border-color: color-mix(in srgb, var(--good) 30%, transparent);
+}
+
+/* ---------- подсказки выбора карточки ---------- */
+.page-queue__searchbox { position: relative; flex: 1 1 auto; min-width: 0; }
+.page-queue__sug {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-1);
+  max-height: 260px;
+  overflow-y: auto;
+}
+.page-queue__sug-item {
+  padding: 6px 10px; font-size: calc(12px * var(--fs));
+  border-bottom: 1px solid var(--line); cursor: pointer; line-height: 1.35;
+}
+.page-queue__sug-item:last-child { border-bottom: 0; }
+.page-queue__sug-item:hover,
+.page-queue__sug-item--sel { background: var(--brand-tint); }
+.page-queue__sug-vc { color: var(--ink-muted); margin-left: 8px; }
+.page-queue__sug-t { margin-left: 8px; color: var(--ink); }
+
+/* ---------- таблицы очереди ---------- */
+.page-queue__grid td { vertical-align: middle; }
+.page-queue__grid .page-queue__w-actions .btn { margin-left: 4px; }
+.page-queue__w-status { width: 140px; }
+.page-queue__w-actions { width: 300px; white-space: nowrap; }
+.page-queue__qbadge { font-size: calc(11px * var(--fs)); font-weight: 600; }
+.page-queue__nm { max-width: 180px; }
+.page-queue__phrase { max-width: 340px; }
+/* мета под карточкой: цена, «ничья строка», источник */
+.page-queue__rowmeta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.page-competitor__sub { font-weight: 500; }

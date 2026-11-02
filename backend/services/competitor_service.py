@@ -198,17 +198,19 @@ class CompetitorService:
             ids = [r["source_nm_id"] for r in rows]
             ph = ",".join(f":n{i}" for i in range(len(ids)))
             for r in (await self.db.execute(
-                text(f"SELECT nmID, title, brand, vendorCode, photos FROM wbcards WHERE nmID IN ({ph})"),
+                text(f"SELECT nmID, title, brand, vendorCode, subjectName, photos FROM wbcards WHERE nmID IN ({ph})"),
                 {f"n{i}": v for i, v in enumerate(ids)},
             )).mappings().all():
                 cards[r["nmID"]] = {"title": r["title"], "brand": r["brand"],
-                                    "vendor_code": r["vendorCode"], "photo": _first_photo(r["photos"])}
+                                    "vendor_code": r["vendorCode"], "subject_name": r["subjectName"],
+                                    "photo": _first_photo(r["photos"])}
         return {"rows": [
             {"source_nm_id": r["source_nm_id"], "cnt": r["cnt"], "phrases": r["phrases"],
              "analyzed": analyzed.get(r["source_nm_id"], 0),
              "title": (cards.get(r["source_nm_id"]) or {}).get("title"),
              "brand": (cards.get(r["source_nm_id"]) or {}).get("brand"),
              "vendor_code": (cards.get(r["source_nm_id"]) or {}).get("vendor_code"),
+             "subject_name": (cards.get(r["source_nm_id"]) or {}).get("subject_name"),
              "photo": (cards.get(r["source_nm_id"]) or {}).get("photo")}
             for r in rows
         ]}

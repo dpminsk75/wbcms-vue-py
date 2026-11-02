@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import '@/assets/css/pages/page-competitor.css'
+import '@/assets/css/pages/page-queue.css'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import WbWorkspaceTabs from '@/components/common/WbWorkspaceTabs.vue'
-import { WORKSPACE_TABS, type WorkspaceTab } from '@/components/common/workspaceTabs'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import CompetitorRow from '@/components/common/CompetitorRow.vue'
 import { api } from '@/api/client'
 import {
   queueApi,
@@ -21,7 +22,6 @@ import {
  * Пункты «Очереди» — 1:1 с попапа расширения.
  */
 
-const tabs: WorkspaceTab[] = WORKSPACE_TABS
 const route = useRoute()
 const router = useRouter()
 
@@ -79,12 +79,12 @@ const CARD_STATUS_OPTIONS = [
 ]
 
 const CARD_STATUS_BADGE: Record<string, string> = {
-  pending: 'bg-primary',
-  need_update: 'bg-warning text-dark',
-  processing: 'bg-info text-dark',
-  done: 'bg-success',
-  error: 'bg-danger',
-  gone: 'bg-secondary',
+  pending: 'badge--info',
+  need_update: 'badge--warn',
+  processing: 'badge--info',
+  done: 'badge--ok',
+  error: 'badge--bad',
+  gone: 'badge--neutral',
 }
 
 const CARD_SOURCE_BADGE: Record<string, string> = {
@@ -351,8 +351,8 @@ const SEARCH_STATUS_OPTIONS = [
 ]
 
 const SEARCH_STATUS_BADGE: Record<string, string> = {
-  pending: 'bg-primary', processing: 'bg-info text-dark',
-  done: 'bg-success', error: 'bg-danger',
+  pending: 'badge--info', processing: 'badge--info',
+  done: 'badge--ok', error: 'badge--bad',
 }
 
 const SEARCH_SRC_BADGE: Record<string, string> = {
@@ -502,6 +502,12 @@ function deleteSearch(row: SearchRow & { phrase: string }) {
     .catch((e) => { searchError.value = queueErrorOf(e) })
 }
 
+/** Ссылка «WB: nmId» в строке: общий компонент гасит переход и просит открыть
+ *  детальную информацию — открываем карточку WB в новой вкладке. */
+function openWb(nm: number) {
+  window.open(`https://www.wildberries.ru/catalog/${nm}/detail.aspx`, '_blank', 'noopener')
+}
+
 /* ================= URL ================= */
 
 function syncUrl() {
@@ -510,13 +516,19 @@ function syncUrl() {
     if (searchQueue.value !== 'phrases') q.source = searchQueue.value
     if (!searchStatus.value) q.status = 'any'
     else if (searchStatus.value !== 'pending') q.status = searchStatus.value
+    if (searchQ.value.trim()) q.q = searchQ.value.trim()
+    if (searchLimit.value !== 50) q.limit = String(searchLimit.value)
+    if (searchOffset.value) q.offset = String(searchOffset.value)
   } else {
     // дефолтные значения (watch + pending) в URL не пишем — восстанавливаются сами
     if (cardsQueue.value !== 'watch') q.queue = cardsQueue.value
     if (!cardsStatus.value) q.status = 'any'
     else if (cardsStatus.value !== 'pending') q.status = cardsStatus.value
+    if (cardsQ.value.trim()) q.q = cardsQ.value.trim()
+    if (cardsLimit.value !== 50) q.limit = String(cardsLimit.value)
+    if (cardsOffset.value) q.offset = String(cardsOffset.value)
   }
-  router.replace({ path: '/queue', query: q })
+  router.replace({ path: '/competitor/queue', query: q })
 }
 
 function initFromUrl() {
@@ -534,6 +546,22 @@ function initFromUrl() {
   if ((CARDS_QUEUE_OPTIONS as readonly { v: string }[]).some(o => o.v === qv)) {
     cardsQueue.value = qv as typeof cardsQueue.value
   }
+  // поиск, лимит и смещение — чтобы ссылкой можно было поделиться
+  const qq = String(route.query.q || '')
+  if (qq) {
+    if (tab.value === 'search') searchQ.value = qq
+    else cardsQ.value = qq
+  }
+  if (route.query.limit !== undefined) {
+    const lim = Number(route.query.limit) || 0
+    if (tab.value === 'search') searchLimit.value = lim
+    else cardsLimit.value = lim
+  }
+  if (route.query.offset !== undefined) {
+    const off = Number(route.query.offset) || 0
+    if (tab.value === 'search') searchOffset.value = off
+    else cardsOffset.value = off
+  }
 }
 
 onMounted(() => {
@@ -545,10 +573,7 @@ onMounted(() => {
 
 <template>
   <div class="container-xxl page-queue">
-    <div class="wb-workspace-head">
-      <h2 class="wb-workspace-head__title">Очередь</h2>
-      <WbWorkspaceTabs active="queue" :tabs="tabs" />
-    </div>
+    <WbWorkspaceHead title="Очередь" workspace-active="queue" />
 
     <ul class="nav nav-pills wb-sub-tabs">
       <li v-for="t in TABS" :key="t.id" class="nav-item">
@@ -563,8 +588,12 @@ onMounted(() => {
         Удалённая строка вернётся при следующем засеве, заблокированная — нет.
       </p>
 
-      <div v-if="cardsError" class="alert alert-danger py-2">{{ cardsError }}</div>
-      <div v-else-if="cardsNotice" class="alert alert-success py-2">{{ cardsNotice }}</div>
+      <div v-if="cardsError" class="wb-panel page-queue__msg page-queue__msg--bad">
+        <div class="wb-panel__bd">{{ cardsError }}</div>
+      </div>
+      <div v-else-if="cardsNotice" class="wb-panel page-queue__msg page-queue__msg--ok">
+        <div class="wb-panel__bd">{{ cardsNotice }}</div>
+      </div>
 
       <!-- Единый каркас: фильтры слева (col-md-4), действия справа (col-md-8) -->
       <div class="row g-3 mb-3">
@@ -572,28 +601,28 @@ onMounted(() => {
           <div class="page-queue__filters">
             <div class="page-queue__field">
               <label class="page-queue__lbl" for="queue-cards-queue">Очередь</label>
-              <select id="queue-cards-queue" v-model="cardsQueue" class="form-select form-select-sm" @change="cardsQueueChanged()">
+              <select id="queue-cards-queue" v-model="cardsQueue" class="wb-select" @change="cardsQueueChanged()">
                 <option v-for="o in CARDS_QUEUE_OPTIONS" :key="o.v" :value="o.v">{{ o.label }}</option>
               </select>
             </div>
             <div class="page-queue__field">
               <label class="page-queue__lbl" for="queue-cards-status">Статус</label>
-              <select id="queue-cards-status" v-model="cardsStatus" class="form-select form-select-sm" @change="onCardsStatusChange()">
+              <select id="queue-cards-status" v-model="cardsStatus" class="wb-select" @change="onCardsStatusChange()">
                 <option v-for="o in CARD_STATUS_OPTIONS" :key="o.v" :value="o.v">{{ o.label }}{{ statusCountLabel(o.v) }}</option>
               </select>
             </div>
             <div class="page-queue__field">
               <label class="page-queue__lbl" for="queue-cards-q">Карточка</label>
-              <input id="queue-cards-q" v-model="cardsQ" class="form-control form-control-sm"
+              <input id="queue-cards-q" v-model="cardsQ" class="wb-input"
                 placeholder="Название, бренд, продавец, nmID" @input="cardsStale = true" @keyup.enter="applyCards()" />
             </div>
             <div class="page-queue__field">
               <label class="page-queue__lbl" for="queue-cards-limit">Показывать</label>
-              <select id="queue-cards-limit" v-model.number="cardsLimit" class="form-select form-select-sm" @change="onCardsLimitChange()">
+              <select id="queue-cards-limit" v-model.number="cardsLimit" class="wb-select" @change="onCardsLimitChange()">
                 <option v-for="o in LIMIT_OPTIONS" :key="o.v" :value="o.v">{{ o.label }}</option>
               </select>
             </div>
-            <button class="btn btn-sm btn-primary page-queue__apply" :disabled="cardsLoading" @click="applyCards()">
+            <button class="btn btn-sm btn--brand page-queue__apply" :disabled="cardsLoading" @click="applyCards()">
               Применить
             </button>
           </div>
@@ -605,9 +634,9 @@ onMounted(() => {
             <div class="page-queue__actbox">
               <div class="page-queue__actlbl">Добавить nmID на сбор</div>
               <div class="d-flex gap-2">
-                <input v-model="addNm" class="form-control form-control-sm"
+                <input v-model="addNm" class="wb-input"
                   placeholder="nmID карточки WB, например 534186046" @keyup.enter="doAddNm()" />
-                <button class="btn btn-sm btn-primary" :disabled="addNmBusy" @click="doAddNm()">Добавить</button>
+                <button class="btn btn-sm btn--brand" :disabled="addNmBusy" @click="doAddNm()">Добавить</button>
               </div>
             </div>
             <!-- действие 2: из нашей карточки — конкуренты в очередь -->
@@ -615,7 +644,7 @@ onMounted(() => {
               <div class="page-queue__actlbl">Добавить из нашей карточки</div>
               <div class="d-flex gap-2">
                 <div class="page-queue__searchbox">
-                  <input v-model="addQ" class="form-control form-control-sm"
+                  <input v-model="addQ" class="wb-input"
                     placeholder="nmID, артикул или часть названия…" autocomplete="off"
                     @focus="addSugOpen = addSug.length > 0" @blur="closeSugSoon()" />
                   <div v-if="addSug.length && addSugOpen" class="page-queue__sug">
@@ -629,7 +658,7 @@ onMounted(() => {
                     </div>
                   </div>
                 </div>
-                <button class="btn btn-sm btn-primary" :disabled="!addChosen || addBusy" @click="doSeedAdd()">
+                <button class="btn btn-sm btn--brand" :disabled="!addChosen || addBusy" @click="doSeedAdd()">
                   Добавить{{ addCount !== null ? ` (${addCount})` : '' }}
                 </button>
               </div>
@@ -646,63 +675,76 @@ onMounted(() => {
       <div v-if="cardsStale" class="page-queue__notebox">
         Фильтры изменены — нажмите «Применить», чтобы получить список.
       </div>
-      <table v-else class="table table-hover align-middle">
+      <div v-else class="tbl-card">
+        <div class="card__hd">
+          <span>Карточки в очереди</span>
+          <span class="spacer"></span>
+          <span class="hd-badge">Показано {{ cardsRows.length }} из {{ cardsData?.total ?? 0 }}</span>
+        </div>
+        <div class="tbl-wrap">
+        <table class="tbl page-queue__grid">
         <thead>
           <tr>
-            <th>Карточка</th>
-            <th class="page-queue__w-status">Статус</th>
-            <th>Собрано / обновлено</th>
-            <th class="page-queue__w-actions text-end">Действия</th>
+            <th class="t-left">Карточка</th>
+            <th class="t-center page-queue__w-status">Статус</th>
+            <th class="t-left">Собрано / обновлено</th>
+            <th class="t-right page-queue__w-actions">Действия</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="cardsLoading"><td colspan="4" class="text-muted">Загрузка…</td></tr>
           <tr v-else-if="!cardsRows.length"><td colspan="4" class="text-muted">Пусто</td></tr>
           <tr v-for="r in cardsRows" v-else :key="r.id">
-            <td>
-              <div class="page-competitor__product-text">
-                <div class="page-competitor__product-title" :title="r.title || ''">
-                  {{ r.title || '—' }}
-                  <span v-if="cardsQueue === 'all'" class="badge bg-light text-dark page-queue__qbadge">
-                    {{ CARD_SOURCE_BADGE[r.source] || r.source || 'Общая куча' }}
-                  </span>
-                </div>
-                  <div class="page-competitor__product-sub">
-                    <a :href="`https://www.wildberries.ru/catalog/${r.nm_id}/detail.aspx`" target="_blank" rel="noopener"
-                      class="page-competitor__wb-link">WB: {{ r.nm_id }}</a>
-                    <span v-if="r.brand"> · {{ r.brand }}</span>
-                    <span v-if="r.price"> · {{ fmtMoney(r.price) }}</span>
-                    <span v-if="r.owner_company_id === null" class="badge bg-light text-dark">ничья строка</span>
-                  </div>
+            <td class="t-left">
+              <CompetitorRow
+                compact
+                :nm-id="r.nm_id"
+                :photo="r.photo || ''"
+                :title="r.title || ('nm ' + r.nm_id)"
+                :seller="r.brand || ''"
+                :wb-url="`https://www.wildberries.ru/catalog/${r.nm_id}/detail.aspx`"
+                show-nm
+                copy-nm
+                copy-wb-link
+                @open="openWb(r.nm_id)"
+              />
+              <div class="page-queue__rowmeta">
+                <span v-if="r.price" class="text-muted small">цена: {{ fmtMoney(r.price) }}</span>
+                <span v-if="r.owner_company_id === null" class="badge badge--neutral">ничья строка</span>
+                <span v-if="cardsQueue === 'all'" class="badge badge--neutral page-queue__qbadge">
+                  {{ CARD_SOURCE_BADGE[r.source] || r.source || 'Общая куча' }}
+                </span>
               </div>
             </td>
-            <td>
-              <span v-if="r.is_hidden" class="badge bg-dark" title="Исключена из сбора — /next не отдаёт, seed не сеет">исключена</span>
-              <span class="badge" :class="CARD_STATUS_BADGE[r.status] || 'bg-light text-dark'">{{ statusLabel(r.status) }}</span>
+            <td class="t-center">
+              <span v-if="r.is_hidden" class="badge badge--bad" title="Исключена из сбора — /next не отдаёт, seed не сеет">исключена</span>
+              <span class="badge" :class="CARD_STATUS_BADGE[r.status] || 'badge--neutral'">{{ statusLabel(r.status) }}</span>
             </td>
             <td
-              class="text-muted small"
+              class="t-left text-muted small"
               :title="r.requested_at ? `запрошено: ${String(r.requested_at).slice(0, 16).replace('T', ' ')}` : ''"
             >{{ (r.processed_at || r.requested_at || '').slice(0, 16).replace('T', ' ') }}</td>
-            <td class="page-queue__w-actions text-end">
-              <button v-if="r.is_hidden" class="btn btn-sm btn-outline-success" @click="blockCard(r)" title="Вернуть в сбор">Разблокировать</button>
-              <button v-else class="btn btn-sm btn-outline-secondary" @click="blockCard(r)" title="Исключить из сбора: не сеять и не отдавать /next">Блокировать</button>
-              <button v-if="['done', 'error', 'gone', 'need_update'].includes(r.status)" class="btn btn-sm btn-outline-primary" @click="requeueCard(r.id)">Вернуть в очередь</button>
-              <button class="btn btn-sm btn-outline-danger" @click="deleteCard(r)">Удалить</button>
+            <td class="page-queue__w-actions t-right">
+              <button v-if="r.is_hidden" class="btn btn-sm btn--outline" @click="blockCard(r)" title="Вернуть в сбор">Разблокировать</button>
+              <button v-else class="btn btn-sm btn--outline" @click="blockCard(r)" title="Исключить из сбора: не сеять и не отдавать /next">Блокировать</button>
+              <button v-if="['done', 'error', 'gone', 'need_update'].includes(r.status)" class="btn btn-sm btn--brand" @click="requeueCard(r.id)">Вернуть в очередь</button>
+              <button class="btn btn-sm btn--danger" @click="deleteCard(r)">Удалить</button>
             </td>
           </tr>
         </tbody>
       </table>
-      <div v-if="cardsLimit > 0 && cardsData && cardsData.total > cardsRows.length && !cardsStale" class="page-queue__pager">
-        <span class="text-muted small">
+      </div>
+      </div>
+      <div v-if="cardsLimit > 0 && cardsData && cardsData.total > cardsRows.length && !cardsStale" class="wb-pager">
+        <span class="wb-pager__label">
           Показано {{ cardsOffset + 1 }}–{{ cardsOffset + cardsRows.length }} из {{ cardsData.total }}
         </span>
-        <button class="btn btn-sm btn-outline-secondary" :disabled="cardsOffset === 0 || cardsLoading" @click="cardsPage(-1)">
-          ← Предыдущая
+        <button class="btn btn-sm btn--outline" :disabled="cardsOffset === 0 || cardsLoading" @click="cardsPage(-1)">
+          <i class="bi bi-chevron-left"></i> Назад
         </button>
-        <span class="text-muted small">стр. {{ Math.floor(cardsOffset / cardsLimit) + 1 }}</span>
-        <button class="btn btn-sm btn-outline-secondary" :disabled="cardsOffset + cardsRows.length >= cardsData.total || cardsLoading" @click="cardsPage(1)">
-          Следующая →
+        <span class="wb-pager__label">стр. {{ Math.floor(cardsOffset / cardsLimit) + 1 }}</span>
+        <button class="btn btn-sm btn--outline" :disabled="cardsOffset + cardsRows.length >= cardsData.total || cardsLoading" @click="cardsPage(1)">
+          Вперёд <i class="bi bi-chevron-right"></i>
         </button>
       </div>
     </template>
@@ -714,8 +756,12 @@ onMounted(() => {
         «ТОП-20» собирается на лету — отдельной очереди у него нет.
       </p>
 
-      <div v-if="searchError" class="alert alert-danger py-2">{{ searchError }}</div>
-      <div v-else-if="searchNotice" class="alert alert-success py-2">{{ searchNotice }}</div>
+      <div v-if="searchError" class="wb-panel page-queue__msg page-queue__msg--bad">
+        <div class="wb-panel__bd">{{ searchError }}</div>
+      </div>
+      <div v-else-if="searchNotice" class="wb-panel page-queue__msg page-queue__msg--ok">
+        <div class="wb-panel__bd">{{ searchNotice }}</div>
+      </div>
 
       <!-- Тот же каркас: фильтры слева (col-md-4), действия справа (col-md-8) -->
       <div class="row g-3 mb-3">
@@ -723,28 +769,28 @@ onMounted(() => {
           <div class="page-queue__filters">
             <div class="page-queue__field">
               <label class="page-queue__lbl" for="queue-search-queue">Очередь</label>
-              <select id="queue-search-queue" v-model="searchQueue" class="form-select form-select-sm" @change="onSearchQueueChange()">
+              <select id="queue-search-queue" v-model="searchQueue" class="wb-select" @change="onSearchQueueChange()">
                 <option v-for="o in SEARCH_QUEUE_OPTIONS" :key="o.v" :value="o.v">{{ o.label }}</option>
               </select>
             </div>
             <div class="page-queue__field">
               <label class="page-queue__lbl" for="queue-search-status">Статус</label>
-              <select id="queue-search-status" v-model="searchStatus" class="form-select form-select-sm" @change="searchStale = true">
+              <select id="queue-search-status" v-model="searchStatus" class="wb-select" @change="searchStale = true">
                 <option v-for="o in SEARCH_STATUS_OPTIONS" :key="o.v" :value="o.v">{{ o.label }}{{ searchCountOf(o.v) }}</option>
               </select>
             </div>
             <div class="page-queue__field">
               <label class="page-queue__lbl" for="queue-search-q">Фраза</label>
-              <input id="queue-search-q" v-model="searchQ" class="form-control form-control-sm"
+              <input id="queue-search-q" v-model="searchQ" class="wb-input"
                 placeholder="Фраза или часть фразы" @input="searchStale = true" @keyup.enter="applySearch()" />
             </div>
             <div class="page-queue__field">
               <label class="page-queue__lbl" for="queue-search-limit">Показывать</label>
-              <select id="queue-search-limit" v-model.number="searchLimit" class="form-select form-select-sm" @change="onSearchLimitChange()">
+              <select id="queue-search-limit" v-model.number="searchLimit" class="wb-select" @change="onSearchLimitChange()">
                 <option v-for="o in LIMIT_OPTIONS" :key="o.v" :value="o.v">{{ o.label }}</option>
               </select>
             </div>
-            <button class="btn btn-sm btn-primary page-queue__apply" :disabled="searchLoading" @click="applySearch()">
+            <button class="btn btn-sm btn--brand page-queue__apply" :disabled="searchLoading" @click="applySearch()">
               Применить
             </button>
           </div>
@@ -755,11 +801,11 @@ onMounted(() => {
             <div class="page-queue__actbox">
               <div class="page-queue__actlbl">Добавить фразу в очередь</div>
               <div class="d-flex gap-2">
-                <input v-if="addSource() !== 'phrases'" v-model="addSearchNm" class="form-control form-control-sm page-queue__nm"
+                <input v-if="addSource() !== 'phrases'" v-model="addSearchNm" class="wb-input page-queue__nm"
                   placeholder="nmID нашей карточки" @keyup.enter="addSearch()" />
-                <input v-model="addPhr" class="form-control form-control-sm page-queue__phrase"
+                <input v-model="addPhr" class="wb-input page-queue__phrase"
                   placeholder="Фраза" @keyup.enter="addSearch()" />
-                <button class="btn btn-sm btn-primary" :disabled="!addSource() || searchLoading" @click="addSearch()">
+                <button class="btn btn-sm btn--brand" :disabled="!addSource() || searchLoading" @click="addSearch()">
                   Добавить
                 </button>
               </div>
@@ -790,23 +836,30 @@ onMounted(() => {
           Фильтры изменены — нажмите «Применить», чтобы получить список.
         </div>
 
-        <table v-else class="table table-hover align-middle">
+        <div v-else class="tbl-card">
+          <div class="card__hd">
+            <span>Очередь сбора выдачи</span>
+            <span class="spacer"></span>
+            <span class="hd-badge">Показано {{ searchRows.length }} из {{ searchData?.total ?? 0 }}</span>
+          </div>
+          <div class="tbl-wrap">
+          <table class="tbl page-queue__grid">
           <thead>
             <tr>
-              <th>Фраза</th>
-              <th class="page-queue__w-status">Статус</th>
-              <th>Обновлено</th>
-              <th class="page-queue__w-actions text-end">Действия</th>
+              <th class="t-left">Фраза</th>
+              <th class="t-center page-queue__w-status">Статус</th>
+              <th class="t-left">Обновлено</th>
+              <th class="t-right page-queue__w-actions">Действия</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="searchLoading"><td colspan="4" class="text-muted">Загрузка…</td></tr>
             <tr v-else-if="!searchRows.length"><td colspan="4" class="text-muted">Пусто</td></tr>
             <tr v-for="r in searchRows" v-else :key="`${r.src || ''}-${r.id}`">
-              <td>
+              <td class="t-left">
                 <div class="page-competitor__sub">
                   {{ r.phrase }}
-                  <span v-if="searchQueue === 'all'" class="badge bg-light text-dark page-queue__qbadge">
+                  <span v-if="searchQueue === 'all'" class="badge badge--neutral page-queue__qbadge">
                     {{ SEARCH_SRC_BADGE[r.src || ''] || r.src }}
                   </span>
                 </div>
@@ -818,97 +871,33 @@ onMounted(() => {
                   </span>
                 </div>
               </td>
-              <td>
-                <span class="badge" :class="SEARCH_STATUS_BADGE[r.status] || 'bg-light text-dark'">{{ searchStatusLabel(r.status) }}</span>
-                <span v-if="r.is_active === 0" class="badge bg-secondary">неактивна</span>
+              <td class="t-center">
+                <span class="badge" :class="SEARCH_STATUS_BADGE[r.status] || 'badge--neutral'">{{ searchStatusLabel(r.status) }}</span>
+                <span v-if="r.is_active === 0" class="badge badge--neutral">неактивна</span>
               </td>
-              <td class="text-muted small">{{ (r.updated_at || '').slice(0, 16).replace('T', ' ') }}</td>
-              <td class="page-queue__w-actions text-end">
-                <button v-if="['done', 'error'].includes(r.status)" class="btn btn-sm btn-outline-primary" @click="requeueSearch(r)">Вернуть в очередь</button>
-                <button class="btn btn-sm btn-outline-danger" @click="deleteSearch(r)">Удалить</button>
+              <td class="t-left text-muted small">{{ (r.updated_at || '').slice(0, 16).replace('T', ' ') }}</td>
+              <td class="page-queue__w-actions t-right">
+                <button v-if="['done', 'error'].includes(r.status)" class="btn btn-sm btn--brand" @click="requeueSearch(r)">Вернуть в очередь</button>
+                <button class="btn btn-sm btn--danger" @click="deleteSearch(r)">Удалить</button>
               </td>
             </tr>
           </tbody>
         </table>
-        <div v-if="searchLimit > 0 && searchData && searchData.total > searchRows.length && !searchStale" class="page-queue__pager">
-          <span class="text-muted small">
+          </div>
+        </div>
+        <div v-if="searchLimit > 0 && searchData && searchData.total > searchRows.length && !searchStale" class="wb-pager">
+          <span class="wb-pager__label">
             Показано {{ searchOffset + 1 }}–{{ searchOffset + searchRows.length }} из {{ searchData.total }}
           </span>
-          <button class="btn btn-sm btn-outline-secondary" :disabled="searchOffset === 0 || searchLoading" @click="searchPage(-1)">
-            ← Предыдущая
+          <button class="btn btn-sm btn--outline" :disabled="searchOffset === 0 || searchLoading" @click="searchPage(-1)">
+            <i class="bi bi-chevron-left"></i> Назад
           </button>
-          <span class="text-muted small">стр. {{ Math.floor(searchOffset / searchLimit) + 1 }}</span>
-          <button class="btn btn-sm btn-outline-secondary" :disabled="searchOffset + searchRows.length >= searchData.total || searchLoading" @click="searchPage(1)">
-            Следующая →
+          <span class="wb-pager__label">стр. {{ Math.floor(searchOffset / searchLimit) + 1 }}</span>
+          <button class="btn btn-sm btn--outline" :disabled="searchOffset + searchRows.length >= searchData.total || searchLoading" @click="searchPage(1)">
+            Вперёд <i class="bi bi-chevron-right"></i>
           </button>
         </div>
       </template>
     </template>
   </div>
 </template>
-
-<style scoped>
-/* Единый каркас (мокап v3): фильтры слева стопкой + «Применить», действия справа */
-.page-queue__filters {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px 14px;
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  height: 100%;
-}
-.page-queue__field { display: flex; flex-direction: column; gap: 4px; }
-.page-queue__lbl { font-size: 12px; font-weight: 600; color: #374151; }
-.page-queue__apply { width: 100%; }
-
-.page-queue__actions { display: flex; flex-direction: column; gap: 10px; height: 100%; }
-.page-queue__ttl { font-size: 12px; font-weight: 700; color: #374151; }
-.page-queue__actbox {
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  padding: 10px 12px;
-}
-.page-queue__actlbl { font-size: 12px; font-weight: 700; color: #111827; margin-bottom: 6px; }
-.page-queue__chosen { font-size: .82rem; color: #374151; margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.page-queue__cnt { color: #cb11ab; }
-.page-queue__hint { font-size: .78rem; color: #6b7280; margin-top: 6px; }
-.page-queue__notebox {
-  background: #fffbeb;
-  border: 1px solid #fde68a;
-  border-radius: 10px;
-  padding: 8px 12px;
-  font-size: .87rem;
-  color: #92400e;
-  margin-bottom: 10px;
-}
-.page-queue__searchbox { position: relative; flex: 1 1 auto; min-width: 0; }
-.page-queue__sug {
-  position: absolute;
-  top: calc(100% + 2px);
-  left: 0;
-  right: 0;
-  z-index: 20;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  box-shadow: 0 8px 20px rgba(17, 24, 39, .12);
-  max-height: 260px;
-  overflow-y: auto;
-}
-.page-queue__sug-item { padding: 6px 10px; font-size: .82rem; border-bottom: 1px solid #f3f4f6; cursor: pointer; line-height: 1.35; }
-.page-queue__sug-item:last-child { border-bottom: 0; }
-.page-queue__sug-item:hover, .page-queue__sug-item--sel { background: #fdf0fb; }
-.page-queue__sug-vc { color: #6b7280; margin-left: 8px; }
-.page-queue__sug-t { margin-left: 8px; color: #111827; }
-.page-queue__qbadge { font-size: .7rem; font-weight: 600; }
-.page-queue__pager { display: flex; gap: 10px; align-items: center; margin: 10px 0; flex-wrap: wrap; }
-.page-queue__nm { max-width: 180px; }
-.page-queue__phrase { max-width: 340px; }
-.page-queue__w-status { width: 140px; }
-.page-queue__w-actions { width: 300px; white-space: nowrap; }
-.page-queue__w-actions .btn { margin-left: 4px; }
-.page-competitor__sub { font-weight: 500; }
-</style>

@@ -185,6 +185,70 @@ def _norm_phrase(raw) -> str:
     return s[:500]
 
 
+# Источники привязки (`wb_competitor_cards.source`) — «как привязали».
+# Приоритет: ручное действие важнее автоматики ('search' — расширение нашло
+# в выдаче само). Внутри ручных — от более «явного» к более «производному».
+SOURCE_PRIORITY = ("capture", "manual", "sibling", "search")
+
+
+def _pick_source(sources: list[str]) -> str:
+    """Источник пары по приоритету (см. SOURCE_PRIORITY)."""
+    for s in SOURCE_PRIORITY:
+        if s in sources:
+            return s
+    return sources[0] if sources else ""
+
+
+def _recommendations(raw) -> list[dict]:
+    """`wb_competitor_details.recommendations` → [{nm_id, title, price, photo}].
+
+    Формат приходит от расширения списком словарей (иногда — числом или
+    двойным JSON-кодированием). Мусор и мусорные nmID выкидываем.
+    Фото берём из самого элемента, если расширение его прислало (обычно нет —
+    тогда подставим из базы, см. `_rec_photos_prices`).
+    """
+    recs = raw
+    if isinstance(recs, (bytes, bytearray)):
+        recs = recs.decode("utf-8", "replace")
+    if isinstance(recs, str):
+        recs = _j(recs)
+    if isinstance(recs, dict):
+        recs = recs.get("items") or recs.get("recommendations") or []
+    if not isinstance(recs, list):
+        return []
+    out: list[dict] = []
+    seen: set[int] = set()
+    for x in recs[:50]:
+        if isinstance(x, dict):
+            nm = x.get("nm_id") or x.get("nmId") or x.get("id")
+            title = x.get("title") or x.get("name") or ""
+            price = x.get("price")
+            photo = ""
+            for key in ("photo", "image", "imageUrl", "image_url", "big", "c516x688", "square"):
+                val = x.get(key)
+                if isinstance(val, str) and val.strip():
+                    photo = val.strip()
+                    if photo.startswith("//"):
+                        photo = "https:" + photo
+                    if photo.startswith("http"):
+                        break
+                    photo = ""
+        else:
+            nm, title, price, photo = x, "", None, ""
+        try:
+            nm = int(nm or 0)
+        except (TypeError, ValueError):
+            continue
+        if nm <= 0 or nm in seen:
+            continue
+        seen.add(nm)
+        out.append({"nm_id": nm, "title": str(title)[:500], "price": price,
+                    "photo": photo or None})
+        if len(out) >= 20:
+            break
+    return out
+
+
 def _parse_json(content: str):
     """Достаём JSON из ответа модели (markdown-обёртки, текст вокруг)."""
     s = (content or "").strip()
@@ -1033,12 +1097,9 @@ class CompetitorsNewcardService:
         async with self.db.begin():
             added = 0
             for cn in nm_ids:
-                r = await self.db.execute(text("""
-                    INSERT IGNORE INTO wb_competitor_cards
-                      (source_nm_id, query_phrase, position, nm_id, title, brand, price, image_url, source, added_by)
-                    VALUES (:s, '', 0, :n, '', '', 0, '', 'manual', :u)
-                """), {"s": nm_id, "n": cn, "u": user_id})
-                added += int(r.rowcount or 0)
+                res = await self._bind(nm_id, cn, "manual", user_id=user_id)
+                if res in ("created", "updated"):
+                    added += 1
             await self._queue(nm_id, nm_ids)
         return {"added": added, "requested": len(nm_ids), "nm_ids": nm_ids}
 
@@ -1057,10 +1118,21 @@ class CompetitorsNewcardService:
                 FROM wb_competitor_cards WHERE source_nm_id=:s
             """), {"n": nm_id, "s": src_nm_id, "u": user_id})
             added = int(r.rowcount or 0)
-            ids = (await self.db.execute(text("""
+            # Источник — «как привязали»: копирование перебивает прежний.
+            # UPDATE идёт по всем строкам пар (их может быть несколько — по фразам).
+            src_ids = [int(x) for x in (await self.db.execute(text("""
+                SELECT DISTINCT nm_id FROM wb_competitor_cards WHERE source_nm_id=:s
+            """), {"s": src_nm_id})).scalars().all()]
+            for chunk in _chunks(src_ids):
+                ph = ",".join(f":c{i}" for i in range(len(chunk)))
+                await self.db.execute(text(f"""
+                    UPDATE wb_competitor_cards SET source='sibling'
+                    WHERE source_nm_id=:n AND nm_id IN ({ph})
+                """), {"n": nm_id, **{f"c{i}": v for i, v in enumerate(chunk)}})
+            ids = [int(x) for x in (await self.db.execute(text("""
                 SELECT DISTINCT nm_id FROM wb_competitor_cards WHERE source_nm_id=:n
-            """), {"n": nm_id})).scalars().all()
-            await self._queue(nm_id, [int(x) for x in ids])
+            """), {"n": nm_id})).scalars().all()]
+            await self._queue(nm_id, ids)
         return {"added": added, "source_nm_id": src_nm_id}
 
     # ---------- §8.5/§11.3: «Собранные карточки» (capture) ----------
@@ -1461,6 +1533,79 @@ class CompetitorsNewcardService:
                 out[int(r["nm_id"])] = dict(r)
         return out
 
+    async def _capture_info(self, nm_id: int) -> dict:
+        """Реестр сбора по конкуренту (`wb_competitor_capture` — nm × компания).
+
+        Это ВИДИМОСТЬ, а не привязка: привязка к нашим карточкам живёт в
+        `wb_competitor_cards`. Здесь — собрали ли мы карточку, исключена ли она
+        из сбора и сколько компаний её собрало.
+        """
+        scope, params = "", {"n": nm_id}
+        if self.company_id is not None:
+            scope = "AND company_id=:cid"
+            params["cid"] = self.company_id
+        out: dict = {"captured_by_us": False, "is_own": False, "is_hidden": False,
+                     "first_seen_at": None, "last_seen_at": None, "companies_cnt": 0}
+        try:
+            row = (await self.db.execute(text(f"""
+                SELECT is_own, is_hidden, first_seen_at, last_seen_at
+                FROM wb_competitor_capture WHERE nm_id=:n {scope}
+                ORDER BY last_seen_at DESC LIMIT 1
+            """), params)).mappings().first()
+            cnt = (await self.db.execute(text(
+                "SELECT COUNT(*) FROM wb_competitor_capture WHERE nm_id=:n"
+            ), {"n": nm_id})).scalar()
+        except Exception:
+            await self.db.rollback()
+            return out
+        out["companies_cnt"] = int(cnt or 0)
+        if row:
+            out["captured_by_us"] = True
+            out["is_own"] = 1 if row.get("is_own") else 0
+            out["is_hidden"] = 1 if row.get("is_hidden") else 0
+            out["first_seen_at"] = row.get("first_seen_at")
+            out["last_seen_at"] = row.get("last_seen_at")
+        return out
+
+    async def _bind(self, source_nm_id: int, nm_id: int, source: str, *,
+                     title: str = "", brand: str = "", price: str = "",
+                     image_url: str = "", user_id: int | None = None) -> str:
+        """Привязать конкурента к нашей карточке. `source` — «как привязали».
+
+        Одна пара (наша карточка, конкурент) = одна привязка с одним источником:
+        ручное действие ПЕРЕЗАПИСЫВАЕТ источник существующих строк пары, а не
+        плодит новые. Раньше здесь был `INSERT IGNORE` + проверка «пара уже
+        есть» без учёта source — привязка конкурента, найденного в выдаче
+        (source='search'), молча не записывалась.
+
+        Возвращает: 'created' | 'updated' | 'same'.
+        Транзакцией не управляет — вызывающий (обычно `async with db.begin()`).
+        """
+        source_nm_id = int(source_nm_id or 0)
+        nm_id = int(nm_id or 0)
+        if not source_nm_id or not nm_id or nm_id == source_nm_id:
+            return "same"
+        cur = (await self.db.execute(text("""
+            SELECT DISTINCT source FROM wb_competitor_cards
+            WHERE source_nm_id=:s AND nm_id=:n
+        """), {"s": source_nm_id, "n": nm_id})).all()
+        srcs = {str(r[0] or "").strip() for r in cur}
+        if srcs:
+            if srcs == {source}:
+                return "same"
+            await self.db.execute(text("""
+                UPDATE wb_competitor_cards SET source=:src
+                WHERE source_nm_id=:s AND nm_id=:n
+            """), {"src": source, "s": source_nm_id, "n": nm_id})
+            return "updated"
+        await self.db.execute(text("""
+            INSERT IGNORE INTO wb_competitor_cards
+              (source_nm_id, query_phrase, position, nm_id, title, brand, price, image_url, source, added_by)
+            VALUES (:s, '', 0, :n, :t, :b, :p, :img, :src, :u)
+        """), {"s": source_nm_id, "n": nm_id, "t": title, "b": brand,
+              "p": price, "img": image_url, "src": source, "u": user_id})
+        return "created"
+
     async def _attached_map(self, ids: list[int]) -> dict[int, list[dict]]:
         out: dict[int, list[dict]] = {}
         for chunk in _chunks(ids):
@@ -1472,24 +1617,44 @@ class CompetitorsNewcardService:
                          "(SELECT nmID FROM wbcards WHERE company_id=:cid)")
                 params["cid"] = self.company_id
             rows = (await self.db.execute(text(f"""
-                SELECT cc.nm_id, cc.source_nm_id, cc.source,
+                SELECT cc.nm_id, cc.source_nm_id, cc.source, cc.query_phrase, cc.position,
                        w.title AS source_title
                 FROM wb_competitor_cards cc
                 LEFT JOIN wbcards w ON w.nmID=cc.source_nm_id
                 WHERE cc.nm_id IN ({ph}) {scope}
                 ORDER BY cc.source_nm_id
             """), params)).mappings().all()
+            # Пара (наша карточка, конкурент) может иметь несколько строк
+            # (ключ uq_source_phrase_nm включает query_phrase) — собираем пару,
+            # источник выбираем по приоритету, а не «первой строкой».
+            pairs: dict[int, dict[int, dict]] = {}
             for r in rows:
                 n = int(r["nm_id"])
                 src = int(r["source_nm_id"])
-                bucket = out.setdefault(n, [])
-                if any(x["nm_id"] == src for x in bucket):
-                    continue
-                bucket.append({
+                p = pairs.setdefault(n, {}).setdefault(src, {
                     "nm_id": src,
                     "title": r["source_title"],
-                    "source": r["source"],
+                    "sources": [],
+                    "_phrases": set(),
+                    "best_pos": None,
                 })
+                s = str(r["source"] or "").strip()
+                if s and s not in p["sources"]:
+                    p["sources"].append(s)
+                qp = str(r["query_phrase"] or "").strip()
+                if qp:
+                    p["_phrases"].add(qp)
+                pos = r["position"]
+                if pos:
+                    pos = int(pos)
+                    p["best_pos"] = pos if p["best_pos"] is None else min(p["best_pos"], pos)
+            for n, d in pairs.items():
+                bucket = out.setdefault(n, [])
+                for p in d.values():
+                    phrases = p.pop("_phrases")
+                    p["source"] = _pick_source(p["sources"])
+                    p["phrases_cnt"] = len(phrases)
+                    bucket.append(p)
         return out
 
     async def _queue_map(self, ids: list[int]) -> dict[int, dict]:
@@ -1780,22 +1945,44 @@ class CompetitorsNewcardService:
         meta = await self._cards_meta_map(eligible)
 
         # Какие пары уже есть: один запрос вместо SELECT на каждую пару.
-        existing: set[tuple[int, int]] = set()
+        existing: dict[tuple[int, int], str] = {}
         tph = ",".join(f":t{i}" for i in range(len(target_ids)))
         tparams = {f"t{i}": v for i, v in enumerate(target_ids)}
         for chunk in _chunks(eligible):
             ph = ",".join(f":n{i}" for i in range(len(chunk)))
             rows = (await self.db.execute(text(f"""
-                SELECT source_nm_id, nm_id FROM wb_competitor_cards
+                SELECT source_nm_id, nm_id, MIN(source) AS source FROM wb_competitor_cards
                 WHERE source_nm_id IN ({tph}) AND nm_id IN ({ph})
+                GROUP BY source_nm_id, nm_id
             """), {**tparams, **{f"n{i}": v for i, v in enumerate(chunk)}})).mappings().all()
+            # MIN(source): 'capture' — первый по алфавиту из наших значений,
+            # т.е. MIN = 'capture' ровно когда пара уже привязана вручную.
             for r in rows:
-                existing.add((int(r["source_nm_id"]), int(r["nm_id"])))
+                existing[(int(r["source_nm_id"]), int(r["nm_id"]))] = str(r["source"] or "")
 
         added = 0
         exists = 0
         await self.db.rollback()
         async with self.db.begin():
+            # 1) Уже привязанные пары: ручное действие перебивает источник
+            #    («как привязали») — UPDATE по всем строкам пары, без новых строк.
+            #    UPDATE идёт по нашей карточке (idx_source_nm_id) списком nm_id —
+            #    кортежи (a,b) IN (...) индекс не используют.
+            by_target: dict[int, list[int]] = {}
+            for (t, n), src in existing.items():
+                if src == "capture":
+                    exists += 1
+                    continue
+                by_target.setdefault(t, []).append(n)
+            for t, nms in by_target.items():
+                for chunk in _chunks(nms):
+                    ph = ",".join(f":n{i}" for i in range(len(chunk)))
+                    await self.db.execute(text(f"""
+                        UPDATE wb_competitor_cards SET source='capture'
+                        WHERE source_nm_id=:s AND nm_id IN ({ph})
+                    """), {"s": t, **{f"n{i}": v for i, v in enumerate(chunk)}})
+                    added += len(chunk)
+            # 2) Новые пары — вставка
             for n in eligible:
                 det = details.get(n) or {}
                 m = meta.get(n) or {}
@@ -1806,7 +1993,6 @@ class CompetitorsNewcardService:
                           or m.get("image_url") or "")[:1000]
                 for t in target_ids:
                     if (t, n) in existing:
-                        exists += 1
                         continue
                     r = await self.db.execute(text("""
                         INSERT IGNORE INTO wb_competitor_cards
@@ -1817,7 +2003,7 @@ class CompetitorsNewcardService:
                            "p": price, "img": img, "u": user_id})
                     if int(r.rowcount or 0) > 0:
                         added += 1
-                        existing.add((t, n))
+                        existing[(t, n)] = "capture"
                     else:
                         exists += 1
 
@@ -2175,9 +2361,12 @@ class CompetitorsNewcardService:
         """§17.3: фразы, которые разбор новой карточки привязал к конкуренту.
 
         `wb_competitor_phrase_comp` — сырьё (конкурент + его формулировка),
-        `wb_competitor_phrase` — канон-группа. Показываем только завершённый
-        разбор (`phrase_id IS NOT NULL`), иначе в модалке будет мусор
-        прерванного прогона.
+        `wb_competitor_phrase` — канон-группа.
+
+        Показываем ВСЁ, что разобрал ИИ-агент: `phrase_id` заполняется только
+        после ручного слияния формулировок, и фильтр по нему прятал весь
+        результат фонового разбора («Фразы ещё не разобраны»). Несведённые
+        строки помечаем `merged=False` — их видно, но без канона и счётчиков.
         """
         if not await _phrase_schema_ready(self.db):
             return []
@@ -2191,9 +2380,8 @@ class CompetitorsNewcardService:
                 LEFT JOIN wb_competitor_phrase p ON p.id=pc.phrase_id
                 LEFT JOIN wbcards w ON w.nmID=pc.source_nm_id
                 WHERE pc.competitor_nm_id=:n
-                  AND pc.phrase_id IS NOT NULL
                   AND (:cid IS NULL OR pc.company_id=:cid)
-                ORDER BY pc.source_nm_id, p.is_selected DESC, p.hit_cnt DESC, pc.phrase
+                ORDER BY (p.id IS NULL), pc.source_nm_id, p.is_selected DESC, p.hit_cnt DESC, pc.phrase
                 LIMIT 200
             """), {"n": nm_id, "cid": self.company_id})).mappings().all()
         except Exception:
@@ -2206,10 +2394,12 @@ class CompetitorsNewcardService:
         for r in rows:
             raw = (r.get("phrase") or "").strip()
             st = stats.get(raw.lower()) or {}
+            merged = bool(r.get("phrase_id"))
             out.append({
                 "phrase_id": int(r["phrase_id"]) if r.get("phrase_id") else None,
                 "phrase": raw,
                 "canon": r.get("canon") or None,
+                "merged": merged,
                 "source_nm_id": int(r["source_nm_id"]),
                 "source_title": r.get("source_title") or "",
                 "source_vendor_code": r.get("source_vendor_code") or "",
@@ -2249,6 +2439,65 @@ class CompetitorsNewcardService:
                                    "freq": int(r.get("freq") or 0),
                                    "cards": int(r.get("cards") or 0)} for r in rows}
 
+    async def _rec_photos_prices(self, nm_ids: list[int]) -> dict[int, dict]:
+        """Фото и цена для рекомендаций — из нашей базы, батчем (без N+1).
+
+        Порядок источников тот же, что у `images_service.find_card_photo`:
+        наша карточка → собранный контент → фото из выдачи. Цена — из
+        контента, иначе из наблюдения выдачи.
+        """
+        out: dict[int, dict] = {}
+        ids = sorted({int(i) for i in nm_ids if i})
+        if not ids:
+            return out
+        for chunk in _chunks(ids):
+            ph = ",".join(f":n{i}" for i in range(len(chunk)))
+            params = {f"n{i}": v for i, v in enumerate(chunk)}
+            # 1) наши карточки — фото (рекомендация может оказаться нашим товаром)
+            try:
+                rows = (await self.db.execute(text(f"""
+                    SELECT nmID AS nm_id, photos FROM wbcards WHERE nmID IN ({ph})
+                """), params)).mappings().all()
+                for r in rows:
+                    url = _photo(r.get("photos"))
+                    if url:
+                        out.setdefault(int(r["nm_id"]), {})["photo"] = url
+            except Exception:
+                await self.db.rollback()
+            # 2) собранный контент — фото и цена
+            try:
+                rows = (await self.db.execute(text(f"""
+                    SELECT nm_id, images, preview_image, price
+                    FROM wb_competitor_details WHERE nm_id IN ({ph})
+                """), params)).mappings().all()
+                for r in rows:
+                    d = out.setdefault(int(r["nm_id"]), {})
+                    url = _photo(r.get("images")) or str(r.get("preview_image") or "").strip()
+                    if url and not d.get("photo"):
+                        d["photo"] = url
+                    if r.get("price") not in (None, "", 0):
+                        d.setdefault("price", r.get("price"))
+            except Exception:
+                await self.db.rollback()
+            # 3) наблюдение выдачи — фото и цена (последняя строка по каждому nm)
+            try:
+                rows = (await self.db.execute(text(f"""
+                    SELECT c.nm_id, c.image_url, c.price
+                    FROM wb_competitor_cards c
+                    JOIN (SELECT nm_id, MAX(id) AS id FROM wb_competitor_cards
+                          WHERE nm_id IN ({ph}) GROUP BY nm_id) x ON x.id = c.id
+                """), params)).mappings().all()
+                for r in rows:
+                    d = out.setdefault(int(r["nm_id"]), {})
+                    url = str(r.get("image_url") or "").strip()
+                    if url and not d.get("photo"):
+                        d["photo"] = url
+                    if r.get("price") not in (None, "", 0):
+                        d.setdefault("price", r.get("price"))
+            except Exception:
+                await self.db.rollback()
+        return out
+
     async def details(self, nm_id: int, our_nm: int | None = None) -> dict | None:
         """Полная карточка конкурента для попапа: контент, поведение, клипы, дубликаты.
 
@@ -2258,7 +2507,7 @@ class CompetitorsNewcardService:
         """
         row = (await self.db.execute(text("""
             SELECT nm_id, title, description, brand, seller, subject_name, url,
-                   price, old_price, images, preview_image, characteristics,
+                   price, old_price, images, preview_image, characteristics, recommendations,
                    rating, feedbacks, questions, badges, sold_out, is_resale,
                    COALESCE(collected_at, first_collected_at) AS collected_at,
                    first_collected_at, full_collected_at
@@ -2321,12 +2570,43 @@ class CompetitorsNewcardService:
                 "full_collected_at": None,
             }
         d["url"] = d.get("url") or f"https://www.wildberries.ru/catalog/{nm_id}/detail.aspx"
+        # Рекомендации WB (что модель предлагает рядом с карточкой):
+        # расширение присылает только nm_id+название — фото и цену добираем из базы.
+        d["recommendations"] = _recommendations(d.get("recommendations"))
+        if d["recommendations"]:
+            extra = await self._rec_photos_prices([r["nm_id"] for r in d["recommendations"]])
+            for r in d["recommendations"]:
+                e = extra.get(int(r["nm_id"])) or {}
+                if not r.get("photo") and e.get("photo"):
+                    r["photo"] = e["photo"]
+                if r.get("price") in (None, "") and e.get("price") is not None:
+                    r["price"] = e["price"]
         d["attached_to"] = (await self._attached_map([nm_id])).get(nm_id, [])
         d["attached_cnt"] = len(d["attached_to"])
+        # Реестр сбора: собрали ли мы, исключена ли карточка, сколько компаний собрало.
+        d["capture"] = await self._capture_info(nm_id)
         d["price_history"] = await self._price_history(
             nm_id, d.get("price"), d.get("old_price"), d.get("collected_at")
         )
         d["positions"] = await self._positions(nm_id)
+        # Счётчики выдачи по каждой паре (наша карточка → конкурент) — из позиций:
+        # они полнее строк cards (туда попадает только топ-20 выдачи).
+        pair_stats: dict[int, dict] = {}
+        for p in d["positions"]:
+            sid = int(p.get("source_nm_id") or 0)
+            if not sid:
+                continue
+            st = pair_stats.setdefault(sid, {"phrases": 0, "best": None})
+            st["phrases"] += 1
+            lp = p.get("last_position")
+            if lp is not None:
+                lp = int(lp)
+                st["best"] = lp if st["best"] is None else min(st["best"], lp)
+        for a in d["attached_to"]:
+            st = pair_stats.get(int(a["nm_id"]))
+            if st:
+                a["phrases_cnt"] = st["phrases"]
+                a["best_pos"] = st["best"]
         d["phrases"] = await self._competitor_phrases(nm_id)
         d["shelves"] = await self._shelves(nm_id)
         clips = await self._clips(nm_id)
@@ -2414,7 +2694,7 @@ class CompetitorsNewcardService:
         as_anchor: list[dict] = []
         try:
             rows = (await self.db.execute(text(f"""
-                SELECT s.preset_id, s.preset_type, s.dest,
+                SELECT s.id AS shelf_id, s.preset_id, s.preset_type, s.dest,
                        COALESCE(NULLIF(s.title, ''), NULLIF(p.title, ''),
                                 CONCAT('#', s.preset_id)) AS shelf_title,
                        s.total_candidates, s.pages_loaded, s.is_partial, s.last_seen_at,
@@ -2440,6 +2720,36 @@ class CompetitorsNewcardService:
         for r in as_anchor:
             r["avg_price"] = int(r["avg_price"]) if r.get("avg_price") is not None else None
             r["items_cnt"] = int(r.get("items_cnt") or 0)
+            r["our_cards"] = []
+            r["our_cnt"] = 0
+
+        # «Мы в его полке»: наши карточки среди товаров его полки (последний срез).
+        try:
+            rows = (await self.db.execute(text(f"""
+                SELECT i.shelf_id, i.nm_id, i.position, w.title
+                FROM wb_competitor_cards_shelf_item i
+                JOIN wb_competitor_cards_shelf s ON s.id = i.shelf_id
+                JOIN wbcards w ON w.nmID = i.nm_id
+                WHERE s.nm_id = :n {scope}
+                  AND i.snapshot_date = (SELECT MAX(i2.snapshot_date)
+                                           FROM wb_competitor_cards_shelf_item i2
+                                           WHERE i2.shelf_id = i.shelf_id)
+                  AND (:cid IS NULL OR w.company_id = :cid)
+                ORDER BY i.shelf_id, i.position
+            """), {**params, "cid": self.company_id})).mappings().all()
+            by_shelf: dict[int, list[dict]] = {}
+            for r in rows:
+                by_shelf.setdefault(int(r["shelf_id"]), []).append({
+                    "nm_id": int(r["nm_id"]),
+                    "title": r.get("title") or "",
+                    "position": int(r["position"]) if r.get("position") is not None else None,
+                })
+            for r in as_anchor:
+                lst = by_shelf.get(int(r.get("shelf_id") or 0), [])
+                r["our_cards"] = lst
+                r["our_cnt"] = len(lst)
+        except Exception:
+            await self.db.rollback()
 
         positions = [int(r["position"]) for r in as_item if r.get("position") is not None]
         return {
@@ -2740,8 +3050,9 @@ class CompetitorsNewcardService:
     async def attach(self, nm_id: int, source_nm_id: int, user_id: int | None) -> dict:
         """Привязать собранную карточку к нашей: `wb_competitor_cards(source='capture')`.
 
-        Идемпотентно (uq_source_phrase_nm в wb_competitor_cards). Ни анализ, ни очередь
-        не трогаем — контент уже собран.
+        Источник — «как привязали»: ручная привязка перезаписывает прежний
+        (например 'search' из выдачи) у всех строк пары, новых строк не плодит.
+        Ни анализ, ни очередь не трогаем — контент уже собран.
         """
         try:
             source_nm_id = int(source_nm_id or 0)
@@ -2760,30 +3071,24 @@ class CompetitorsNewcardService:
         det = dict(det) if det else {}
         await self.db.rollback()
         async with self.db.begin():
-            # Идемпотентность без опоры на уникальный индекс: пара уже есть — не дублируем.
-            exists = (await self.db.execute(text("""
-                SELECT 1 FROM wb_competitor_cards
-                WHERE source_nm_id=:s AND nm_id=:n LIMIT 1
-            """), {"s": source_nm_id, "n": nm_id})).first()
-            if exists:
-                return {"attached": 0, "source_nm_id": source_nm_id, "exists": True}
-            r = await self.db.execute(text("""
-                INSERT IGNORE INTO wb_competitor_cards
-                  (source_nm_id, query_phrase, position, nm_id, title, brand, price, image_url, source, added_by)
-                VALUES (:s, '', 0, :n, :t, :b, :p, :img, 'capture', :u)
-            """), {
-                "s": source_nm_id, "n": nm_id,
-                "t": str(det.get("title") or "")[:500],
-                "b": str(det.get("brand") or "")[:255],
-                "p": str(det.get("price") or "")[:50],
-                "img": str(_photo(det.get("images")) or det.get("preview_image") or "")[:1000],
-                "u": user_id,
-            })
-            added = int(r.rowcount or 0)
-        return {"attached": added, "source_nm_id": source_nm_id, "exists": added == 0}
+            res = await self._bind(
+                source_nm_id, nm_id, "capture",
+                title=str(det.get("title") or "")[:500],
+                brand=str(det.get("brand") or "")[:255],
+                price=str(det.get("price") or "")[:50],
+                image_url=str(_photo(det.get("images")) or det.get("preview_image") or "")[:1000],
+                user_id=user_id,
+            )
+        return {"attached": 1 if res in ("created", "updated") else 0,
+                "source_nm_id": source_nm_id, "exists": res == "same"}
 
     async def detach(self, nm_id: int, source_nm_id: int) -> dict:
-        """Отвязать только пару (nm × наша карточка), только строку `source='capture'`."""
+        """Отвязать пару (nm × наша карточка).
+
+        Ничего не удаляем: ручную привязку ('capture') переводим в 'search' —
+        наблюдение остаётся (карточка по-прежнему встречается в выдаче), но
+        ручной привязки больше нет.
+        """
         try:
             source_nm_id = int(source_nm_id or 0)
         except (TypeError, ValueError):
@@ -2795,7 +3100,7 @@ class CompetitorsNewcardService:
         await self.db.rollback()
         async with self.db.begin():
             r = await self.db.execute(text("""
-                DELETE FROM wb_competitor_cards
+                UPDATE wb_competitor_cards SET source='search'
                 WHERE source='capture' AND nm_id=:n AND source_nm_id=:s
             """), {"n": nm_id, "s": source_nm_id})
         return {"detached": int(r.rowcount or 0), "source_nm_id": source_nm_id}

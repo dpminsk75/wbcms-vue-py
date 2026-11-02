@@ -1,10 +1,8 @@
 <template>
   <div class="container-xxl page-competitor page-positions">
-    <!-- Шапка: название слева, меню рабочего места справа; локальное меню — рядом ниже -->
-    <div class="wb-workspace-head">
-      <h2 class="page-competitor__title">Поисковые запросы</h2>
-      <WbWorkspaceTabs active="positions" :tabs="WORKSPACE_TABS" />
-    </div>
+    <!-- Шапка рабочего места: заголовок + меню рабочих мест (общий компонент темы).
+         Локальные вкладки (По запросам / По нашим товарам / Ниши и реклама) — ниже. -->
+    <WbWorkspaceHead title="Поисковые запросы" workspace-active="positions" />
     <ul class="nav nav-pills page-positions__variants mb-3">
       <li v-for="v in variants" :key="v.id" class="nav-item">
         <button
@@ -22,7 +20,7 @@
           v-for="p in presets"
           :key="p.id"
           class="btn btn-sm"
-          :class="activePreset === p.id ? 'btn-primary' : 'btn-outline-secondary'"
+          :class="activePreset === p.id ? 'btn--brand' : 'btn--outline'"
           @click="applyPreset(p.id)"
         >{{ p.label }}</button>
       </div>
@@ -39,22 +37,21 @@
           <label class="form-label mb-1 page-positions__label">Фраза</label>
           <input
             v-model="q"
-            class="form-control form-control-sm"
+            class="wb-input"
             placeholder="например: календарь 2027"
             @keyup.enter="load"
           />
         </div>
-        <div class="col-md-4 d-flex gap-2">
-          <button class="btn btn-primary" @click="load">Применить</button>
-          <button class="btn btn-light" @click="reset">Сбросить</button>
-          <span class="badge bg-secondary align-self-center ms-auto">
-            {{ tab === 'phrases' ? 'Запросов: ' + phrases.length : tab === 'cards' ? 'Наших карточек: ' + cards.length : 'Ниш: ' + niches.length }}
-          </span>
-        </div>
+      </div>
+      <div class="page-positions__actions">
+        <button class="btn btn--brand" @click="load">Применить</button>
+        <button class="btn btn--outline" @click="reset">Сбросить</button>
       </div>
     </div>
 
-    <div v-if="error" class="alert alert-danger">{{ error }}</div>
+    <div v-if="error" class="wb-panel page-positions__error">
+      <div class="wb-panel__bd">{{ error }}</div>
+    </div>
     <div v-if="loading" class="text-muted">
       <span class="spinner-border spinner-border-sm"></span> Загрузка…
     </div>
@@ -62,40 +59,48 @@
     <!-- ================= по запросам ================= -->
     <template v-else-if="tab === 'phrases'">
       <!-- список запросов -->
-      <template v-if="!detail">
-        <div v-if="!phrases.length" class="alert alert-info">
-          Сохранённых запросов пока нет. Откройте поиск WB — расширение сохранит выдачу.
+      <template v-if="!detail && !phraseLoading">
+        <div v-if="!phrases.length" class="wb-panel page-positions__empty">
+          <div class="wb-panel__bd">
+            Сохранённых запросов пока нет. Откройте поиск WB — расширение сохранит выдачу.
+          </div>
         </div>
 
-      <div v-if="phrases.length" class="page-positions__requeue">
-        <label class="page-positions__check">
-          <input type="checkbox" :checked="allSelected" @change="toggleAll" />
-          <span>выбрать все</span>
-        </label>
-        <button
-          class="btn btn-sm btn-primary"
-          :disabled="!selected.length || requeueBusy"
-          title="Отправить отмеченные фразы в расширение — оно пересоберёт выдачу по ним"
-          @click="sendRequeue"
-        >
-          <i class="bi bi-arrow-repeat"></i>
-          Отправить на пересборку<span v-if="selected.length"> ({{ selected.length }})</span>
-        </button>
-        <span v-if="requeueNotice" class="page-positions__note">{{ requeueNotice }}</span>
-      </div>
-
-        <table v-if="phrases.length" class="wb-admin-table page-positions__grid">
+        <div v-if="phrases.length" class="tbl-card">
+          <div class="card__hd">
+            <span>Запросы</span>
+            <span class="page-positions__requeue">
+              <label class="page-positions__check">
+                <input type="checkbox" :checked="allSelected" @change="toggleAll" />
+                <span>выбрать все</span>
+              </label>
+              <button
+                class="btn btn-sm btn--brand"
+                :disabled="!selected.length || requeueBusy"
+                title="Отправить отмеченные фразы в расширение — оно пересоберёт выдачу по ним"
+                @click="sendRequeue"
+              >
+                <i class="bi bi-arrow-repeat"></i>
+                Отправить на пересборку<span v-if="selected.length"> ({{ selected.length }})</span>
+              </button>
+              <span v-if="requeueNotice" class="page-positions__note">{{ requeueNotice }}</span>
+            </span>
+            <span class="spacer"></span>
+            <span class="hd-badge">Запросов: {{ phrases.length }}</span>
+          </div>
+          <div class="tbl-wrap">
+          <table class="tbl page-positions__grid">
           <thead>
             <tr>
-              <th style="width: 28px"></th>
-              <th title="Поисковая фраза, по которой собирали выдачу WB">Фраза</th>
-              <th class="text-center" title="Сколько раз мы заходили в поиск по этой фразе">Сборов</th>
-              <th class="text-center" title="В скольких днях были наблюдения">Дней</th>
-              <th class="text-center" title="Сколько разных товаров было в выдаче">Товаров</th>
-              <th class="text-center" title="Сколько наших товаров было в выдаче (наведи — список)">Наших</th>
-              <th title="Когда собирали">Период</th>
-              <th title="Кто и с какого устройства собирал">Кто собрал</th>
-              <th title="Пересборка выдачи расширением">Пересборка</th>
+              <th class="t-center" style="width: 28px"></th>
+              <th class="t-left" title="Поисковая фраза, по которой собирали выдачу WB">Фраза</th>
+              <th class="t-center" title="Сколько раз мы заходили в поиск по этой фразе">Сборов</th>
+              <th class="t-center" title="В скольких днях были наблюдения">Дней</th>
+              <th class="t-center" title="Сколько разных товаров было в выдаче">Товаров</th>
+              <th class="t-center" title="Сколько наших товаров было в выдаче (наведи — список)">Наших</th>
+              <th class="t-left" title="Когда собирали">Период</th>
+              <th class="t-left" title="Кто и с какого устройства собирал">Кто собрал</th>
+              <th class="t-left" title="Пересборка выдачи расширением">Пересборка</th>
               <th></th>
             </tr>
           </thead>
@@ -106,7 +111,7 @@
               class="page-positions__row"
               @click="openPhrase(r)"
             >
-              <td>
+              <td class="t-center">
                 <input
                   type="checkbox"
                   :checked="isSelected(r.phrase)"
@@ -114,29 +119,29 @@
                   @change="toggleOne(r.phrase)"
                 />
               </td>
-              <td>
+              <td class="t-left">
                 <span class="page-positions__phrase">{{ r.phrase }}</span>
                 <div v-if="(r.phrase_variants || []).length > 1" class="page-positions__note">
                   варианты: {{ r.phrase_variants.join(' | ') }}
                 </div>
               </td>
-              <td class="text-center">{{ r.collections ?? r.days }}</td>
-              <td class="text-center">{{ r.days }}</td>
-              <td class="text-center">{{ r.products }}</td>
-              <td class="text-center">
+              <td class="t-center">{{ r.collections ?? r.days }}</td>
+              <td class="t-center">{{ r.days }}</td>
+              <td class="t-center">{{ r.products }}</td>
+              <td class="t-center">
                 <span v-if="!r.sources.length" class="page-positions__note">—</span>
                 <span v-else class="page-positions__ours" :title="sourcesTitle(r)">
                   {{ r.sources.length }}
                 </span>
               </td>
-              <td class="page-positions__date">{{ period(r) }}</td>
-              <td>
+              <td class="t-left page-positions__date">{{ period(r) }}</td>
+              <td class="t-left">
                 <span v-for="u in r.saved_by" :key="u.id" class="page-positions__note">
                   {{ u.username || ('user ' + u.id) }}
                 </span>
                 <span v-if="!r.saved_by.length" class="page-positions__note">—</span>
               </td>
-              <td>
+              <td class="t-left">
                 <span
                   v-if="r.requeue_status"
                   class="badge"
@@ -145,16 +150,28 @@
                 >{{ requeueLabel(r.requeue_status) }}</span>
                 <span v-else class="page-positions__note">—</span>
               </td>
-              <td class="page-positions__chev"><i class="bi bi-chevron-right"></i></td>
+              <td class="page-positions__chev t-right">
+                <span v-if="phraseLoading && selectedPhrase === r.phrase" class="spinner-border spinner-border-sm"></span>
+                <i v-else class="bi bi-chevron-right"></i>
+              </td>
             </tr>
           </tbody>
-        </table>
+          </table>
+          </div>
+        </div>
       </template>
+
+      <!-- Пока грузим выдачу — индикатор (иначе страница "молчит") -->
+      <div v-else-if="phraseLoading" class="wb-panel page-positions__empty">
+        <div class="wb-panel__bd">
+          <span class="spinner-border spinner-border-sm"></span> Загружаем выдачу по фразе…
+        </div>
+      </div>
 
       <!-- Выдача по запросу: строка = дата сбора, в ней карточки выдачи -->
       <div v-else class="page-positions__detail">
         <div class="page-positions__detail-head">
-          <button class="btn btn-sm btn-outline-secondary" @click="closePhrase">
+          <button class="btn btn-sm btn--outline" @click="closePhrase">
             <i class="bi bi-arrow-left"></i> Все запросы
           </button>
           <h3 class="page-positions__detail-title">«{{ detail.phrase }}»</h3>
@@ -164,14 +181,14 @@
               v-for="o in limitOptions"
               :key="o.value"
               class="btn"
-              :class="cardLimit === o.value ? 'btn-primary' : 'btn-outline-secondary'"
+              :class="cardLimit === o.value ? 'btn--brand' : 'btn--outline'"
               @click="cardLimit = o.value"
             >{{ o.label }}</button>
           </div>
         </div>
 
-        <div v-if="!(detail.slices || []).length" class="alert alert-info">
-          По этой фразе нет сохранённых срезов.
+        <div v-if="!(detail.slices || []).length" class="wb-panel page-positions__empty">
+          <div class="wb-panel__bd">По этой фразе нет сохранённых срезов.</div>
         </div>
 
         <div v-for="sl in detail.slices || []" :key="sl.stamp || sl.date" class="page-positions__slice">
@@ -180,12 +197,35 @@
             <div v-if="sl.time" class="page-positions__slice-time">{{ sl.time }}</div>
             <div class="text-muted small">товаров: {{ sl.items.length }}</div>
           </div>
-          <div class="page-positions__cards">
-            <WbSearchCard
+          <div
+            class="page-positions__cards"
+            @pointerdown="onStripDown"
+            @pointermove="onStripMove"
+            @pointerup="onStripUp"
+            @pointercancel="onStripUp"
+            @click.capture="onStripClick"
+          >
+            <CompetitorCard
               v-for="c in sliceCards(sl.items)"
               :key="c.nm_id"
-              :card="c"
-              @open="openCard"
+              variant="feed"
+              :nm-id="c.nm_id"
+              :title="c.title"
+              :brand="c.brand"
+              :seller="c.seller"
+              :price="c.price"
+              :old-price="c.old_price ?? null"
+              :price-api="c.price_api ?? null"
+              :rating="c.rating ?? null"
+              :review-rating="c.review_rating ?? null"
+              :reviews="c.reviews ?? c.feedbacks ?? null"
+              :badges="c.badges || []"
+              :image-url="c.image_url"
+              :position="c.position_api ?? c.position"
+              :subject="c.subject_name || ''"
+              :collected="collectedFlag(c.is_collected, !!c.is_ours)"
+              :is-ours="!!c.is_ours"
+              @open="openCard(c)"
             />
             <div v-if="sl.items.length > cardLimit" class="page-positions__more">
               +{{ sl.items.length - cardLimit }}
@@ -203,24 +243,33 @@
             v-for="o in topOptions"
             :key="o.value"
             class="btn"
-            :class="top === o.value ? 'btn-primary' : 'btn-outline-secondary'"
+            :class="top === o.value ? 'btn--brand' : 'btn--outline'"
             @click="setTop(o.value)"
           >{{ o.label }}</button>
         </div>
       </div>
 
-      <div v-if="!cards.length" class="alert alert-info">
-        Наблюдений по нашим карточкам пока нет — наши карточки ещё не попадали в собранную выдачу.
+      <div v-if="!cards.length" class="wb-panel page-positions__empty">
+        <div class="wb-panel__bd">
+          Наблюдений по нашим карточкам пока нет — наши карточки ещё не попадали в собранную выдачу.
+        </div>
       </div>
 
-      <table v-else class="wb-admin-table page-positions__grid">
+      <div v-else class="tbl-card">
+        <div class="card__hd">
+          <span>Наши карточки</span>
+          <span class="spacer"></span>
+          <span class="hd-badge">Показано {{ cards.length }} из {{ cardsTotal }}</span>
+        </div>
+        <div class="tbl-wrap">
+        <table class="tbl page-positions__grid">
         <thead>
           <tr>
-            <th>Наша карточка</th>
-            <th class="text-center" title="Сколько запросов, где наша карточка была в выдаче">Запросов</th>
-            <th class="text-center">Дней</th>
-            <th class="text-center" title="Лучшая позиция за период">Лучшая позиция</th>
-            <th>Последний</th>
+            <th class="t-left">Наша карточка</th>
+            <th class="t-center" title="Сколько запросов, где наша карточка была в выдаче">Запросов</th>
+            <th class="t-center">Дней</th>
+            <th class="t-center" title="Лучшая позиция за период">Лучшая позиция</th>
+            <th class="t-left">Последний</th>
           </tr>
         </thead>
         <tbody>
@@ -231,21 +280,41 @@
             :class="{ 'page-positions__row--active': selectedCard === c.nm_id }"
             @click="openCardById(c.nm_id)"
           >
-            <td>
-              <div class="page-positions__phrase">{{ c.title || ('nm ' + c.nm_id) }}</div>
-              <div class="text-muted small">
-                <a :href="wbUrl(c.nm_id)" target="_blank" rel="noopener">WB: {{ c.nm_id }}</a>
-                <span v-if="c.brand"> · {{ c.brand }}</span>
-                <span v-if="c.vendor"> · {{ c.vendor }}</span>
-              </div>
+            <td class="t-left">
+              <ProductCell
+                compact
+                :nm-id="c.nm_id"
+                :photo="c.photo || ''"
+                :title="c.title || ('nm ' + c.nm_id)"
+                :vendor="c.vendor || ''"
+                :brand="c.brand || ''"
+                :subject="c.subject || ''"
+                :link="wbUrl(c.nm_id)"
+                :link-label="'WB: ' + c.nm_id"
+                copy-nm
+                copy-link
+              />
             </td>
-            <td class="text-center">{{ c.phrases }}</td>
-            <td class="text-center">{{ c.days }}</td>
-            <td class="text-center">{{ c.best_position ?? '—' }}</td>
-            <td class="page-positions__date">{{ c.last_at || '—' }}</td>
+            <td class="num t-center">{{ c.phrases }}</td>
+            <td class="num t-center">{{ c.days }}</td>
+            <td class="num t-center">{{ c.best_position ?? '—' }}</td>
+            <td class="t-left page-positions__date">{{ c.last_at || '—' }}</td>
           </tr>
         </tbody>
-      </table>
+        </table>
+        </div>
+        <div class="wb-pager">
+          <button class="btn btn-sm btn--outline" :disabled="cardsPage <= 1" @click="setCardsPage(cardsPage - 1)">
+            <i class="bi bi-chevron-left"></i> Назад
+          </button>
+          <span class="wb-pager__label">
+            Стр. {{ cardsPage }} из {{ cardsPages }} · показано {{ cards.length }} из {{ cardsTotal }}
+          </span>
+          <button class="btn btn-sm btn--outline" :disabled="cardsPage >= cardsPages" @click="setCardsPage(cardsPage + 1)">
+            Вперёд <i class="bi bi-chevron-right"></i>
+          </button>
+        </div>
+      </div>
 
       <div v-if="cardDetail" class="page-positions__detail">
         <div class="page-positions__detail-head">
@@ -253,165 +322,241 @@
             {{ cardDetail.card.title || ('nm ' + cardDetail.card.nm_id) }}
           </h3>
           <span class="text-muted small">запросов: {{ cardDetail.phrases.length }}</span>
-          <button class="btn btn-sm btn-outline-secondary ms-auto" @click="cardDetail = null">Свернуть</button>
+          <button class="btn btn-sm btn--outline ms-auto" @click="cardDetail = null">Свернуть</button>
         </div>
 
-        <div v-if="!cardDetail.phrases.length" class="alert alert-info">
-          По этой карточке наблюдений в выбранном периоде нет.
+        <div v-if="!cardDetail.phrases.length" class="wb-panel page-positions__empty">
+          <div class="wb-panel__bd">По этой карточке наблюдений в выбранном периоде нет.</div>
         </div>
 
         <div v-for="p in cardDetail.phrases" :key="p.phrase" class="page-positions__block">
           <div class="page-positions__block-head">
             <span class="page-positions__phrase">{{ p.phrase }}</span>
-            <span class="badge" :class="p.last_position ? 'bg-primary' : 'bg-secondary'">
+            <span class="badge" :class="p.last_position ? 'badge--brand' : 'badge--neutral'">
               наша позиция: {{ p.last_position ?? '—' }}
               <template v-if="p.last_position_api"> · WB: {{ p.last_position_api }}</template>
             </span>
-            <span v-if="p.best_position" class="badge bg-light text-dark">лучшая: {{ p.best_position }}</span>
-            <span v-if="p.best_position_api" class="badge bg-light text-dark">
+            <span v-if="p.best_position" class="badge badge--neutral">лучшая: {{ p.best_position }}</span>
+            <span v-if="p.best_position_api" class="badge badge--neutral">
               лучшая WB: {{ p.best_position_api }}
             </span>
             <span class="text-muted small">срез: {{ p.last_day || '—' }} · дней: {{ p.days.length }}</span>
           </div>
 
-          <table class="wb-admin-table">
+          <div class="tbl-card">
+            <div class="card__hd"><span>Конкуренты в выдаче</span></div>
+            <div class="tbl-wrap">
+            <table class="tbl">
             <thead>
               <tr>
-                <th class="text-center" title="Позиция в DOM (с рекламой)">Поз.</th>
-                <th class="text-center" title="Позиция в JSON-выдаче (органика)">Поз. JSON</th>
-                <th>Конкурент</th>
-                <th>Продавец</th>
-                <th>Цена</th>
-                <th class="text-center">Рейтинг</th>
-                <th class="text-center">Отзывы</th>
-                <th>Бейджи</th>
+                <th class="num t-center" title="Позиция в DOM (с рекламой)">Поз.</th>
+                <th class="num t-center" title="Позиция в JSON-выдаче (органика)">Поз. JSON</th>
+                <th class="t-left">Конкурент</th>
+                <th class="num">Цена</th>
+                <th class="num">Рейтинг</th>
+                <th class="num">Отзывы</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="c in p.competitors" :key="`${p.phrase}-${c.nm_id}`">
-                <td class="text-center">{{ c.position }}</td>
-                <td class="text-center">{{ c.position_api ?? '—' }}</td>
-                <td>
-                  <a :href="wbUrl(c.nm_id)" target="_blank" rel="noopener">{{ c.title || ('nm ' + c.nm_id) }}</a>
-                  <span class="text-muted small"> · {{ c.nm_id }}</span>
+                <td class="t-center">{{ c.position }}</td>
+                <td class="t-center">{{ c.position_api ?? '—' }}</td>
+                <td class="t-left">
+                  <CompetitorRow
+                    compact
+                    :nm-id="c.nm_id"
+                    :photo="c.image_url || ''"
+                    :title="c.title || ('nm ' + c.nm_id)"
+                    :seller="c.seller || c.brand || ''"
+                    :badges="c.badges || []"
+                    :wb-url="wbUrl(c.nm_id)"
+                    :phrases-url="'/competitor/phrase-miner'"
+                    show-nm
+                    copy-nm
+                    @open="openCard(c)"
+                  />
                 </td>
-                <td>{{ c.seller || c.brand || '—' }}</td>
-                <td>{{ money(c.price) }}</td>
-                <td class="text-center">{{ c.rating || '—' }}</td>
-                <td class="text-center">{{ c.reviews ?? c.feedbacks ?? '—' }}</td>
-                <td>
-                  <span
-                    v-for="b in c.badges"
-                    :key="b"
-                    class="badge me-1"
-                    :class="isResaleBadge(b) ? 'page-positions__badge--resale' : 'bg-warning text-dark'"
-                  >{{ b }}</span>
-                </td>
+                <td class="num">{{ money(c.price) }}</td>
+                <td class="num">{{ c.rating || '—' }}</td>
+                <td class="num">{{ c.reviews ?? c.feedbacks ?? '—' }}</td>
               </tr>
               <tr v-if="!p.competitors.length">
-                <td colspan="8" class="text-muted">В этом срезе конкурентов не записали.</td>
+                <td colspan="6" class="t-center text-muted p-3">В этом срезе конкурентов не записали.</td>
               </tr>
             </tbody>
-          </table>
+            </table>
+            </div>
+          </div>
         </div>
       </div>
     </template>
 
     <!-- ================= ниши и реклама ================= -->
     <template v-else>
-      <div class="page-positions__toolbar">
-        <span class="badge bg-secondary">Снимков с рекламой: {{ adsRows.length }}</span>
+      <ul class="nav nav-pills page-positions__variants mb-3">
+        <li class="nav-item">
+          <button class="nav-link" :class="{ active: nicheTab === 'niches' }" @click="setNicheTab('niches')">
+            Профиль ниш<span v-if="nichesTotal" class="page-positions__tab-count"> {{ nichesTotal }}</span>
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link" :class="{ active: nicheTab === 'ads' }" @click="setNicheTab('ads')">
+            Реклама<span v-if="adsTotal" class="page-positions__tab-count"> {{ adsTotal }}</span>
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link" :class="{ active: nicheTab === 'shelfs' }" @click="setNicheTab('shelfs')">
+            Полки<span v-if="adsTotal" class="page-positions__tab-count"> {{ adsTotal }}</span>
+          </button>
+        </li>
+      </ul>
+
+      <!-- ---------- Профиль ниш ---------- -->
+      <template v-if="nicheTab === 'niches'">
+      <div v-if="!niches.length" class="wb-panel page-positions__empty">
+        <div class="wb-panel__bd">
+          Профили ниш ещё не собраны — расширение сохранит их при первом поиске на WB.
+        </div>
       </div>
 
-      <div v-if="!niches.length && !adsRows.length" class="alert alert-info">
-        Профили ниш ещё не собраны — расширение сохранит их при первом поиске на WB.
-      </div>
-
-      <h3 v-if="niches.length" class="page-positions__section">Профиль ниш (фильтры выдачи)</h3>
-      <table v-if="niches.length" class="wb-admin-table page-positions__grid">
+      <div v-if="niches.length" class="tbl-card">
+        <div class="card__hd">
+          <span>Профиль ниш (фильтры выдачи)</span>
+          <span class="spacer"></span>
+          <span class="hd-badge">Показано {{ niches.length }} из {{ nichesTotal }}</span>
+        </div>
+        <div class="tbl-wrap">
+        <table class="tbl page-positions__grid">
         <thead>
           <tr>
-            <th>Фраза</th>
-            <th class="text-center">Объём ниши</th>
-            <th>Цены, ₽</th>
-            <th class="text-center">Доставка, ч</th>
-            <th>Бренды</th>
-            <th>Продавцы</th>
-            <th>Акции</th>
-            <th>Фасеты</th>
+            <th class="t-left">Фраза</th>
+            <th class="t-center">Объём ниши</th>
+            <th class="page-positions__nowrap">Цены, ₽</th>
+            <th class="page-positions__nowrap t-center">Доставка, ч</th>
+            <th class="t-left">Бренды</th>
+            <th class="t-left">Продавцы</th>
+            <th class="t-left">Акции</th>
+            <th class="t-left page-positions__col-facets">Фасеты</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="n in niches" :key="n.phrase + n.date">
-            <td>
+            <td class="t-left">
               <div class="page-positions__phrase">{{ n.phrase }}</div>
               <div class="text-muted small">{{ n.date }}</div>
               <div v-if="(n.phrase_variants || []).length" class="text-muted small">
                 варианты: {{ n.phrase_variants.join(' | ') }}
               </div>
             </td>
-            <td class="text-center">{{ n.total ?? '—' }}</td>
-            <td>{{ n.price_min ?? '—' }} … {{ n.price_max ?? '—' }}</td>
-            <td class="text-center">{{ n.delivery_min ?? '—' }} … {{ n.delivery_max ?? '—' }}</td>
-            <td class="small">{{ n.brands.map((b) => b.name).join(', ') || '—' }}</td>
-            <td class="small">{{ n.sellers.map((s) => s.name).join(', ') || '—' }}</td>
-            <td class="small">
-              <span v-if="n.sale_factions.length" class="badge bg-warning text-dark">
+            <td class="t-center">{{ n.total ?? '—' }}</td>
+            <td class="num">{{ n.price_min ?? '—' }} … {{ n.price_max ?? '—' }}</td>
+            <td class="num t-center">{{ n.delivery_min ?? '—' }} … {{ n.delivery_max ?? '—' }}</td>
+            <td class="small t-left">{{ n.brands.map((b) => b.name).join(', ') || '—' }}</td>
+            <td class="small t-left">{{ n.sellers.map((s) => s.name).join(', ') || '—' }}</td>
+            <td class="small t-left">
+              <span v-if="n.sale_factions.length" class="badge badge--warn">
                 {{ n.sale_factions.map((f) => f.name).join(', ') }}
               </span>
               <span v-else class="text-muted">—</span>
             </td>
-            <td class="small">
+            <td class="small t-left">
               <span
-                v-for="(f, k) in n.facets || {}"
-                :key="k"
-                class="badge bg-light text-dark me-1"
+                v-for="f in facetEntries(n).slice(0, FACETS_SHOWN)"
+                :key="f.key"
+                class="badge badge--neutral me-1"
                 :title="(f.items || []).map((i) => i.name).join(', ')"
-              >{{ f.name || k }}: {{ (f.items || []).length }}</span>
-              <span v-if="!n.facets || !Object.keys(n.facets).length" class="text-muted">—</span>
+              >{{ f.name || f.key }}: {{ (f.items || []).length }}</span>
+              <span
+                v-if="facetEntries(n).length > FACETS_SHOWN"
+                class="badge badge--neutral me-1"
+                :title="facetsTitle(n)"
+              >ещё {{ facetEntries(n).length - FACETS_SHOWN }}</span>
+              <span v-if="!facetEntries(n).length" class="text-muted">—</span>
             </td>
           </tr>
         </tbody>
-      </table>
+        </table>
+        </div>
+        <div class="wb-pager">
+          <button class="btn btn-sm btn--outline" :disabled="nichesPage <= 1" @click="setNichesPage(nichesPage - 1)">
+            <i class="bi bi-chevron-left"></i> Назад
+          </button>
+          <span class="wb-pager__label">
+            Стр. {{ nichesPage }} из {{ nichesPages }} · показано {{ niches.length }} из {{ nichesTotal }}
+          </span>
+          <button class="btn btn-sm btn--outline" :disabled="nichesPage >= nichesPages" @click="setNichesPage(nichesPage + 1)">
+            Вперёд <i class="bi bi-chevron-right"></i>
+          </button>
+        </div>
+      </div>
+      </template>
 
-      <h3 v-if="adsRows.length" class="page-positions__section">Реклама и полки в поиске</h3>
+      <!-- ---------- Реклама и полки в поиске ---------- -->
+      <template v-else>
+      <div v-if="!adsRows.length" class="wb-panel page-positions__empty">
+        <div class="wb-panel__bd">
+          Реклама в поиске ещё не собрана — расширение сохранит её при первом поиске на WB.
+        </div>
+      </div>
+
       <div v-for="a in adsRows" :key="a.phrase + a.date" class="page-positions__block">
         <div class="page-positions__block-head">
           <span class="page-positions__phrase">{{ a.phrase }}</span>
-          <span class="badge bg-secondary">баннеров: {{ a.banner_cnt }}</span>
-          <span class="badge bg-secondary">полок: {{ a.shelf_cnt }}</span>
-          <span class="badge bg-secondary">товаров в полках: {{ a.shelf_products_cnt }}</span>
+          <span class="badge badge--neutral">баннеров: {{ a.banner_cnt }}</span>
+          <span class="badge badge--neutral">полок: {{ a.shelf_cnt }}</span>
+          <span class="badge badge--neutral">товаров в полках: {{ a.shelf_products_cnt }}</span>
           <span class="text-muted small">{{ a.date }}</span>
         </div>
-        <table v-if="a.banners.length" class="wb-admin-table">
+        <div v-if="nicheTab === 'ads' && a.banners.length" class="tbl-card">
+          <div class="card__hd"><span>Реклама в поиске</span></div>
+          <div class="tbl-wrap">
+          <table class="tbl">
           <thead>
             <tr>
-              <th>Рекламодатель</th>
-              <th>CPM</th>
-              <th>Тип</th>
-              <th>ЕРИД</th>
-              <th>Ссылка</th>
+              <th class="t-left">Рекламодатель</th>
+              <th class="num">CPM</th>
+              <th class="t-left">Тип</th>
+              <th class="t-left">ЕРИD</th>
+              <th class="t-left">Ссылка</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="(b, i) in a.banners" :key="i">
-              <td class="small">{{ b.mark || '—' }}</td>
+              <td class="small t-left">{{ b.mark || '—' }}</td>
               <td class="small">{{ b.cpm || '—' }}</td>
-              <td class="small">{{ b.type || '—' }}</td>
-              <td class="small">{{ b.erid || '—' }}</td>
-              <td class="small">
+              <td class="small t-left">{{ b.type || '—' }}</td>
+              <td class="small t-left">{{ b.erid || '—' }}</td>
+              <td class="small t-left">
                 <a v-if="b.url" :href="'https://www.wildberries.ru' + b.url" target="_blank" rel="noopener">открыть</a>
                 <span v-else>—</span>
               </td>
             </tr>
           </tbody>
         </table>
-        <div v-for="(s, i) in a.shelfs" :key="'s' + i" class="page-positions__history">
-          <span class="badge bg-light text-dark">{{ s.title || 'полка' }}</span>
-          <span class="badge bg-light text-dark">{{ s.mark }}</span>
-          <span class="badge bg-light text-dark">товаров: {{ s.products.length }}</span>
+        </div>
+        </div>
+        <div v-if="nicheTab === 'shelfs'" class="page-positions__shelves">
+          <div v-for="(s, i) in a.shelfs" :key="'s' + i" class="page-positions__history">
+            <span class="badge badge--neutral">{{ s.title || 'полка' }}</span>
+            <span class="badge badge--neutral">{{ s.mark }}</span>
+            <span class="badge badge--neutral">товаров: {{ s.products.length }}</span>
+          </div>
+          <span v-if="!a.shelfs.length" class="text-muted small">Полок нет.</span>
         </div>
       </div>
+
+      <div v-if="adsRows.length" class="wb-pager">
+        <button class="btn btn-sm btn--outline" :disabled="adsPage <= 1" @click="setAdsPage(adsPage - 1)">
+          <i class="bi bi-chevron-left"></i> Назад
+        </button>
+        <span class="wb-pager__label">
+          Стр. {{ adsPage }} из {{ adsPages }} · показано {{ adsRows.length }} из {{ adsTotal }}
+        </span>
+        <button class="btn btn-sm btn--outline" :disabled="adsPage >= adsPages" @click="setAdsPage(adsPage + 1)">
+          Вперёд <i class="bi bi-chevron-right"></i>
+        </button>
+      </div>
+      </template>
     </template>
 
     <!-- Клик по конкуренту — досье конкурента; клик по нашей карточке — сводка -->
@@ -433,14 +578,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import '@/assets/css/pages/page-competitor-positions.css'
+import { computed, ref, onMounted, watch } from 'vue'
 import WbDateInput from '@/components/common/WbDateInput.vue'
-import WbWorkspaceTabs from '@/components/common/WbWorkspaceTabs.vue'
-import { WORKSPACE_TABS } from '@/components/common/workspaceTabs'
-import WbSearchCard from '@/components/positions/WbSearchCard.vue'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import CompetitorCard from '@/components/common/CompetitorCard.vue'
+import CompetitorRow from '@/components/common/CompetitorRow.vue'
+import ProductCell from '@/components/common/ProductCell.vue'
+import { collectedFlag } from '@/components/common/competitorCard'
 import OurCardModal from '@/components/positions/OurCardModal.vue'
 import CompetitorDetailsModal from '@/components/competitors/CompetitorDetailsModal.vue'
 import { useMoneyFmt } from '@/composables/useMoneyFmt'
+import { useRoute, useRouter } from 'vue-router'
 import {
   competitorsPositionsApi,
   type PositionsPhraseRow,
@@ -453,6 +602,8 @@ import {
 } from '@/api/competitorsPositions'
 
 const { fmt0 } = useMoneyFmt()
+const route = useRoute()
+const router = useRouter()
 
 type Tab = 'phrases' | 'cards' | 'niches'
 
@@ -471,11 +622,32 @@ const error = ref('')
 
 const phrases = ref<PositionsPhraseRow[]>([])
 const cards = ref<PositionsCardRow[]>([])
+const CARDS_PAGE = 50
+const cardsPage = ref(1)
+const cardsTotal = ref(0)
+const cardsPages = computed(() => Math.max(1, Math.ceil(cardsTotal.value / CARDS_PAGE)))
 const niches = ref<NicheRow[]>([])
 const adsRows = ref<SearchAdsRow[]>([])
 
+// «Ниши и реклама» — три вкладки: профиль ниш / реклама / полки
+type NicheTab = 'niches' | 'ads' | 'shelfs'
+const nicheTab = ref<NicheTab>('niches')
+const NICHE_PAGE = 50
+const nichesPage = ref(1)
+const adsPage = ref(1)
+const nichesTotal = ref(0)
+const adsTotal = ref(0)
+const nichesPages = computed(() => Math.max(1, Math.ceil(nichesTotal.value / NICHE_PAGE)))
+const adsPages = computed(() => Math.max(1, Math.ceil(adsTotal.value / NICHE_PAGE)))
+
+/** Сколько фасетов показываем в строке (остальные — в подсказке). */
+const FACETS_SHOWN = 3
+
 const selectedPhrase = ref('')
 const detail = ref<PositionsPhraseDetail | null>(null)
+/** Загрузка выдачи по фразе — индикатор в шевроне строки и панель-заглушка. */
+const phraseLoading = ref(false)
+let phraseReq = 0
 
 const selectedCard = ref<number | null>(null)
 const cardDetail = ref<PositionsCardDetail | null>(null)
@@ -508,10 +680,10 @@ const REQUEUE_LABEL: Record<string, string> = {
   pending: 'в очереди', processing: 'собираем', done: 'готово', error: 'ошибка',
 }
 const REQUEUE_BADGE: Record<string, string> = {
-  pending: 'bg-secondary', processing: 'bg-info text-dark', done: 'bg-success', error: 'bg-danger',
+  pending: 'badge--neutral', processing: 'badge--info', done: 'badge--ok', error: 'badge--bad',
 }
 const requeueLabel = (s: string) => REQUEUE_LABEL[s] || s
-const requeueBadge = (s: string) => REQUEUE_BADGE[s] || 'bg-light text-dark'
+const requeueBadge = (s: string) => REQUEUE_BADGE[s] || 'badge--neutral'
 
 function isSelected(phrase: string): boolean {
   return selected.value.includes(phrase)
@@ -642,12 +814,49 @@ function setTab(t: Tab) {
   load()
 }
 
+function setNicheTab(t: NicheTab) {
+  nicheTab.value = t
+  syncUrl()
+}
+
+function setNichesPage(p: number) {
+  const p2 = Math.max(1, Math.min(p, nichesPages.value))
+  if (p2 === nichesPage.value) return
+  nichesPage.value = p2
+  load()
+}
+
+function setAdsPage(p: number) {
+  const p2 = Math.max(1, Math.min(p, adsPages.value))
+  if (p2 === adsPage.value) return
+  adsPage.value = p2
+  load()
+}
+
+/** Фасеты ниши: список {key, name, items} — показываем первые FACETS_SHOWN. */
+function facetEntries(n: NicheRow): Array<{ key: string; name?: string | null; items?: Array<{ name?: string | null }> }> {
+  return Object.entries(n?.facets || {}).map(([key, f]) => ({ key, name: f?.name, items: f?.items }))
+}
+
+/** Подсказка «ещё N» — весь список фасетов строки. */
+function facetsTitle(n: NicheRow): string {
+  return facetEntries(n).map((f) => `${f.name || f.key}: ${(f.items || []).length}`).join(' · ')
+}
+
+function setCardsPage(p: number) {
+  const p2 = Math.max(1, Math.min(p, cardsPages.value))
+  if (p2 === cardsPage.value) return
+  cardsPage.value = p2
+  load()
+}
+
 function setTop(v: number) {
   top.value = v
   if (selectedCard.value) openCardById(selectedCard.value)
 }
 
 async function load() {
+  syncUrl()
   loading.value = true
   error.value = ''
   try {
@@ -658,17 +867,23 @@ async function load() {
       if (selectedPhrase.value && !phrases.value.some((p) => p.phrase === selectedPhrase.value)) {
         selectedPhrase.value = ''
         detail.value = null
+        syncUrl(null)
       }
     } else if (tab.value === 'cards') {
-      const res = await competitorsPositionsApi.cards(params)
+      const res = await competitorsPositionsApi.cards({
+        ...params, limit: CARDS_PAGE, offset: (cardsPage.value - 1) * CARDS_PAGE,
+      })
       cards.value = res.items || []
+      cardsTotal.value = res.total || 0
     } else {
       const [n, a] = await Promise.all([
-        competitorsPositionsApi.niches(params),
-        competitorsPositionsApi.ads(params),
+        competitorsPositionsApi.niches({ ...params, limit: NICHE_PAGE, offset: (nichesPage.value - 1) * NICHE_PAGE }),
+        competitorsPositionsApi.ads({ ...params, limit: NICHE_PAGE, offset: (adsPage.value - 1) * NICHE_PAGE }),
       ])
       niches.value = n.items || []
+      nichesTotal.value = n.total || 0
       adsRows.value = a.items || []
+      adsTotal.value = a.total || 0
     }
   } catch (e: any) {
     error.value = errText(e)
@@ -683,26 +898,141 @@ async function openPhrase(r: PositionsPhraseRow) {
     return
   }
   selectedPhrase.value = r.phrase
+  detail.value = null
+  syncUrl()
   await loadPhrase()
 }
 
 function closePhrase() {
   selectedPhrase.value = ''
   detail.value = null
+  syncUrl()
 }
 
 async function loadPhrase() {
   if (!selectedPhrase.value) return
+  const req = ++phraseReq
+  phraseLoading.value = true
   try {
     const res = await competitorsPositionsApi.phrase({
       phrase: selectedPhrase.value,
       date_from: dateFrom.value || undefined,
       date_to: dateTo.value || undefined,
     })
+    if (req !== phraseReq) return
     detail.value = res
   } catch (e: any) {
-    error.value = errText(e)
+    if (req === phraseReq) error.value = errText(e)
+  } finally {
+    if (req === phraseReq) phraseLoading.value = false
   }
+}
+
+/** Состояние страницы → адресная строка: фильтры переживают перезагрузку, ссылкой можно поделиться. */
+function syncUrl() {
+  const qs: Record<string, any> = { ...route.query }
+  const put = (k: string, v: any) => {
+    if (v === '' || v === null || v === undefined || v === false) delete qs[k]
+    else qs[k] = String(v)
+  }
+  put('tab', tab.value)
+  put('date_from', dateFrom.value)
+  put('date_to', dateTo.value)
+  put('q', q.value)
+  put('top', top.value)
+  put('cards_page', cardsPage.value > 1 ? cardsPage.value : '')
+  put('phrase', selectedPhrase.value)
+  put('ntab', nicheTab.value)
+  put('npage', nichesPage.value > 1 ? nichesPage.value : '')
+  put('apage', adsPage.value > 1 ? adsPage.value : '')
+  const target = { path: route.path, query: qs }
+  if (route.fullPath === router.resolve(target).fullPath) return
+  router.replace(target).catch(() => {})
+}
+
+/** Адресная строка → состояние. true — что-то изменилось (нужен перезагруз). */
+function applyQuery(): boolean {
+  const p = route.query
+  const s = (k: string) => (p[k] === undefined ? '' : String(p[k]))
+  let changed = false
+  if (p.tab !== undefined) {
+    const t = s('tab') as Tab
+    if (t && t !== tab.value) { tab.value = t; changed = true }
+  }
+  if (p.date_from !== undefined && s('date_from') !== dateFrom.value) {
+    dateFrom.value = s('date_from'); changed = true
+  }
+  if (p.date_to !== undefined && s('date_to') !== dateTo.value) {
+    dateTo.value = s('date_to'); changed = true
+  }
+  if (p.q !== undefined && s('q') !== q.value) { q.value = s('q'); changed = true }
+  if (p.top !== undefined && Number(s('top')) !== top.value) {
+    top.value = Number(s('top')) || 12; changed = true
+  }
+  if (p.cards_page !== undefined) {
+    const pg = Math.max(1, Number(s('cards_page')) || 1)
+    if (pg !== cardsPage.value) { cardsPage.value = pg; changed = true }
+  }
+  if (p.phrase !== undefined && s('phrase') !== selectedPhrase.value) {
+    selectedPhrase.value = s('phrase'); changed = true
+  }
+  if (p.ntab !== undefined) {
+    const t = s('ntab') as NicheTab
+    if (t && t !== nicheTab.value) { nicheTab.value = t; changed = true }
+  }
+  if (p.npage !== undefined) {
+    const pg = Math.max(1, Number(s('npage')) || 1)
+    if (pg !== nichesPage.value) { nichesPage.value = pg; changed = true }
+  }
+  if (p.apage !== undefined) {
+    const pg = Math.max(1, Number(s('apage')) || 1)
+    if (pg !== adsPage.value) { adsPage.value = pg; changed = true }
+  }
+  return changed
+}
+
+/* Лента карточек среза: тащим мышкой вправо-влево (колесо по горизонтали не листает).
+   Лента повторяется в каждом срезе (v-for), поэтому работаем с currentTarget события,
+   а не с ref: он собрал бы массив элементов. */
+let dragStartX = 0
+let dragStartScroll = 0
+let dragMoved = false
+let dragPointer = -1
+
+function onStripDown(e: PointerEvent) {
+  const el = e.currentTarget as HTMLElement
+  if (!el) return
+  dragStartX = e.clientX
+  dragStartScroll = el.scrollLeft
+  dragMoved = false
+  dragPointer = e.pointerId
+  try { el.setPointerCapture(e.pointerId) } catch { /* захват не поддержан — не критично */ }
+}
+
+function onStripMove(e: PointerEvent) {
+  const el = e.currentTarget as HTMLElement
+  if (!el || dragPointer !== e.pointerId) return
+  const dx = e.clientX - dragStartX
+  if (Math.abs(dx) > 6) {
+    dragMoved = true
+    el.classList.add('is-dragging')
+  }
+  if (dragMoved) el.scrollLeft = dragStartScroll - dx
+}
+
+function onStripUp(e: PointerEvent) {
+  const el = e.currentTarget as HTMLElement
+  if (!el || dragPointer !== e.pointerId) return
+  el.classList.remove('is-dragging')
+  dragPointer = -1
+}
+
+/** После таска клик по карточке не должен открывать модалку. */
+function onStripClick(e: MouseEvent) {
+  if (!dragMoved) return
+  e.stopPropagation()
+  e.preventDefault()
+  dragMoved = false
 }
 
 function openCard(c: PositionsItem) {
@@ -737,105 +1067,25 @@ function reset() {
   load()
 }
 
-onMounted(() => {
-  initRange()
-  load()
+onMounted(async () => {
+  // даты из ссылки — иначе дефолтный период
+  if (route.query.date_from === undefined && route.query.date_to === undefined) initRange()
+  applyQuery()
+  await load()
+  // ?phrase=… — раскрыть фразу из ссылки (deep-link)
+  if (selectedPhrase.value) await loadPhrase()
+})
+
+// «назад/вперёд» в браузере и переход по ссылке — применяем состояние из адресной строки
+watch(() => route.query, async () => {
+  const prevPhrase = selectedPhrase.value
+  if (!applyQuery()) return
+  if (selectedPhrase.value !== prevPhrase) {
+    detail.value = null
+    if (selectedPhrase.value) await loadPhrase()
+    return
+  }
+  await load()
 })
 </script>
 
-<style scoped>
-.page-positions__variants { margin: 0; }
-.page-positions__variants .nav-link { font-size: 13px; }
-
-.page-positions__filter-card {
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  padding: 10px 12px;
-  background: #fff;
-}
-.page-positions__label { font-size: 13px; color: #6b7280; }
-.page-positions__presets { display: flex; gap: 6px; flex-wrap: wrap; }
-
-.page-positions__grid { width: 100%; font-size: 15px; }
-.page-positions__grid thead th {
-  font-size: 13px;
-  color: #6b7280;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: .02em;
-}
-.page-positions__row { cursor: pointer; }
-.page-positions__row td { padding: 10px 8px; }
-.page-positions__row:hover { background: #f6f8fc; }
-.page-positions__phrase { font-weight: 600; font-size: 15px; }
-.page-positions__note { color: #9ca3af; font-size: 13px; }
-.page-positions__ours {
-  display: inline-block;
-  min-width: 26px;
-  padding: 1px 8px;
-  border-radius: 12px;
-  background: #e8f0fe;
-  color: #1f6fd0;
-  font-weight: 600;
-  font-size: 14px;
-}
-.page-positions__date { white-space: nowrap; color: #4b5563; }
-.page-positions__chev { width: 26px; color: #c3c8d0; text-align: right; }
-.page-positions__toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
-.page-positions__requeue {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  flex-wrap: wrap;
-  margin-bottom: 10px;
-}
-.page-positions__check { display: flex; gap: 6px; align-items: center; font-size: 14px; color: #4b5563; }
-
-.page-positions__detail {
-  margin-top: 14px;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 12px;
-  background: #fff;
-}
-.page-positions__detail-head {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-  margin-bottom: 10px;
-}
-.page-positions__detail-title { font-size: 16px; font-weight: 700; margin: 0; }
-
-/* срез = дата сбора, в нём карточки выдачи горизонтально */
-.page-positions__slice {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  border-top: 1px solid #eef0f3;
-  padding: 10px 0;
-}
-.page-positions__slice-date { width: 96px; flex: 0 0 96px; }
-.page-positions__slice-day { font-weight: 700; font-size: 13px; }
-.page-positions__slice-time { font-weight: 700; font-size: 15px; color: #1f6fd0; }
-.page-positions__cards {
-  display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  padding-bottom: 6px;
-}
-.page-positions__more {
-  flex: 0 0 auto;
-  align-self: center;
-  color: #6b7280;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.page-positions__block { border-top: 1px solid #e5e7eb; padding-top: 10px; margin-top: 10px; }
-.page-positions__block-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
-.page-positions__history { margin-bottom: 6px; }
-.page-positions__section { font-size: 14px; font-weight: 700; margin: 18px 0 8px; }
-/* Ресейл (товар от частного лица) — мятный, как в карточке выдачи. */
-.page-positions__badge--resale { background: #8bf7d0; color: #063d2c; }
-</style>

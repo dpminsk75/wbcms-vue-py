@@ -3,12 +3,16 @@ import '@/assets/css/pages/page-seo-watch.css'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import WbDateInput from '@/components/common/WbDateInput.vue'
+import WbUniversalFilter from '@/components/common/WbUniversalFilter.vue'
+import ExcelButton from '@/components/common/ExcelButton.vue'
+import { exportXlsx } from '@/utils/exportXlsx'
 import WbCardSelect from '@/components/common/WbCardSelect.vue'
 import WbWorkspaceTabs from '@/components/common/WbWorkspaceTabs.vue'
 import { WORKSPACE_TABS, type WorkspaceTab } from '@/components/common/workspaceTabs'
 import CompetitorDetailsModal from '@/components/competitors/CompetitorDetailsModal.vue'
 import OurCardModal from '@/components/positions/OurCardModal.vue'
-import WbSearchCard from '@/components/positions/WbSearchCard.vue'
+import CompetitorCard from '@/components/common/CompetitorCard.vue'
+import { collectedFlag } from '@/components/common/competitorCard'
 import type { PositionsItem } from '@/api/competitorsPositions'
 import {
   seoWatchApi,
@@ -45,7 +49,6 @@ const dateFrom = ref(daysAgo(29))
 const dateTo = ref(today())
 /** Отсечка для «Пересобрать старше даты»: по умолчанию — вчера. */
 const olderDate = ref(daysAgo(1))
-const activePreset = ref('30')
 
 /* ---------- Фильтры панели: карточка / запросы / ранг фраз ---------- */
 
@@ -119,14 +122,7 @@ function initFromUrl() {
   const dt = isoOk(q.date_to)
   if (df) dateFrom.value = df
   if (dt) dateTo.value = dt
-  // подсветка пресета — только если даты URL совпали с одним из них
-  activePreset.value = ''
-  for (const p of PRESETS) {
-    if (dateFrom.value === daysAgo(Number(p.id) - 1) && dateTo.value === today()) {
-      activePreset.value = p.id
-      break
-    }
-  }
+  // подсветку пресета ведёт сам WbUniversalFilter (сверяет даты со своим списком)
   const cn = Math.max(0, parseInt(String(q.card_nm || ''), 10) || 0)
   if (cn) {
     fCardNm.value = String(cn)
@@ -182,7 +178,11 @@ function showMore(day: { date: string; time?: string }) {
 
 const selected = ref<string[]>([])
 const actionBusy = ref('')
+/** Выгрузка матрицы в Excel — идёт, пока ждём ответ (кнопка блокируется). */
+const exporting = ref(false)
 const actionNotice = ref('')
+/** Текст текущей операции — спиннер в шапке матрицы. */
+const busyText = ref('')
 
 const competitorNm = ref<number | null>(null)
 /** Контекст для «Собрать в расширении» в досье конкурента: наша карточка
@@ -193,6 +193,14 @@ const ourCardNm = ref<number | null>(null)
 
 const items = computed<WatchMatrixRow[]>(() => matrix.value?.items || [])
 const hasRows = computed(() => items.value.length > 0)
+
+/** Поиск по фразе в уже сформированной матрице — без перезапроса. */
+const phraseFilter = ref('')
+const filteredItems = computed<WatchMatrixRow[]>(() => {
+  const q = phraseFilter.value.trim().toLowerCase()
+  if (!q) return items.value
+  return items.value.filter((i) => (i.phrase || '').toLowerCase().includes(q))
+})
 const eventRows = computed(() => items.value.filter((i) => i.new_cnt || i.price_moves_cnt))
 
 /** Подпись KPI «Фраз на наблюдении»: в карточном фильтре — запросы карточки. */
@@ -208,30 +216,8 @@ function fmtCnt(v: number | null | undefined): string {
   return new Intl.NumberFormat('ru-RU').format(Math.round(Number(v)))
 }
 
-/** Тайминги последнего расчёта матрицы: «4,3 с (slices 3,9 с, counts 0,3 с)». */
-const timingsNote = computed(() => {
-  const t = matrix.value?.timings
-  if (!t || !Object.keys(t).length) return ''
-  const total = t.total ?? Object.values(t).reduce((a, b) => a + b, 0)
-  const top = Object.entries(t)
-    .filter(([k]) => k !== 'total')
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 2)
-    .map(([k, v]) => `${k} ${v.toFixed(1)} с`)
-    .join(', ')
-  return `${total.toFixed(1)} с${top ? ` (${top})` : ''}`
-})
-
-function applyPreset(id: string) {
-  activePreset.value = id
-  dateFrom.value = daysAgo(Number(id) - 1)
-  dateTo.value = today()
-  load()
-  syncUrl()
-}
 
 function resetFilters() {
-  activePreset.value = '30'
   dateFrom.value = daysAgo(29)
   dateTo.value = today()
   olderDate.value = daysAgo(1)
@@ -376,6 +362,10 @@ function asPositionsItem(c: WatchPhraseItem): PositionsItem {
     is_adv: 0,
     image_url: c.image_url,
     is_ours: !!c.is_ours,
+    // карточка конкурента собрана? (серый фон у несобранных)
+    is_collected: c.is_collected ?? undefined,
+    // тип/предмет конкурента — для подписи «Журналы • АСТ»
+    subject_name: c.subject_name ?? undefined,
     source_nm_id: c.source_nm_id,
     source_title: '',
     source_vendor: '',
@@ -386,10 +376,10 @@ function asPositionsItem(c: WatchPhraseItem): PositionsItem {
 }
 
 const REQUEUE_BADGE: Record<string, string> = {
-  pending: 'bg-secondary',
-  processing: 'bg-info text-dark',
-  done: 'bg-success',
-  error: 'bg-danger',
+  pending: 'badge--neutral',
+  processing: 'badge--info',
+  done: 'badge--ok',
+  error: 'badge--bad',
 }
 const REQUEUE_LABEL: Record<string, string> = {
   pending: 'в очереди',
@@ -442,6 +432,8 @@ async function load() {
   loading.value = true
   error.value = ''
   actionNotice.value = ''
+  // текст действия не перебиваем: во время действия идёт пересчёт матрицы
+  if (!actionBusy.value) busyText.value = 'Считаем матрицу мониторинга…'
   try {
     const params = { date_from: dateFrom.value, date_to: dateTo.value, ...filterParams.value }
     const m = await seoWatchApi.matrix(params)
@@ -456,6 +448,52 @@ async function load() {
     error.value = e?.response?.data?.detail || e?.message || 'Ошибка загрузки'
   } finally {
     loading.value = false
+    if (!actionBusy.value) busyText.value = ''
+  }
+}
+
+/** Выгрузка матрицы по фильтру — до 5000 строк, только значения (без цвета). */
+async function exportRows() {
+  if (exporting.value || !items.value.length) return
+  exporting.value = true
+  try {
+    const params = { date_from: dateFrom.value, date_to: dateTo.value, ...filterParams.value }
+    const data = await seoWatchApi.exportRows(params)
+    const list: WatchMatrixRow[] = Array.isArray(data?.items) ? data.items : []
+    const rows = list.map((r) => {
+      const leader = priceLeader(r)
+      return {
+        'Фраза': r.phrase,
+        'Заказы': r.orders_max,
+        'Запросов': r.freq ?? '',
+        'Наши карточки': r.cards.map((c) => c.nm_id).join(', '),
+        'Наши позиции': r.our_positions.map((o) => `${o.nm_id}:${o.position ?? '—'}`).join(', '),
+        'Цена vs ТОП-40': leader ? fmtMoney(leader.price) : '',
+        'Дельта цены': leader && leader.price_delta_pct != null ? fmtPct(leader.price_delta_pct) : '',
+        'Лучшая': r.best_position ?? '',
+        'В ТОП-40': r.top_ours_cnt ?? r.ours_cnt,
+        'А|У|Н': `${r.cards_fresh ?? 0} / ${r.cards_stale ?? 0} / ${r.cards_missing ?? 0}`,
+        'Сбор': r.last_stamp ? sliceLabel(r) : '',
+        'Свежесть': r.fresh ? `${r.days_old} дн.` : `протухло: ${r.days_old ?? '—'}`,
+        'Новые': r.new_cnt || '',
+        'Сдвиги цен': r.price_moves_cnt || '',
+        'Очередь': r.requeue_status ? requeueLabel(r.requeue_status) : '',
+      }
+    })
+    await exportXlsx({
+      rows,
+      filename: `seo-watch-matrix_${dateFrom.value}_${dateTo.value}.xlsx`,
+      sheetName: 'Матрица мониторинга',
+      cols: [
+        { wch: 40 }, { wch: 9 }, { wch: 9 }, { wch: 18 }, { wch: 22 },
+        { wch: 14 }, { wch: 12 }, { wch: 9 }, { wch: 9 }, { wch: 11 },
+        { wch: 14 }, { wch: 13 }, { wch: 8 }, { wch: 10 }, { wch: 12 },
+      ],
+    })
+  } catch (e: any) {
+    actionNotice.value = e?.response?.data?.detail || e?.message || 'Не удалось выгрузить матрицу'
+  } finally {
+    exporting.value = false
   }
 }
 
@@ -619,6 +657,7 @@ async function doRequeue() {
   const target = selected.value.length ? selected.value : stalePhrases.value
   if (!target.length) return
   actionBusy.value = 'requeue'
+  busyText.value = 'Ставим фразы в очередь пересборки…'
   try {
     const r = await seoWatchApi.requeue(target, dateFrom.value, filterParams.value)
     selected.value = []
@@ -628,6 +667,7 @@ async function doRequeue() {
     error.value = e?.response?.data?.detail || e?.message || 'Ошибка постановки в очередь'
   } finally {
     actionBusy.value = ''
+    busyText.value = ''
   }
 }
 
@@ -642,6 +682,7 @@ async function doRequeueOlder() {
   const target = olderPhrases.value
   if (!target.length) return
   actionBusy.value = 'requeue-older'
+  busyText.value = 'Ставим фразы в очередь пересборки…'
   try {
     const r = await seoWatchApi.requeue(target, dateFrom.value, filterParams.value)
     await load()
@@ -650,6 +691,7 @@ async function doRequeueOlder() {
     error.value = e?.response?.data?.detail || e?.message || 'Ошибка постановки в очередь'
   } finally {
     actionBusy.value = ''
+    busyText.value = ''
   }
 }
 
@@ -662,6 +704,7 @@ async function doRequeueOlder() {
 async function doRefresh() {
   if (actionBusy.value) return
   actionBusy.value = 'refresh'
+  busyText.value = 'Ставим карточки в очередь обновления…'
   try {
     const r = await seoWatchApi.refresh(selected.value, 10, dateFrom.value, dateTo.value, filterParams.value)
     const over = r.overflow ? `, сверх лимита не взято: ${r.overflow}` : ''
@@ -675,6 +718,7 @@ async function doRefresh() {
     error.value = e?.response?.data?.detail || e?.message || 'Ошибка постановки в очередь'
   } finally {
     actionBusy.value = ''
+    busyText.value = ''
   }
 }
 
@@ -689,6 +733,7 @@ async function doRefresh() {
 async function doCollect(mode: 'changed' | 'stale' | 'missing') {
   if (actionBusy.value) return
   actionBusy.value = mode
+  busyText.value = 'Ставим карточки в очередь сбора…'
   try {
     const phrases = mode === 'changed' ? [] : selected.value
     // «Собрать отсутствующие» — своя глубина (селектор у кнопки), «Обновить
@@ -709,6 +754,7 @@ async function doCollect(mode: 'changed' | 'stale' | 'missing') {
     error.value = e?.response?.data?.detail || e?.message || 'Ошибка постановки в очередь'
   } finally {
     actionBusy.value = ''
+    busyText.value = ''
   }
 }
 
@@ -722,6 +768,7 @@ async function doCollect(mode: 'changed' | 'stale' | 'missing') {
 async function doCollectOwn() {
   if (actionBusy.value) return
   actionBusy.value = 'collect-own'
+  busyText.value = 'Ставим наши карточки в очередь сбора…'
   try {
     const r = await seoWatchApi.collectOwn(ownTop.value, dateFrom.value)
     const fresh = r.skipped_fresh ? `, собрано недавно — пропущено ${r.skipped_fresh}` : ''
@@ -732,6 +779,7 @@ async function doCollectOwn() {
     error.value = e?.response?.data?.detail || e?.message || 'Ошибка постановки в очередь'
   } finally {
     actionBusy.value = ''
+    busyText.value = ''
   }
 }
 
@@ -748,121 +796,112 @@ onMounted(() => {
       <WbWorkspaceTabs active="summary" :tabs="tabs" />
     </div>
 
-    <div class="page-seo-watch__filters">
-      <div class="page-seo-watch__presets">
-        <button
-          v-for="p in PRESETS"
-          :key="p.id"
-          class="btn btn-sm"
-          :class="activePreset === p.id ? 'btn-primary' : 'btn-outline-secondary'"
-          @click="applyPreset(p.id)"
-        >{{ p.label }}</button>
-      </div>
-      <div class="row g-2 align-items-end">
-        <div class="col-md-2">
-          <label class="form-label mb-1 page-seo-watch__label">Дата с</label>
-          <WbDateInput v-model="dateFrom" />
+    <!-- Фильтр: общий WbUniversalFilter (пресеты + даты + «Применить/Сбросить»),
+         поля панели — «Наша карточка», «Запросы», «Ранг фраз» — в слоте #fields. -->
+    <WbUniversalFilter
+      v-model:date-from="dateFrom"
+      v-model:date-to="dateTo"
+      :presets="PRESETS"
+      default-preset="30"
+      :show-product="false"
+      :show-brand-category="false"
+      :show-quick="false"
+      @apply="applyFilters"
+      @reset="resetFilters"
+    >
+      <template #fields>
+        <div class="wb-field wb-field--wide">
+          <label class="wb-field__label">Наша карточка</label>
+          <WbCardSelect
+            v-model:nm-id="fCardNm"
+            placeholder="nmID / артикул / название..."
+          />
         </div>
-        <div class="col-md-2">
-          <label class="form-label mb-1 page-seo-watch__label">Дата по</label>
-          <WbDateInput v-model="dateTo" />
+        <div class="wb-field">
+          <label
+            class="wb-field__label"
+            :class="{ 'text-muted': !apCardNm && !fCardNm }"
+          >Запросы</label>
+          <select
+            v-model.number="fQueries"
+            class="wb-input"
+            :disabled="!apCardNm && !fCardNm"
+            title="Сколько верхних запросов выбранной карточки берём в наблюдение"
+          >
+            <option v-for="o in QUERIES_OPTIONS" :key="o.v" :value="o.v">{{ o.label }}</option>
+          </select>
         </div>
-        <div class="col-md-8 d-flex gap-3 justify-content-end flex-wrap">
-          <div class="page-seo-watch__fcol page-seo-watch__fcol-card">
-            <label class="form-label mb-1 page-seo-watch__label">Наша карточка</label>
-            <WbCardSelect
-              v-model:nm-id="fCardNm"
-              placeholder="nmID / артикул / название..."
-            />
-          </div>
-          <div class="page-seo-watch__fcol">
-            <label
-              class="form-label mb-1 page-seo-watch__label"
-              :class="{ 'text-muted': !apCardNm && !fCardNm }"
-            >Запросы</label>
-            <select
-              v-model.number="fQueries"
-              class="form-select form-select-sm page-seo-watch__fsel"
-              :disabled="!apCardNm && !fCardNm"
-              title="Сколько верхних запросов выбранной карточки берём в наблюдение"
-            >
-              <option v-for="o in QUERIES_OPTIONS" :key="o.v" :value="o.v">{{ o.label }}</option>
-            </select>
-          </div>
+        <div class="wb-field">
+          <label
+            class="wb-field__label"
+            title="Ранг действует на весь набор: им выбираются ТОП-фразы каждой карточки и сортируются строки"
+          >Ранг фраз</label>
+          <select v-model="fRank" class="wb-input">
+            <option v-for="o in RANK_OPTIONS" :key="o.v" :value="o.v">{{ o.label }}</option>
+          </select>
         </div>
-      </div>
-      <div class="row g-2 align-items-end mt-1">
-        <div class="col-md-8 d-flex gap-3 align-items-end flex-wrap">
-          <div class="page-seo-watch__fcol">
-            <label
-              class="form-label mb-1 page-seo-watch__label"
-              title="Ранг действует на весь набор: им выбираются ТОП-фразы каждой карточки и сортируются строки"
-            >Ранг фраз</label>
-            <select
-              v-model="fRank"
-              class="form-select form-select-sm page-seo-watch__fsel"
-            >
-              <option v-for="o in RANK_OPTIONS" :key="o.v" :value="o.v">{{ o.label }}</option>
-            </select>
-          </div>
-          <button class="btn btn-primary" :disabled="loading" @click="applyFilters">Применить</button>
-          <button class="btn btn-light" @click="resetFilters">Сбросить</button>
-          <span v-if="activeFilterNote" class="page-seo-watch__filter-note">{{ activeFilterNote }}</span>
-        </div>
-      </div>
+      </template>
+      <template #extra>
+        <span v-if="activeFilterNote" class="page-seo-watch__filter-note">{{ activeFilterNote }}</span>
+      </template>
+    </WbUniversalFilter>
+
+    <div v-if="error" class="wb-panel page-seo-watch__error">
+      <div class="wb-panel__bd">{{ error }}</div>
     </div>
 
-    <div v-if="error" class="alert alert-danger">{{ error }}</div>
-    <div v-if="loading" class="text-muted page-seo-watch__loading">
-      <span class="spinner-border spinner-border-sm"></span> Загрузка…
+    <!-- Первая загрузка: данных ещё нет — спиннер в области контента -->
+    <div v-if="loading && !summary" class="page-seo-watch__loading">
+      <span class="spinner-border spinner-border-sm"></span> Считаем матрицу мониторинга…
     </div>
 
-    <template v-if="summary">
-      <div class="page-seo-watch__kpi">
-        <div class="page-seo-watch__kpi-card">
-          <div class="page-seo-watch__kpi-label">Карточек в ТОП</div>
-          <div class="page-seo-watch__kpi-value">{{ summary.cards_cnt }}</div>
-          <div class="page-seo-watch__kpi-note">
+    <template v-else-if="summary">
+      <div class="grid-6 page-seo-watch__kpi">
+        <div class="tile tile--2">
+          <div class="tile__label">Карточек в ТОП</div>
+          <div class="tile__value">{{ summary.cards_cnt }}</div>
+          <div class="tile__foot">
             <template v-if="summary.filter?.card_nm">фильтр карточки: {{ summary.filter.card_nm }}</template>
             <template v-else>по заказам, {{ summary.date_from }} — {{ summary.date_to }}</template>
           </div>
         </div>
-        <div class="page-seo-watch__kpi-card">
-          <div class="page-seo-watch__kpi-label">Фраз на наблюдении</div>
-          <div class="page-seo-watch__kpi-value">{{ summary.phrases_total ?? summary.phrases_cnt }}</div>
-          <div class="page-seo-watch__kpi-note">
+        <div class="tile tile--2">
+          <div class="tile__label">Фраз на наблюдении</div>
+          <div class="tile__value">{{ summary.phrases_total ?? summary.phrases_cnt }}</div>
+          <div class="tile__foot">
             <template v-if="(summary.phrases_total ?? summary.phrases_cnt) > summary.phrases_cnt">
               анализируется {{ summary.phrases_cnt }} (лимит компании) · {{ phrasesKpiNote }}
             </template>
             <template v-else>{{ phrasesKpiNote }}</template>
           </div>
         </div>
-        <div class="page-seo-watch__kpi-card" :class="{ 'page-seo-watch__kpi-card--warn': summary.stale_cnt > 0 }">
-          <div class="page-seo-watch__kpi-label">Сбор выдачи</div>
-          <div class="page-seo-watch__kpi-value">{{ summary.fresh_cnt }} / {{ summary.phrases_cnt }}</div>
-          <div class="page-seo-watch__kpi-note">протухло: {{ summary.stale_cnt }} (порог {{ summary.settings.stale_days }} дн.)</div>
+        <div class="tile" :class="summary.stale_cnt > 0 ? 'tile--10' : 'tile--2'">
+          <div class="tile__label">Сбор выдачи</div>
+          <div class="tile__value">{{ summary.fresh_cnt }} / {{ summary.phrases_cnt }}</div>
+          <div class="tile__foot">протухло: {{ summary.stale_cnt }} (порог {{ summary.settings.stale_days }} дн.)</div>
         </div>
-        <div class="page-seo-watch__kpi-card">
-          <div class="page-seo-watch__kpi-label">Мы в ТОП-3 / ТОП-10</div>
-          <div class="page-seo-watch__kpi-value">{{ summary.top3_pct }}% / {{ summary.top10_pct }}%</div>
-          <div class="page-seo-watch__kpi-note">
+        <div class="tile tile--2">
+          <div class="tile__label">Мы в ТОП-3 / ТОП-10</div>
+          <div class="tile__value">{{ summary.top3_pct }}% / {{ summary.top10_pct }}%</div>
+          <div class="tile__foot">
             ср. позиция: {{ summary.avg_position != null ? summary.avg_position : '—' }}
             (из {{ summary.with_position_cnt }})
           </div>
         </div>
-        <div class="page-seo-watch__kpi-card">
-          <div class="page-seo-watch__kpi-label">Новых карточек</div>
-          <div class="page-seo-watch__kpi-value">{{ summary.new_cnt }}</div>
-          <div class="page-seo-watch__kpi-note">последний срез против предыдущего</div>
+        <div class="tile tile--2">
+          <div class="tile__label">Новых карточек</div>
+          <div class="tile__value">{{ summary.new_cnt }}</div>
+          <div class="tile__foot">последний срез против предыдущего</div>
         </div>
-        <div class="page-seo-watch__kpi-card">
-          <div class="page-seo-watch__kpi-label">Сдвигов цен</div>
-          <div class="page-seo-watch__kpi-value">{{ summary.price_moves_cnt }}</div>
-          <div class="page-seo-watch__kpi-note">от {{ summary.settings.price_delta_pct }}%</div>
+        <div class="tile tile--2">
+          <div class="tile__label">Сдвигов цен</div>
+          <div class="tile__value">{{ summary.price_moves_cnt }}</div>
+          <div class="tile__foot">от {{ summary.settings.price_delta_pct }}%</div>
         </div>
       </div>
 
-      <div class="wb-grid-card page-seo-watch__block page-seo-watch__actions">
+      <div class="wb-panel page-seo-watch__block page-seo-watch__actions">
+        <div class="wb-panel__bd">
         <div class="page-seo-watch__actions-title">Действия</div>
         <div class="page-seo-watch__actions-groups row d-flex flex-nowrap">
           <!-- фразы → пересборка выдачи (расширение «Поисковые фразы»).
@@ -875,7 +914,7 @@ onMounted(() => {
                 <span>выбрать все</span>
               </label>
               <button
-                class="btn btn-sm btn-primary col-md-6"
+                class="btn btn-sm btn--outline page-seo-watch__act-btn col-md-6"
                 :disabled="!!actionBusy || (!selected.length && !stalePhrases.length)"
                 :title="selected.length
                   ? 'Отправить выбранные фразы в расширение — оно пересоберёт выдачу по ним'
@@ -892,7 +931,7 @@ onMounted(() => {
                 <WbDateInput v-model="olderDate" />
               </div>
               <button
-                class="btn btn-sm btn-outline-primary col-md-6"
+                class="btn btn-sm btn--outline page-seo-watch__act-btn col-md-6"
                 :disabled="!!actionBusy || !olderPhrases.length"
                 :title="`Фразы матрицы, у которых последний сбор выдачи старше ${olderDate} → в очередь пересборки (расширение «Поисковые фразы»). Отметки в матрице не учитываются. Сборов не было ни разу — тоже считаются (старше любой даты)`"
                 @click="doRequeueOlder"
@@ -912,7 +951,7 @@ onMounted(() => {
               <div class="col-md-7">
                 
             <button
-              class="btn btn-sm btn-outline-primary page-seo-watch__act--stale"
+              class="btn btn-sm btn--outline page-seo-watch__act-btn page-seo-watch__act--stale"
               :disabled="!!actionBusy || !staleCardsCnt"
               :title="`${selected.length
                 ? `Карточки с устаревшим или отсутствующим описанием только по отмеченным фразам (${selected.length}), порог компании`
@@ -928,7 +967,7 @@ onMounted(() => {
               title="Какие первые позиции последнего захода каждой фразы попадут в пул «Обновить устаревшие». На остальные кнопки не влияет"
             >
               <span class="ms-3">из:</span> 
-              <select v-model.number="cardTop" class="form-select form-select-sm">
+              <select v-model.number="cardTop" class="wb-input">
                 <option v-for="o in CARD_TOP_OPTIONS" :key="o.v" :value="o.v">{{ o.label }}</option>
               </select>
             </label>
@@ -937,7 +976,7 @@ onMounted(() => {
               </div>
               <div class="col text-end">
             <button
-              class="btn btn-sm btn-outline-primary page-seo-watch__act--refresh"
+              class="btn btn-sm btn--outline page-seo-watch__act-btn page-seo-watch__act--refresh"
               :disabled="!!actionBusy || !items.length"
               :title="`ТОП-10 позиций последнего среза ${selected.length
                 ? `по отмеченным фразам (${selected.length})`
@@ -954,7 +993,7 @@ onMounted(() => {
             <div class="row w-100">
               <div class="col-md-7">
             <button
-              class="btn btn-sm btn-outline-primary page-seo-watch__act--missing"
+              class="btn btn-sm btn--outline page-seo-watch__act-btn page-seo-watch__act--missing"
               :disabled="!!actionBusy || !missingCardsCnt"
               :title="`${selected.length
                 ? `Карточки ТОП-${missingTop}, у которых описания нет вовсе (контент не собирали ни разу), только по отмеченным фразам (${selected.length})`
@@ -970,7 +1009,7 @@ onMounted(() => {
               title="Какие первые позиции последнего захода каждой фразы попадут в пул «Собрать отсутствующие». На остальные кнопки не влияет"
             >
               <span class="ms-3">из:</span>
-              <select v-model.number="missingTop" class="form-select form-select-sm">
+              <select v-model.number="missingTop" class="wb-input">
                 <option v-for="o in CARD_TOP_OPTIONS" :key="o.v" :value="o.v">{{ o.label }}</option>
               </select>
             </label>
@@ -978,7 +1017,7 @@ onMounted(() => {
               </div>
               <div class="col text-end"> 
             <button
-              class="btn btn-sm btn-outline-primary page-seo-watch__act--changed"
+              class="btn btn-sm btn--outline page-seo-watch__act-btn page-seo-watch__act--changed"
               :disabled="!!actionBusy || !newPoolCnt"
               :title="`Карточки из событий «новые в выдаче» и «сдвиг цены» по всем фразам матрицы → в очередь enrich (расширение соберёт). Контент, собранный не раньше старого захода фразы, уже отражает событие — такие карточки пропускаем (повторный клик не ставит их в очередь заново). В скобках: карточек к сбору сейчас ${newPoolCnt}`"
               @click="doCollect('changed')"
@@ -1000,7 +1039,7 @@ onMounted(() => {
         <div class="page-seo-watch__own">
           <span class="page-seo-watch__own-label">Наши карточки</span>
           <button
-            class="btn btn-sm btn-outline-primary"
+            class="btn btn-sm btn--outline page-seo-watch__act-btn"
             :disabled="!!actionBusy"
             :title="`Наши ТОП-${ownTop} карточек по заказам → в очередь сбора SEO-мониторинга: расширение откроет каждую карточку и соберёт цены, баджи и полки. Правило 12 ч к нашим карточкам НЕ применяется — пересобираем, когда вы решили. Пропускаются только уже стоящие в очереди и исключённые из сбора`"
             @click="doCollectOwn"
@@ -1011,7 +1050,7 @@ onMounted(() => {
           </button>
           <label class="page-seo-watch__depth" title="Сколько наших карточек по заказам берём в сбор">
             <span class="ms-3">ТОП:</span>
-            <select v-model.number="ownTop" class="form-select form-select-sm">
+            <select v-model.number="ownTop" class="wb-input">
               <option v-for="o in OWN_TOP_OPTIONS" :key="o.v" :value="o.v">{{ o.label }}</option>
             </select>
           </label>
@@ -1020,17 +1059,30 @@ onMounted(() => {
         <div class="page-seo-watch__actions-foot"> 
           <span v-if="actionNotice" class="page-seo-watch__notice">{{ actionNotice }}</span>
         </div>
+        </div>
       </div>
 
-      <div class="wb-grid-card page-seo-watch__block">
-        <div class="card-header text-white d-flex justify-content-between align-items-center wb-card-header wb-card-header--sm page-seo-watch__matrix-head">
+      <div class="tbl-card page-seo-watch__block">
+        <div class="card__hd page-seo-watch__matrix-head">
           <span>Матрица мониторинга</span>
           <span class="page-seo-watch__head-actions">
-            <span v-if="timingsNote" class="page-seo-watch__head-note">расчёт: {{ timingsNote }}</span>
             <span class="page-seo-watch__head-note">отмечено: {{ selected.length }}</span>
           </span>
+          <span class="spacer"></span>
+          <input
+            v-model="phraseFilter"
+            type="search"
+            class="wb-input page-seo-watch__search"
+            placeholder="Найти фразу…"
+            aria-label="Поиск по фразе в матрице"
+          />
+          <span class="page-seo-watch__head-note">показано {{ filteredItems.length }} из {{ items.length }}</span>
+          <span v-if="busyText" class="page-seo-watch__busy">
+            <span class="spinner-border spinner-border-sm"></span>{{ busyText }}
+          </span>
+          <ExcelButton :disabled="!items.length || exporting" @click="exportRows" />
         </div>
-        <div v-if="!hasRows" class="alert alert-info m-3 mb-0">
+        <div v-if="!hasRows" class="page-seo-watch__empty">
           <template v-if="matrix?.filter?.card_nm">
             У карточки {{ matrix.filter.card_nm }} нет запросов в Search Reports
             за {{ summary.date_from }} — {{ summary.date_to }} (или их меньше ТОП-{{ matrix.filter.queries_n }}).
@@ -1040,8 +1092,8 @@ onMounted(() => {
             Пока нет фраз в мониторинге: проверьте, что есть заказы и загружены Search Reports.
           </template>
         </div>
-        <div v-else class="wb-table-wrap">
-          <table class="wb-admin-table page-seo-watch__grid">
+        <div v-else class="tbl-wrap">
+          <table class="tbl page-seo-watch__grid">
             <thead>
               <tr>
                 <th class="page-seo-watch__col-check">
@@ -1053,7 +1105,7 @@ onMounted(() => {
                   class="text-center"
                   title="«Запросов» за период — как /wb-search/analytics: MAX(week_frequency) по nmID за день → AVG по дням присутствия × дней периода"
                 >Запросов</th>
-                <th class="text-center page-seo-watch__col-ours" title="Наши позиции в выдаче (все наши карточки)" style="min-width: 300px;">Наши позиции</th>
+                <th class="text-center page-seo-watch__col-ours" title="Наши позиции в выдаче (все наши карточки)">Наши позиции</th>
                 <th class="text-center" :title="PRICE_COL_TITLE">Цена vs ТОП-40</th>
                 <th class="text-center" title="Лучшая наша позиция в выдаче">Лучшая</th>
                 <th class="text-center" title="Наших карточек в первых 40 позициях выдачи">В ТОП-40</th> 
@@ -1069,7 +1121,12 @@ onMounted(() => {
               </tr>
             </thead>
             <tbody>
-              <template v-for="row in items" :key="row.phrase">
+              <tr v-if="!filteredItems.length && phraseFilter.trim()">
+                <td colspan="14" class="text-center text-muted p-4">
+                  По фильтру «{{ phraseFilter.trim() }}» фраз не найдено — очистите поле, чтобы вернуть все строки.
+                </td>
+              </tr>
+              <template v-for="row in filteredItems" :key="row.phrase">
                 <tr
                   class="page-seo-watch__row"
                   :class="{
@@ -1139,16 +1196,16 @@ onMounted(() => {
                   <td class="text-center">
                     <span
                       class="badge"
-                      :class="row.fresh ? 'bg-success' : 'bg-danger'"
+                      :class="row.fresh ? 'badge--ok' : 'badge--bad'"
                       :title="row.last_at ? `последний сбор ${row.last_at}` : 'сборов не было'"
                     >{{ row.fresh ? `${row.days_old} дн.` : `протухло: ${row.days_old ?? '—'}` }}</span>
                   </td>
                   <td class="text-center">
-                    <span v-if="row.new_cnt" class="badge bg-info text-dark">{{ row.new_cnt }}</span>
+                    <span v-if="row.new_cnt" class="badge badge--info">{{ row.new_cnt }}</span>
                     <span v-else class="page-seo-watch__note">—</span>
                   </td>
                   <td class="text-center">
-                    <span v-if="row.price_moves_cnt" class="badge bg-warning text-dark">{{ row.price_moves_cnt }}</span>
+                    <span v-if="row.price_moves_cnt" class="badge badge--warn">{{ row.price_moves_cnt }}</span>
                     <span v-else class="page-seo-watch__note">—</span>
                   </td>
                   <td class="text-center">
@@ -1189,19 +1246,35 @@ onMounted(() => {
                           </span>
                         </div>
                         <div class="page-seo-watch__cards">
-                          <WbSearchCard
+                          <CompetitorCard
                             v-for="c in visibleItems(day).slice(0, sliceLimit(day))"
                             :key="c.nm_id"
-                            :card="asPositionsItem(c)"
+                            variant="feed"
+                            :nm-id="c.nm_id"
+                            :title="c.title"
+                            :brand="c.brand"
+                            :seller="c.seller"
+                            :price="c.price"
+                            :old-price="c.old_price ?? null"
+                            :price-api="c.price_api ?? null"
+                            :rating="c.rating ?? null"
+                            :review-rating="c.review_rating ?? null"
+                            :reviews="c.reviews ?? c.feedbacks ?? null"
+                            :badges="c.badges || []"
+                            :image-url="c.image_url"
+                            :position="c.position"
+                            :subject="c.subject_name || ''"
+                            :collected="collectedFlag(c.is_collected, !!c.is_ours)"
+                            :is-ours="!!c.is_ours"
                             :is-new="!!c.is_new"
                             :price-changed="!!c.price_changed"
                             :price-prev="c.price_prev ?? null"
                             :price-pct="c.price_pct ?? null"
-                            @open="openCard"
+                            @open="openCard(asPositionsItem(c))"
                           />
                         </div>
                         <div v-if="visibleItems(day).length > sliceLimit(day)" class="page-seo-watch__more">
-                          <button class="btn btn-outline-primary btn-sm page-seo-watch__more-btn" @click="showMore(day)">
+                          <button class="btn btn--outline btn-sm page-seo-watch__more-btn" @click="showMore(day)">
                             Увидеть больше
                           </button>
                         </div>
@@ -1216,8 +1289,8 @@ onMounted(() => {
         </div>
       </div>
 
-      <div v-if="eventRows.length" class="wb-grid-card page-seo-watch__block">
-        <div class="card-header text-white wb-card-header wb-card-header--sm">События по фразам мониторинга</div>
+      <div v-if="eventRows.length" class="tbl-card page-seo-watch__block">
+        <div class="card__hd">События по фразам мониторинга</div>
         <div class="page-seo-watch__events">
           <div v-for="row in eventRows" :key="row.phrase" class="page-seo-watch__event">
             <div class="page-seo-watch__event-phrase">

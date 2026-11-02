@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
 from backend.deps import get_current_company, require_seo
-from backend.services.watch_service import WatchService
+from backend.services.seo_watch_service import SeoWatchService
 
 router = APIRouter(prefix="/api/seo-watch", tags=["seo-watch"])
 
@@ -61,7 +61,7 @@ async def watch_summary(
     company_id: int | None = Depends(get_current_company),
 ):
     """KPI мониторинга: карточки/фразы, свежесть, наши ТОП-3/10, события."""
-    svc = WatchService(db, company_id)
+    svc = SeoWatchService(db, company_id)
     try:
         return await svc.summary(date_from or _d1(), date_to or _d0(),
                                  card_nm=card_nm, rank_by=rank, queries_n=queries)
@@ -87,7 +87,7 @@ async def watch_matrix(
     Фильтры панели: `card_nm` — наша карточка (0 = все наши), `rank` — ранг
     фраз (`orders`/`freq`), `queries` — ТОП-N запросов карточки (0 = порог).
     """
-    svc = WatchService(db, company_id)
+    svc = SeoWatchService(db, company_id)
     try:
         return await svc.matrix(date_from or _d1(), date_to or _d0(),
                                 card_nm=card_nm, rank_by=rank, queries_n=queries)
@@ -95,6 +95,35 @@ async def watch_matrix(
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         raise _fail("matrix", exc)
+
+
+@router.get("/export")
+async def watch_export(
+    date_from: str = Query(default=""),
+    date_to: str = Query(default=""),
+    card_nm: int = Query(default=0, ge=0),
+    rank: str = Query(default="orders"),
+    queries: int = Query(default=0, ge=0, le=50),
+    limit: int = Query(default=5000, ge=1, le=5000),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Выгрузка матрицы по тем же фильтрам, что и /matrix.
+
+    Расчёт не дублируется: svc.matrix() отдаёт кэшированный результат,
+    эндпоинт только режет его по limit (для Excel).
+    """
+    svc = SeoWatchService(db, company_id)
+    try:
+        data = await svc.matrix(date_from or _d1(), date_to or _d0(),
+                                card_nm=card_nm, rank_by=rank, queries_n=queries)
+        items = (data.get("items") or [])[:limit]
+        return {**data, "items": items, "export_limit": limit}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise _fail("export", exc)
 
 
 @router.get("/events")
@@ -111,7 +140,7 @@ async def watch_events(
     company_id: int | None = Depends(get_current_company),
 ):
     """Лента событий: новые карточки (`type=new`) и сдвиги цен (`type=price`)."""
-    svc = WatchService(db, company_id)
+    svc = SeoWatchService(db, company_id)
     try:
         return await svc.events(date_from or _d1(), date_to or _d0(), type, limit,
                                 card_nm=card_nm, rank_by=rank, queries_n=queries)
@@ -131,7 +160,7 @@ async def watch_phrase(
     company_id: int | None = Depends(get_current_company),
 ):
     """Срезы выдачи по одной фразе мониторинга (последние N дней) — раскрытие строки."""
-    svc = WatchService(db, company_id)
+    svc = SeoWatchService(db, company_id)
     try:
         return await svc.phrase_detail(phrase, date_from or _d1(), date_to or _d0())
     except Exception as exc:
@@ -151,7 +180,7 @@ async def watch_requeue(
     Это та самая очередь, которую читает расширение («Поисковые фразы» в попапе).
     """
     phrases = payload.get("phrases") or []
-    svc = WatchService(db, company_id)
+    svc = SeoWatchService(db, company_id)
     try:
         return await svc.requeue(phrases, user_id=_user.get("id"),
                                  date_from=date_from or _d1(),
@@ -183,7 +212,7 @@ async def watch_refresh(
     """
     phrases = payload.get("phrases") or []
     top = int(payload.get("top") or 10)
-    svc = WatchService(db, company_id)
+    svc = SeoWatchService(db, company_id)
     try:
         return await svc.refresh_top(phrases, top, date_from=date_from or _d1(),
                                      date_to=date_to or _d0(),
@@ -216,7 +245,7 @@ async def watch_collect(
     mode = str(payload.get("mode") or "")
     phrases = payload.get("phrases") or []
     top = int(payload.get("top") or 40)
-    svc = WatchService(db, company_id)
+    svc = SeoWatchService(db, company_id)
     try:
         return await svc.collect_cards(date_from or _d1(), date_to or _d0(),
                                        mode, phrases=phrases, top=top,
@@ -249,7 +278,7 @@ async def watch_collect_nms(
         raise HTTPException(status_code=400, detail="nm_ids — список nmID")
     if not nm_ids:
         raise HTTPException(status_code=400, detail="Укажите nm_ids")
-    svc = WatchService(db, company_id)
+    svc = SeoWatchService(db, company_id)
     try:
         return await svc.collect_nm_ids(nm_ids)
     except Exception as exc:
@@ -276,7 +305,7 @@ async def watch_collect_own(
     `skipped_fresh`).
     """
     top = int(payload.get("top") or 20)
-    svc = WatchService(db, company_id)
+    svc = SeoWatchService(db, company_id)
     try:
         return await svc.collect_own_cards(date_from or _d1(), top)
     except ValueError as exc:

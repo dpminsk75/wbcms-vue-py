@@ -13,6 +13,8 @@ export interface QueueCardRow {
   processed_at?: string | null
   title?: string | null
   brand?: string | null
+  /** Фото карточки (первый URL из wb_competitor_details). */
+  photo?: string | null
   seller?: string | null
   price?: number | number[] | null
   preview_image?: string | null

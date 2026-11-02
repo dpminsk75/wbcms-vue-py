@@ -1,21 +1,63 @@
 <template>
   <div class="prod-cell" :class="{ 'prod-cell--compact': compact }">
-    <!-- Фото есть — картинка; фото нет — нейтральная заглушка (битой картинки с alt-текстом не показываем) -->
-    <img v-if="photoUrl" class="prod-cell__img" :src="photoUrl" :alt="title || ''" loading="lazy" @error="onImgError" />
-    <div v-else class="prod-cell__img prod-cell__img--none" aria-hidden="true"><i class="bi bi-image"></i></div>
+    <!-- Фото — через общий CardPhoto: локальная копия робота (/api/img), нет копии — 302 на WB.
+         Формат источника (URL / массив / JSON) разбирает сам CardPhoto. -->
+    <div class="prod-cell__img">
+      <CardPhoto :src="photo" :alt="title || ''" fit="cover" :placeholder="fallback" />
+    </div>
     <div class="prod-cell__text">
       <!-- Плотный вариант: та же структура, что в обычной карточке, но мельче на 1px:
            название / «артикул • бренд • предмет» / ссылка WB -->
       <template v-if="compact">
         <div class="prod-cell__title" :title="fullTitle">{{ title || '(нет карточки)' }}</div>
         <div v-if="metaLine" class="prod-cell__sub">{{ metaLine }}</div>
-        <a v-if="link" class="prod-cell__link" :href="link" target="_blank" rel="noopener">{{ linkLabel }}</a>
+        <div class="prod-cell__acts">
+          <a v-if="link" class="prod-cell__link" :href="link" target="_blank" rel="noopener">{{ linkLabel }}</a>
+          <button
+            v-if="copyNm && nmId !== null && nmId !== undefined"
+            type="button"
+            class="prod-cell__icon"
+            :title="copied === 'nm' ? 'nmID скопирован' : 'Скопировать nmID'"
+            @click.stop="doCopy('nm')"
+          >
+            <i class="bi" :class="copied === 'nm' ? 'bi-check2' : 'bi-clipboard'"></i>
+          </button>
+          <button
+            v-if="copyLink && link"
+            type="button"
+            class="prod-cell__icon"
+            :title="copied === 'link' ? 'Ссылка скопирована' : (wbLink ? 'Скопировать ссылку на WB' : 'Скопировать ссылку')"
+            @click.stop="doCopy('link')"
+          >
+            <i class="bi" :class="copied === 'link' ? 'bi-check2' : 'bi-link-45deg'"></i>
+          </button>
+        </div>
       </template>
       <template v-else>
         <div class="prod-cell__title" :title="title">{{ title || '(нет карточки)' }}</div>
         <div v-if="sub" class="prod-cell__sub">{{ sub }}</div>
         <div v-if="vendor" class="prod-cell__sub">{{ vendor }}</div>
-        <a v-if="link" class="prod-cell__link" :href="link" target="_blank" rel="noopener">{{ linkLabel }}</a>
+        <div class="prod-cell__acts">
+          <a v-if="link" class="prod-cell__link" :href="link" target="_blank" rel="noopener">{{ linkLabel }}</a>
+          <button
+            v-if="copyNm && nmId !== null && nmId !== undefined"
+            type="button"
+            class="prod-cell__icon"
+            :title="copied === 'nm' ? 'nmID скопирован' : 'Скопировать nmID'"
+            @click.stop="doCopy('nm')"
+          >
+            <i class="bi" :class="copied === 'nm' ? 'bi-check2' : 'bi-clipboard'"></i>
+          </button>
+          <button
+            v-if="copyLink && link"
+            type="button"
+            class="prod-cell__icon"
+            :title="copied === 'link' ? 'Ссылка скопирована' : (wbLink ? 'Скопировать ссылку на WB' : 'Скопировать ссылку')"
+            @click.stop="doCopy('link')"
+          >
+            <i class="bi" :class="copied === 'link' ? 'bi-check2' : 'bi-link-45deg'"></i>
+          </button>
+        </div>
       </template>
     </div>
   </div>
@@ -27,6 +69,8 @@
  * `.page-orders-feed-aggregated__order` …) и отдельно разбирала фото из JSON.
  */
 import { computed, ref, watch } from 'vue'
+import CardPhoto from './CardPhoto.vue'
+import { copyText } from '@/utils/clipboard'
 
 const props = withDefaults(defineProps<{
   /** Фото: URL, массив URL или JSON-строка (иногда дважды закодированная). */
@@ -47,6 +91,12 @@ const props = withDefaults(defineProps<{
   link?: string
   /** Текст ссылки. */
   linkLabel?: string
+  /** nmID карточки — нужен для копирования. */
+  nmId?: number | string | null
+  /** Показывать кнопку копирования nmID. */
+  copyNm?: boolean
+  /** Показывать кнопку копирования ссылки. */
+  copyLink?: boolean
   /** Картинка-заглушка (если файла нет — рисуем нейтральный блок). */
   fallback?: string
 }>(), {
@@ -59,36 +109,36 @@ const props = withDefaults(defineProps<{
   vendor: '',
   link: '',
   linkLabel: 'WB',
+  nmId: null,
+  copyNm: false,
+  copyLink: false,
   fallback: '/images/no-photo.png',
 })
 
-const broken = ref(false)
+/** Что скопировали последним — для галочки вместо иконки. */
+const copied = ref<'nm' | 'link' | ''>('')
+let copyTimer: ReturnType<typeof setTimeout> | null = null
 
-/** Достаёт первый URL фото из строки/массива/JSON. Пусто — фото нет. */
-function resolvePhoto(raw: any): string {
-  try {
-    let p: any = raw
-    if (typeof p === 'string') p = JSON.parse(p)
-    if (typeof p === 'string') p = JSON.parse(p)
-    if (Array.isArray(p) && p[0]) {
-      const first = p[0]
-      if (typeof first === 'string') return first
-      if (first && typeof first === 'object' && typeof first.photo === 'string') return first.photo
-    }
-    if (typeof p === 'string' && p) return p
-  } catch {
-    /* не JSON — считаем мусором */
+/** Ссылка на карточку WB — из nmID (или переданная `link`, если nmID нет). */
+const wbLink = computed(() => {
+  if (props.nmId !== null && props.nmId !== undefined && props.nmId !== '') {
+    return `https://www.wildberries.ru/catalog/${props.nmId}/detail.aspx`
   }
-  return ''
+  return String(props.link || '')
+})
+
+function doCopy(what: 'nm' | 'link') {
+  const text = what === 'nm' ? String(props.nmId ?? '') : (wbLink.value || String(props.link || ''))
+  if (!text) return
+  copyText(text).then((ok) => {
+    if (!ok) return
+    copied.value = what
+    if (copyTimer) clearTimeout(copyTimer)
+    copyTimer = setTimeout(() => { copied.value = '' }, 1500)
+  })
 }
 
-const photoUrl = computed(() => (broken.value ? '' : resolvePhoto(props.photo)))
-
-function onImgError(e: Event) {
-  const el = e.target as HTMLImageElement
-  if (el.src.endsWith(props.fallback)) { broken.value = true; return }
-  broken.value = true
-}
+watch(() => props.nmId, () => { copied.value = '' })
 
 /**
  * Плотный вариант — та же структура, что в обычной карточке:
@@ -109,8 +159,6 @@ const fullTitle = computed(() => {
   const parts = [props.title, metaLine.value].filter(Boolean)
   return parts.join(' — ')
 })
-
-watch(() => props.photo, () => { broken.value = false })
 </script>
 <style scoped>
 .prod-cell { display: flex; gap: 10px; align-items: flex-start; }
@@ -119,12 +167,6 @@ watch(() => props.photo, () => { broken.value = false })
   border-radius: var(--radius-sm); flex: none;
   border: 1px solid var(--line);
   background: var(--surface-2);
-}
-/* Нет фото — нейтральный блок вместо битой картинки */
-.prod-cell__img--none {
-  display: flex; align-items: center; justify-content: center;
-  color: var(--ink-muted); font-size: 18px;
-  background: color-mix(in srgb, var(--ink) 6%, var(--surface));
 }
 .prod-cell__text { min-width: 0; overflow: hidden; }
 .prod-cell__title {
@@ -141,11 +183,18 @@ watch(() => props.photo, () => { broken.value = false })
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1;
   overflow: hidden;
 }
+.prod-cell__acts { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; overflow: hidden; }
 .prod-cell__link {
   font-size: calc(11px * var(--fs)); font-weight: 600;
   color: var(--brand); text-decoration: none;
 }
 .prod-cell__link:hover { color: var(--brand-hover); text-decoration: underline; }
+.prod-cell__icon {
+  font-size: calc(11px * var(--fs)); color: var(--ink-muted);
+  background: none; border: 1px solid transparent; border-radius: 4px;
+  padding: 0 2px; cursor: pointer; line-height: 1.3; flex: none;
+}
+.prod-cell__icon:hover { color: var(--brand); border-color: var(--line-strong); background: var(--surface-2); }
 
 /* Плотный вариант: фото 30×40, кегль на 1px меньше обычного.
    Структура та же: название / «артикул • бренд • предмет» / ссылка WB.

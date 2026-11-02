@@ -28,6 +28,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # Нормализация фразы — единая с отчётом «Выдача WB» (competitors_positions_service),
 # чтобы наши фразы из Search Reports и фразы из срезов выдачи сравнивались одинаково.
 from backend.services.competitors_positions_service import _norm_phrase
+from backend.services.competitor_content import (
+    DESC_MIN_LEN,
+    EMPTY_STATE,
+    ContentState,
+    has_content_sql,
+    load_content_states,
+)
 from backend.services import capture_service
 
 # Кэш матрицы в процессе: /summary и /matrix считают одно и то же, а фронт зовёт их
@@ -160,18 +167,6 @@ def _period_days(date_from: str, date_to: str) -> int:
         return 30
 
 
-class ContentState(NamedTuple):
-    """Состояние контента карточки — для кнопок сбора и правила «12 ч»."""
-    has: bool                   # описание есть (не короче DESC_MIN_LEN)
-    full_at: str                # дата полного сбора 'YYYY-MM-DD'
-    first_at: str               # дата первого сбора (легаси-строки)
-    full_dt: datetime | None    # момент полного сбора (часы нужны для RECOLLECT_MIN_HOURS)
-
-
-# Контента нет — заглушка вместо кортежа-заплатки.
-EMPTY_STATE = ContentState(False, "", "", None)
-
-
 def _hours_since(dt: datetime | None, now: datetime | None = None) -> int | None:
     """Сколько часов прошло с момента `dt`; None — момента нет (не собирали)."""
     if not dt:
@@ -195,9 +190,6 @@ class SeoWatchService:
     # вернул 56 758 строк), приложение обрежет выдачу и напишет в лог, а не
     # утянет ~400 МБ и не убьёт mysqld OOM-ом (сервер 1 ГБ, запас ~130 МБ).
     MAX_SLICE_ROWS = 20000
-    # Порог «контент есть»: длина описания. Тот же, что DESC_MIN_LEN в
-    # competitors_newcard_service.py:28 и MIN_DESC_LEN в phrase_miner_service.py:51.
-    DESC_MIN_LEN = 50
     # Глубины, для которых матрица считает корзины карточек (селектор «из:»).
     DEPTH_BUCKETS = (10, 20, 40)
     # Не пересобирать карточку, если её полный сбор был меньше N часов назад
@@ -526,8 +518,10 @@ class SeoWatchService:
                        COALESCE(NULLIF(ANY_VALUE(p.image_url), ''),
                                 ANY_VALUE(d.preview_image)) AS image_url,
                        ANY_VALUE(p.source_nm_id) AS source_nm_id,
-                       -- карточка конкурента собрана? (есть запись в wb_competitor_details)
-                       MAX(d.nm_id IS NOT NULL) AS is_collected,
+                       -- карточка конкурента собрана? = описание не короче общего
+                       -- порога (competitor_content.DESC_MIN_LEN) — тот же признак,
+                       -- что и в _content_state()
+                       MAX({has_content_sql('d')}) AS is_collected,
                        -- тип/предмет конкурента (из собранной карточки) — для подписи
                        ANY_VALUE(d.subject_name) AS subject_name
                 FROM wb_competitor_position p FORCE INDEX (idx_position_slice)
@@ -704,42 +698,13 @@ class SeoWatchService:
         return out
 
     async def _content_state(self, nm_ids: list[int]) -> dict[int, ContentState]:
-        """nm → состояние контента (есть описание, даты сбора, момент сбора).
+        """nm → состояние контента (есть описание, даты сборов).
 
-        «Контент есть» = описание не короче `DESC_MIN_LEN` символов. Лёгкие строки,
-        которые создаёт наблюдение выдачи (`ext.py:634-662`: цена/рейтинг/превью),
-        описания не содержат — значит контента по карточке ещё нет.
-
-        Дата контента — `full_collected_at` (полный сбор: описание + характеристики),
-        иначе `first_collected_at` (строки, собранные до миграции 20261021).
-
-        НЕ `collected_at`: его двигает пассивное наблюдение выдачи (`ext.py:653`) —
-        карточка, у которой описание никто не собирал, выглядела бы «свежей», и
-        кнопки сбора не видели бы кандидатов.
-
-        Чанки по 400 — больших IN не делаем (сервер 1 ГБ).
+        Критерий и загрузка — общие (`services/competitor_content.py`): там же
+        порог «контент есть» (длина описания ≥ DESC_MIN_LEN) и правило дат
+        (`full_collected_at`, иначе `first_collected_at`).
         """
-        ids = sorted({int(n) for n in nm_ids if n})
-        out: dict[int, ContentState] = {}
-        for i in range(0, len(ids), 400):
-            ch = ids[i:i + 400]
-            cph, cp = self._inlist("c", ch)
-            rows = (await self.db.execute(text(f"""
-                SELECT nm_id,
-                       MAX(full_collected_at) AS full_at,
-                       MAX(first_collected_at) AS first_at,
-                       MAX(CHAR_LENGTH(COALESCE(description, ''))) AS dlen
-                FROM wb_competitor_details WHERE nm_id IN ({cph}) GROUP BY nm_id
-            """), cp)).mappings().all()
-            for r in rows:
-                full_dt = r["full_at"] if isinstance(r["full_at"], datetime) else None
-                out[int(r["nm_id"] or 0)] = ContentState(
-                    has=int(r["dlen"] or 0) >= self.DESC_MIN_LEN,
-                    full_at=_d(full_dt) if full_dt else "",
-                    first_at=_d(r["first_at"]) if r["first_at"] else "",
-                    full_dt=full_dt,
-                )
-        return out
+        return await load_content_states(self.db, nm_ids)
 
     async def matrix(self, date_from: str, date_to: str,
                      card_nm: int = 0, rank_by: str = "orders",
