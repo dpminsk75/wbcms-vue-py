@@ -7,7 +7,7 @@
 .page-admin-menu__crumbs { margin-bottom: 12px; }
 .page-admin-menu__crumbs-list { font-size: 12px; }
 .page-admin-menu__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-.page-admin-menu__title { font-size: 22px; font-weight: 700; margin: 0; }
+.page-admin-menu__title { font-size: calc(20px * var(--fs)); font-weight: 700; margin: 0; }
 .page-admin-menu__title-sub { font-weight: 400; font-size: 13px; }
 .page-admin-menu__count { align-self: center; font-size: 11px; }
 .page-admin-menu__msg { font-size: 13px; padding: 8px 12px; }

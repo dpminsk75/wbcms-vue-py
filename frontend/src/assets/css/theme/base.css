@@ -119,6 +119,15 @@ body {
 a { color: var(--brand); }
 a:hover { color: var(--brand-hover); }
 
+/* ---------- заголовок страницы — 20px по теме (§5.7.5) ----------
+   site.css задаёт .container-xxl h1 = 30px, и из-за большей специфичности
+   правило .page-title (20px) не работало: заголовки на старых страницах были
+   30px, а на новых (WbWorkspaceHead, h2) — 20px. Теперь размер один. */
+.container-xxl h1.page-title {
+  font-size: calc(20px * var(--fs));
+  font-weight: 700;
+}
+
 .num { font-variant-numeric: tabular-nums; }
 
 /* Витрина и наши блоки: масштаб от --fs */

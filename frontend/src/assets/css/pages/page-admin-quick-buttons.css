@@ -6,7 +6,7 @@
 .page-admin-quick-buttons__crumbs { margin-bottom: 12px; }
 .page-admin-quick-buttons__crumbs-list { font-size: 12px; }
 .page-admin-quick-buttons__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
-.page-admin-quick-buttons__title { font-size: 22px; font-weight: 700; margin: 0; }
+.page-admin-quick-buttons__title { font-size: calc(20px * var(--fs)); font-weight: 700; margin: 0; }
 .page-admin-quick-buttons__title-sub { font-weight: 400; font-size: 13px; }
 .page-admin-quick-buttons__count { font-size: 11px; }
 .page-admin-quick-buttons__msg { font-size: 13px; padding: 8px 12px; }

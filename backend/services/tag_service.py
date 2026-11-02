@@ -94,7 +94,8 @@ class TagService:
         if not nm_ids:
             return {"byProduct": [], "byDate": [], "chartData": [], "relatedCards": []}
         links_stmt = text("""
-            SELECT w.nmID AS nmId, w.title AS card_name, w.vendorCode AS vendorCode
+            SELECT w.nmID AS nmId, w.title AS card_name, w.vendorCode AS vendorCode,
+                   w.photos, w.brand, w.subjectName
             FROM tag_card_links t INNER JOIN wbcards w ON t.nmID = w.nmID
             WHERE t.tag_id = :id
             """ + ("" if self.company_id is None else " AND (w.company_id = :cid OR w.company_id IS NULL)"))

@@ -4,7 +4,7 @@
  * Таблица — .tbl-card / .card__hd / .tbl-wrap / .tbl, итог — .tbl__total.
  */
 .page-sales-analysis__title {
-  font-size: calc(28px * var(--fs));
+  font-size: calc(20px * var(--fs));
   font-weight: 700;
   letter-spacing: -.015em;
   margin: 0 0 4px;

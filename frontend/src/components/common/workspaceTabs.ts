@@ -20,7 +20,7 @@ export const WORKSPACE_TABS: WorkspaceTab[] = [
   { id: 'captured', label: 'Собранные карточки', to: '/competitor/captured' },
   { id: 'seo', label: 'SEO рекомендации', to: '/seo/index' },
   { id: 'competitors', label: 'Конкуренты', to: '/competitor/new-cards' },
-  { id: 'queue', label: 'Очередь', to: '/queue' },
+  { id: 'queue', label: 'Очередь', to: '/competitor/queue' },
 ]
 
 /** Меню раздела «Отзывы» — одинаковое на всех страницах блока. */
@@ -65,4 +65,11 @@ export const COMPETITOR_SUB_TABS: SubTab[] = [
     title: 'Обновить контент собранных конкурентов (очередь enrich)' },
   { id: 'analysis', label: 'Анализ', to: '/competitor/index',
     title: 'Анализ конкурентов по нашим товарам' },
+]
+
+/** Меню рабочего места «Теги» — одинаковое на всех его страницах (справа в углу). */
+export const TAGS_WORKSPACE_TABS: WorkspaceTab[] = [
+  { id: 'orders', label: 'Заказы', to: '/tag/orders', title: 'Заказы по тегу' },
+  { id: 'margin', label: 'Маржа', to: '/tag/margin', title: 'Маржа по тегу' },
+  { id: 'list', label: 'Список', to: '/tags', title: 'Список тегов' },
 ]

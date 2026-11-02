@@ -26,7 +26,15 @@ export interface TagAnalytics {
   chartData: Array<Record<string, any>>
   byProduct: Array<Record<string, any>>
   byDate: Array<Record<string, any>>
-  relatedCards: Array<{ nmId: number; card_name: string; vendorCode: string }>
+  /** Карточки тега — с фото и реквизитами (для общей карточки товара). */
+  relatedCards: Array<{
+    nmId: number
+    card_name: string
+    vendorCode: string
+    photos?: any
+    brand?: string | null
+    subjectName?: string | null
+  }>
   date_from: string
   date_to: string
 }
@@ -65,31 +73,5 @@ export const tagsApi = {
   async margin(id: number | string, dateFrom: string, dateTo: string, sortBy = 'qnt', withStock = false): Promise<any[]> {
     const { data } = await api.get(`/api/tags/${id}/margin`, { params: { date_from: dateFrom, date_to: dateTo, sort_by: sortBy, with_stock: withStock ? 1 : 0 } })
     return Array.isArray(data) ? data : []
-  },
-  async exportByProduct(id: number | string, dateFrom: string, dateTo: string) {
-    const a = await this.analytics(id, dateFrom, dateTo)
-    const { default: XLSX } = await import('xlsx')
-    const ws = XLSX.utils.json_to_sheet(a.byProduct.map((r: any) => ({
-      'Арт WB': r.nm_id, 'Товар': r.card_title, 'Артикул': r.card_vendor_code,
-      'Количество': r.cnt, 'Отменено': r.cns, 'Выкуплено': r.byt,
-      'Цена': r.tp, 'Скидка %': r.dsc, 'Цена со ск': r.apwd, 'СПП %': r.spp,
-      'Цена прод': r.finished_price, 'Сумма заказов': r.sum_ord, 'Сумма выкупа': r.sum_byt,
-    })))
-    ws['!cols'] = [{ wch: 12 }, { wch: 32 }, { wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 15 }, { wch: 14 }]
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'tag-products')
-    XLSX.writeFile(wb, `tag-${id}-products.xlsx`)
-  },
-  async exportByDate(id: number | string, dateFrom: string, dateTo: string) {
-    const a = await this.analytics(id, dateFrom, dateTo)
-    const { default: XLSX } = await import('xlsx')
-    const ws = XLSX.utils.json_to_sheet(a.byDate.map((r: any) => ({
-      'Дата': r.odate, 'Кол-во': r.cnt, 'Отмена': r.cns, 'Сумма': r.sum_ord,
-      'Цена Рзн': r.tp, 'Скидка %': r.dsc, 'Цена со ск': r.apwd, 'СПП %': r.spp, 'Цена зкз': r.finished_price,
-    })))
-    ws['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 12 }]
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'tag-dates')
-    XLSX.writeFile(wb, `tag-${id}-dates.xlsx`)
   },
 }

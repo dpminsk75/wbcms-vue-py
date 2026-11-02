@@ -6,7 +6,7 @@
       </div>
       <div class="col-md-10">
         <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
-          <h1 class="h4 mb-2 mb-md-0">Новые карточки</h1>
+          <h1 class="page-title mb-2 mb-md-0">Новые карточки</h1>
           <span class="badge bg-secondary" style="font-size:13px">Найдено: {{ rows.length }}</span>
         </div>
 

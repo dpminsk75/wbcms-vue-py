@@ -1,12 +1,51 @@
-/* page-tag-margin.css — чанк TagMarginPage. Каркас как top-products, таблица — shared MarginTable. */
-.page-tag-margin {
-  font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  max-width: 98%;
-  margin: 0px auto;
+/* page-tag-margin.css — /tag/margin (Маржа по тегу): облаво тегов, поля отчёта
+   в строке дат, состояние загрузки. Таблица — общий MarginTable.
+   Только токены темы. */
+
+/* ---------- облаво тегов ---------- */
+.page-tag-margin__cloud { margin-bottom: 14px; }
+
+/* ---------- поля страницы — в одну горизонталь с датами ---------- */
+.page-tag-margin__fields {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+/* ширина поля — фиксированная: .wb-select тянется на 100% и иначе
+   занимает всю строку фильтра */
+.page-tag-margin__fields .wb-field { width: 240px; }
+/* высота селекта и чипа — как у полей дат (38px) */
+.page-tag-margin__fields .wb-select,
+.page-tag-margin__stock { height: 38px; }
+.page-tag-margin__hint {
+  color: var(--ink-muted);
+  font-size: calc(11.5px * var(--fs));
 }
 
-.page-tag-margin__filter-card {
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+/* ---------- состояние загрузки / ошибки ---------- */
+.page-tag-margin__state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--ink-muted);
+}
+.page-tag-margin__state--bad {
+  color: var(--bad-deep);
+  background: var(--bad-tint);
+}
+
+/* спиннер отчёта — на токенах (bootstrap spinner не в теме) */
+.page-tag-margin__spin {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--brand);
+  animation: page-tag-margin__spin .7s linear infinite;
+}
+@keyframes page-tag-margin__spin {
+  to { transform: rotate(360deg); }
 }
