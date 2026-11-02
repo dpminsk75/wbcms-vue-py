@@ -3,7 +3,8 @@
 План: `plans/2026-10-31_PLAN_local-images-cache.md`.
 
 Живёт внутри процесса FastAPI (как `feedback_review_service` / `phrase_miner_service`):
-тик раз в 10 минут, пауза/старт и ручной прогон — из интерфейса.
+тип раз в ~15 мин (не чаще фоновиков базы 900 с), при простое — экспонента до
+часа, пауза/старт и ручной прогон — из интерфейса.
 
 Две фазы:
   1. **Сбор** — обходим источники и качаем всё, чего ещё нет. Источники
@@ -45,6 +46,13 @@ GC_EVERY_HOURS = 24        # уборка — раз в сутки
 MAX_ATTEMPTS = 3           # попыток на строку в БД (строка уходит в ошибку после этого)
 BATCH_TIME_BUDGET = 300    # секунд на один батч скачивания: не тратим тик на сеть
 
+# Каденция фоновых воркеров (2026-11-02; см. phrase_miner_service): база 900 с,
+# смещения 0/300/600 между фразами/отзывами/картинками, простой — экспонента
+# до раз в час. Интервал из настроек остаётся, но не меньше базы.
+POLL_BASE_S = 900.0
+IDLE_BACKOFF_CAP = 3600.0
+START_OFFSET_S = 600.0     # смещение тиков: фразы 0, отзывы +300, картинки +600
+
 _started = False
 _task: asyncio.Task | None = None
 _manual_task: asyncio.Task | None = None
@@ -55,6 +63,7 @@ _last_tick: str | None = None
 _last_error: str | None = None
 _last_result: dict = {}
 _schema_checked = False
+_idle_streak = 0  # тиков «ни одного события» подряд (для экспоненциального простоя)
 # тик и ручной прогон не должны идти одновременно: они пишут в одни и те же
 # строки wb_images → deadlock (1213) при пересечении по ключу
 _run_lock = asyncio.Lock()
@@ -159,14 +168,14 @@ async def _manual(limit: int) -> None:
 
 async def _loop() -> None:
     """Основной цикл: сбой не убивает задачу — пишем в журнал и продолжаем."""
-    global _last_tick, _last_error, _last_result
+    global _last_tick, _last_error, _last_result, _idle_streak
+    await asyncio.sleep(START_OFFSET_S)  # смещение тиков: фразы 0, отзывы +300, картинки +600
     while True:
-        wait = 600.0
         try:
             from backend.database import SessionLocal
             async with SessionLocal() as db:
                 settings = await svc.get_settings(db)
-                wait = float(settings.get("interval_sec") or 600)
+                base = max(float(settings.get("interval_sec") or 600), POLL_BASE_S)
                 if _paused:
                     wait = 30.0
                 else:
@@ -174,6 +183,16 @@ async def _loop() -> None:
                         result = await _tick(db, settings)
                         _last_tick = datetime.now().isoformat(timespec="seconds")
                         _last_result = result
+                        if any(result.get(k) for k in ("events", "downloaded", "swept", "removed")):
+                            # тик что-то сделал → к базовому интервалу
+                            _idle_streak = 0
+                            wait = base
+                        else:
+                            # ни событий, ни скачиваний, ни обхода: простой
+                            # base → ×2 → … до max(base, 1 час)
+                            wait = min(base * (2 ** _idle_streak),
+                                       max(base, IDLE_BACKOFF_CAP))
+                            _idle_streak += 1
                 await db.commit()
         except Exception as exc:
             _last_error = f"{type(exc).__name__}: {exc}"

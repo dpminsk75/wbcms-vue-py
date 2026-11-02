@@ -40,6 +40,7 @@ from backend.services import llm_balance
 from backend.services import llm_quota
 from backend.services import openrouter_service as llm
 from backend.services import llm_provider
+from backend.services.competitor_content import DESC_MIN_LEN as MIN_DESC_LEN
 from backend.services.competitors_newcard_service import (
     DEFAULT_PHRASES_PROMPT,
     PHRASES_TASK_SUFFIX,
@@ -54,13 +55,18 @@ log = logging.getLogger("wbcms.phrase_miner")
 
 # --- константы (согласовано в чате 2026-10-25) ---
 SCENARIO = "newcard_phrases_miner"  # имя сценария в ai_log / «Затраты ИИ»
-MIN_DESC_LEN = 50                   # как DESC_MIN_LEN в competitors_newcard_service
+# как DESC_MIN_LEN в competitors_newcard_service — общий порог:
 CALL_PAUSE = 8.0                    # пауза между вызовами LLM, с
 REST_EVERY = 20                     # после стольких карточек подряд — отдых
 REST_SECS = 120.0                   # длительность отдыха, с
 WATCH_WINDOW_H = 24                 # приоритетное окно «из SEO-мониторинга», ч
-REFILL_INTERVAL = 300.0             # как часто пополняем очередь, с
-IDLE_SLEEP = 60.0                   # пауза при пустой очереди / пропуске, с
+REFILL_INTERVAL = 300.0             # как часто пополняем очередь при непустой pending, с
+# Каденция фоновых воркеров (2026-11-02): базовый полл 900 с, смещения между
+# сервисами 0/300/600 (фразы/отзывы/картинки), простой — экспонента до раз в час.
+POLL_BASE_S = 900.0                 # базовая пауза между «проверками», с
+IDLE_BACKOFF_CAP = 3600.0           # потолок простоя (нечего делать) — раз в час
+BLOCKED_SLEEP_S = 300.0             # есть дела, но все на бэкоффе/паузе — проверяем раньше
+START_OFFSET_S = 0.0                # тик фраз идёт первым (отзывы +300, картинки +600)
 PAIR_FILL_LIMIT = 200               # максимум пар за одно пополнение
 ERROR_FAILS = 2                     # неудач подряд → отложить дело
 ERROR_HOURS = 1                     # …на этот срок, ч
@@ -112,6 +118,7 @@ _paused = False
 _current: dict | None = None  # {competitor_nm_id, company_id, source_nm_id, since}
 _last_refill = 0.0
 _last_error: dict | None = None  # {msg, ts}
+_idle_streak = 0  # «пустых» проверок подряд (для экспоненциального простоя)
 
 
 def is_running() -> bool:
@@ -198,6 +205,17 @@ async def refill(db: AsyncSession) -> int:
           AND q.processed_at >= DATE_SUB(NOW(), INTERVAL :win HOUR)
           AND CHAR_LENGTH(COALESCE(d.description,'')) >= :minlen
           AND COALESCE(d.is_resale, 0) = 0   -- ресейл: разбирать нечего
+          AND NOT EXISTS (
+              -- уже в очереди с этим же ключом → повторно не вставляем: INSERT
+              -- IGNORE сам молча пропустит дубль, но asyncmy-fetchит MySQL
+              -- warnings (SHOW WARNINGS) и печатает их в журнал → спам
+              SELECT 1 FROM wb_phrase_miner_queue mq
+              WHERE mq.source_nm_id = c.source_nm_id
+                AND mq.competitor_nm_id = c.nm_id
+                AND mq.content_hash = MD5(CONCAT_WS('\n', d.nm_id,
+                                                    COALESCE(d.title,''),
+                                                    COALESCE(d.description,'')))
+          )
         LIMIT :lim
     """), {"win": WATCH_WINDOW_H, "minlen": MIN_DESC_LEN, "lim": PAIR_FILL_LIMIT})
     added += r.rowcount or 0
@@ -209,28 +227,39 @@ async def refill(db: AsyncSession) -> int:
           (company_id, source_nm_id, competitor_nm_id, content_hash, priority, status)
         SELECT x.company_id, x.source_nm_id, x.nm_id, x.h, 2, 'pending'
         FROM (
-            -- DISTINCT обязателен: у конкурента бывает несколько строк в
-            -- wb_competitor_cards (разные query_phrase) → в одном INSERT
-            -- появлялись одинаковые ключи (source_nm_id, competitor_nm_id,
-            -- content_hash), и MySQL 8 отдавал 1062 «Duplicate entry» даже с
-            -- INSERT IGNORE (дубликаты ВНУТРИ одного набора не гасятся) —
-            -- весь батч наполнения падал (спам в журнале, очередь не пополнялась).
-            SELECT DISTINCT w.company_id AS company_id, c.source_nm_id, c.nm_id,
+            -- GROUP BY по точному уникальному ключу (source_nm_id, competitor_nm_id,
+            -- content_hash): у конкурента бывает несколько строк в
+            -- wb_competitor_cards (разные query_phrase) → прежний DISTINCT
+            -- оставлял пары с ОДИНАКОВЫМ ключом → MySQL 8 отдавал 1062
+            -- «Duplicate entry» на INSERT IGNORE (asyncmy fetchит их и
+            -- печатает в журнал). company_id у нашей карточки один (PK nmID).
+            SELECT w.company_id AS company_id, c.source_nm_id, c.nm_id,
                    MD5(CONCAT_WS('\n', d.nm_id, COALESCE(d.title,''),
                                  COALESCE(d.description,''))) AS h,
-                   COALESCE(d.full_collected_at, d.collected_at) AS fc
+                   MAX(COALESCE(d.full_collected_at, d.collected_at)) AS fc
             FROM wbcards w
             JOIN wb_competitor_cards c ON c.source_nm_id = w.nmID
             JOIN wb_competitor_details d ON d.nm_id = c.nm_id
             WHERE CHAR_LENGTH(COALESCE(d.description,'')) >= :minlen
               AND w.company_id IS NOT NULL
               AND COALESCE(d.is_resale, 0) = 0   -- ресейл: разбирать нечего
+            GROUP BY w.company_id, c.source_nm_id, c.nm_id, h
         ) x
         WHERE NOT EXISTS (
             SELECT 1 FROM wb_competitor_phrase_comp pc
             WHERE pc.source_nm_id = x.source_nm_id
               AND pc.competitor_nm_id = x.nm_id
               AND pc.content_hash = x.h
+        )
+          AND NOT EXISTS (
+            -- уже в очереди (статус значения не имеет — зависшие/ошибки
+            -- реанимирует _claim_next): без этой проверки каждый тик refill
+            -- повторно вставлял pending-пары, пока LLM не отработает, и на
+            -- каждую попытку MySQL давал 1062-warning (спам в журнале)
+            SELECT 1 FROM wb_phrase_miner_queue mq
+            WHERE mq.source_nm_id = x.source_nm_id
+              AND mq.competitor_nm_id = x.nm_id
+              AND mq.content_hash = x.h
         )
         ORDER BY x.fc DESC
         LIMIT :lim
@@ -538,7 +567,7 @@ async def _process(db: AsyncSession, job: dict) -> dict:
 
 async def _tick(db: AsyncSession) -> tuple[float, bool]:
     """Один шаг цикла → (пауза до следующего шага, с, сделано ли дело)."""
-    global _last_refill, _last_error
+    global _last_refill, _last_error, _idle_streak
     if not await _tables_ready(db):
         return 300.0, False
     if await _manual_run_active(db):
@@ -550,6 +579,9 @@ async def _tick(db: AsyncSession) -> tuple[float, bool]:
         "SELECT COUNT(*) FROM wb_phrase_miner_queue WHERE status='pending'"
     ))).first()
     pending = int(row[0]) if row else 0
+    # Refill — он же «проба», когда пусто: поллы теперь редкие (≥900 с), звеним
+    # на каждом; при непустой pending — не чаще REFILL_INTERVAL, чтобы не дёргать
+    # тяжёлый джойн в рабочем темпе (дело за дело идёт каждые CALL_PAUSE сек).
     if pending == 0 or (time.monotonic() - _last_refill) >= REFILL_INTERVAL:
         try:
             added = await refill(db)
@@ -564,7 +596,17 @@ async def _tick(db: AsyncSession) -> tuple[float, bool]:
     job = await _claim_next(db)
     if not job:
         _current = None
-        return IDLE_SLEEP, False
+        if pending > 0:
+            # дела в очереди есть, но все заблокированы (бэкофф после ошибок /
+            # пауза «нет токенов»): паузы могут истечь в любой момент —
+            # проверяем заметно раньше простоя
+            _idle_streak = 0
+            return BLOCKED_SLEEP_S, False
+        # очередь пуста (refill выше ничего не добавил): экспоненциальный простой
+        # 900 → 1800 → 3600 (раз в час), любая найденная работа сбрасывает
+        wait = min(POLL_BASE_S * (2 ** _idle_streak), IDLE_BACKOFF_CAP)
+        _idle_streak += 1
+        return wait, False
     # Остаток лимита у провайдера (тот же ключ, что у разбора отзывов): мало —
     # дело возвращаем в очередь и встаём на паузу до сброса окна.
     jcid = int(job.get("company_id") or 0)
@@ -581,10 +623,12 @@ async def _tick(db: AsyncSession) -> tuple[float, bool]:
                        competitor_nm_id=job.get("competitor_nm_id"),
                        queue_id=job.get("id"))
             _current = None
-            return IDLE_SLEEP, False
+            _idle_streak = 0
+            return BLOCKED_SLEEP_S, False
     try:
         res = await _process(db, job)
         _last_error = None  # прошлый сбой отработали
+        _idle_streak = 0
         return CALL_PAUSE, bool(res.get("done"))
     except Exception as exc:
         await db.rollback()
@@ -611,8 +655,9 @@ async def _tick(db: AsyncSession) -> tuple[float, bool]:
 async def _loop() -> None:
     """Основной цикл воркера: сбой не убивает задачу — пишем и продолжаем."""
     done_since_rest = 0
+    await asyncio.sleep(START_OFFSET_S)  # смещение тиков: фразы 0, отзывы +300, картинки +600
     while True:
-        wait = IDLE_SLEEP
+        wait = POLL_BASE_S
         try:
             async with SessionLocal() as db:
                 if _paused:
@@ -636,7 +681,7 @@ async def _loop() -> None:
             except Exception:
                 pass
             wait = 30.0
-        await asyncio.sleep(wait or IDLE_SLEEP)
+        await asyncio.sleep(wait or POLL_BASE_S)
 
 
 # --- данные для страницы (роутер) ---

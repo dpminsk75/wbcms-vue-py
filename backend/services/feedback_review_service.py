@@ -39,8 +39,14 @@ SCENARIO = "feedback_review"
 # Промпт разбора отзыва — ТОЛЬКО из настроек компании.
 PROMPT_FIELD = "feedback_review_prompt"
 
-# Пауза между тиками цикла (секунды) и хвост журнала, который не подчищаем.
-IDLE_SLEEP = 60
+# Пауза между тиками цикла (каденция фоновых воркеров 2026-11-02: база 900 с,
+# смещения 0/300/600 между фразами/отзывами/картинками, простой — экспонента
+# до раз в час) и хвост журнала, который не подчищаем.
+POLL_BASE_S = 900.0        # базовая пауза между тиками
+BACKLOG_SLEEP_S = 60.0     # батч разобран целиком — доразбираем остаток раньше базы
+IDLE_BACKOFF_CAP = 3600.0  # потолок простоя (нечего разбирать) — раз в час
+START_OFFSET_S = 300.0     # смещение тиков: фразы 0, отзывы +300, картинки +600
+FATAL_SLEEP_S = 300.0      # глобальная проблема (нет промпта/моделей) — не долбимся
 LOG_KEEP = 200
 
 _MAX_TEXT = 1200       # символов текста отзыва в промпт
@@ -116,6 +122,7 @@ _paused = False
 _log_tail = 0
 _manual_task: asyncio.Task | None = None
 _manual_company: int | None = None
+_idle_streak = 0  # пустых тиков подряд (для экспоненциального простоя)
 
 
 def manual_running() -> bool:
@@ -129,7 +136,7 @@ def status_flags(company_id: int | None = None) -> dict:
     return {
         "running": bool(_started and _task is not None and not _task.done()),
         "paused": _paused,
-        "interval_sec": IDLE_SLEEP,
+        "interval_sec": POLL_BASE_S,
         "balance_paused": bal["paused"],
         "balance_pause_until": bal["until"],
         "balance_pause_left_sec": bal["left_sec"],
@@ -206,6 +213,7 @@ async def _tick(db: AsyncSession) -> tuple[float, int]:
         ORDER BY id
     """))).mappings().all()
     done = 0
+    full_batch = False  # хоть у одной компании взяли батч целиком (в очереди ещё остались)
     for comp in companies:
         cid = int(comp["id"])
         if llm_balance.is_paused(cid):
@@ -232,6 +240,8 @@ async def _tick(db: AsyncSession) -> tuple[float, int]:
         svc = FeedbackReviewService(db, company_id=cid)
         st = await svc.review_pending(limit=batch)
         done += st["ok"]
+        if st["taken"] >= batch:
+            full_batch = True
         if st.get("balance_error"):
             # паузу уже поставил review_one (журнал пишет он) — идём к следующей компании
             continue
@@ -243,14 +253,27 @@ async def _tick(db: AsyncSession) -> tuple[float, int]:
             await _log(db, "error", f"цикл остановлен: {st['fatal']}",
                        action="fatal", company_id=cid)
             # глобальная проблема (нет промпта/моделей) — не долбимся
-            return IDLE_SLEEP, done
-    return IDLE_SLEEP, done
+            return FATAL_SLEEP_S, done
+    if full_batch:
+        # пачка большая, разобрали не до конца — доразбираем раньше базы,
+        # не растягивая backlog на 900-сетку (и не растя простой)
+        _idle_streak = 0
+        return BACKLOG_SLEEP_S, done
+    if done:
+        # работа была — на следующей проверке увидим, остались ли ещё отзывы
+        _idle_streak = 0
+        return POLL_BASE_S, done
+    # нечего разбирать: экспоненциальный простой 900 → 1800 → 3600 (раз в час)
+    wait = min(POLL_BASE_S * (2 ** _idle_streak), IDLE_BACKOFF_CAP)
+    _idle_streak += 1
+    return wait, done
 
 
 async def _loop() -> None:
     """Основной цикл: сбой не убивает задачу — пишем в журнал и продолжаем."""
+    await asyncio.sleep(START_OFFSET_S)  # смещение тиков: фразы 0, отзывы +300, картинки +600
     while True:
-        wait = IDLE_SLEEP
+        wait = POLL_BASE_S
         try:
             from backend.database import SessionLocal
             async with SessionLocal() as db:
@@ -270,7 +293,7 @@ async def _loop() -> None:
             except Exception:
                 pass
             wait = 30.0
-        await asyncio.sleep(wait or IDLE_SLEEP)
+        await asyncio.sleep(wait or POLL_BASE_S)
 
 
 class FeedbackReviewService:

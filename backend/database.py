@@ -51,6 +51,19 @@ if not _slow_sql_log.handlers:      # uvicorn корневой logger не на�
     _slow_sql_log.addHandler(_h)
 _slow_sql_log.setLevel(logging.INFO)
 
+# --- MySQL-warnings драйвера asyncmy ------------------------------------------
+# asyncmy на каждый стейтмент с warnings (например «Duplicate entry» на
+# INSERT IGNORE) делает SHOW WARNINGS и печатает их через logger.warning
+# (cursors.pyx, `_show_warnings`). Логгер «asyncmy» без хендлеров → срабатывает
+# logging.lastResort → голые строки без контекста и времени в journald (спам
+# «Duplicate entry '...' for key 'wb_phrase_miner_queue.uq_pmq'»). NullHandler
+# у логгера = lastResort больше не включается. Источник таких дубликатов в
+# refill() устранён в phrase_miner_service.py — это предохранитель на прочие
+# driver-warnings (truncation и т.п.).
+_am_log = logging.getLogger("asyncmy")
+if not _am_log.handlers:
+    _am_log.addHandler(logging.NullHandler())
+
 
 @event.listens_for(engine.sync_engine, "before_cursor_execute")
 def _slow_sql_start(conn, cursor, statement, parameters, context, executemany):

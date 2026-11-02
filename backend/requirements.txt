@@ -6,3 +6,5 @@ python-dotenv
 PyJWT
 bcrypt
 cryptography
+# Пережатие фото WB в WebP (робот локального кэша изображений)
+Pillow>=10
