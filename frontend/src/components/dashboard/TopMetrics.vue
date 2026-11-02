@@ -184,7 +184,7 @@
         </div>
       </div>
     </div>
-    <FinancePopup v-if="finPop" :kind="finPop.kind" :date-from="finPop.dateFrom" :date-to="finPop.dateTo" @close="finPop = null" />
+    <FinancePopup v-if="finPop" :kind="finPop.kind" :date-from="finPop.dateFrom" :date-to="finPop.dateTo" :total="finPop.kind === 'udr'" @close="finPop = null" />
   </div>
 </template>
 
@@ -232,9 +232,12 @@ const commission = computed(() => num(kpi.value.total_commission))
 const acquiring = computed(() => num(kpi.value.total_acquiring_fee))
 const delivery = computed(() => num(kpi.value.total_delivery))
 const adv = computed(() => num(kpi.value.total_adv))
+const otziv = computed(() => num(kpi.value.total_otziv))
 const storage = computed(() => num(kpi.value.total_storage_fee))
 const cashback = computed(() => num(kpi.value.total_cashback))
-const restExp = computed(() => expenses.value - commission.value - acquiring.value - delivery.value - adv.value - storage.value - cashback.value)
+// «Остальные» = всё, чего нет отдельной строкой (приёмка, штрафы, прочие удержания).
+// Реклама и отзывы вычтены: они сидят внутри f_deduction, а в отчёте — отдельные колонки.
+const restExp = computed(() => expenses.value - commission.value - acquiring.value - delivery.value - adv.value - otziv.value - storage.value - cashback.value)
 const avgCheck = computed(() => (orders.value ? sales.value / orders.value : 0))
 const retail = computed(() => num(kpi.value.total_retail_amount))
 const sppAvg = computed(() => num(kpi.value.total_spp_avg))
@@ -244,8 +247,9 @@ const pctStr = (v: number) => {
   return `${pct1((v / sales.value) * 100)}%`
 }
 // Доли у заголовков блоков 2–3 — от базы «расходы + к оплате» (в сумме 100%).
-// От выручки нельзя: в legacy-формуле total_expenses дважды считает f_otziv/f_adv
-// (они уже сидят внутри f_deduction), а net_profit уже за вычетом возвратов.
+// От выручки нельзя: net_profit уже за вычетом возвратов.
+// total_expenses — сумма непересекающихся статей: f_deduction уже включает
+// f_otziv/f_adv, поэтому они не прибавляются повторно.
 const pct1 = (x: number) => new Intl.NumberFormat('ru-RU',{minimumFractionDigits:1,maximumFractionDigits:1}).format(x)
 const headBase = computed(() => expenses.value + netProfit.value)
 const headPct = (v: number) => {
@@ -269,6 +273,7 @@ const expSegs = computed(() => [
   { label: 'Эквайринг', w: wExp(acquiring.value), color: '#3b82f6' },
   { label: 'Логистика', w: wExp(delivery.value), color: '#5bc0de' },
   { label: 'Реклама', w: wExp(adv.value), color: '#8a2be0' },
+  { label: 'Отзывы', w: wExp(otziv.value), color: '#16a085' },
   { label: 'Хранение', w: wExp(storage.value), color: '#e3c766' },
   { label: 'Кешбэк', w: wExp(cashback.value), color: '#e0525c' },
   { label: 'Остальные', w: wExp(restExp.value), color: '#9aa0a8' },
@@ -278,6 +283,7 @@ const expRows = computed(() => [
   { label: 'Эквайринг', val: `${fmt(acquiring.value)} ₽`, pct: pctStr(acquiring.value), color: '#3b82f6' },
   { label: 'Логистика', val: `${fmt(delivery.value)} ₽`, pct: pctStr(delivery.value), color: '#5bc0de' },
   { label: 'Реклама', val: `${fmt(adv.value)} ₽`, pct: pctStr(adv.value), color: '#8a2be0' },
+  { label: 'Отзывы', val: `${fmt(otziv.value)} ₽`, pct: pctStr(otziv.value), color: '#16a085' },
   { label: 'Хранение', val: `${fmt(storage.value)} ₽`, pct: pctStr(storage.value), color: '#e3c766' },
   { label: 'Кешбэк', val: `${fmt(cashback.value)} ₽`, pct: pctStr(cashback.value), color: '#e0525c' },
   { label: 'Остальные', val: `${fmt(restExp.value)} ₽`, pct: pctStr(restExp.value), color: '#9aa0a8' },
@@ -386,9 +392,10 @@ const dayView = computed(() => {
   const acquiring = n(k.total_acquiring_fee)
   const delivery = n(k.total_delivery)
   const advv = n(k.total_adv)
+  const otzivv = n(k.total_otziv)
   const storage = n(k.total_storage_fee)
   const cashback = n(k.total_cashback)
-  const restExp = expenses - commission - acquiring - delivery - advv - storage - cashback
+  const restExp = expenses - commission - acquiring - delivery - advv - otzivv - storage - cashback
   const penalty = n(k.total_penalty)
   const deduction = n(k.total_deduction)
   const acceptance = n(k.total_acceptance)
@@ -415,6 +422,7 @@ const dayView = computed(() => {
       { label: 'Эквайринг', w: wE(acquiring), color: '#3b82f6' },
       { label: 'Логистика', w: wE(delivery), color: '#5bc0de' },
       { label: 'Реклама', w: wE(advv), color: '#8a2be0' },
+      { label: 'Отзывы', w: wE(otzivv), color: '#16a085' },
       { label: 'Хранение', w: wE(storage), color: '#e3c766' },
       { label: 'Кешбэк', w: wE(cashback), color: '#e0525c' },
       { label: 'Остальные', w: wE(restExp), color: '#9aa0a8' },
@@ -424,6 +432,7 @@ const dayView = computed(() => {
       { label: 'Эквайринг', val: `${fmt(acquiring)} ₽`, pct: dPctStr(acquiring), color: '#3b82f6' },
       { label: 'Логистика', val: `${fmt(delivery)} ₽`, pct: dPctStr(delivery), color: '#5bc0de' },
       { label: 'Реклама', val: `${fmt(advv)} ₽`, pct: dPctStr(advv), color: '#8a2be0', popup: 'adv' },
+      { label: 'Отзывы', val: `${fmt(otzivv)} ₽`, pct: dPctStr(otzivv), color: '#16a085' },
       { label: 'Хранение', val: `${fmt(storage)} ₽`, pct: dPctStr(storage), color: '#e3c766', popup: 'storage' },
       { label: 'Кешбэк', val: `${fmt(cashback)} ₽`, pct: dPctStr(cashback), color: '#e0525c' },
       { label: 'Остальные', val: `${fmt(restExp)} ₽`, pct: dPctStr(restExp), color: '#9aa0a8' },

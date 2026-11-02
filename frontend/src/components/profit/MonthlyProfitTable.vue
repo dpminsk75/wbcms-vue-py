@@ -27,7 +27,7 @@
               <th class="num">Логистика</th>
               <th class="num">Хранение</th>
               <th class="num">Штрафы</th>
-              <th class="num">Удержан.</th>
+              <th class="num" title="Прочие удержания — без рекламы и отзывов (они отдельными колонками)">Удержан.</th>
               <th class="num">Отзывы</th>
               <th class="num">Реклама</th>
               <th class="num">Кэшбек</th>
@@ -51,7 +51,7 @@
               <td class="num">{{ fmt0(totals.f_delivery) }}</td>
               <td class="num">{{ fmt0(totals.f_storage_fee) }}</td>
               <td class="num">{{ fmt0(totals.f_penalty) }}</td>
-              <td class="num">{{ fmt0(totals.f_deduction) }}</td>
+              <td class="num">{{ fmt0(totals.f_deduction_rest) }}</td>
               <td class="num">{{ fmt0(totals.f_otziv) }}</td>
               <td class="num">{{ fmt0(totals.f_adv) }}</td>
               <td class="num">{{ fmt0(totals.f_cashback) }}</td>
@@ -88,8 +88,8 @@
                 <template v-else>{{ fmt0(r.f_penalty) }}</template>
               </td>
               <td class="num t-neg">
-                <button v-if="num(r.f_deduction)" class="wb-cell-link" title="Детализация удержаний" @click="openPop('udr', r.month)">{{ fmt0(r.f_deduction) }}</button>
-                <template v-else>{{ fmt0(r.f_deduction) }}</template>
+                <button v-if="num(r.f_deduction_rest)" class="wb-cell-link" title="Детализация удержаний" @click="openPop('udr', r.month)">{{ fmt0(r.f_deduction_rest) }}</button>
+                <template v-else>{{ fmt0(r.f_deduction_rest) }}</template>
               </td>
               <td class="num t-pos">
                 <button v-if="num(r.f_otziv)" class="wb-cell-link" title="Детализация отзывов" @click="openPop('feedback', r.month)">{{ fmt0(r.f_otziv) }}</button>
@@ -172,7 +172,7 @@ const totals = computed(()=>{
     qnt: sum('qnt'), amount: sum('amount'), commission: sum('commission'),
     f_acquiring_fee: sum('f_acquiring_fee'), f_acceptance: sum('f_acceptance'),
     f_delivery: sum('f_delivery'), f_storage_fee: sum('f_storage_fee'),
-    f_penalty: sum('f_penalty'), f_deduction: sum('f_deduction'),
+    f_penalty: sum('f_penalty'), f_deduction_rest: sum('f_deduction_rest'),
     f_otziv: sum('f_otziv'), f_adv: sum('f_adv'), f_cashback: sum('f_cashback'),
     net_profit: sum('net_profit'), total_nds: sum('total_nds'), total_cost: sum('total_cost'),
     profit_before_tax: sum('profit_before_tax'), tax_amount: sum('tax_amount'), clean_margin: sum('clean_margin'),

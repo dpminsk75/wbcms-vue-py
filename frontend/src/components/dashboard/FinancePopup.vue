@@ -25,6 +25,10 @@
           <input type="checkbox" v-model="paidOnly" /> Только платные
         </label>
         <div v-if="kind === 'feedback'" class="page-dashboard__popup-note">Суммы в строке «Отзывы» — удержания WB из детализации, здесь — отзывы покупателей (стоимость — только у платных).</div>
+        <div v-if="kind === 'udr'" class="page-dashboard__popup-note">
+          Удержания разбиты на три части. В статью «Удержан.» отчёта входят только прочие удержания —
+          реклама и отзывы учтены в своих колонках, поэтому показаны отдельно.
+        </div>
         <div class="page-dashboard__popup-stats">
           <div class="page-dashboard__popup-stat">
             <div class="page-dashboard__popup-stat-val" :style="{ color: meta.color }">{{ statMain }}</div>
@@ -35,8 +39,40 @@
             <div class="page-dashboard__popup-stat-cap">{{ statSecondCap }}</div>
           </div>
         </div>
-        <div v-if="truncated" class="page-dashboard__popup-trunc">Показаны первые {{ payload.limit }} записей из {{ totalCount }}</div>
-        <div class="page-dashboard__popup-tablewrap">
+        <div v-if="truncated && kind !== 'udr'" class="page-dashboard__popup-trunc">Показаны первые {{ payload.limit }} записей из {{ totalCount }}</div>
+        <!-- Удержания: три части — прочие (в сумму ячейки), реклама и отзывы (отдельно). -->
+        <div v-if="kind === 'udr'">
+          <div v-for="g in udrSections" :key="g.key" class="page-dashboard__popup-group">
+            <div class="d-flex align-items-baseline gap-2 mb-1">
+              <span class="page-dashboard__popup-group-title">{{ g.title }}</span>
+              <span class="page-dashboard__popup-group-sum">{{ fmt2(g.sum) }} ₽</span>
+              <span class="page-dashboard__popup-group-count ms-auto">{{ g.count }} записей</span>
+            </div>
+            <div class="page-dashboard__popup-note">{{ g.note }}</div>
+            <div v-if="g.items.length < g.count" class="page-dashboard__popup-trunc">
+              Показаны первые {{ g.items.length }} записей из {{ g.count }}
+            </div>
+            <div class="page-dashboard__popup-tablewrap">
+              <table class="table table-bordered table-hover mb-0 page-dashboard__popup-table">
+                <thead>
+                  <tr>
+                    <th v-for="c in columns" :key="c" class="page-dashboard__popup-th">{{ c }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="!g.items.length">
+                    <td :colspan="columns.length" class="page-dashboard__popup-empty">Записей нет.</td>
+                  </tr>
+                  <tr v-for="(r, i) in g.items" :key="i">
+                    <td v-for="c in cols" :key="c.k" :class="c.cls">{{ cell(r, c.k) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <!-- Остальные статьи (штрафы, реклама, приёмка, …) — одна таблица. -->
+        <div v-else class="page-dashboard__popup-tablewrap">
           <table class="table table-bordered table-hover mb-0 page-dashboard__popup-table">
             <thead>
               <tr>
@@ -67,7 +103,14 @@ import { useDraggable } from '@/composables/useDraggable'
 
 export type FinancePopupKind = 'shf' | 'udr' | 'feedback' | 'storage' | 'acceptance' | 'adv' | 'logistics'
 
-const props = defineProps<{ kind: FinancePopupKind, dateFrom: string, dateTo: string }>()
+const props = withDefaults(defineProps<{
+  kind: FinancePopupKind
+  dateFrom: string
+  dateTo: string
+  /** kind='udr': показывать ВСЕ удержания (реклама+отзывы+прочие) — для попапа
+   *  карточки дашборда. Из ячейки таблицы — только «прочие» (= ячейка). */
+  total?: boolean
+}>(), { total: false })
 const emit = defineEmits<{ close: [] }>()
 
 const auth = useAuthStore()
@@ -114,22 +157,49 @@ const rows = computed(() => ((payload.value?.items || []) as any[]))
 const totalCount = computed(() => Number(payload.value?.total_count ?? payload.value?.stats?.total_feedbacks ?? rows.value.length) || 0)
 const truncated = computed(() => !!payload.value?.limit && totalCount.value > (payload.value.limit as number))
 
+/** Удержания: три части — прочие (в сумму ячейки «Удержан.»), реклама и отзывы
+ *  (учтены в своих колонках отчёта, поэтому показаны отдельно). */
+const udrSections = computed(() => {
+  const p = payload.value as any
+  const sep = (p?.separate || {}) as any
+  const g = (key: string, title: string, note: string, src: any) => ({
+    key, title, note,
+    sum: Number(src?.sum) || 0,
+    count: Number(src?.count) || 0,
+    items: (src?.items || []) as any[],
+  })
+  return [
+    g('rest', 'Прочие удержания', 'Входит в статью «Удержан.» отчёта', { sum: p?.total_sum, count: p?.total_count, items: p?.items }),
+    g('adv', 'Реклама', 'Учтено в колонке «Реклама» отчёта', sep.adv),
+    g('otziv', 'Отзывы', 'Учтено в колонке «Отзывы» отчёта', sep.otziv),
+  ]
+})
+
 const statMain = computed(() => {
   const p = payload.value
   if (!p) return ''
   if (props.kind === 'feedback') return fmt0(p.stats?.total_feedbacks)
-  return `${fmt2(p.total_sum)} ₽`
+  // kind='udr': total=true — все удержания (карточка дашборда), иначе прочие (= ячейка).
+  const v = props.kind === 'udr' && props.total ? p.all_sum : p.total_sum
+  return `${fmt2(v)} ₽`
 })
-const statMainCap = computed(() => (props.kind === 'feedback' ? 'Всего отзывов' : 'Общая сумма'))
+const statMainCap = computed(() => {
+  if (props.kind === 'feedback') return 'Всего отзывов'
+  if (props.kind === 'udr') return props.total ? 'Общая сумма удержаний' : 'В сумму ячейки «Удержан.»'
+  return 'Общая сумма'
+})
 const statSecond = computed(() => {
   const p = payload.value
   if (!p) return ''
-  if (props.kind === 'shf' || props.kind === 'udr' || props.kind === 'acceptance' || props.kind === 'adv' || props.kind === 'logistics') return fmt0(p.total_count)
+  if (props.kind === 'shf' || props.kind === 'udr' || props.kind === 'acceptance' || props.kind === 'adv' || props.kind === 'logistics') {
+    return fmt0(props.kind === 'udr' && props.total ? (p.all_count ?? p.total_count) : p.total_count)
+  }
   if (props.kind === 'feedback') return new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(p.stats?.avg_valuation) || 0)
   return ''
 })
 const statSecondCap = computed(() => {
   if (props.kind === 'feedback') return 'Средняя оценка'
+  if (props.kind === 'udr' && !props.total) return 'Записей в сумме'
   return 'Количество записей'
 })
 
@@ -232,6 +302,10 @@ const { boxStyle, dragHandlers } = useDraggable(boxRef)
 .page-dashboard__popup-stat-cap { font-size: 11px; text-transform: uppercase; color: #7f8c8d; margin-top: 4px; font-weight: 600; }
 .page-dashboard__popup-trunc { font-size: 12px; color: #7f8c8d; margin-bottom: 8px; }
 .page-dashboard__popup-tablewrap { overflow-x: auto; max-height: 60vh; overflow-y: auto; }
+.page-dashboard__popup-group { margin-top: 14px; padding-top: 10px; border-top: 1px solid #e3e7eb; }
+.page-dashboard__popup-group-title { font-size: 13px; font-weight: 700; color: #34495e; }
+.page-dashboard__popup-group-sum { font-size: 13px; font-weight: 700; color: #2c3e50; }
+.page-dashboard__popup-group-count { font-size: 11px; color: #7f8c8d; }
 .page-dashboard__popup-table { font-size: 12px; }
 .page-dashboard__popup-th { background: #f8f9fa; color: #34495e; padding: 8px; vertical-align: middle; }
 .page-dashboard__popup-table td { padding: 8px; vertical-align: middle; }

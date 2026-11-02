@@ -113,6 +113,7 @@ const YEAR_LABEL_COLORS = ['#7f8c8d', '#16806a', '#21618c', '#b9770e', '#c0392b'
 // снизу «Ком. WB» → … → сверху «Кэшбек».
 // ВАЖНО: f_adv и f_otziv — подмножества f_deduction (вычет по бонусу), поэтому
 // «Удержания» = deduction − adv − otziv, чтобы не считать дважды.
+// То же значение отдаёт бэк в поле f_deduction_rest (одна формула на оба экрана).
 const COST_TYPES = [
   { key: 'commission', name: 'Ком. WB', color: '#2980b9', labelColor: '#21618c' },
   { key: 'acquiring', name: 'Эквайринг', color: '#5499c6', labelColor: '#21618c' },
@@ -267,7 +268,7 @@ const costValue = (year: number, mm: number, key: string): number => {
   const adv = n('f_adv')
   const otziv = n('f_otziv')
   // Часть удержаний, не попавшая в рекламу/отзывы (иначе двойной счёт).
-  const restDeduction = n('f_deduction') - adv - otziv
+  const restDeduction = n('f_deduction_rest')
   switch (key) {
     case 'commission': return n('commission')
     case 'acquiring': return n('f_acquiring_fee')

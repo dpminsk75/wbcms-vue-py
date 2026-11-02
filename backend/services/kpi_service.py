@@ -1,4 +1,8 @@
-"""Замена SiteController.php:189 actionDashboardTopMetrics — agg_daily_summary 30д"""
+"""Замена SiteController.php:189 actionDashboardTopMetrics — agg_daily_summary 30д
+
+total_expenses = сумма НЕПЕРЕСЕКАЮЩИХСЯ статей: f_deduction уже включает
+f_otziv/f_adv (это подмножества удержаний), поэтому они не прибавляются повторно.
+"""
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +21,7 @@ class KpiService:
         sql = text(f"""
             SELECT sdate as date, SUM(amount) as amount, SUM(net_profit) as net_profit,
                     SUM(qnt) as qnt,
-                    SUM(commission)+SUM(f_acquiring_fee)+SUM(f_acceptance)+SUM(f_delivery)+SUM(f_storage_fee)+SUM(f_penalty)+SUM(f_deduction)+SUM(f_otziv)+SUM(f_adv)+SUM(f_cashback) as total_expenses,
+                    SUM(commission)+SUM(f_acquiring_fee)+SUM(f_acceptance)+SUM(f_delivery)+SUM(f_storage_fee)+SUM(f_penalty)+SUM(f_deduction)+SUM(f_cashback) as total_expenses,
                     SUM(f_nds) as total_nds, SUM(f_cost_price) as total_cost,
                     (SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price))*0.07 as tax_amount,
                     (SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price)) - GREATEST(0, SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price))*0.07 as clean_margin
@@ -31,8 +35,8 @@ class KpiService:
     async def get_30d_kpi(self):
         sql = text(f"""
             SELECT SUM(amount) as total_sales_rub, SUM(`return`) as total_return_rub, SUM(net_profit) as total_profit_rub,
-                    SUM(commission)+SUM(f_acquiring_fee)+SUM(f_acceptance)+SUM(f_delivery)+SUM(f_storage_fee)+SUM(f_penalty)+SUM(f_deduction)+SUM(f_otziv)+SUM(f_adv)+SUM(f_cashback) as total_expenses,
-                    SUM(f_delivery) as total_delivery, SUM(f_adv) as total_adv, SUM(f_cashback) as total_cashback,
+                    SUM(commission)+SUM(f_acquiring_fee)+SUM(f_acceptance)+SUM(f_delivery)+SUM(f_storage_fee)+SUM(f_penalty)+SUM(f_deduction)+SUM(f_cashback) as total_expenses,
+                    SUM(f_delivery) as total_delivery, SUM(f_adv) as total_adv, SUM(f_otziv) as total_otziv, SUM(f_cashback) as total_cashback,
                     SUM(commission) as total_commission, SUM(f_storage_fee) as total_storage_fee,
                     SUM(f_acquiring_fee) as total_acquiring_fee,
                     SUM(sales_qnt) as total_sales_qnt, SUM(return_qnt) as total_return_qnt,
@@ -57,7 +61,7 @@ class KpiService:
         """Детализация TopMetrics за один день (sdate = :d). Тот же SELECT, что get_30d_kpi."""
         sql = text(f"""
             SELECT SUM(amount) as total_sales_rub, SUM(`return`) as total_return_rub, SUM(net_profit) as total_profit_rub,
-                    SUM(commission)+SUM(f_acquiring_fee)+SUM(f_acceptance)+SUM(f_delivery)+SUM(f_storage_fee)+SUM(f_penalty)+SUM(f_deduction)+SUM(f_otziv)+SUM(f_adv)+SUM(f_cashback) as total_expenses,
+                    SUM(commission)+SUM(f_acquiring_fee)+SUM(f_acceptance)+SUM(f_delivery)+SUM(f_storage_fee)+SUM(f_penalty)+SUM(f_deduction)+SUM(f_cashback) as total_expenses,
                     SUM(f_delivery) as total_delivery, SUM(f_adv) as total_adv, SUM(f_cashback) as total_cashback,
                     SUM(commission) as total_commission, SUM(f_storage_fee) as total_storage_fee,
                     SUM(f_acquiring_fee) as total_acquiring_fee,
@@ -93,6 +97,7 @@ class KpiService:
                    SUM(commission) as commission, SUM(f_acquiring_fee) as f_acquiring_fee, SUM(f_acceptance) as f_acceptance,
                    SUM(f_delivery) as f_delivery, SUM(f_storage_fee) as f_storage_fee, SUM(f_penalty) as f_penalty,
                    SUM(f_deduction) as f_deduction, SUM(f_otziv) as f_otziv, SUM(f_adv) as f_adv, SUM(f_cashback) as f_cashback,
+                   SUM(f_deduction)-SUM(f_adv)-SUM(f_otziv) as f_deduction_rest,
                    SUM(net_profit) as net_profit, SUM(f_nds) as total_nds, SUM(f_cost_price) as total_cost,
                    SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price) as profit_before_tax,
                    GREATEST(0, SUM(net_profit)-SUM(f_nds)-SUM(f_cost_price))*0.07 as tax_amount,
