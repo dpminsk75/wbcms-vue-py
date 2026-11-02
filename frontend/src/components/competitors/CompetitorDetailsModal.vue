@@ -11,6 +11,7 @@
           <button type="button" class="comp-details__copy-btn" title="Скопировать ссылку на карточку (WB)" @click="copyUrl">
             <i class="bi" :class="copiedUrl ? 'bi-check2' : 'bi-box-arrow-up-right'"></i>
           </button>
+          <span v-if="copyError" class="text-danger small">{{ copyError }}</span>
         </h5>
         <button type="button" class="btn-close" aria-label="Закрыть" @click="$emit('close')"></button>
       </div>
@@ -30,34 +31,37 @@
           <button
             type="button"
             class="btn btn-sm btn-outline-primary"
-            :disabled="collectBusy || !props.ourNmId || !props.phrase"
-            :title="!props.ourNmId || !props.phrase ? 'Нет контекста (карточка/фраза) для очереди мониторинга' : 'Добавить фразу в очередь «SEO мониторинг» — сбор идёт фоном'"
+            :disabled="collectBusy || !monitorNm || !monitorPhrase"
+            :title="!monitorNm || !monitorPhrase
+              ? 'Нет контекста (наша карточка + фраза) для очереди мониторинга'
+              : 'Поставить нашу карточку и фразу в очередь «SEO мониторинг» — сбор идёт фоном'"
             @click="collectInExtension"
           >
             <i class="bi" :class="collectDone ? 'bi-check2' : collectErr ? 'bi-arrow-repeat' : 'bi-search'"></i>
-            {{ collectDone ? 'В мониторинге' : 'Собрать в расширении' }}
+            {{ collectDone ? 'В мониторинге' : 'Поставить фразу в мониторинг' }}
           </button>
           <span v-if="collectErr" class="text-danger small">{{ collectErr }}</span>
+          <span v-else-if="monitorNm && monitorPhrase" class="text-muted small">
+            карточка {{ monitorNm }} + фраза «{{ monitorPhrase }}»
+          </span>
         </div>
 
         <div class="comp-details__top">
           <div class="comp-details__gallery">
-            <img
-              :src="activeImage || '/images/no-photo.png'"
-              :alt="item.title || ''"
-              class="comp-details__main"
-            />
+            <div class="comp-details__main">
+              <CardPhoto :src="activeImage" :alt="item.title || ''" fit="contain" />
+            </div>
             <div v-if="item.images.length > 1" class="comp-details__thumbs">
-              <img
+              <button
                 v-for="(img, i) in item.images"
                 :key="img"
-                :src="img"
-                alt=""
+                type="button"
                 class="comp-details__thumb"
                 :class="{ 'is-active': i === imageIdx }"
-                loading="lazy"
                 @click="imageIdx = i"
-              />
+              >
+                <CardPhoto :src="img" alt="" fit="cover" />
+              </button>
             </div>
             <div v-if="!item.images.length && item.preview_image" class="comp-details__preview-note">
               превью из выдачи — галерея ещё не собрана
@@ -103,15 +107,69 @@
               <span v-if="item.questions">вопросов: {{ item.questions }}</span>
             </div>
 
-            <div class="comp-details__links">
-              <a :href="wbUrl" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-box-arrow-up-right"></i> Открыть на WB
-              </a>
-              <button type="button" class="btn btn-sm btn-outline-secondary" @click="copyLink">
-                <i class="bi" :class="copied ? 'bi-check2' : 'bi-clipboard'"></i>
-                {{ copied ? 'Скопировано' : 'Скопировать ссылку' }}
+            <!-- Описание и характеристики — в шапке, сразу после рейтинга -->
+            <div v-if="item.description" class="comp-details__brief">
+              <div class="comp-details__brief-head">
+                <span>Описание</span>
+                <span class="badge bg-light text-dark">{{ descLen }}</span>
+              </div>
+              <div class="comp-details__brief-text" :class="{ 'is-clamp': !descOpen }">{{ item.description }}</div>
+              <button v-if="descLen > 220" class="comp-details__brief-more" @click="descOpen = !descOpen">
+                {{ descOpen ? 'свернуть' : 'развернуть' }}
               </button>
-              <span v-if="copyError" class="text-danger small w-100">{{ copyError }}</span>
+            </div>
+
+            <div v-if="item.characteristics.length" class="comp-details__brief">
+              <div class="comp-details__brief-head">
+                <span>Характеристики</span>
+                <span class="badge bg-light text-dark">{{ item.characteristics.length }}</span>
+              </div>
+              <table class="comp-details__chars">
+                <tbody>
+                  <tr v-for="(c, i) in shownChars" :key="i">
+                    <th>{{ c.name || '—' }}</th>
+                    <td>{{ charValue(c.value) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <button
+                v-if="item.characteristics.length > CHAR_PREVIEW"
+                class="comp-details__brief-more"
+                @click="charsOpen = !charsOpen"
+              >{{ charsOpen ? 'свернуть' : `показать все ${item.characteristics.length}` }}</button>
+            </div>
+
+            <div v-if="recommendations.length" class="comp-details__brief">
+              <div class="comp-details__brief-head">
+                <span>Рекомендации WB</span>
+                <span class="badge bg-light text-dark">{{ recommendations.length }}</span>
+              </div>
+              <div class="comp-details__recs">
+                <a
+                  v-for="r in shownRecs"
+                  :key="r.nm_id"
+                  :href="`https://www.wildberries.ru/catalog/${r.nm_id}/detail.aspx`"
+                  target="_blank"
+                  rel="noopener"
+                  class="comp-details__rec"
+                >
+                  <span class="comp-details__rec-photo">
+                    <CardPhoto :src="r.photo" :alt="r.title || ''" fit="cover" />
+                  </span>
+                  <span class="comp-details__rec-body">
+                    <span class="comp-details__rec-title">{{ r.title || `Карточка ${r.nm_id}` }}</span>
+                    <span class="comp-details__rec-meta">
+                      <template v-if="r.price">{{ money(r.price) }} · </template>
+                      <span class="comp-details__rec-nm">{{ r.nm_id }}</span>
+                    </span>
+                  </span>
+                </a>
+              </div>
+              <button
+                v-if="recommendations.length > REC_PREVIEW"
+                class="comp-details__brief-more"
+                @click="recsOpen = !recsOpen"
+              >{{ recsOpen ? 'свернуть' : `показать все ${recommendations.length}` }}</button>
             </div>
 
             <div class="comp-details__dates">
@@ -155,7 +213,7 @@
         <ul class="nav nav-tabs comp-details__tabs">
           <li class="nav-item">
             <button type="button" class="nav-link" :class="{ active: tab === 'card' }" @click="tab = 'card'">
-              Карточка
+              История
             </button>
           </li>
           <li class="nav-item">
@@ -175,30 +233,8 @@
           </li>
         </ul>
 
-        <!-- Карточка -->
+        <!-- История -->
         <template v-if="tab === 'card'">
-          <section class="comp-details__section">
-            <h6 class="comp-details__section-title">
-              Привязан к нашим карточкам
-              <span class="badge bg-light text-dark">{{ item.attached_cnt || 0 }}</span>
-            </h6>
-            <div v-if="item.attached_to?.length" class="comp-details__attached">
-              <a
-                v-for="a in item.attached_to"
-                :key="a.nm_id"
-                :href="`/wb/detail?nm_id=${a.nm_id}`"
-                target="_blank"
-                rel="noopener"
-                class="comp-details__attached-item"
-              >
-                <span class="comp-details__attached-nm">{{ a.nm_id }}</span>
-                <span class="comp-details__attached-title">{{ a.title || '—' }}</span>
-                <span v-if="a.source" class="badge bg-secondary">{{ sourceLabel(a.source) }}</span>
-              </a>
-            </div>
-            <div v-else class="text-muted small">Не привязан ни к одной нашей карточке.</div>
-          </section>
-
           <section class="comp-details__section">
             <h6 class="comp-details__section-title">Изменение цены</h6>
             <div v-if="priceChanges.length > 1" class="comp-details__price-hist">
@@ -224,6 +260,9 @@
                 </tbody>
               </table>
             </div>
+            <div v-else-if="!priceChanges.length" class="text-muted small">
+              Истории цены ещё нет — карточка не пересобиралась.
+            </div>
             <div v-else class="text-muted small">
               Цена не менялась<template v-if="item.price">: {{ money(item.price) }}</template>.
             </div>
@@ -231,23 +270,63 @@
 
           <section class="comp-details__section">
             <h6 class="comp-details__section-title">
-              Описание
-              <span class="badge bg-light text-dark">{{ descLen }} симв.</span>
+              Привязка
+              <span class="badge bg-light text-dark">{{ attachedRows.length }}</span>
             </h6>
-            <div v-if="item.description" class="comp-details__desc">{{ item.description }}</div>
-            <div v-else class="text-muted small">Описание ещё не собрано — откройте карточку на WB с расширением.</div>
-          </section>
-
-          <section v-if="item.characteristics.length" class="comp-details__section">
-            <h6 class="comp-details__section-title">Характеристики <span class="badge bg-light text-dark">{{ item.characteristics.length }}</span></h6>
-            <table class="comp-details__chars">
+            <table v-if="attachedRows.length" class="comp-details__attach-table">
+              <thead>
+                <tr>
+                  <th>Наша карточка</th>
+                  <th class="comp-details__num">Источник</th>
+                  <th class="comp-details__num">Фраз в выдаче</th>
+                  <th class="comp-details__num">Лучшая позиция</th>
+                </tr>
+              </thead>
               <tbody>
-                <tr v-for="(c, i) in item.characteristics" :key="i">
-                  <th>{{ c.name || '—' }}</th>
-                  <td>{{ charValue(c.value) }}</td>
+                <tr v-for="a in attachedRows" :key="a.nm_id">
+                  <td>
+                    <div class="comp-details__attach-card">
+                      <a :href="`/wb/detail?nm_id=${a.nm_id}`" target="_blank" rel="noopener" class="comp-details__attach-nm">
+                        {{ a.nm_id }}
+                      </a>
+                      <span class="comp-details__attach-title">{{ a.title || '—' }}</span>
+                    </div>
+                  </td>
+                  <td class="comp-details__num">
+                    <span class="badge" :class="sourceBadge(a.source)">{{ sourceLabel(a.source) }}</span>
+                  </td>
+                  <td class="comp-details__num">{{ a.phrases_cnt || '—' }}</td>
+                  <td class="comp-details__num">{{ a.best_pos ?? '—' }}</td>
                 </tr>
               </tbody>
             </table>
+            <div v-else class="text-muted small">
+              Не привязан ни к одной нашей карточке.
+            </div>
+            <div class="comp-details__note">
+              <b>Источник</b> — как привязали: карточка — добавили руками в рабочем месте карточки,
+              аналог — скопировали с другой нашей карточки, сбор — привязали в «Собранных карточках»
+              или в пуле подбора, поиск — расширение нашло в выдаче по нашей фразе (или привязку отвязали).
+            </div>
+          </section>
+
+          <section class="comp-details__section">
+            <h6 class="comp-details__section-title">Сбор</h6>
+            <div class="comp-details__capture">
+              <span class="comp-details__capture-row">
+                <i class="bi" :class="capture.captured_by_us ? 'bi-check2' : 'bi-dash'"></i>
+                собрали мы: {{ capture.captured_by_us ? fmt(capture.last_seen_at) : 'нет' }}
+              </span>
+              <span v-if="capture.first_seen_at" class="comp-details__capture-row">
+                <i class="bi bi-clock-history"></i> впервые увидели: {{ fmt(capture.first_seen_at) }}
+              </span>
+              <span class="comp-details__capture-row">
+                <i class="bi bi-people"></i> собрали компании: {{ capture.companies_cnt || 0 }}
+              </span>
+              <span v-if="capture.is_hidden" class="comp-details__capture-row comp-details__capture-warn">
+                <i class="bi bi-exclamation-triangle"></i> исключено из сбора — расширение больше не обновляет
+              </span>
+            </div>
           </section>
         </template>
 
@@ -265,11 +344,11 @@
               <span v-if="shelfCounts.best_pos != null">лучшая: <b>{{ shelfCounts.best_pos }}</b></span>
             </div>
 
-            <h6 class="comp-details__subtitle">Где стоит он</h6>
+            <h6 class="comp-details__subtitle">Где стоит он — в полках наших карточек</h6>
             <table v-if="shelvesAsItem.length" class="comp-details__chars comp-details__grid">
               <thead>
                 <tr>
-                  <th>Якорь</th>
+                  <th>Наша карточка (якорь)</th>
                   <th>Полка</th>
                   <th class="text-center">Поз.</th>
                   <th class="text-center">Цена</th>
@@ -291,9 +370,9 @@
                 </tr>
               </tbody>
             </table>
-            <div v-else class="text-muted small">Пока не встречался в полках.</div>
+            <div v-else class="text-muted small">В полках наших карточек не встречался.</div>
 
-            <h6 class="comp-details__subtitle">Его полки — что WB рекомендует рядом</h6>
+            <h6 class="comp-details__subtitle">Его полки — что WB рекомендует рядом с ним</h6>
             <table v-if="shelvesAsAnchor.length" class="comp-details__chars comp-details__grid">
               <thead>
                 <tr>
@@ -301,6 +380,7 @@
                   <th class="text-center">Позиций</th>
                   <th class="text-center">Ср. цена</th>
                   <th class="text-center">Обновлено</th>
+                  <th>Мы в полке</th>
                 </tr>
               </thead>
               <tbody>
@@ -312,6 +392,16 @@
                   <td class="text-center">{{ s.items_cnt ?? '—' }}</td>
                   <td class="text-center">{{ s.avg_price ? money(s.avg_price) : '—' }}</td>
                   <td class="text-center">{{ fmtD(s.last_seen_at) }}</td>
+                  <td>
+                    <template v-if="s.our_cards?.length">
+                      <span class="badge badge--ok">мы</span>
+                      <a :href="`/wb/detail?nm_id=${s.our_cards[0].nm_id}`" target="_blank" rel="noopener">
+                        {{ s.our_cards[0].nm_id }}
+                      </a>
+                      <span v-if="s.our_cards[0].position != null" class="text-muted small">поз. {{ s.our_cards[0].position }}</span>
+                    </template>
+                    <span v-else class="text-muted">—</span>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -320,7 +410,7 @@
 
           <section v-if="positionsList.length" class="comp-details__section">
             <h6 class="comp-details__section-title">
-              В выдаче по фразам
+              В выдаче по нашим фразам
               <span class="badge bg-light text-dark">{{ positionsList.length }}</span>
             </h6>
             <div class="comp-details__stats">
@@ -436,12 +526,12 @@
             <h6 class="comp-details__section-title">
               Клипы карточки
               <span class="badge bg-light text-dark">{{ clipsCount }}</span>
-              <span v-if="clipsAuthors" class="comp-details__phrase-src">{{ clipsAuthors }} авторов</span>
+              <span v-if="clipsAuthors" class="comp-details__note-inline">{{ clipsAuthors }} авторов</span>
             </h6>
             <div v-if="clips.length" class="comp-details__clips">
               <div v-for="c in clips" :key="c.clip_id" class="comp-details__clip">
                 <a :href="clipUrl(c)" target="_blank" rel="noopener" class="comp-details__clip-thumb">
-                  <img :src="c.preview_url || '/images/no-photo.png'" alt="" class="comp-details__clip-img" loading="lazy" />
+                  <CardPhoto :src="c.preview_url" :alt="c.description || c.name || ''" fit="cover" />
                 </a>
                 <div class="comp-details__clip-body">
                   <a :href="clipUrl(c)" target="_blank" rel="noopener" class="comp-details__clip-title">
@@ -474,21 +564,23 @@
         <template v-else>
           <section class="comp-details__section">
             <h6 class="comp-details__section-title">
-              Фразы конкурента
+              Фразы из описания конкурента (ИИ-разбор)
               <span class="badge bg-light text-dark">{{ phraseRows.length }}</span>
-              <span v-if="phraseSources.length === 1" class="comp-details__phrase-src">
-                наша карточка: {{ phraseSources[0].nm_id }} — {{ phraseSources[0].title || '—' }}
+              <span class="comp-details__note-inline">
+                сведено в группы: {{ mergedCount }} · не сведено: {{ phraseRows.length - mergedCount }}
               </span>
             </h6>
+
             <table v-if="phraseRows.length" class="comp-details__phrase-table">
               <thead>
                 <tr>
                   <th>Фраза конкурента</th>
                   <th v-if="phraseSources.length > 1">Наша карточка</th>
-                  <th class="text-center" title="Сколько конкурентов используют эту группу формулировок">У конкурентов</th>
-                  <th class="text-center" title="Заказы в нашей базе поисковых запросов">Заказы</th>
-                  <th class="text-center">Источник</th>
-                  <th class="text-center">Выбрана</th>
+                  <th>Группа</th>
+                  <th class="comp-details__num">У конкурентов</th>
+                  <th class="comp-details__num">Заказы</th>
+                  <th class="comp-details__num">Источник</th>
+                  <th class="comp-details__num">Выбрана</th>
                 </tr>
               </thead>
               <tbody>
@@ -498,21 +590,27 @@
                   :class="{ 'is-selected': r.is_selected, 'is-in-db': r.in_db }"
                   :title="r.canon && r.canon !== r.phrase ? `в группе с «${r.canon}»` : ''"
                 >
-                  <td>{{ r.phrase }}</td>
+                  <td>
+                    {{ r.phrase }}
+                    <span v-if="!r.merged" class="badge badge--warn">не сведено</span>
+                  </td>
                   <td v-if="phraseSources.length > 1">{{ r.source_nm_id }}</td>
-                  <td class="text-center">{{ r.hit_cnt || '—' }}</td>
-                  <td class="text-center">{{ r.orders || '—' }}</td>
-                  <td class="text-center">
+                  <td class="comp-details__canon">{{ r.canon || '—' }}</td>
+                  <td class="comp-details__num">{{ r.merged ? (r.hit_cnt || '—') : '—' }}</td>
+                  <td class="comp-details__num">{{ r.orders || '—' }}</td>
+                  <td class="comp-details__num">
                     <span v-if="r.in_db" class="badge bg-success" title="Такая фраза есть в нашей базе — WB её отдаёт">в базе</span>
                     <span v-else class="badge bg-warning text-dark" title="Нет в нашей базе — новая">новая</span>
                   </td>
-                  <td class="text-center">
+                  <td class="comp-details__num">
                     <i v-if="r.is_selected" class="bi bi-check-circle-fill comp-details__ok"></i>
                   </td>
                 </tr>
               </tbody>
             </table>
-            <div v-else class="text-muted small">Фразы ещё не разобраны.</div>
+            <div v-else class="text-muted small">
+              Фразы ещё не разобраны — запустите разбор на карточке или в разделе «Разбор фраз (фон)».
+            </div>
           </section>
         </template>
       </template>
@@ -534,6 +632,7 @@ import {
 } from '../../api/competitorsNewcard'
 import { seoApi } from '../../api/seo'
 import { copyText } from '../../utils/clipboard'
+import CardPhoto from '../common/CardPhoto.vue'
 
 const props = defineProps<{
   open: boolean
@@ -542,7 +641,7 @@ const props = defineProps<{
   sourceNmId?: number | string | null
   /** Откуда грузить: captured (по умолчанию) или pick (пул §16). */
   scope?: 'captured' | 'pick'
-  /** Для «Собрать в расширении»: наша карточка + фраза выдачи (контекст страницы). */
+  /** Для «Поставить фразу в мониторинг»: наша карточка + фраза выдачи (контекст страницы). */
   ourNmId?: number | string | null
   phrase?: string | null
 }>()
@@ -550,14 +649,20 @@ defineEmits<{ (e: 'close'): void }>()
 
 type Tab = 'card' | 'behavior' | 'clips' | 'phrases'
 
+/** Сколько характеристик показываем до «показать все». */
+const CHAR_PREVIEW = 6
+/** Сколько рекомендаций показываем до «показать все». */
+const REC_PREVIEW = 4
+
 const item = ref<CompetitorDetail | null>(null)
 const loading = ref(false)
 const error = ref('')
 const copyError = ref('')
 const imageIdx = ref(0)
-const copied = ref(false)
 const tab = ref<Tab>('card')
-let copiedTimer: ReturnType<typeof setTimeout> | null = null
+const descOpen = ref(false)
+const charsOpen = ref(false)
+const recsOpen = ref(false)
 
 const activeImage = computed(() => item.value?.images?.[imageIdx.value] || item.value?.photo || '')
 const descLen = computed(() => (item.value?.description || '').length)
@@ -577,6 +682,23 @@ const top3Count = computed(() => positionsList.value.filter((p) => (p.last_posit
 const top10Count = computed(() => positionsList.value.filter((p) => (p.last_position ?? 99) <= 10).length)
 const wbUrl = computed(() => item.value?.url || `https://www.wildberries.ru/catalog/${props.nmId}/detail.aspx`)
 
+/** Привязки к нашим карточкам (единый источник — `wb_competitor_cards`). */
+const attachedRows = computed(() => item.value?.attached_to || [])
+/** Реестр сбора (`wb_competitor_capture`) — видимость, не привязка. */
+const capture = computed(() => item.value?.capture || {
+  captured_by_us: false, is_own: false, is_hidden: false,
+  first_seen_at: null, last_seen_at: null, companies_cnt: 0,
+})
+/** Рекомендации WB (что модель предлагает рядом с карточкой). */
+const recommendations = computed(() => item.value?.recommendations || [])
+const shownRecs = computed(() =>
+  (recsOpen.value ? recommendations.value : recommendations.value.slice(0, REC_PREVIEW)))
+/** Характеристики: первые CHAR_PREVIEW, дальше — по кнопке «показать все». */
+const shownChars = computed(() => {
+  const list = item.value?.characteristics || []
+  return charsOpen.value ? list : list.slice(0, CHAR_PREVIEW)
+})
+
 /** Частичные данные (нет полного сбор): найдено в wb_competitor_cards/position. */
 const isPartial = computed(() => item.value?.found === 'cards' || item.value?.found === 'position')
 
@@ -584,10 +706,23 @@ const collectBusy = ref(false)
 const collectDone = ref(false)
 const collectErr = ref('')
 
+/** Контекст для очереди мониторинга: наша карточка + фраза выдачи.
+ *  Если страница контекст не передала — берём из данных досье. */
+const monitorNm = computed(() => {
+  const fromPage = Number(props.ourNmId || 0)
+  if (fromPage) return fromPage
+  return Number(attachedRows.value[0]?.nm_id || 0)
+})
+const monitorPhrase = computed(() => {
+  const fromPage = String(props.phrase || '').trim()
+  if (fromPage) return fromPage
+  return String(positionsList.value[0]?.phrase || '').trim()
+})
+
 /** Фразу в очередь «SEO мониторинг»: сбор фоном расширением обновит выдачу и карточку. */
 async function collectInExtension() {
-  const ours = Number(props.ourNmId || 0)
-  const ph = String(props.phrase || '').trim()
+  const ours = Number(monitorNm.value || 0)
+  const ph = String(monitorPhrase.value || '')
   if (!ours || !ph) return
   collectBusy.value = true
   collectErr.value = ''
@@ -682,15 +817,41 @@ const compareRows = computed<CompareRow[]>(() => {
 function badgeClass(b: string): string {
   const t = String(b).toLowerCase()
   if (/ресейл|resale/.test(t)) return 'comp-details__badge--resale'
-  if (/распродаж|скидк|−|-/.test(t)) return 'bg-danger'
+  if (/распродаж|скидк|−/.test(t)) return 'bg-danger'
   if (/хорошая цена|кешбэк|выгодн/.test(t)) return 'bg-success'
   return 'bg-light text-dark'
+}
+
+/** Подписи источника привязки — «как привязали». */
+const SOURCE_LABELS: Record<string, string> = {
+  manual: 'карточка',
+  sibling: 'аналог',
+  capture: 'сбор',
+  search: 'поиск',
+}
+
+/** Класс бейджа источника (палитра Д — тон темы). */
+const SOURCE_BADGES: Record<string, string> = {
+  manual: 'badge--info',
+  sibling: 'badge--neutral',
+  capture: 'badge--ok',
+  search: 'badge--warn',
+}
+
+function sourceLabel(source?: string | null): string {
+  const s = String(source || '')
+  return SOURCE_LABELS[s] || s || '—'
+}
+
+function sourceBadge(source?: string | null): string {
+  return SOURCE_BADGES[String(source || '')] || 'badge--neutral'
 }
 
 interface PhraseRow {
   key: string
   phrase: string
   canon?: string | null
+  merged: boolean
   source_nm_id: number
   source_title?: string | null
   is_selected: boolean
@@ -699,12 +860,13 @@ interface PhraseRow {
   orders: number
 }
 
-/** Одна строка = одна исходная формулировка конкурента. */
+/** Одна строка = одна исходная формулировка конкурента (в т.ч. несведённая). */
 const phraseRows = computed<PhraseRow[]>(() =>
   (item.value?.phrases || []).map((p, i) => ({
     key: `${p.source_nm_id}:${p.phrase_id ?? `raw:${p.phrase}`}:${i}`,
     phrase: p.phrase,
     canon: p.canon || null,
+    merged: p.merged !== false && !!p.phrase_id,
     source_nm_id: p.source_nm_id,
     source_title: p.source_title || null,
     is_selected: !!p.is_selected,
@@ -713,6 +875,8 @@ const phraseRows = computed<PhraseRow[]>(() =>
     orders: Number(p.orders || 0),
   })),
 )
+
+const mergedCount = computed(() => phraseRows.value.filter((r) => r.merged).length)
 
 /** Наши карточки, к которым привязан конкурент (для шапки/колонки). */
 const phraseSources = computed<Array<{ nm_id: number; title?: string | null }>>(() => {
@@ -724,18 +888,6 @@ const phraseSources = computed<Array<{ nm_id: number; title?: string | null }>>(
   }
   return [...map.values()]
 })
-
-const SOURCE_LABELS: Record<string, string> = {
-  capture: 'собран',
-  search: 'поиск',
-  manual: 'вручную',
-  sibling: 'с карточки',
-}
-
-function sourceLabel(source?: string | null): string {
-  const s = String(source || '')
-  return SOURCE_LABELS[s] || s
-}
 
 function charValue(v: any): string {
   if (Array.isArray(v)) return v.join('; ')
@@ -829,17 +981,6 @@ function dur(v?: number | string | null): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
-async function copyLink() {
-  copyError.value = ''
-  if (!await copyText(wbUrl.value)) {
-    copyError.value = 'Не удалось скопировать ссылку'
-    return
-  }
-  copied.value = true
-  if (copiedTimer) clearTimeout(copiedTimer)
-  copiedTimer = setTimeout(() => { copied.value = false }, 1500)
-}
-
 async function load() {
   const id = Number(props.nmId || 0)
   if (!id) return
@@ -848,12 +989,14 @@ async function load() {
   copyError.value = ''
   item.value = null
   imageIdx.value = 0
-  copied.value = false
   copiedNm.value = false
   copiedUrl.value = false
   collectBusy.value = false
   collectDone.value = false
   collectErr.value = ''
+  descOpen.value = false
+  charsOpen.value = false
+  recsOpen.value = false
   tab.value = 'card'
   try {
     if (props.scope === 'pick') {
@@ -862,7 +1005,7 @@ async function load() {
       const source = Number(props.sourceNmId || 0)
       item.value = source
         ? await competitorsNewcardApi.competitorDetails(source, id)
-        : await competitorsNewcardApi.capturedDetails(id)
+        : await competitorsNewcardApi.capturedDetails(id, Number(props.ourNmId || 0) || null)
     }
   } catch (e: any) {
     error.value = e?.response?.data?.detail === 'details not collected'
@@ -900,62 +1043,45 @@ watch(
 .comp-details__partial-phrase { color: #8a6d3b; }
 .comp-details__title { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 8px; }
 .comp-details__top { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
-.comp-details__gallery { flex: 0 0 260px; width: 260px; }
+.comp-details__gallery { flex: 0 0 240px; width: 240px; }
+/* Фото — через CardPhoto (локальный кэш /api/img, заглушка сама). */
 .comp-details__main {
-  width: 100%; height: 340px; object-fit: contain; background: #f8f9fa;
-  border: 1px solid #e5e7eb; border-radius: 8px;
+  width: 100%; height: 210px; border: 1px solid #e5e7eb; border-radius: 8px;
+  background: #f8f9fa; overflow: hidden;
 }
 .comp-details__thumbs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .comp-details__thumb {
-  width: 44px; height: 56px; object-fit: cover; border: 2px solid transparent;
-  border-radius: 4px; cursor: pointer; background: #f8f9fa;
+  width: 40px; height: 52px; padding: 0; border: 2px solid transparent; border-radius: 4px;
+  cursor: pointer; background: #f8f9fa; overflow: hidden; line-height: 0;
 }
 .comp-details__thumb.is-active { border-color: #0d6efd; }
 .comp-details__preview-note { margin-top: 6px; font-size: 12px; color: #8a6d3b; }
-.comp-details__info { flex: 1; min-width: 280px; }
+.comp-details__info { flex: 1; min-width: 300px; }
 .comp-details__name { font-size: 18px; font-weight: 600; line-height: 1.3; }
 .comp-details__meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; font-size: 13px; color: #555; }
-.comp-details__price { margin-top: 14px; display: flex; align-items: baseline; gap: 10px; }
-.comp-details__sold-out { font-size: 13px; align-self: center; letter-spacing: .02em; }
+.comp-details__price { margin-top: 12px; display: flex; align-items: baseline; gap: 10px; }
 .comp-details__price-now { font-size: 24px; font-weight: 700; color: #2c3e50; }
 .comp-details__price-old { font-size: 15px; color: #999; text-decoration: line-through; }
-.comp-details__links { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
-.comp-details__dates { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; font-size: 12px; color: #777; }
-.comp-details__attached { display: flex; flex-direction: column; gap: 6px; }
-.comp-details__attached-item {
-  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
-  border: 1px solid #e5e7eb; border-radius: 6px; color: inherit; text-decoration: none;
-}
-.comp-details__attached-item:hover { border-color: #0d6efd; background: #f8fbff; }
-.comp-details__attached-nm { font-family: monospace; font-size: 12px; color: #0d6efd; white-space: nowrap; }
-.comp-details__attached-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.comp-details__section { border-top: 1px solid #eee; margin-top: 16px; padding-top: 12px; }
 .comp-details__badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-/* Ресейл (товар от частного лица) — мятный, как бейдж в карточке выдачи. */
-.comp-details__badge--resale {
-  background: #8bf7d0;
-  color: #063d2c;
-}
-.comp-details__section-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
-.comp-details__subtitle { font-size: 12px; font-weight: 600; color: #555; margin: 12px 0 6px; }
-.comp-details__stats { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: #555; margin-bottom: 8px; }
-.comp-details__chars { width: 100%; font-size: 13px; border-collapse: collapse; }
-.comp-details__chars th, .comp-details__chars td { padding: 4px 8px; border-bottom: 1px solid #f1f1f1; vertical-align: top; }
-.comp-details__chars th { width: 35%; text-align: left; color: #555; font-weight: 600; }
-.comp-details__grid th { width: auto; white-space: nowrap; }
-.comp-details__cell-sub { font-size: 11px; color: #888; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.comp-details__desc { white-space: pre-wrap; font-size: 13px; line-height: 1.55; color: #333; }
-.comp-details__price-table { width: 100%; font-size: 13px; border-collapse: collapse; }
-.comp-details__price-table th, .comp-details__price-table td { padding: 5px 8px; border-bottom: 1px solid #f1f1f1; text-align: left; }
-.comp-details__price-table th { font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: #888; font-weight: 600; }
-.comp-details__num { white-space: nowrap; }
-.comp-details__phrase-table { width: 100%; font-size: 13px; border-collapse: collapse; }
-.comp-details__phrase-table th, .comp-details__phrase-table td { padding: 4px 8px; border-bottom: 1px solid #f1f1f1; vertical-align: top; }
-.comp-details__phrase-table th { font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: #888; font-weight: 600; text-align: left; }
-.comp-details__phrase-table tbody tr.is-selected { background: #f2fbf6; }
-.comp-details__phrase-table tbody tr.is-in-db td:first-child { box-shadow: inset 3px 0 0 #2e7d32; }
-.comp-details__phrase-src { font-size: 12px; font-weight: 400; color: #6b7280; }
-.comp-details__ok { color: #2e7d32; }
+.comp-details__dates { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: #777; }
+
+/* Описание/характеристики/рекомендации — блоки в шапке */
+.comp-details__brief { margin-top: 12px; border: 1px solid #eceef0; border-radius: 8px; padding: 8px 10px; background: #fcfcfd; }
+.comp-details__brief-head { display: flex; align-items: center; gap: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: #888; font-weight: 600; margin-bottom: 4px; }
+.comp-details__brief-text { font-size: 12.5px; line-height: 1.5; color: #333; white-space: pre-wrap; }
+.comp-details__brief-text.is-clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.comp-details__brief-more { border: none; background: none; padding: 2px 0; font-size: 11.5px; color: #0d6efd; cursor: pointer; }
+.comp-details__chars { width: 100%; font-size: 12px; border-collapse: collapse; }
+.comp-details__chars th, .comp-details__chars td { padding: 3px 6px; border-bottom: 1px solid #f1f1f1; vertical-align: top; text-align: left; }
+.comp-details__chars th { width: 45%; color: #555; font-weight: 600; }
+.comp-details__recs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 6px; }
+.comp-details__rec { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 6px; color: inherit; text-decoration: none; background: #fff; }
+.comp-details__rec:hover { border-color: #0d6efd; background: #f8fbff; }
+.comp-details__rec-photo { flex: 0 0 34px; width: 34px; height: 44px; border-radius: 4px; background: #f1f3f5; overflow: hidden; }
+.comp-details__rec-body { min-width: 0; }
+.comp-details__rec-title { font-size: 12px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.comp-details__rec-meta { font-size: 11px; color: #888; margin-top: 3px; }
+.comp-details__rec-nm { font-family: monospace; font-size: 11px; color: #0d6efd; }
 
 /* §13.2 */
 .comp-details__chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
@@ -976,8 +1102,7 @@ watch(
   border-radius: 8px; color: inherit; text-decoration: none; background: #fff;
 }
 .comp-details__clip:hover { border-color: #0d6efd; background: #f8fbff; }
-.comp-details__clip-thumb { flex: 0 0 64px; }
-.comp-details__clip-img { width: 64px; height: 84px; object-fit: cover; border-radius: 6px; background: #f3f4f6; }
+.comp-details__clip-thumb { flex: 0 0 64px; width: 64px; height: 84px; border-radius: 6px; overflow: hidden; background: #f3f4f6; display: block; }
 .comp-details__clip-body { min-width: 0; }
 .comp-details__clip-title {
   font-size: 12px; line-height: 1.35; max-height: 48px; overflow: hidden;
@@ -988,4 +1113,49 @@ watch(
 .comp-details__clip-meta { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: 11px; color: #6b7280; margin-top: 4px; }
 .comp-details__clip-author { color: #0d6efd; text-decoration: none; }
 .comp-details__clip-author:hover { text-decoration: underline; }
+.comp-details__section { border-top: 1px solid #eee; margin-top: 16px; padding-top: 12px; }
+.comp-details__section-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.comp-details__subtitle { font-size: 12px; font-weight: 600; color: #555; margin: 12px 0 6px; }
+.comp-details__stats { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: #555; margin-bottom: 8px; }
+.comp-details__grid { width: 100%; font-size: 13px; border-collapse: collapse; }
+.comp-details__grid th, .comp-details__grid td { padding: 4px 8px; border-bottom: 1px solid #f1f1f1; vertical-align: top; }
+.comp-details__grid th { width: 35%; text-align: left; color: #555; font-weight: 600; }
+.comp-details__grid td.text-center, .comp-details__grid th.text-center { text-align: center; white-space: nowrap; }
+.comp-details__cell-sub { font-size: 11px; color: #888; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.comp-details__price-table { width: 100%; font-size: 13px; border-collapse: collapse; }
+.comp-details__price-table th, .comp-details__price-table td { padding: 5px 8px; border-bottom: 1px solid #f1f1f1; text-align: left; }
+.comp-details__price-table th { font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: #888; font-weight: 600; }
+.comp-details__num { white-space: nowrap; }
+.comp-details__num.text-center { text-align: center; }
+
+/* Привязка */
+.comp-details__attach-table { width: 100%; font-size: 13px; border-collapse: collapse; }
+.comp-details__attach-table th, .comp-details__attach-table td { padding: 5px 8px; border-bottom: 1px solid #f1f1f1; vertical-align: top; }
+.comp-details__attach-table th { font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: #888; font-weight: 600; text-align: left; }
+.comp-details__attach-table td.comp-details__num { text-align: center; white-space: nowrap; }
+.comp-details__attach-card { display: flex; align-items: baseline; gap: 8px; }
+.comp-details__attach-nm { font-family: monospace; font-size: 12px; color: #0d6efd; white-space: nowrap; }
+.comp-details__attach-title { color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
+.comp-details__note { font-size: 11.5px; color: #6b7280; margin-top: 6px; }
+.comp-details__note-inline { font-size: 12px; font-weight: 400; color: #6b7280; }
+
+/* Сбор */
+.comp-details__capture { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: #555; }
+.comp-details__capture-row { display: flex; align-items: center; gap: 6px; }
+.comp-details__capture-warn { color: #c2830b; }
+
+/* Фразы */
+.comp-details__phrase-table { width: 100%; font-size: 13px; border-collapse: collapse; }
+.comp-details__phrase-table th, .comp-details__phrase-table td { padding: 4px 8px; border-bottom: 1px solid #f1f1f1; vertical-align: top; }
+.comp-details__phrase-table th { font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: #888; font-weight: 600; text-align: left; }
+.comp-details__phrase-table td.comp-details__num { text-align: center; white-space: nowrap; }
+.comp-details__phrase-table tbody tr.is-selected { background: #f2fbf6; }
+.comp-details__phrase-table tbody tr.is-in-db td:first-child { box-shadow: inset 3px 0 0 #2e7d32; }
+.comp-details__canon { color: #6b7280; font-size: 12px; }
+.comp-details__ok { color: #2e7d32; }
+/* Ресейл (товар от частного лица) — мятный, как бейдж в карточке выдачи. */
+.comp-details__badge--resale {
+  background: #8bf7d0;
+  color: #063d2c;
+}
 </style>

@@ -237,7 +237,14 @@ export interface PickCard {
 export interface PickAttachedCard {
   nm_id: number
   title?: string | null
+  /** Источник привязки: «как привязали» (manual|sibling|capture|search). */
   source?: string | null
+  /** Все источники пары — приоритетный уже в `source`. */
+  sources?: string[]
+  /** Сколько фраз выдачи привязано к этой паре. */
+  phrases_cnt?: number
+  /** Лучшая позиция в выдаче по этой паре. */
+  best_pos?: number | null
 }
 
 export type PickMode = 'recommend' | 'competitors' | 'captured'
@@ -349,6 +356,8 @@ export interface CompetitorPhrase {
   phrase_id?: number | null
   phrase: string
   canon?: string | null
+  /** Формулировка сведена в группу (phrase_id заполнен). Не сведено — сырьё ИИ-разбора. */
+  merged?: boolean
   source_nm_id: number
   source_title?: string | null
   source_vendor_code?: string | null
@@ -362,6 +371,25 @@ export interface CompetitorPhrase {
   cards_cnt?: number
   model?: string | null
   created_at?: string | null
+}
+
+/** Рекомендации WB (что модель предлагает рядом с карточкой). */
+export interface CompetitorRecommendation {
+  nm_id: number
+  title?: string | null
+  price?: string | number | null
+  /** Фото: из рекомендации или из нашей базы (details/cards). */
+  photo?: string | null
+}
+
+/** Реестр сбора (`wb_competitor_capture`): видимость nm × компания, не привязка. */
+export interface CompetitorCaptureInfo {
+  captured_by_us?: boolean
+  is_own?: boolean
+  is_hidden?: boolean
+  first_seen_at?: string | null
+  last_seen_at?: string | null
+  companies_cnt?: number
 }
 
 export interface CompetitorDetail {
@@ -398,6 +426,8 @@ export interface CompetitorDetail {
   questions?: number | null
   full_collected_at?: string | null
   phrases?: CompetitorPhrase[]
+  recommendations?: CompetitorRecommendation[]
+  capture?: CompetitorCaptureInfo
   shelves?: CompetitorShelves
   clips?: CompetitorClip[]
   clips_cnt?: number
@@ -431,6 +461,9 @@ export interface CompetitorShelfAnchor {
   pages_loaded?: number | null
   is_partial?: boolean | number | null
   last_seen_at?: string | null
+  /** Наши карточки среди товаров этой полки. */
+  our_cards?: Array<{ nm_id: number; title?: string | null; position?: number | null }>
+  our_cnt?: number
 }
 
 export interface CompetitorShelves {
@@ -663,8 +696,9 @@ export const competitorsNewcardApi = {
     api.get(`/api/competitors/captured/${nm}/history`, { params: { limit } })
       .then((r) => r.data as { nm_id: number; items: CapturedHistoryItem[] }),
 
-  capturedDetails: (nm: number) =>
-    api.get(`/api/competitors/captured/${nm}/details`)
+  capturedDetails: (nm: number, ourNm?: number | null) =>
+    api.get(`/api/competitors/captured/${nm}/details`,
+      { params: ourNm ? { our_nm: ourNm } : {} })
       .then((r) => r.data as CompetitorDetail),
 
   attachCaptured: (nm: number, source_nm_id: number) =>
