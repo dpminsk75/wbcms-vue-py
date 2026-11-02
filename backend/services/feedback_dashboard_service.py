@@ -87,7 +87,7 @@ GROUP BY f.nmID
 """
 
 # Заказы по карточкам из куба agg_orders_daily_sku — как в /seo-watch
-# (watch_service.top_cards): нижняя граница по дате, без верхней, nmID > 0.
+# (seo_watch_service.top_cards): нижняя граница по дате, без верхней, nmID > 0.
 # Без JOIN с отзывами: отзывы и заказы считаются двумя отдельными проходами,
 # склейка — в Python. Так не теряется ни одна строка из-за плана запроса.
 SQL_ORDERS_BY_CARD = """

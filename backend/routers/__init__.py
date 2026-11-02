@@ -45,7 +45,7 @@ from .reports import router as reports_router
 from .ai_jobs import router as ai_jobs_router
 from .seo import router as seo_router
 from .seo_models import router as seo_models_router
-from .watch import router as watch_router
+from .seo_watch import router as seo_watch_router
 from .queue import router as queue_router
 from .phrase_miner import router as phrase_miner_router
 from .cms import router as cms_router
