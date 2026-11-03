@@ -2,10 +2,12 @@
  * Вкладки — чипы темы (.stab--line), блоки с таблицами — .tbl-card / .card__hd,
  * таблицы — общий MarginTable (.tbl).
  */
-.page-wb-profit__tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 16px; }
 
 /* Фильтр периода внутри карточки блока */
 .page-wb-profit__filter { padding: 14px; border-bottom: 1px solid var(--line); }
+
+/* Подменю раздела — контейнер темы (.wsp__sub), свои только отступы */
+.page-wb-profit__tabs { margin-top: 0; margin-bottom: 16px; }
 
 /* Предупреждения отчёта (линейки без себестоимости и т.п.) */
 .page-wb-profit__warnings { padding: 12px 14px 0; }

@@ -1,7 +1,7 @@
 <template>
   <div class="container-xxl page-companies">
     <div class="page-companies__head">
-      <h2 class="page-companies__title">Мои компании</h2>
+      <h1 class="page-companies__title">Мои компании</h1>
       <button v-if="canCreate" @click="openCreate = true" class="wb-btn-brand wb-btn-brand--lg">Создать компанию</button>
     </div>
 

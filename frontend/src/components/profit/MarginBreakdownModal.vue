@@ -49,13 +49,16 @@
       </div>
 
       <template v-else-if="data">
-        <ul class="nav nav-pills gap-1 margin-modal__tabs">
-          <li v-for="t in data.tabs" :key="t.key" class="nav-item">
-            <button class="nav-link" :class="{ active: activeKey === t.key }" @click="activeKey = t.key">
-              {{ t.label }}
-            </button>
-          </li>
-        </ul>
+        <nav class="wsp__sub margin-modal__tabs">
+          <button
+            v-for="t in data.tabs"
+            :key="t.key"
+            type="button"
+            class="stab stab--line"
+            :class="{ 'stab--on': activeKey === t.key }"
+            @click="activeKey = t.key"
+          >{{ t.label }}</button>
+        </nav>
 
         <div v-if="mismatch" class="alert alert-warning margin-modal__warn mb-2 py-1 px-2 small">
           Сумма по дням ({{ fmtMoney(mismatch.days) }} ₽) не совпадает с детализацией
@@ -338,7 +341,6 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 .margin-modal__campaign-select { max-width: 380px; font-size: 12px; }
 .margin-modal__state { margin: 0; }
 .margin-modal__tabs { margin-bottom: 10px; }
-.margin-modal__tabs .nav-link { font-size: 12px; padding: 4px 12px; border-radius: 6px; }
 .margin-modal__warn { font-size: 12px; }
 .margin-modal__totals { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
 .margin-modal__total { flex: 1 1 150px; border: 1px solid #e3e7eb; border-radius: 8px; padding: 8px 10px; }

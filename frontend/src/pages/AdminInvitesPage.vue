@@ -1,7 +1,7 @@
 <template>
   <div class="container-xxl page-admin-invites">
     <div class="page-admin-invites__head">
-      <h2 class="page-admin-invites__title">Инвайты</h2>
+      <h1 class="page-admin-invites__title">Инвайты</h1>
       <button @click="load" class="page-admin-invites__refresh">Обновить</button>
     </div>
     <div v-if="error" class="wb-error page-admin-invites__error">{{ error }}</div>

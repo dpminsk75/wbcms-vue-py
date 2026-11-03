@@ -1,6 +1,6 @@
 <template>
   <div class="container-xxl page-competitor">
-    <h2 class="page-competitor__title">Выбор фраз — nmID {{ nmId }}</h2>
+    <h1 class="page-competitor__title">Выбор фраз — nmID {{ nmId }}</h1>
     <p><router-link to="/competitor/index">← Конкуренты</router-link></p>
     <div v-if="error" class="wb-error">{{ error }}</div>
 

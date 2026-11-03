@@ -1,6 +1,6 @@
 <template>
   <div class="container-xxl page-ext-install">
-    <h2 class="page-ext-install__title">Установка расширения-сборщика</h2>
+    <h1 class="page-ext-install__title">Установка расширения-сборщика</h1>
     <p class="text-muted">Расширение живёт в вашем браузере и собирает карточки/выдачу WB (серверный сбор режет антибот). Ставит каждый сам — side-load, публикации в Store нет.</p>
 
     <div v-if="cid === null" class="alert alert-info">Выберите компанию в меню — токены и скачивание привязаны к ней. Статью читать можно уже сейчас.</div>

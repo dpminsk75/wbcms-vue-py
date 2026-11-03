@@ -1,7 +1,7 @@
 <template>
   <div class="container-xxl page-ai-usage">
     <div class="row mb-3">
-      <h2 class="page-ai-usage__title">Затраты ИИ</h2>
+      <h1 class="page-ai-usage__title">Затраты ИИ</h1>
     </div>
 
     <div class="row mb-3">

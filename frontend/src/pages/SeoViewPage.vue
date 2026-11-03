@@ -1,7 +1,7 @@
 <template>
   <div class="container-xxl page-seo">
     <div class="wb-workspace-head">
-      <h2 class="page-seo__title">SEO рекомендация #{{ id }}</h2>
+      <h1 class="page-seo__title">SEO рекомендация #{{ id }}</h1>
       <router-link :to="{ path: '/seo/index', query: { status: rec?.status || 'new' } }" class="btn btn-sm btn-outline-secondary">← К списку</router-link>
       <WbWorkspaceTabs active="seo" :tabs="WORKSPACE_TABS" />
     </div>

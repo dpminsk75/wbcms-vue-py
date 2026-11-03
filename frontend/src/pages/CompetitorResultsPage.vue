@@ -7,7 +7,7 @@
         <li class="breadcrumb-item active" aria-current="page">Результаты анализа</li>
       </ol>
     </nav>
-    <h2 class="page-competitor__title">Результаты анализа конкурентов</h2>
+    <h1 class="page-competitor__title">Результаты анализа конкурентов</h1>
     <div v-if="card" class="card page-competitor__own-card">
       <div class="card-body page-competitor__own-body">
         <img :src="card.photo || '/images/no-photo.png'" alt="" class="page-competitor__thumb page-competitor__thumb--lg" />

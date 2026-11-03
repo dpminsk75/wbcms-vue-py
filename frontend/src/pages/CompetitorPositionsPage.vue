@@ -3,15 +3,16 @@
     <!-- Шапка рабочего места: заголовок + меню рабочих мест (общий компонент темы).
          Локальные вкладки (По запросам / По нашим товарам / Ниши и реклама) — ниже. -->
     <WbWorkspaceHead title="Поисковые запросы" workspace-active="positions" />
-    <ul class="nav nav-pills page-positions__variants mb-3">
-      <li v-for="v in variants" :key="v.id" class="nav-item">
-        <button
-          class="nav-link"
-          :class="{ active: tab === v.id }"
-          @click="setTab(v.id)"
-        >{{ v.label }}</button>
-      </li>
-    </ul>
+    <nav class="wsp__sub page-positions__variants">
+      <button
+        v-for="v in variants"
+        :key="v.id"
+        type="button"
+        class="stab stab--line"
+        :class="{ 'stab--on': tab === v.id }"
+        @click="setTab(v.id)"
+      >{{ v.label }}</button>
+    </nav>
 
     <!-- Фильтры: компактно, как на рабочем месте FBS -->
     <div class="page-positions__filter-card mb-3">
@@ -393,23 +394,32 @@
 
     <!-- ================= ниши и реклама ================= -->
     <template v-else>
-      <ul class="nav nav-pills page-positions__variants mb-3">
-        <li class="nav-item">
-          <button class="nav-link" :class="{ active: nicheTab === 'niches' }" @click="setNicheTab('niches')">
-            Профиль ниш<span v-if="nichesTotal" class="page-positions__tab-count"> {{ nichesTotal }}</span>
-          </button>
-        </li>
-        <li class="nav-item">
-          <button class="nav-link" :class="{ active: nicheTab === 'ads' }" @click="setNicheTab('ads')">
-            Реклама<span v-if="adsTotal" class="page-positions__tab-count"> {{ adsTotal }}</span>
-          </button>
-        </li>
-        <li class="nav-item">
-          <button class="nav-link" :class="{ active: nicheTab === 'shelfs' }" @click="setNicheTab('shelfs')">
-            Полки<span v-if="adsTotal" class="page-positions__tab-count"> {{ adsTotal }}</span>
-          </button>
-        </li>
-      </ul>
+      <nav class="wsp__sub page-positions__variants">
+        <button
+          type="button"
+          class="stab stab--line"
+          :class="{ 'stab--on': nicheTab === 'niches' }"
+          @click="setNicheTab('niches')"
+        >
+          Профиль ниш<span v-if="nichesTotal" class="stab__count"> {{ nichesTotal }}</span>
+        </button>
+        <button
+          type="button"
+          class="stab stab--line"
+          :class="{ 'stab--on': nicheTab === 'ads' }"
+          @click="setNicheTab('ads')"
+        >
+          Реклама<span v-if="adsTotal" class="stab__count"> {{ adsTotal }}</span>
+        </button>
+        <button
+          type="button"
+          class="stab stab--line"
+          :class="{ 'stab--on': nicheTab === 'shelfs' }"
+          @click="setNicheTab('shelfs')"
+        >
+          Полки<span v-if="adsTotal" class="stab__count"> {{ adsTotal }}</span>
+        </button>
+      </nav>
 
       <!-- ---------- Профиль ниш ---------- -->
       <template v-if="nicheTab === 'niches'">

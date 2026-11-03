@@ -1,6 +1,6 @@
 <template>
   <div class="container-xxl page-admin-companies">
-    <h2 class="page-admin-companies__title">Компании (админ)</h2>
+    <h1 class="page-admin-companies__title">Компании (админ)</h1>
     <div v-if="error" class="wb-error">{{ error }}</div>
     <table class="wb-admin-table">
       <thead>

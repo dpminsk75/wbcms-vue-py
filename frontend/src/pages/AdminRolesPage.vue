@@ -1,7 +1,7 @@
 <template>
   <div class="container-xxl page-admin-roles">
     <div class="page-admin-roles__head">
-      <h2 class="page-admin-roles__title">Роли и права</h2>
+      <h1 class="page-admin-roles__title">Роли и права</h1>
       <button class="wb-btn-brand wb-btn-brand--lg" @click="openCreate">Создать роль</button>
     </div>
     <div class="page-admin-roles__note">

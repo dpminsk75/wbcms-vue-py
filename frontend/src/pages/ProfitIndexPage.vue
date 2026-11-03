@@ -5,13 +5,13 @@
     </div>
 
     <!-- Вкладки раздела — чипы темы (.stab--line) -->
-    <div class="page-wb-profit__tabs">
+    <nav class="wsp__sub page-wb-profit__tabs">
       <button v-for="t in TABS" :key="t.key" type="button"
               class="stab stab--line" :class="{ 'stab--on': tab === t.key }"
               @click="setTab(t.key)">
         <i :class="t.icon" class="me-1"></i>{{ t.label }}
       </button>
-    </div>
+    </nav>
 
     <!-- 1. Год к году (график + карточки) -->
     <div v-if="tab === 'yoy'">

@@ -3,7 +3,7 @@
     <!-- шапка рабочего места + вкладки раздела (новый вид: .stab--line) -->
     <div class="wsp">
       <div class="wsp__head">
-        <h3 class="wsp__title">Анализ остатков</h3>
+        <h1 class="wsp__title">Анализ остатков</h1>
         <nav class="wsp__menu">
           <a class="mn mn--on" href="/wb-sales-analysis">Отчёты</a>
           <a class="mn" href="/wb-order/feed-aggregated">Заказы</a>

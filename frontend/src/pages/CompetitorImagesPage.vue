@@ -302,7 +302,7 @@ onMounted(async () => {
   <div class="container-xxl page-competitor-images">
     <div class="row mb-3 d-flex align-items-center">
       <div class="col">
-        <h2 class="page-competitor-images__title">Фото карточек (фон)</h2>
+        <h1 class="page-competitor-images__title">Фото карточек (фон)</h1>
         <div class="text-muted small">
           Робот кэширует фото WB локально: один размер 516×688, WebP. Файлы общие для всех компаний.
         </div>

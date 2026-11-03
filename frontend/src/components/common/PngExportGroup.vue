@@ -64,6 +64,7 @@ import {
   saveBlob,
   type PngHeader,
 } from '@/utils/exportPng'
+import { stripSuffix } from '@/utils/pageTitle'
 import PngCopyModal from './PngCopyModal.vue'
 import PngToast from './PngToast.vue'
 
@@ -112,12 +113,14 @@ const tableTitle = computed(() => {
 
 /**
  * Название отчёта: переданное или заголовок страницы.
- * Хвост «— SelBI» из route.meta.title убираем — в картинке он лишний
- * (это хвост заголовка вкладки браузера, а не название отчёта).
+ * Без бренда — «— SelBI» в картинке лишний (это хвост заголовка вкладки
+ * браузера, а не название отчёта). Заголовок на странице — `meta.h1`,
+ * иначе `meta.title` без суффикса.
  */
 const reportTitle = computed(() => {
-  const raw = props.title || String(route.meta?.title || 'Отчёт')
-  return raw.replace(/\s*—\s*SelBI\s*$/, '').trim() || 'Отчёт'
+  if (props.title) return props.title.trim()
+  const meta = route.meta as { h1?: string; title?: string }
+  return String(meta.h1 ?? stripSuffix(meta.title)).trim() || 'Отчёт'
 })
 
 /** Компания — из выбранной компании в шапке приложения. */

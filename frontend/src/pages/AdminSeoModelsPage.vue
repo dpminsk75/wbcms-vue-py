@@ -1,6 +1,6 @@
 <template>
   <div class="container-xxl page-admin-seo-models">
-    <h2 class="page-admin-seo-models__title">SEO-модели</h2>
+    <h1 class="page-admin-seo-models__title">SEO-модели</h1>
     <p class="text-muted">Ротация AI-моделей: воркеры берут по приоритету среди активных без кулдауна, итоги пишут сами. Ручки тут — поверх авто-приоритетов bench.</p>
 
     <div v-if="error" class="wb-error">{{ error }}</div>

@@ -1,6 +1,6 @@
 <template>
   <div class="container-xxl page-admin-timers">
-    <h2 class="page-admin-timers__title">Таймеры воркеров</h2>
+    <h1 class="page-admin-timers__title">Таймеры воркеров</h1>
     <p class="text-muted">systemd вместо крона: статус, вкл/выкл, разовый старт, смена OnCalendar, хвост journalctl. Только admin.</p>
 
     <div v-if="error" class="wb-error">{{ error }}</div>

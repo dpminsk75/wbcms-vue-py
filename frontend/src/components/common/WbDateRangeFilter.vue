@@ -4,7 +4,7 @@
       <button
         v-for="p in presets"
         :key="p.id"
-        class="btn btn-sm"
+        class="btn"
         :class="activePreset === p.id ? 'btn--brand' : 'btn--outline'"
         @click="applyPreset(p.id)"
       >
@@ -27,8 +27,8 @@
         <slot name="inline" />
       </div>
       <div v-if="!props.bare" class="col-auto wb-range-filter__btns">
-        <button class="btn btn--brand btn-sm" @click="applyManual">Применить</button>
-        <button class="btn btn--outline btn-sm" @click="applyPreset(defaultPreset)">Сбросить</button>
+        <button class="btn btn--brand" @click="applyManual">Применить</button>
+        <button class="btn btn--outline" @click="applyPreset(defaultPreset)">Сбросить</button>
       </div>
     </div>
     <!-- доп. поле страницы (например, выбор кампании) -->
@@ -148,18 +148,8 @@ watch(draftTo, (v) => { if (v !== toModel.value) toModel.value = v })
 .wb-range-filter__inline { min-width: 0; }
 .wb-range-filter__extra:not(:empty) { margin-top: 12px; display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
 
-/* Поля дат — на токенах темы (внутри компонента Bootstrap form-control). */
-.wb-range-filter :deep(.form-control) {
-  height: 38px;
-  font-size: calc(12.5px * var(--fs));
-  color: var(--ink);
-  background: var(--surface);
-  border-color: var(--line-strong);
-}
-.wb-range-filter :deep(.form-control:focus) {
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px var(--brand-tint);
-}
+/* Поля дат — на токенах темы: кегль, цвета, фокус и высота задаёт
+   theme/forms.css (.form-control). Здесь только кнопка календаря. */
 .wb-range-filter :deep(.wb-date-input__cal) {
   border-color: var(--line-strong);
   color: var(--ink-soft);

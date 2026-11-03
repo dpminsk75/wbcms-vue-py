@@ -1,6 +1,6 @@
 <template>
   <div class="container-xxl page-company-detail">
-    <h2 class="page-company-detail__title">{{ data?.company?.name || 'Компания' }}</h2>
+    <h1 class="page-company-detail__title">{{ data?.company?.name || 'Компания' }}</h1>
     <div v-if="error" class="wb-error">{{ error }}</div>
 
     <div v-if="data" class="page-company-detail__stack">

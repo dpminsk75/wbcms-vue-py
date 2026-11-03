@@ -2,8 +2,8 @@
    Блоки темы: .tbl-card → .card__hd → .tbl-wrap → .tbl; общие строки —
    CompetitorRow (конкуренты) и ProductCell (наши карточки). Цвета — только токены. */
 
-.page-positions__variants { margin: 0; }
-.page-positions__variants .nav-link { font-size: 13px; }
+/* Подменю раздела — контейнер темы (.wsp__sub), свои только отступы */
+.page-positions__variants { margin: 0 0 16px; }
 
 .page-positions__filter-card {
   border: 1px solid var(--line);
@@ -42,8 +42,7 @@
 .page-positions__date { white-space: nowrap; color: var(--ink-soft); }
 .page-positions__chev { width: 26px; color: var(--ink-muted); text-align: right; }
 .page-positions__toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
-/* «Ниши и реклама» — вкладки + пагинация */
-.page-positions__tab-count { color: var(--ink-muted); font-size: 12px; margin-left: 4px; }
+/* «Ниши и реклама» — вкладки (тема: .stab--line) + пагинация */
 /* колонки, где не должно быть переносов */
 .page-positions__nowrap { white-space: nowrap; }
 /* «Фасеты» — узкая колонка: 3 бейджа + «ещё N» */
@@ -72,7 +71,7 @@
   flex-wrap: wrap;
   margin-bottom: 10px;
 }
-.page-positions__detail-title { font-size: 16px; font-weight: 700; margin: 0; }
+.page-positions__detail-title { font-weight: 700; margin: 0; }
 
 /* срез = дата сбора, в нём карточки выдачи горизонтально */
 .page-positions__slice {

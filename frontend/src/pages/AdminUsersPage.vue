@@ -1,7 +1,7 @@
 <template>
   <div class="container-xxl page-admin-users">
     <div class="page-admin-users__head">
-      <h2 class="page-admin-users__title">Пользователи{{ isGlobal ? ' (админ)' : '' }}</h2>
+      <h1 class="page-admin-users__title">Пользователи{{ isGlobal ? ' (админ)' : '' }}</h1>
       <button @click="openCreate = true" class="wb-btn-brand wb-btn-brand--lg">Создать пользователя</button>
     </div>
     <div v-if="!isGlobal" class="page-admin-users__scope-note">Показаны только пользователи ваших компаний ({{ managedNames }}).</div>

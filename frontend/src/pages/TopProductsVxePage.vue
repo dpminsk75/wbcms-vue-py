@@ -47,7 +47,7 @@
     <!-- Таблица-пилот -->
     <div class="card shadow-sm">
       <div class="card-header text-white bg-wb-green-deep-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="bi bi-crown me-2"></i>ТОП-{{ filters.limit }} товаров (vxe)</h5>
+        <div class="mb-0 fw-bold"><i class="bi bi-crown me-2"></i>ТОП-{{ filters.limit }} товаров (vxe)</div>
         <div class="d-flex gap-2">
           <span class="badge bg-light text-dark align-self-center">{{ filters.date_from }} — {{ filters.date_to }}</span>
           <button class="btn btn-sm btn-light wb-excel-btn" :disabled="!rows.length" @click="exportExcel">

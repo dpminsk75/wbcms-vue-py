@@ -1,6 +1,6 @@
 <template>
   <div class="container-xxl page-competitor">
-    <h2 class="page-competitor__title">Конкуренты — nmID {{ nmId }}</h2>
+    <h1 class="page-competitor__title">Конкуренты — nmID {{ nmId }}</h1>
     <p>
       <router-link to="/competitor/index">← Конкуренты</router-link>
       <router-link :to="`/competitor/select/${nmId}`" class="btn btn-sm btn-outline-secondary page-competitor__head-btn">Изменить фразы</router-link>

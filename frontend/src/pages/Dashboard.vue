@@ -5,10 +5,13 @@
         <SideMenu />
       </div>
       <div class="dash_div col-md-10">
-        <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap">
-          <WbDateInput v-model="dateFrom" style="width:190px" />
-          <WbDateInput v-model="dateTo" style="width:190px" />
-          <span class="text-muted" style="align-self:center; font-size:12px; font-family:&quot;Segoe UI&quot;,Roboto,Helvetica,Arial,sans-serif">{{ dateFrom }} → {{ dateTo }}</span>
+        <div class="d-flex align-items-center gap-3 flex-wrap mb-3">
+          <PageTitle class="mb-0 flex-shrink-0" />
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <WbDateInput v-model="dateFrom" style="width:190px" />
+            <WbDateInput v-model="dateTo" style="width:190px" />
+            <span class="text-muted" style="font-size:12px">{{ dateFrom }} → {{ dateTo }}</span>
+          </div>
         </div>
 
         <div v-if="allLoaded && !anyData" class="alert alert-info" style="border-radius:12px; padding:24px; text-align:center; font-size:14px">
@@ -49,6 +52,7 @@ import NewsBlock from '../components/dashboard/NewsBlock.vue'
 import SideMenu from '../components/dashboard/SideMenu.vue'
 import WbTokenAlert from '../components/dashboard/WbTokenAlert.vue'
 import WbDateInput from '../components/common/WbDateInput.vue'
+import PageTitle from '../components/common/PageTitle.vue'
 import { useAuthStore } from '../stores/auth'
 
 const dateFrom = ref(new Date(Date.now()-3*864e5).toISOString().slice(0,10))

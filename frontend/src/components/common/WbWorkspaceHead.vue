@@ -1,22 +1,22 @@
 <template>
-  <!-- Шапка рабочего места: название + общее меню (справа вверху),
-       ниже — подменю раздела (пилюли с активным пунктом). -->
-  <div class="wb-workspace-head">
-    <h2 class="wb-workspace-head__title">{{ title }}</h2>
+  <!-- Шапка рабочего места: заголовок (h1) + общее меню справа в углу,
+       ниже — подменю раздела (подчёркивание, активный пункт). -->
+  <div class="wb-workspace-head wsp__head">
+    <h1 class="wb-workspace-head__title wsp__title">{{ title }}</h1>
     <WbWorkspaceTabs :active="workspaceActive" :tabs="workspaceTabs" />
   </div>
-  <ul v-if="subtabs.length" class="nav nav-pills wb-sub-tabs">
-    <li v-for="t in subtabs" :key="t.id" class="nav-item">
-      <router-link
-        class="nav-link"
-        :class="{ active: isActive(t) }"
-        :to="t.to"
-        :title="t.title"
-      >
-        {{ t.label }}<span v-if="t.count !== undefined && t.count !== null" class="wb-sub-tabs__count">{{ t.count }}</span>
-      </router-link>
-    </li>
-  </ul>
+  <nav v-if="subtabs.length" class="wsp__sub">
+    <router-link
+      v-for="t in subtabs"
+      :key="t.id"
+      class="stab stab--line"
+      :class="{ 'stab--on': isActive(t) }"
+      :to="t.to"
+      :title="t.title"
+    >
+      {{ t.label }}<span v-if="t.count !== undefined && t.count !== null" class="stab__count">{{ t.count }}</span>
+    </router-link>
+  </nav>
 </template>
 
 <script setup lang="ts">

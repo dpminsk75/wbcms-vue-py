@@ -1,6 +1,6 @@
 <template>
   <div class="container-xxl page-register">
-    <h2 class="page-register__title">Регистрация</h2>
+    <h1 class="page-register__title">Регистрация</h1>
     <form @submit.prevent="onSubmit" class="page-register__form">
       <label>
         <div>Invite-токен</div>

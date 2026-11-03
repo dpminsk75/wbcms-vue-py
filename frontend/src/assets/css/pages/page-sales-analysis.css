@@ -3,8 +3,8 @@
  * Даты — общий WbDateRangeFilter (7/14/30/90/365/с начала года), остальные фильтры — свои.
  * Таблица — .tbl-card / .card__hd / .tbl-wrap / .tbl, итог — .tbl__total.
  */
+/* Заголовок страницы — размер даёт тема (h1, §4.3), здесь только начертание и отступ. */
 .page-sales-analysis__title {
-  font-size: calc(20px * var(--fs));
   font-weight: 700;
   letter-spacing: -.015em;
   margin: 0 0 4px;

@@ -575,11 +575,16 @@ onMounted(() => {
   <div class="container-xxl page-queue">
     <WbWorkspaceHead title="Очередь" workspace-active="queue" />
 
-    <ul class="nav nav-pills wb-sub-tabs">
-      <li v-for="t in TABS" :key="t.id" class="nav-item">
-        <a class="nav-link" :class="{ active: tab === t.id }" href="#" @click.prevent="setTab(t.id)">{{ t.label }}</a>
-      </li>
-    </ul>
+    <nav class="wsp__sub">
+      <a
+        v-for="t in TABS"
+        :key="t.id"
+        class="stab stab--line"
+        :class="{ 'stab--on': tab === t.id }"
+        href="#"
+        @click.prevent="setTab(t.id)"
+      >{{ t.label }}</a>
+    </nav>
 
     <!-- ============ СБОР КАРТОЧЕК ============ -->
     <template v-if="tab === 'cards'">

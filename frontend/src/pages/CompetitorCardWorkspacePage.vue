@@ -1,5 +1,6 @@
 <template>
   <div class="container-xxl page-competitor page-workspace">
+    <PageTitle />
     <div class="page-workspace__crumbs">
       <router-link to="/competitor/new-cards"><i class="bi bi-arrow-left"></i> К списку карточек</router-link>
     </div>
@@ -407,6 +408,7 @@ import {
 } from '../api/competitorsNewcard'
 import { copyText } from '../utils/clipboard'
 import WbConfirmDialog from '../components/common/WbConfirmDialog.vue'
+import PageTitle from '../components/common/PageTitle.vue'
 import CompetitorAnalyzeModal from '../components/competitors/CompetitorAnalyzeModal.vue'
 import CompetitorCopyFromCardModal from '../components/competitors/CompetitorCopyFromCardModal.vue'
 import CompetitorDetailsModal from '../components/competitors/CompetitorDetailsModal.vue'

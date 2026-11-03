@@ -15,7 +15,9 @@
 
 /* Шапка карточки */
 .page-wb-detail__head { display: flex; align-items: center; gap: 12px; }
-.page-wb-detail__title { font-size: calc(28px * var(--fs)); font-weight: 700; flex: 1 1 auto; min-width: 0; }
+/* Заголовок карточки товара — исключение §4.3 (28px). Селектор с классом
+   страницы: иначе правило темы .container-xxl h1 перебьёт исключение. */
+.page-wb-detail .page-wb-detail__title { font-size: calc(28px * var(--fs)); font-weight: 700; flex: 1 1 auto; min-width: 0; }
 .page-wb-detail__id-group { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
 .page-wb-detail__id-label { font-size: calc(12px * var(--fs)); color: var(--ink-muted); }
 .page-wb-detail__id-badge { font-size: calc(12px * var(--fs)); }

@@ -2,7 +2,7 @@
   <div class="container-xxl page-pminer">
     <div class="row mb-3 d-flex align-items-center">
       <div class="col">
-        <h2 class="page-pminer__title">Разбор фраз (фон)</h2>
+        <h1 class="page-pminer__title">Разбор фраз (фон)</h1>
       </div>
       <div class="col-auto d-flex gap-2 align-items-center">
         <span v-if="st?.paused" class="badge text-bg-warning">Пауза</span>
@@ -544,7 +544,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.page-pminer__title { font-size: 1.4rem; margin: 0; }
+.page-pminer__title { margin: 0; }
 .page-pminer__status { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 1rem; }
 .page-pminer__k { font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; color: #6c757d; margin-bottom: .25rem; }
 .page-pminer__num { text-align: right; white-space: nowrap; }

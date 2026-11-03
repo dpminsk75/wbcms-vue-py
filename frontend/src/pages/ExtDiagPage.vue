@@ -1,6 +1,6 @@
 <template>
   <div class="container-xxl page-ext-diag">
-    <h2 class="page-ext-diag__title">Диагностика расширения</h2>
+    <h1 class="page-ext-diag__title">Диагностика расширения</h1>
     <p class="text-muted">Слепки карточек WB («чёрный ящик» на смену вёрстки). Пишет расширение, читаем без ssh.</p>
 
     <div v-if="error" class="wb-error">{{ error }}</div>
