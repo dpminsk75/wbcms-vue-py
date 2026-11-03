@@ -5,7 +5,18 @@
       <div class="wsp__head">
         <h1 class="wsp__title">Сравнение по годам</h1>
       </div>
-      <WbSectionTabs :tabs="SUB_TABS" />
+      <WbSectionTabs v-model="tab" :tabs="SUB_TABS" />
+    </div>
+
+    <!-- Индикация источника: что именно читает отчёт (2026-11-03).
+         Только Bootstrap-утилиты: свой CSS не нужен. -->
+    <div v-if="source" class="d-flex align-items-center gap-2 flex-wrap small text-muted mt-2 mb-3">
+      <i class="bi bi-database-check"></i>
+      <span><b class="text-body">Источник:</b> {{ source.table_title }}</span>
+      <span>· {{ source.amount_title }}</span>
+      <span>· {{ source.qty_title }}</span>
+      <span v-if="showReturns">· {{ source.returns_title }}</span>
+      <span class="ms-auto">снимок: {{ source.generated_at }}</span>
     </div>
 
     <!-- Фильтр: 1 — годы, 2 — товар, 3 — кнопки -->
@@ -40,7 +51,7 @@
         :class="i === summaryYear.length - 1 ? 'tile--3' : 'tile--1'"
       >
         <div class="tile__label">{{ tabLabel }} · {{ s.year }}</div>
-        <div class="tile__value">{{ fmtMoney2(s.amount) }}</div>
+        <div class="tile__value" :title="source?.amount_title">{{ fmtMoney2(s.amount) }}</div>
         <div class="tile__foot">
           <span v-if="s.change === null" class="tile__delta">база</span>
           <span v-else class="tile__delta" :class="s.change < 0 ? 'tile__delta--down' : ''">
@@ -70,9 +81,9 @@
               <thead>
                 <tr>
                   <th class="t-left">Год</th>
-                  <th class="num">Кол-во</th>
-                  <th class="num">Сумма</th>
-                  <th v-if="showReturns" class="num">Возвраты</th>
+                  <th class="num" :title="source?.qty_title">Кол-во</th>
+                  <th class="num" :title="source?.amount_title">Сумма</th>
+                  <th v-if="showReturns" class="num" :title="source?.returns_title">Возвраты</th>
                   <th class="num">Изм. %</th>
                 </tr>
               </thead>
@@ -102,9 +113,9 @@
               <thead>
                 <tr>
                   <th class="t-left">Год</th>
-                  <th class="num">Кол-во</th>
-                  <th class="num">Сумма</th>
-                  <th v-if="showReturns" class="num">Возвраты</th>
+                  <th class="num" :title="source?.qty_title">Кол-во</th>
+                  <th class="num" :title="source?.amount_title">Сумма</th>
+                  <th v-if="showReturns" class="num" :title="source?.returns_title">Возвраты</th>
                   <th class="num">Изм. %</th>
                 </tr>
               </thead>
@@ -133,6 +144,9 @@
         :months="months"
         title="Таблица сравнения по месяцам"
         :has-returns="showReturns"
+        :qty-hint="source?.qty_title"
+        :amount-hint="source?.amount_title"
+        :returns-hint="source?.returns_title"
         show-excel
         show-png
         :png-title="reportTitle"
@@ -151,6 +165,9 @@
         :title="`ТОП за прошлый месяц (${prevMonthName})`"
         :badge="years.join(' / ')"
         :has-returns="showReturns"
+        :qty-hint="source?.qty_title"
+        :amount-hint="source?.amount_title"
+        :returns-hint="source?.returns_title"
         show-excel
         show-png
         :png-title="reportTitle"
@@ -167,6 +184,9 @@
         :title="`ТОП за текущий месяц (${currMonthName}, с 01 по ${day})`"
         badge="MTD"
         :has-returns="showReturns"
+        :qty-hint="source?.qty_title"
+        :amount-hint="source?.amount_title"
+        :returns-hint="source?.returns_title"
         show-excel
         show-png
         :png-title="reportTitle"
@@ -187,10 +207,13 @@
  *   * «Продажи» — куб agg_sales_daily_sku (по дате продажи), возвраты и «к перечислению».
  *
  * Фильтр по карточке влияет на ВСЕ таблицы и графики; выбор лет — чипами.
+ * ВСЕ выборы живут в URL: ?tab=orders|sales, ?years=2025,2026, ?nm_id=526443466 —
+ * ссылку можно переслать, перезагрузка возвращает ту же выборку (важно после
+ * пересчёта кубов: страница не должна держать старый снимок).
  */
 import '@/assets/css/pages/page-year-compare.css'
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { reportsApi, type YearCompareResponse } from '@/api/reports'
 import { useNumFmt } from '@/composables/useNumFmt'
 import { useSelectedYears } from '@/composables/useSelectedYears'
@@ -205,10 +228,13 @@ const { fmt0, fmt1, fmt2 } = useNumFmt()
 /** Деньги с копейками: «118 656,75 ₽» — как в /wb-sales-analysis. */
 const fmtMoney2 = (v: any): string => fmt2(v) + ' ₽'
 const route = useRoute()
+const router = useRouter()
 
+// Вкладка переключается без жёсткой ссылки: параметры ?years= и ?nm_id=
+// должны переживать смену вкладки (иначе выбор теряется при клике).
 const SUB_TABS = [
-  { id: 'orders', label: 'Заказы', to: '/wb-reports/year-compare?tab=orders' },
-  { id: 'sales', label: 'Продажи', to: '/wb-reports/year-compare?tab=sales' },
+  { id: 'orders', label: 'Заказы' },
+  { id: 'sales', label: 'Продажи' },
 ]
 
 const data = ref<YearCompareResponse | null>(null)
@@ -239,8 +265,16 @@ const years = computed<number[]>(() => {
   return avail.filter((y) => selectedYears.value.includes(y))
 })
 
-// --- карточка (штатный WbCardSelect: маска с подсказками, строгий nm_id)
-const nmId = ref<number | null>(null)
+// --- карточка (штатный WbCardSelect: маска с подсказками, строгий nm_id).
+//     Выбор живёт в URL (?nm_id=) — чтобы переживать перезагрузку страницы
+//     (после пересчёта куба) и смену вкладки.
+const nmIdFromUrl = (): number | null => {
+  const raw = String(route.query.nm_id || '').trim()
+  if (!raw) return null
+  const n = Number(raw)
+  return Number.isInteger(n) && n > 0 ? n : null
+}
+const nmId = ref<number | null>(nmIdFromUrl())
 const nmIdStr = computed({
   get: () => (nmId.value ? String(nmId.value) : ''),
   set: (v: string) => { nmId.value = v ? Number(v) : null },
@@ -257,6 +291,8 @@ const currMonthName = computed(() => data.value?.meta?.curr_month?.name || '')
 const day = computed(() => data.value?.meta?.curr_month?.day || 1)
 /** Возвраты есть только в кубе продаж — на вкладке «Заказы» колонки нет. */
 const showReturns = computed(() => !!data.value?.meta?.has_returns)
+/** Откуда взяты цифры (куб, величина, возвраты) — индикатор в шапке. */
+const source = computed(() => data.value?.meta?.source || null)
 
 /* --- метаданные для шапки PNG-картинки --- */
 
@@ -303,23 +339,53 @@ const onApplyYears = (list: number[]) => {
   setYears(list)
 }
 
-/** «Сформировать» — перезапросить отчёт с текущей карточкой (выбирается в WbCardSelect). */
+/**
+ * Зафиксировать выбор в URL (replace — не засоряем историю браузера).
+ * Меняются ТОЛЬКО переданные ключи: пустой ?years= — это тоже выбор
+ * («ничего не выбрано»), его нельзя молча выкинуть.
+ */
+const pushQuery = (patch: Record<string, any>) => {
+  const q: Record<string, any> = { ...route.query }
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined || v === null || v === '') delete q[k]
+    else q[k] = v
+  }
+  router.replace({ path: route.path, query: q })
+}
+
+/** «Сформировать» — зафиксировать карточку в URL и перезапросить отчёт. */
 const applyCard = () => {
+  pushQuery(nmId.value ? { nm_id: String(nmId.value) } : { nm_id: undefined })
   load()
 }
 const resetAll = () => {
   nmIdStr.value = ''
-  if (availableYears.value.length) setYears([...availableYears.value])
+  const patch: Record<string, any> = { nm_id: undefined }
+  if (availableYears.value.length) patch.years = availableYears.value.join(',')
+  pushQuery(patch)
   load()
 }
 
-// --- закладка (переход делает WbSectionTabs через router-link — реагируем на маршрут)
-watch(() => route.query.tab, (v) => {
-  const next = String(v || 'orders') === 'sales' ? 'sales' : 'orders'
-  if (next !== tab.value) {
-    tab.value = next
+// --- вкладка: меняется без жёсткой ссылки, параметры ?years=/?nm_id= сохраняются
+watch(tab, (next) => {
+  if (String(route.query.tab || '') !== next) pushQuery({ tab: next })
+  load()
+})
+
+// --- карточка изменилась извне (правка URL руками, переход по ссылке)
+watch(() => route.query.nm_id, () => {
+  const fromUrl = nmIdFromUrl()
+  if (fromUrl !== nmId.value) {
+    nmId.value = fromUrl
     load()
   }
+})
+
+// --- закладка из URL (правка руками, «назад/вперёд» в браузере).
+//     Загрузку делает watch(tab) выше — здесь только синхронизируем ref.
+watch(() => route.query.tab, (v) => {
+  const next = String(v || 'orders') === 'sales' ? 'sales' : 'orders'
+  if (next !== tab.value) tab.value = next
 })
 // смена набора лет в URL
 watch(years, () => load())

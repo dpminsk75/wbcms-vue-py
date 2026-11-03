@@ -27,6 +27,21 @@ export interface YearCompareSummary {
   change: number | null
 }
 
+export interface YearCompareSource {
+  /** Техническое имя куба-источника. */
+  table: string
+  /** «Куб продаж agg_sales_daily_sku» / «Куб заказов …». */
+  table_title: string
+  /** Что именно считается в колонке «Сумма». */
+  amount_title: string
+  /** Что именно считается в колонке «Кол-во». */
+  qty_title: string
+  /** Что сделано с возвратами. */
+  returns_title: string
+  /** Время формирования снимка (YYYY-MM-DD HH:MM:SS). */
+  generated_at: string
+}
+
 export interface YearCompareResponse {
   tab: 'orders' | 'sales'
   available_years: number[]
@@ -38,6 +53,8 @@ export interface YearCompareResponse {
     nm_id?: number | null
     /** Есть ли возвраты в отчёте (в кубе заказов их нет). */
     has_returns?: boolean
+    /** Откуда взяты цифры — показывается индикатором в шапке. */
+    source?: YearCompareSource
   }
   summary_prev: YearCompareSummary[]
   summary_curr: YearCompareSummary[]

@@ -33,6 +33,7 @@
                 v-for="(lbl, j) in subLabels"
                 :key="`${y}-${lbl}`"
                 :class="{ 'grp-start': j === 0 }"
+                :title="hintFor(lbl)"
               >{{ lbl }}</th>
             </template>
           </tr>
@@ -139,9 +140,15 @@ const props = withDefaults(defineProps<{
   pngFilters?: { label: string; value: string }[]
   /** Показывать колонку «Возвраты» (вкладка «Продажи»; в «Заказах» возвратов нет). */
   hasReturns?: boolean
+  /** Подсказки к колонкам (что именно считается) — из meta.source отчёта. */
+  qtyHint?: string
+  amountHint?: string
+  returnsHint?: string
+  priceHint?: string
 }>(), {
   months: () => [], rows: () => [], title: '', badge: '', showExcel: false, showPng: false,
   pngTitle: '', pngSubtitle: '', pngFilters: () => [], hasReturns: false,
+  qtyHint: '', amountHint: '', returnsHint: '', priceHint: '',
 })
 
 defineEmits<{ (e: 'excel'): void }>()
@@ -181,6 +188,15 @@ const colsPerYear = computed(() => {
   if (props.kind !== 'top') return props.hasReturns ? 3 : 2
   return props.hasReturns ? 4 : 3
 })
+
+/** Подсказка к подзаголовку колонки — что именно считается. */
+const hintFor = (lbl: string): string | undefined => {
+  if (lbl === 'Кол-во') return props.qtyHint || undefined
+  if (lbl === 'Сумма') return props.amountHint || undefined
+  if (lbl === 'Возвраты') return props.returnsHint || undefined
+  if (lbl === 'Ср. цена') return props.priceHint || undefined
+  return undefined
+}
 
 const rowCount = computed(() => (props.kind === 'top' ? props.rows.length : props.months.length))
 const totalCols = computed(() => 1 + props.years.length * colsPerYear.value)

@@ -41,7 +41,7 @@ aggregate_sync (backend/workers/aggregate_sync.py) — см. aggregate_sync_serv
 15 запросов на страницу, суммарно < 250k просмотренных строк — в бюджете
 AGENTS.md (500k строк / 60 с) с запасом.
 """
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -248,6 +248,24 @@ class YearCompareService:
                 "nm_id": nm_id,
                 # Показывать ли колонку «Возвраты» (в кубе заказов возвратов нет).
                 "has_returns": has_returns,
+                # ИНДИКАЦИЯ ИСТОЧНИКА (2026-11-03): в отчёте должно быть видно,
+                # ОТКУДА взяты цифры — какой куб, какая денежная величина, что
+                # с возвратами. generated_at — время снимка: если база пересчитана
+                # позже, страница покажет старое время и это будет заметно.
+                "source": {
+                    "table": tbl,
+                    "table_title": ("Куб продаж agg_sales_daily_sku" if tab == "sales"
+                                    else "Куб заказов agg_orders_daily_sku"),
+                    "amount_title": ("Оборот: цена со скидкой продавца, до СПП "
+                                    "(retail_price_withdisc_rub)" if tab == "sales" else
+                                    "Сумма заказов: цена со скидкой продавца, до СПП "
+                                    "(retail_price_withdisc_rub)"),
+                    "qty_title": ("Количество: штуки продаж (SUM quantity)" if tab == "sales"
+                                  else "Количество: заказанные единицы"),
+                    "returns_title": ("Возвраты вычтены из оборота и количества"
+                                      if has_returns else "Возвратов в этом кубе нет"),
+                    "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                },
             },
             "summary_prev": summary_prev,
             "summary_curr": summary_curr,
