@@ -3,7 +3,7 @@
     <!-- Шапка + закладки (тема: .wsp + .stab--line) -->
     <div class="wsp mb-3">
       <div class="wsp__head">
-        <h3 class="wsp__title">Сравнение по годам</h3>
+        <h1 class="wsp__title">Сравнение по годам</h1>
       </div>
       <WbSectionTabs :tabs="SUB_TABS" />
     </div>

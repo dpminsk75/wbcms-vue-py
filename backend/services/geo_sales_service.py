@@ -138,6 +138,7 @@ class GeoSalesService:
                    COUNT(*) AS qty,
                    SUM(COALESCE(d.retail_price, 0)) AS sum_retail,
                    SUM(COALESCE(d.retail_amount, 0)) AS sum_amount,
+                   SUM(COALESCE(d.retail_price_withdisc_rub, 0)) AS sum_withdisc,
                    SUM(COALESCE(d.ppvz_for_pay, 0)) AS sum_for_pay,
                    AVG(COALESCE(d.ppvz_spp_prc, 0)) AS spp,
                    COUNT(DISTINCT p.wb_id) AS pvz_count
@@ -155,8 +156,14 @@ class GeoSalesService:
             "lat": float(r["lat"]) if r.get("lat") is not None else None,
             "lon": float(r["lon"]) if r.get("lon") is not None else None,
             "qty": int(r.get("qty") or 0),
+            # Цена товара до скидок продавца
             "sum_retail": float(r.get("sum_retail") or 0),
+            # Цена продажи после СПП
             "sum_amount": float(r.get("sum_amount") or 0),
+            # Оборот: цена со скидкой продавца, ДО СПП (база комиссии WB) —
+            # та же величина, что «Продажи» в финансовой аналитике и «Сумма»
+            # в /wb-reports/year-compare (2026-11-03).
+            "sum_withdisc": float(r.get("sum_withdisc") or 0),
             "sum_for_pay": float(r.get("sum_for_pay") or 0),
             "spp": round(float(r.get("spp") or 0), 2),
             "pvz_count": int(r.get("pvz_count") or 0),
@@ -206,10 +213,12 @@ class GeoSalesService:
                 name, sub = COUNTRY_NAMES.get(code, code or "—"), ""
             a = acc.setdefault(key, {"key": key, "name": name, "sub": sub,
                                      "qty": 0, "sum_retail": 0.0, "sum_amount": 0.0,
+                                     "sum_withdisc": 0.0,
                                      "sum_for_pay": 0.0, "spp_w": 0.0, "pvz_count": 0})
             a["qty"] += q
             a["sum_retail"] += float(r.get("sum_retail") or 0)
             a["sum_amount"] += float(r.get("sum_amount") or 0)
+            a["sum_withdisc"] += float(r.get("sum_withdisc") or 0)
             a["sum_for_pay"] += float(r.get("sum_for_pay") or 0)
             a["spp_w"] += float(r.get("spp") or 0) * q
             a["pvz_count"] += int(r.get("pvz_count") or 0)
@@ -230,11 +239,12 @@ class GeoSalesService:
                 "key": a["key"], "name": a["name"], "sub": a["sub"], "addr": "",
                 "lat": lat, "lon": lon,
                 "qty": q, "sum_retail": a["sum_retail"], "sum_amount": a["sum_amount"],
+                "sum_withdisc": a["sum_withdisc"],
                 "sum_for_pay": a["sum_for_pay"],
                 "spp": round(a["spp_w"] / q, 2) if q else 0.0,
                 "pvz_count": a["pvz_count"],
             })
-        items.sort(key=lambda x: x["qty"] if metric == "qty" else x["sum_amount"],
+        items.sort(key=lambda x: x["qty"] if metric == "qty" else x["sum_withdisc"],
                    reverse=True)
         return items
 
@@ -323,7 +333,8 @@ class GeoSalesService:
                         "metric": metric, "level": level, "resolved_ids": 0}
         if ids is not None and not ids:
             return {"level": level, "metric": metric, "items": [],
-                    "total": {"qty": 0, "sum_for_pay": 0.0},
+                    "total": {"qty": 0, "sum_for_pay": 0.0, "sum_amount": 0.0,
+                              "sum_withdisc": 0.0},
                     "hint": "по маске/бренду/категории ничего не найдено",
                     "params": empty_params}
 
@@ -375,14 +386,17 @@ class GeoSalesService:
         if offices is not None:
             if not offices:
                 return {"level": level, "metric": metric, "items": [],
-                        "total": {"qty": 0, "sum_for_pay": 0.0, "sum_amount": 0.0},
+                        "total": {"qty": 0, "sum_for_pay": 0.0, "sum_amount": 0.0,
+                                  "sum_withdisc": 0.0},
                         "hint": "в parent-области нет офисов",
                         "params": {**empty_params, "offices": 0}}
             if len(offices) <= self.OFFICE_IN_LIMIT:
                 where.append(f"d.ppvz_office_id IN ({','.join(str(x) for x in offices)})")
                 empty_params["offices"] = len(offices)
         where_sql = " AND ".join(where)
-        order = "qty DESC" if metric == "qty" else "sum_amount DESC"
+        # Метрика «sum» меряется по обороту (цена со скидкой продавца, до СПП) —
+        # та же база, что в остальных отчётах (2026-11-03).
+        order = "qty DESC" if metric == "qty" else "sum_withdisc DESC"
 
         if level == "country":
             select = ("UPPER(p.country) AS k, UPPER(p.country) AS name, '' AS sub, "
@@ -427,7 +441,8 @@ class GeoSalesService:
 
         tot = (await self.db.execute(text(f"""
             SELECT COUNT(*) AS qty, SUM(COALESCE(d.ppvz_for_pay, 0)) AS s,
-                   SUM(COALESCE(d.retail_amount, 0)) AS a
+                   SUM(COALESCE(d.retail_amount, 0)) AS a,
+                   SUM(COALESCE(d.retail_price_withdisc_rub, 0)) AS w
             FROM detail_by_period d
             JOIN pvz_all p ON p.wb_id = d.ppvz_office_id
             WHERE {where_sql}"""), params)).mappings().first() or {}
@@ -438,6 +453,7 @@ class GeoSalesService:
             "total": {"qty": int((tot or {}).get("qty") or 0),
                       "sum_for_pay": float((tot or {}).get("s") or 0),
                       "sum_amount": float((tot or {}).get("a") or 0),
+                      "sum_withdisc": float((tot or {}).get("w") or 0),
                       "points": len(items)},
             "bbox_applied": bool(box),
             "params": {"nm_id": int(nm_id) if nm_id else None, "q": q, "brand": brand,

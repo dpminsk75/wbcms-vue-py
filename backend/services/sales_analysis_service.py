@@ -24,6 +24,14 @@ class SalesAnalysisService:
 отображение — вторым запросом только для строк топа.
 Гео — нативно через ppvz_office_id -> pvz_all (region_norm/city_norm).
 Фронт не менялся: ключи ответа те же (total_sum/disc_sum выпилены — их никто не ел).
+
+ДЕНЬГИ (2026-11-03): «Выручка» (finished_sum) считается по retail_price_withdisc_rub
+— оборот по цене со скидкой продавца (ДО СПП), база, по которой WB считает
+комиссию. Раньше была retail_amount (цена продажи ПОСЛЕ ССП) — из-за этого
+«Выручка» расходилась с /wb-reports/year-compare и «Финансовой аналитикой»
+(окт. 2026: 118 656,75 против 2 245 122 — разница ≈ СПП). Теперь база одна
+с /wb-reports/year-compare (net: продажи минус возвраты). «Цена Прд» (afp)
+осталась по retail_amount — это цена продажи после СПП, для справки.
 """
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -135,8 +143,8 @@ class SalesAnalysisService:
                    MAX(c.brand) as brand, MAX(c.subjectName) as subject,
                    SUM(CASE WHEN d.supplier_oper_name = 'Продажа' THEN 1
                             WHEN d.supplier_oper_name = 'Возврат' THEN -1 ELSE 0 END) as sales_qty,
-                   SUM(CASE WHEN d.supplier_oper_name = 'Продажа' THEN d.retail_amount
-                            ELSE -d.retail_amount END) as finished_sum,
+                   SUM(CASE WHEN d.supplier_oper_name = 'Продажа' THEN d.retail_price_withdisc_rub
+                            ELSE -d.retail_price_withdisc_rub END) as finished_sum,
                    SUM(CASE WHEN d.supplier_oper_name = 'Продажа' THEN d.ppvz_for_pay
                             ELSE -d.ppvz_for_pay END) as for_pay_sum,
                    AVG(CASE WHEN d.supplier_oper_name = 'Продажа' THEN d.retail_price_withdisc_rub

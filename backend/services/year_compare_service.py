@@ -20,17 +20,21 @@ aggregate_sync (backend/workers/aggregate_sync.py) — см. aggregate_sync_serv
   * добавлен фильтр по карточке (nm_id) — он влияет на все таблицы и графики;
   * в сводках добавлена колонка «К перечислению» для продаж и возвраты.
 
-СЕМАНТИКА ВОЗВРАТОВ (2026-11-02):
-  * В кубе продаж retail_amount_sum — ВАЛ: SUM(retail_amount) по всем строкам
-    (продажи + возвраты) без разделения знака. Так было и в Yii2
-    (AggregateController.php:310), поэтому отчёт «Сумма» показывал вал, а
-    /wb-sales-analysis (net, возвраты вычитаются) — расходились на сумму
-    возвратов (проверено: nmID 526443466, окт. 2026 — 120 094,75 против 118 656,75).
-  * В кубе добавлена колонка returns_amount_sum (сумма возвратов), returns_qty
-    (штуки возвратов) в кубе была и раньше.
-  * Отчёт теперь отдаёт NET: qty = sales_qty - returns_qty,
-    amount = retail_amount_sum - 2 * returns_amount_sum (см. _net_amount),
+СЕМАНТИКА ДЕНЕГ И ВОЗВРАТОВ (2026-11-02 / 2026-11-03):
+  * СУММЫ — оборот по цене со скидкой продавца, ДО СПП (retail_price_withdisc_rub):
+    это база, по которой WB считает комиссию, т.е. «наш оборот». Раньше отчёт
+    брал retail_amount (цена продажи ПОСЛЕ СПП) — из-за этого расходился с
+    «Финансовой аналитикой» (agg_daily_summary.amount) на ~34%
+    (окт. 2026: 1 487 934,44 против 2 245 122 — разница ≈ СПП 33,7%).
+  * В кубе продаж добавлены sales_withdisc_sum (оборот по продажам, без
+    возвратов) и returns_withdisc_sum (возвраты в той же базе); в кубе заказов
+    уже была retail_with_disc_sum (structure.sql:81).
+  * Отчёт отдаёт NET: qty = sales_qty - returns_qty (штуки),
+    amount = sales_withdisc_sum - returns_withdisc_sum (см. _net_amount),
     возвраты видны отдельной колонкой (returns_qty / returns_amount).
+  * КОЛИЧЕСТВО в отчёте — ШТУКИ (SUM(quantity) по doc_type_name='Продажа'),
+    а в «Финансовой аналитике» — ПОЗИЦИИ (COUNT строк по supplier_oper_name).
+    Разница = строки с quantity != 1 (окт. 2026: 5 511 против 5 510).
   * В кубе заказов возвратов нет (doc_type_name='Продажа') — там всё как было.
 
 БЮДЖЕТ: кубы за 3 года — 111k (orders) / 191k (sales) строк на компанию,
@@ -55,7 +59,9 @@ TABLES = {
         "table": "agg_orders_daily_sku",
         "date": "order_date",
         "qty": "orders_qty",
-        "amount": "retail_amount_sum",
+        # Оборот: цена со скидкой продавца (ДО СПП) — колонка уже есть в кубе
+        # заказов (structure.sql:81, заполняется aggregate_sync_service.py:59).
+        "amount": "retail_with_disc_sum",
         # В кубе заказов возвратов нет (doc_type_name='Продажа') — заказ был,
         # даже если его потом вернули.
         "returns_qty": None,
@@ -68,9 +74,10 @@ TABLES = {
         "table": "agg_sales_daily_sku",
         "date": "sale_date",
         "qty": "sales_qty",
-        "amount": "retail_amount_sum",
+        # Оборот по продажам (до СПП), без возвратов; возвраты — отдельно.
+        "amount": "sales_withdisc_sum",
         "returns_qty": "returns_qty",
-        "returns_amount": "returns_amount_sum",
+        "returns_amount": "returns_withdisc_sum",
         "group_extra": "",
     },
 }
@@ -78,22 +85,17 @@ TABLES = {
 TOP_LIMIT = 20
 
 
-def _net_amount(gross: float, returns: float) -> float:
-    """Net-сумма из валовой суммы куба и суммы возвратов.
+def _net_amount(amount: float, returns: float) -> float:
+    """Net-сумма: оборот (продажи) минус возвраты.
 
-    В кубе продаж retail_amount_sum = SUM(retail_amount) по ВСЕМ строкам, т.е.
-    ВАЛ = Σп + Σв (возвраты прибавлены со знаком «+»). Net, как считает
-    /wb-sales-analysis, — это Σп − Σв, поэтому возвраты вычитаются ДВАЖДЫ:
-        net = вал − 2 × возвраты
-    (один раз убираем их из продаж, второй — из результата).
+    В кубе продаж sales_withdisc_sum — оборот по продажам (цена со скидкой
+    продавца, ДО СПП) БЕЗ возвратов, а returns_withdisc_sum — возвраты в той
+    же базе. Поэтому net = оборот − возвраты (одно вычитание).
 
     Проверено на nmID 526443466, окт. 2026:
-        вал 120 094,75 − 2 × 719,00 = 118 656,75 → /wb-sales-analysis «118 656,75».
-
-    Количество так не требует двойного вычитания: sales_qty и returns_qty в
-    кубе — РАЗДЕЛЬНЫЕ колонки, там net = sales_qty − returns_qty.
+        2 245 122,00 − 4 484,05 = 2 240 637,95 → /wb-sales-analysis «Выручка».
     """
-    return round(float(gross or 0) - 2 * float(returns or 0), 2)
+    return round(float(amount or 0) - float(returns or 0), 2)
 
 
 def _days_in_month(year: int, month: int) -> int:
@@ -201,7 +203,7 @@ class YearCompareService:
                 g_amt = float(r["amount"] or 0) if r else 0.0
                 r_qty = int(r["r_qty"] or 0) if r else 0
                 r_amt = float(r["r_amount"] or 0) if r else 0.0
-                # NET: минус возвраты (в кубе сумма — вал, продажи + возвраты).
+                # NET: минус возвраты (в кубе оборот — по продажам, без возвратов).
                 row[f"qty_{y}"] = g_qty - r_qty
                 row[f"amount_{y}"] = _net_amount(g_amt, r_amt)
                 row[f"returns_qty_{y}"] = r_qty
@@ -266,7 +268,7 @@ class YearCompareService:
         """Сводка по годам: количество, сумма и Δ% к предыдущему выбранному году.
 
         Количество и сумма — NET (минус возвраты). Возвраты отдаются отдельно
-        (returns_qty / returns_amount), т.к. в кубе сумма валовая.
+        (returns_qty / returns_amount): в кубе оборот посчитан по продажам.
         """
         extra_sel = (f", SUM({r_qty_col}) AS r_qty, SUM({r_amt_col}) AS r_amount"
                      if r_qty_col and r_amt_col else ", 0 AS r_qty, 0 AS r_amount")
@@ -338,7 +340,7 @@ class YearCompareService:
                            SUM({qcol}) AS qty, SUM({acol}) AS amount,
                            {rq_expr} AS r_qty, {ra_expr} AS r_amount,
                            CASE WHEN SUM({qcol}) - ({rq_expr}) > 0
-                                THEN (SUM({acol}) - 2 * ({ra_expr})) / (SUM({qcol}) - ({rq_expr}))
+                                THEN (SUM({acol}) - ({ra_expr})) / (SUM({qcol}) - ({rq_expr}))
                            END AS avg_price
                     FROM {tbl}
                     WHERE 1=1{self._cid()} AND {dcol} BETWEEN :d1 AND :d2{nm_where} AND nmID > 0

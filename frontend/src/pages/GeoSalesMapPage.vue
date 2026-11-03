@@ -18,7 +18,7 @@
       <!-- Управление картой — на токенах темы, отдельной строкой под шапкой -->
       <div class="page-geo-sales-map__toolbar">
         <button class="btn btn--sm" :class="metric==='qty' ? 'btn--brand' : 'btn--outline'" @click="metric='qty'; fetchData()">Штуки</button>
-        <button class="btn btn--sm" :class="metric==='sum' ? 'btn--brand' : 'btn--outline'" @click="metric='sum'; fetchData()">Сумма</button>
+        <button class="btn btn--sm" :class="metric==='sum' ? 'btn--brand' : 'btn--outline'" @click="metric='sum'; fetchData()">Оборот</button>
         <select v-model="levelMode" class="wb-input page-geo-sales-map__level" title="Фикс уровня: Авто меняет разрез с зумом" @change="fetchData()">
           <option value="auto">Авто</option>
           <option value="country">Страны</option>
@@ -58,7 +58,7 @@
       </div>
 
       <div class="page-geo-sales-map__summary">
-        Видно: <b>{{ items.length }}</b> · Продаж: <b>{{ fmt0(total.qty) }}</b> · {{ metric === 'sum' ? 'Со ск' : 'К оплате' }}: <b>{{ fmt0(metric === 'sum' ? total.sum_amount : total.sum_for_pay) }} ₽</b>
+        Видно: <b>{{ items.length }}</b> · Продаж: <b>{{ fmt0(total.qty) }}</b> · {{ metric === 'sum' ? 'Оборот' : 'К оплате' }}: <b>{{ fmt0(metric === 'sum' ? total.sum_withdisc : total.sum_for_pay) }} ₽</b>
         <span> · период <b>{{ filters.date_from }} — {{ filters.date_to }}</b></span>
         <span v-if="!world && bboxNote"> · вьюпорт {{ bboxNote }}</span>
         <span v-if="resolvedIds !== null"> · товаров: <b>{{ resolvedIds }}</b></span>
@@ -80,8 +80,9 @@
                 <th class="t-left">{{ nameCol }}</th>
                 <th class="t-left">{{ subCol }}</th>
                 <th class="num">Кол-во</th>
-                <th class="num">Сумма, ₽</th>
-                <th class="num">Цена со ск, ₽</th>
+                <th class="num" title="Оборот: цена со скидкой продавца, до СПП — та же база, что «Продажи» в финансовой аналитике">Оборот, ₽</th>
+                <th class="num" title="Цена продажи после СПП">Цена продажи, ₽</th>
+                <th class="num" title="Цена товара до скидок продавца">Цена до скидок, ₽</th>
                 <th class="num">СПП, %</th>
                 <th class="num">К оплате, ₽</th>
               </tr>
@@ -90,8 +91,9 @@
                 <td></td>
                 <td></td>
                 <td>{{ fmt0(sumQty) }}</td>
-                <td>{{ fmt2(sumRetail) }}</td>
+                <td>{{ fmt2(sumWithdisc) }}</td>
                 <td>{{ fmt2(sumAmount) }}</td>
+                <td>{{ fmt2(sumRetail) }}</td>
                 <td>{{ fmt2(avgSpp) }}</td>
                 <td>{{ fmt2(sumPay) }}</td>
               </tr>
@@ -101,8 +103,9 @@
                 <td class="t-left">{{ r.name }}</td>
                 <td class="t-left page-geo-sales-map__addr">{{ r.sub }}</td>
                 <td class="num">{{ fmt0(r.qty) }}</td>
-                <td class="num">{{ fmt2(r.sum_retail) }}</td>
+                <td class="num">{{ fmt2(r.sum_withdisc) }}</td>
                 <td class="num">{{ fmt2(r.sum_amount) }}</td>
+                <td class="num">{{ fmt2(r.sum_retail) }}</td>
                 <td class="num">{{ fmt2(r.spp) }}</td>
                 <td class="num">{{ fmt2(r.sum_for_pay) }}</td>
               </tr>
@@ -164,7 +167,7 @@ const world = ref(false)
 const crumbs = ref({ country: '', okrug: '', region: '', city: '' })
 const level = ref<'country' | 'okrug' | 'region' | 'city' | 'pvz'>('region')
 const items = ref<any[]>([])
-const total = ref<any>({ qty: 0, sum_for_pay: 0 })
+const total = ref<any>({ qty: 0, sum_for_pay: 0, sum_withdisc: 0 })
 const hint = ref('')
 const resolvedIds = ref<number | null>(null)
 const zoom = ref(3)
@@ -327,12 +330,14 @@ const tableRows = computed(() => items.value.slice(0, 500))
 const sumQty = computed(() => items.value.reduce((a, r) => a + (r.qty || 0), 0))
 const sumRetail = computed(() => items.value.reduce((a, r) => a + (r.sum_retail || 0), 0))
 const sumAmount = computed(() => items.value.reduce((a, r) => a + (r.sum_amount || 0), 0))
+const sumWithdisc = computed(() => items.value.reduce((a, r) => a + (r.sum_withdisc || 0), 0))
 const sumPay = computed(() => items.value.reduce((a, r) => a + (r.sum_for_pay || 0), 0))
 const avgSpp = computed(() => { const q = sumQty.value; return q ? items.value.reduce((a, r) => a + (r.spp || 0) * (r.qty || 0), 0) / q : 0 })
 
-const valOf = (r: any) => metric.value === 'qty' ? (r.qty || 0) : (r.sum_amount || 0)
+/** Метрика «sum» — оборот (цена со скидкой продавца, до СПП). */
+const valOf = (r: any) => metric.value === 'qty' ? (r.qty || 0) : (r.sum_withdisc || 0)
 
-const reset = () => { filters.value.product = ''; filters.value.brand = ''; filters.value.category = ''; crumbs.value = { country: '', okrug: '', region: '', city: '' }; initDates(); items.value = []; total.value = { qty: 0, sum_for_pay: 0 }; if (layer) layer.clearLayers() }
+const reset = () => { filters.value.product = ''; filters.value.brand = ''; filters.value.category = ''; crumbs.value = { country: '', okrug: '', region: '', city: '' }; initDates(); items.value = []; total.value = { qty: 0, sum_for_pay: 0, sum_withdisc: 0 }; if (layer) layer.clearLayers() }
 const onReset = () => { reset(); fetchData() }
 
 const fetchData = async () => {
@@ -360,7 +365,7 @@ const fetchData = async () => {
       limit: 2000,
     })
     items.value = (d.items || []).filter((r: any) => r.lat != null && r.lon != null)
-    total.value = d.total || { qty: 0, sum_for_pay: 0 }
+    total.value = d.total || { qty: 0, sum_for_pay: 0, sum_withdisc: 0 }
     hint.value = (d as any).hint || ''
     resolvedIds.value = (d as any).params?.resolved_ids ?? null
     if (items.value.length >= 2000) hint.value = (hint.value ? hint.value + ' · ' : '') + 'показаны первые 2000 — приблизьте карту'
@@ -384,9 +389,9 @@ const renderMarkers = () => {
     && (level.value === 'country' || level.value === 'pvz' || !String(r.name || '').startsWith('Без '))).slice(0, 2000)
   for (const r of dots) {
     const ll: L.LatLngExpression = posOf(r)
-    const popup = `<b>${r.name}</b>${r.sub ? '<br>' + r.sub : ''}<br>Продаж: <b>${fmt0(r.qty)}</b> · ПВЗ: <b>${fmt0(r.pvz_count)}</b><br>Цена со ск: <b>${fmt2(r.sum_amount)}</b> ₽<br>К оплате: ${fmt2(r.sum_for_pay)} ₽${world.value ? '' : '<br><small>в видимой области</small>'}`
+    const popup = `<b>${r.name}</b>${r.sub ? '<br>' + r.sub : ''}<br>Продаж: <b>${fmt0(r.qty)}</b> · ПВЗ: <b>${fmt0(r.pvz_count)}</b><br>Оборот: <b>${fmt2(r.sum_withdisc)}</b> ₽<br>К оплате: ${fmt2(r.sum_for_pay)} ₽${world.value ? '' : '<br><small>в видимой области</small>'}`
     // тултип при наведении (кратко) + попап по клику (подробно)
-    const tip = `<b>${r.name}</b>${r.sub ? ' · ' + r.sub : ''}<br>Продаж: <b>${fmt0(r.qty)}</b> · ПВЗ: <b>${fmt0(r.pvz_count)}</b> · Со ск: <b>${fmt2(r.sum_amount)}</b> ₽`
+    const tip = `<b>${r.name}</b>${r.sub ? ' · ' + r.sub : ''}<br>Продаж: <b>${fmt0(r.qty)}</b> · ПВЗ: <b>${fmt0(r.pvz_count)}</b> · Оборот: <b>${fmt2(r.sum_withdisc)}</b> ₽`
     // мелкие поверх крупных: zIndexOffset обратно значению
     const zOff = 1000 - Math.min(1000, Math.round(valOf(r)))
     if (level.value === 'pvz') {
@@ -441,10 +446,11 @@ const exportExcel = async () => {
   const XLSX = await import('xlsx')
   const data = items.value.map((r: any) => ({
     [nameCol.value]: r.name, [subCol.value === '—' ? 'Страна' : subCol.value]: r.sub,
-    'Кол-во': r.qty, 'Сумма, ₽': r.sum_retail, 'Цена со ск, ₽': r.sum_amount, 'СПП, %': r.spp, 'К оплате, ₽': r.sum_for_pay,
+    'Кол-во': r.qty, 'Оборот, ₽': r.sum_withdisc, 'Цена продажи, ₽': r.sum_amount,
+    'Цена до скидок, ₽': r.sum_retail, 'СПП, %': r.spp, 'К оплате, ₽': r.sum_for_pay,
   }))
   const ws = XLSX.utils.json_to_sheet(data)
-  ws['!cols'] = [{ wch: 30 }, { wch: 30 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 9 }, { wch: 14 }]
+  ws['!cols'] = [{ wch: 30 }, { wch: 30 }, { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 9 }, { wch: 14 }]
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Гео')
   XLSX.writeFile(wb, `geo_${level.value}_${filters.value.date_from}_${filters.value.date_to}.xlsx`)

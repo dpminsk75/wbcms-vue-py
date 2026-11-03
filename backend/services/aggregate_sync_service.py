@@ -20,6 +20,7 @@ SALES_SQL = """
 INSERT INTO agg_sales_daily_sku (
     company_id, sale_date, nmID, subject_name, brand_name,
     sales_qty, returns_qty, retail_amount_sum, returns_amount_sum,
+    sales_withdisc_sum, returns_withdisc_sum,
     ppvz_for_pay_sum, delivery_rub_sum, penalty_sum)
 SELECT * FROM (
     SELECT company_id AS company_id, DATE(sale_dt) AS sale_date, nm_id AS nmID,
@@ -33,6 +34,16 @@ SELECT * FROM (
               Нужна, чтобы отчёт отдавал выручку за вычетом возвратов (как
               /wb-sales-analysis), не ломая смысл retail_amount_sum. */
            COALESCE(SUM(CASE WHEN doc_type_name = 'Возврат' THEN retail_amount END), 0) AS returns_amount_sum,
+           /* Оборот по цене со скидкой продавца (ДО СПП) — база, по которой WB
+              считает комиссию (см. SUMMARY_SQL: commission). Это «наш оборот»:
+              /wb-reports/year-compare и /wb-sales-analysis теперь считают суммы
+              по ней, а не по retail_amount (цена продажи ПОСЛЕ СПП) — иначе они
+              расходились с «Финансовой аналитикой» на ~34% (окт. 2026:
+              1 487 934,44 против 2 245 122). Разбор по supplier_oper_name —
+              как в SUMMARY_SQL, чтобы суммы совпадали построчно; у служебных
+              операций (Доставка, Удержание, …) суммы нулевые. */
+           COALESCE(SUM(CASE WHEN supplier_oper_name = 'Продажа' THEN retail_price_withdisc_rub END), 0) AS sales_withdisc_sum,
+           COALESCE(SUM(CASE WHEN supplier_oper_name = 'Возврат' THEN retail_price_withdisc_rub END), 0) AS returns_withdisc_sum,
            SUM(ppvz_for_pay) AS ppvz_for_pay_sum,
            SUM(delivery_rub) AS delivery_rub_sum,
            SUM(penalty) AS penalty_sum
@@ -45,6 +56,8 @@ ON DUPLICATE KEY UPDATE
     returns_qty = dt.returns_qty,
     retail_amount_sum = dt.retail_amount_sum,
     returns_amount_sum = dt.returns_amount_sum,
+    sales_withdisc_sum = dt.sales_withdisc_sum,
+    returns_withdisc_sum = dt.returns_withdisc_sum,
     ppvz_for_pay_sum = dt.ppvz_for_pay_sum,
     delivery_rub_sum = dt.delivery_rub_sum,
     penalty_sum = dt.penalty_sum"""

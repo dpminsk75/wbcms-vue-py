@@ -245,8 +245,12 @@ export interface GeoSalesItem {
   lat: number | null
   lon: number | null
   qty: number
+  /** Цена товара до скидок продавца. */
   sum_retail: number
+  /** Цена продажи после СПП. */
   sum_amount: number
+  /** Оборот: цена со скидкой продавца, до СПП. */
+  sum_withdisc: number
   sum_for_pay: number
   spp: number
   pvz_count: number
