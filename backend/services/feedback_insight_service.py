@@ -247,10 +247,17 @@ class FeedbackInsightService:
         if nms:
             ph = ", ".join(f":n{i}" for i in range(len(nms)))
             trows = (await self.db.execute(text(
-                f"SELECT nmID AS nm_id, title, vendorCode, brand, subjectName FROM wbcards "
-                f"WHERE nmID IN ({ph})"),
+                f"SELECT nmID AS nm_id, company_id, title, vendorCode, brand, subjectName, photos "
+                f"FROM wbcards WHERE nmID IN ({ph})"),
                 {f"n{i}": n for i, n in enumerate(nms)})).mappings().all()
-            titles = {int(t["nm_id"]): dict(t) for t in trows}
+            # один nmID в wbcards встречается в нескольких строках (легаси с
+            # company_id IS NULL + строка компании) — берём строку нашей компании
+            for t in trows:
+                nm = int(t["nm_id"])
+                cur = titles.get(nm)
+                if cur is None or (cur.get("company_id") != self.company_id
+                                   and t.get("company_id") == self.company_id):
+                    titles[nm] = dict(t)
         last = await self.last_insights_by_card()
         for it in items:
             t = titles.get(int(it["nm_id"]), {})
@@ -258,6 +265,7 @@ class FeedbackInsightService:
             it["vendor_code"] = t.get("vendorCode")
             it["brand"] = t.get("brand")
             it["subject_name"] = t.get("subjectName")
+            it["photos"] = t.get("photos")
             it["last_insight_at"] = last.get(int(it["nm_id"]))
         return {"items": items, "total": total, "page": page, "page_size": page_size}
 
@@ -453,7 +461,7 @@ class FeedbackInsightService:
         w = " AND ".join(where)
         total = int((await self.db.execute(text(
             f"SELECT COUNT(*) AS cnt FROM wb_feedback_insight i "
-            f"LEFT JOIN wbcards c ON c.nmID = i.nm_id WHERE {w}"),
+            f"LEFT JOIN wbcards c ON c.nmID = i.nm_id AND c.company_id = i.company_id WHERE {w}"),
             params)).scalar() or 0)
         rows = (await self.db.execute(text(f"""
             SELECT i.id, i.nm_id, i.job_id, i.period_from, i.period_to,
@@ -461,9 +469,10 @@ class FeedbackInsightService:
                    i.card_rec, i.product_rec, i.panel, i.summary, i.confidence,
                    i.model, i.status, i.error, i.created_at,
                    c.title AS card_title, c.vendorCode AS vendor_code,
-                   c.brand AS brand, c.subjectName AS subject_name
+                   c.brand AS brand, c.subjectName AS subject_name,
+                   c.photos AS card_photos
             FROM wb_feedback_insight i
-            LEFT JOIN wbcards c ON c.nmID = i.nm_id
+            LEFT JOIN wbcards c ON c.nmID = i.nm_id AND c.company_id = i.company_id
             WHERE {w}
             ORDER BY i.id DESC
             LIMIT :lim OFFSET :off"""),
@@ -493,7 +502,7 @@ class FeedbackInsightService:
                    i.model, i.status, i.error, i.created_at,
                    c.title AS card_title, c.vendorCode AS vendor_code
             FROM wb_feedback_insight i
-            LEFT JOIN wbcards c ON c.nmID = i.nm_id
+            LEFT JOIN wbcards c ON c.nmID = i.nm_id AND c.company_id = i.company_id
             WHERE {" AND ".join(where)}
             LIMIT 1"""), params)).mappings().first()
         if not row:

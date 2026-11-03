@@ -1,12 +1,14 @@
 <template>
-  <div class="page-feedback-dashboard__chart-card">
-    <div class="page-feedback-dashboard__chart-head">
-      <span class="page-feedback-dashboard__section-title">{{ title }}</span>
-      <select v-if="periods.length" v-model="activePeriod" class="form-select form-select-sm w-auto">
+  <!-- Карточка графика — блок темы: .wb-panel + шапка .card__hd (§5.9). -->
+  <div class="wb-panel page-feedback-dashboard__chart">
+    <div class="card__hd">
+      <span>{{ title }}</span>
+      <select v-if="periods.length" v-model="activePeriod" class="page-feedback-dashboard__period"
+              @change="$emit('update:period', activePeriod)">
         <option v-for="p in periods" :key="p.id" :value="p.id">{{ p.label }}</option>
       </select>
     </div>
-    <div class="page-feedback-dashboard__chart">
+    <div class="wb-panel__bd page-feedback-dashboard__chart-body">
       <VChart v-if="series.length" :option="option" autoresize
                class="page-feedback-dashboard__chart-inner" />
       <div v-else class="page-feedback-dashboard__empty">Нет данных</div>
@@ -31,6 +33,7 @@ import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import { resolveTokenColor } from '@/utils/chartTheme'
 
 use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
@@ -54,6 +57,8 @@ const props = withDefaults(defineProps<{
   yMax: undefined,
   smooth: true,
 })
+
+const emit = defineEmits<{ (e: 'update:period', id: string): void }>()
 
 const activePeriod = ref(props.periods[0]?.id || '')
 watch(() => props.periods, (v) => {
@@ -82,15 +87,16 @@ const option = computed(() => ({
     type: 'category',
     data: props.categories,
     boundaryGap: false,
-    axisLabel: { fontSize: 11, color: '#6b7280' },
-    axisLine: { lineStyle: { color: '#d5dae1' } },
+    // оси — токены темы (theme.md §5.9): подписи приглушенные, линия — линия темы
+    axisLabel: { fontSize: 11, color: resolveTokenColor('--ink-muted') },
+    axisLine: { lineStyle: { color: resolveTokenColor('--line-strong') } },
   },
   yAxis: {
     type: 'value',
     min: props.yMin,
     max: props.yMax,
-    axisLabel: { fontSize: 11, color: '#6b7280' },
-    splitLine: { lineStyle: { color: '#f0f1f4' } },
+    axisLabel: { fontSize: 11, color: resolveTokenColor('--ink-muted') },
+    splitLine: { lineStyle: { color: resolveTokenColor('--line') } },
   },
   series: props.series
     .filter((s) => !hidden.value.includes(s.name))
@@ -107,58 +113,3 @@ const option = computed(() => ({
     })),
 }))
 </script>
-
-<style scoped>
-.page-feedback-dashboard__chart-card {
-  background: #fff;
-  border: 1px solid #d5dae1;
-  border-radius: 10px;
-  padding: 16px 18px;
-  height: 100%;
-}
-.page-feedback-dashboard__chart-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-.page-feedback-dashboard__section-title { font-size: 13px; font-weight: 600; color: #111827; }
-.page-feedback-dashboard__chart { height: 300px; margin-top: 8px; }
-.page-feedback-dashboard__chart-inner { height: 100%; }
-.page-feedback-dashboard__empty {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #9ca3af;
-  font-size: 13px;
-}
-.page-feedback-dashboard__legend {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px 14px;
-  margin-top: 10px;
-}
-.page-feedback-dashboard__legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: #374151;
-}
-/* легенда-кнопка: клик отключает серию */
-.page-feedback-dashboard__legend-btn {
-  background: none;
-  border: 0;
-  padding: 0;
-  font: inherit;
-  cursor: pointer;
-}
-.page-feedback-dashboard__legend-btn:hover { color: #111827; }
-.page-feedback-dashboard__legend-item--off {
-  opacity: .4;
-  text-decoration: line-through;
-}
-.page-feedback-dashboard__legend-dot { width: 10px; height: 10px; border-radius: 3px; }
-</style>

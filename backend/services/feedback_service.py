@@ -36,7 +36,7 @@ class FeedbackService:
         return {} if self.company_id is None else {"company_id": self.company_id}
 
     def _filters(self, date_from, date_to, nm_id, rating,
-                 status, has_media, paid_only) -> tuple:
+                 status, has_media, paid_only, with_text=False) -> tuple:
         where = ["1=1" + self._company_where()]
         params: dict = {**self._company_params()}
         if date_from:
@@ -60,6 +60,10 @@ class FeedbackService:
                          " OR (f.video IS NOT NULL AND f.video NOT IN ('', 'null', '{}')))")
         if paid_only:
             where.append("f.f_cost > 0")
+        if with_text:
+            # только текст отзыва (плюсы/минусы — отдельные поля).
+            # Формула та же, что _TEXT в feedback_insight_service.
+            where.append("(f.text IS NOT NULL AND f.text <> '')")
         return " AND ".join(where), params
 
     @staticmethod
@@ -70,6 +74,37 @@ class FeedbackService:
                 d[k] = str(d[k])
         photos = decode_json_field(d.get("photoLinks"))
         d["photoLinks"] = photos if isinstance(photos, list) else []
+        # фото карточки товара (общий ProductCell) — из wbcards.photos.
+        # JSON-строку не декодируем: CardPhoto (utils/photoUrl.firstPhotoUrl)
+        # разбирает и массив, и JSON-строку сам.
+        d["product_photos"] = d.get("product_photos") or None
+        # Данные карточки: приоритет у wbcards, но они могут быть пустыми
+        # (строка компании в wbcards есть не у всех карточек) — тогда берём
+        # их из productDetails отзыва: там WB отдаёт название, артикул и
+        # бренд карточки (те же ключи, что разбирает questions_sync_service).
+        pd = decode_json_field(d.get("productDetails"))
+        if not isinstance(pd, dict):
+            pd = {}
+
+        def _pick(*vals) -> str:
+            for v in vals:
+                if v not in (None, ""):
+                    return str(v).strip()
+            return ""
+
+        d["product_title"] = _pick(d.get("product_title"),
+                                   pd.get("productName"), pd.get("productTitle"))
+        d["product_brand"] = _pick(d.get("product_brand"),
+                                   pd.get("brandName"), pd.get("brand"))
+        d["product_vendor_code"] = _pick(d.get("product_vendor_code"),
+                                         pd.get("supplierArticle"),
+                                         pd.get("supplierCode"),
+                                         pd.get("vendorCode"))
+        d["product_subject"] = _pick(d.get("product_subject"),
+                                     d.get("feedback_subject"),
+                                     pd.get("subjectName"), pd.get("subject"))
+        d.pop("feedback_subject", None)
+        d.pop("productDetails", None)
         video = decode_json_field(d.get("video"))
         d["video"] = video if isinstance(video, dict) else None
         bables = decode_json_field(d.get("bables"))
@@ -99,11 +134,11 @@ class FeedbackService:
         return d
 
     async def list(self, date_from=None, date_to=None, nm_id=None, rating=None,
-                   status=None, has_media=False, paid_only=False,
+                   status=None, has_media=False, paid_only=False, with_text=False,
                    sort="createdDate", order="desc", page=1, page_size=30) -> dict:
         from sqlalchemy import text
         where_sql, params = self._filters(
-            date_from, date_to, nm_id, rating, status, has_media, paid_only)
+            date_from, date_to, nm_id, rating, status, has_media, paid_only, with_text)
         col = {"createdDate": "f.createdDate",
                "productValuation": "f.productValuation"}.get(sort or "", "f.createdDate")
         direction = "ASC" if str(order).lower() == "asc" else "DESC"
@@ -114,14 +149,22 @@ class FeedbackService:
             f"""SELECT f.id, f.nmID, f.userName, f.productValuation, f.text, f.pros, f.cons,
                 f.answer, f.is_auto_replied, f.rule_id, f.createdDate, f.updatedDate,
                 f.photoLinks, f.video, f.f_cost, f.bables,
-                c.title AS product_title, rr.title AS rule_title,
+                f.subjectName AS feedback_subject,
+                f.productDetails,
+                c.title AS product_title,
+                c.photos AS product_photos,
+                c.brand AS product_brand,
+                c.subjectName AS product_subject,
+                c.vendorCode AS product_vendor_code,
+                rr.title AS rule_title,
                 ar.emotion AS ai_emotion,
                 ar.constructiveness AS ai_constructiveness,
                 ar.tone AS ai_tone,
                 ar.status AS ai_status,
                 ar.error AS ai_error
                 FROM wb_feedbacks f
-                LEFT JOIN wbcards c ON c.nmID = f.nmID
+                LEFT JOIN wbcards c
+                       ON c.nmID = f.nmID AND c.company_id = f.company_id
                 LEFT JOIN wb_reply_rules rr ON rr.id = f.rule_id
                 LEFT JOIN wb_feedback_ai_review ar
                        ON ar.company_id = f.company_id AND ar.feedback_id = f.id

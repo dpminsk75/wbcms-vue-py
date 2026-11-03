@@ -1,8 +1,8 @@
 /* Дашборд «Отзывы» — стили страницы.
-   Компоненты (KPI, донаты, графики, таблица) со своими scoped-стилями.
+   Каркас (фильтр, KPI, донаты, графики, таблица) — на блоках темы.
    Здесь только то, что относится к странице целиком. */
 
-/* Шапка дашборда — общая .wb-workspace-head (wb-ui.css): заголовок слева,
+/* Шапка дашборда — общая .wb-workspace-head: заголовок слева,
    локальное меню раздела справа. */
 
 /* Доп. фильтр «Отзывы» — в блоке фильтров, справа от кнопок */
@@ -12,11 +12,262 @@
   align-items: center;
   gap: 8px;
 }
-.page-feedback-dashboard__rev-filter .form-control { width: 200px; }
+.page-feedback-dashboard__rev-filter .wb-select { width: 200px; }
+/* ---------- KPI: внутренние шкалы (плитка .tile — тема) ----------
+   Плитку даёт .tile (theme/cards.css), здесь — только то, чего в ней нет:
+   дельта, полоса «с текстом %», шкала звёзд, шкала NPS. */
+.page-feedback-dashboard__kpi { margin-bottom: 16px; }
 
-.page-feedback-dashboard__products {
-  background: #fff;
-  border: 1px solid #d5dae1;
-  border-radius: 12px;
+.page-feedback-dashboard__kpi-sub {
+  font-size: calc(11px * var(--fs));
+  margin-top: 2px;
+}
+.page-feedback-dashboard__kpi-muted { color: var(--ink-muted); }
+.page-feedback-dashboard__kpi-note {
+  font-size: calc(12px * var(--fs));
+  color: var(--ink);
+  margin-top: 10px;
+}
+.page-feedback-dashboard__kpi-delta {
+  font-size: calc(12px * var(--fs));
+  font-weight: 600;
+  margin-left: 4px;
+}
+.page-feedback-dashboard__delta-up { color: var(--good); }
+.page-feedback-dashboard__delta-down { color: var(--bad); }
+
+.page-feedback-dashboard__bar {
+  height: 8px;
+  background: var(--surface-3);
+  border-radius: 4px;
   overflow: hidden;
+  margin-top: 4px;
+}
+.page-feedback-dashboard__bar-fill {
+  height: 8px;
+  background: var(--chart-blue);
+}
+.page-feedback-dashboard__bar-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: calc(10px * var(--fs));
+  color: var(--ink-muted);
+  margin-top: 2px;
+}
+
+.page-feedback-dashboard__stars { margin-top: 10px; }
+.page-feedback-dashboard__star-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+.page-feedback-dashboard__star-num {
+  font-size: calc(11px * var(--fs));
+  color: var(--ink-soft);
+  width: 30px;
+}
+.page-feedback-dashboard__star-bar {
+  flex: 1 1 auto;
+  height: 8px;
+  background: var(--surface-3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.page-feedback-dashboard__star-fill {
+  height: 8px;
+  background: var(--chart-green);
+}
+.page-feedback-dashboard__star-pct {
+  font-size: calc(11px * var(--fs));
+  color: var(--ink-soft);
+  width: 34px;
+  text-align: right;
+}
+.page-feedback-dashboard__star {
+  color: var(--warn);
+  margin-right: 2px;
+}
+
+/* Шкала NPS: −100…100, ноль посередине */
+.page-feedback-dashboard__nps-scale { margin-top: 10px; }
+.page-feedback-dashboard__nps-track {
+  position: relative;
+  height: 10px;
+  background: linear-gradient(90deg,
+    var(--chart-orange),
+    var(--surface-3) 50%,
+    var(--chart-green));
+  border-radius: 5px;
+}
+.page-feedback-dashboard__nps-mid {
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  width: 1px;
+  height: 16px;
+  background: var(--ink-muted);
+}
+.page-feedback-dashboard__nps-marker {
+  position: absolute;
+  top: -4px;
+  width: 12px;
+  height: 18px;
+  margin-left: -6px;
+  border-radius: 3px;
+  background: var(--brand);
+  border: 2px solid var(--surface);
+  box-shadow: var(--shadow-1);
+}
+.page-feedback-dashboard__nps-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: calc(10px * var(--fs));
+  color: var(--ink-muted);
+  margin-top: 3px;
+}
+.page-feedback-dashboard__nps-note {
+  font-size: calc(12px * var(--fs));
+  color: var(--ink);
+  margin-top: 6px;
+}
+
+/* ---------- Графики: каркас .wb-panel + шапка .card__hd ---------- */
+.page-feedback-dashboard__chart { height: 100%; }
+.page-feedback-dashboard__chart-body { padding-top: 6px; }
+.page-feedback-dashboard__chart-inner { height: 300px; width: 100%; }
+.page-feedback-dashboard__empty {
+  height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  font-size: calc(13px * var(--fs));
+}
+/* Заглушка вместо графика (ИИ-разбор ещё не считан) */
+.page-feedback-dashboard__empty-note {
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--ink-muted);
+  font-size: calc(13px * var(--fs));
+  text-align: center;
+}
+.page-feedback-dashboard__empty-note i { font-size: 26px; }
+
+/* Переключатель периода — в шапке блока, на токенах темы */
+.page-feedback-dashboard__period {
+  margin-left: auto;
+  width: auto;
+  max-width: 220px;
+  font-size: calc(12px * var(--fs));
+  padding: 3px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+/* Легенда графика — клик по элементу отключает серию */
+.page-feedback-dashboard__legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 14px;
+  padding: 0 14px 12px;
+}
+.page-feedback-dashboard__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: calc(11px * var(--fs));
+  color: var(--ink-soft);
+}
+.page-feedback-dashboard__legend-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.page-feedback-dashboard__legend-btn:hover { color: var(--ink); }
+.page-feedback-dashboard__legend-item--off {
+  opacity: .4;
+  text-decoration: line-through;
+}
+.page-feedback-dashboard__legend-dot { width: 10px; height: 10px; border-radius: 3px; }
+
+/* ---------- Таблица «Обзор товаров» — блок темы .tbl-card ---------- */
+.page-feedback-dashboard__products { margin-bottom: 16px; }
+.page-feedback-dashboard__products-sub {
+  font-weight: 400;
+  font-size: calc(11.5px * var(--fs));
+  color: var(--ink-muted);
+}
+.page-feedback-dashboard__products-tabs {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.page-feedback-dashboard__limit-btn {
+  border: 0;
+  border-left: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: calc(11.5px * var(--fs));
+  padding: 4px 10px;
+  cursor: pointer;
+  line-height: 1;
+}
+.page-feedback-dashboard__limit-btn:first-child { border-left: 0; }
+.page-feedback-dashboard__limit-btn:hover { background: color-mix(in srgb, currentColor 22%, transparent); }
+.page-feedback-dashboard__limit-btn--on {
+  background: var(--brand);
+  border-left-color: var(--brand);
+  color: var(--surface);
+  font-weight: 600;
+}
+.page-feedback-dashboard__orders-note {
+  padding: 6px 14px;
+  font-size: calc(12px * var(--fs));
+  color: var(--warn-deep);
+  background: var(--warn-tint);
+  border-bottom: 1px solid var(--line);
+}
+.page-feedback-dashboard__loading {
+  padding: 16px;
+  text-align: center;
+  color: var(--ink-muted);
+  font-size: calc(13px * var(--fs));
+}
+.page-feedback-dashboard__empty-row { color: var(--ink-muted); }
+.page-feedback-dashboard__muted { color: var(--ink-muted); }
+.page-feedback-dashboard__products-first { min-width: 300px; }
+.page-feedback-dashboard__col-tone { width: 190px; }
+.page-feedback-dashboard__rate { white-space: nowrap; font-weight: 600; }
+.page-feedback-dashboard__star { color: var(--warn); }
+
+/* Полоса тональности: позитив / негатив — палитра графиков (theme.md §5.9) */
+.page-feedback-dashboard__tone-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--surface-3);
+}
+.page-feedback-dashboard__tone-pos { background: var(--chart-green); }
+.page-feedback-dashboard__tone-neg { background: var(--chart-orange); }
+.page-feedback-dashboard__tone-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: calc(10px * var(--fs));
+  margin-top: 2px;
 }

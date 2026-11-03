@@ -1,41 +1,74 @@
-/* Инсайты (просмотр разборов) — свои стили страницы.
-   Всё, что есть в Bootstrap 5 (flex/ gap/ отступы/ таблицы/ бейджи),
-   не дублируем: ниже только ширины колонок, которые утилитами BS не задать,
-   и блок панели «о чём говорят покупатели». */
+/* Инсайты (просмотр разборов, /wb-feedback-insights) — стили страницы.
+ * Каркас — общие блоки темы: WbUniversalFilter, .tbl-card → .card__hd → .tbl-wrap → .tbl,
+ * .wb-pager, ExcelButton (.hd-btn), .badge--*.
+ * Здесь только то, чего в общих блоках нет: ширины колонок, раскрытая строка,
+ * панель «о чём говорят покупатели», блоки действий.
+ * Цвета — только токены темы (§8.1.1): hex в CSS страницы запрещён. */
 
 .page-feedback-insights__col-check { width: 36px; }
 .page-feedback-insights__col-num { width: 100px; text-align: center; }
 /* Карточка — иначе название рвётся на 2 строки */
 .page-feedback-insights__col-card { min-width: 300px; }
 
-.page-feedback-insights__count { float: right; font-weight: 400; font-size: 12px; opacity: .85; }
-.page-feedback-insights__spacer { display: inline-block; width: 40px; }
-.page-feedback-insights__copied { color: #1a7f37; font-weight: 600; }
+.page-feedback-insights__copied { color: var(--good-deep); font-weight: 600; }
+.page-feedback-insights__muted { color: var(--ink-muted); }
+.page-feedback-insights__small { font-size: calc(11.5px * var(--fs)); }
+.page-feedback-insights__empty { padding: 20px; color: var(--ink-muted); }
 
-.page-feedback-insights__title { font-weight: 600; }
-.page-feedback-insights__sub {
-  font-size: 11px;
-  color: #6c757d;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 340px;
+/* Пояснение над таблицей: что вообще в строках */
+.page-feedback-insights__note {
+  margin: 0;
+  padding: 8px 14px;
+  font-size: calc(12px * var(--fs));
+  color: var(--ink-soft);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
 }
 
-.page-feedback-insights__row--picked { background-color: #eef4ff; }
-.page-feedback-insights__expand-row td { background-color: #fafafa; }
+/* Заголовок группы — запуск разбора, к которому относятся строки ниже */
+.page-feedback-insights__group td {
+  padding: 6px 10px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line-strong);
+  font-size: calc(12px * var(--fs));
+}
+.page-feedback-insights__group-title {
+  font-weight: 700;
+  color: var(--ink);
+}
+.page-feedback-insights__group-meta {
+  margin-left: 10px;
+  color: var(--ink-muted);
+}
 
-.page-feedback-insights__pager { display: flex; gap: 8px; justify-content: center; align-items: center; }
-.page-feedback-insights__pager-label { font-size: 12px; color: #6c757d; }
+/* Раскрытая строка — подсветка ячеек (зебра темы красит ячейки, а не строку) */
+.page-feedback-insights__row--picked td { background: var(--brand-tint); }
+.page-feedback-insights__expand-row td { background: var(--surface-2); }
 
-.page-feedback-insights__job-note { font-size: 13px; }
+.page-feedback-insights__card { margin-top: 16px; }
+
+/* Заметка «показаны инсайты задания #N» */
+.page-feedback-insights__job-note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 10px 0;
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--info-tint);
+  color: var(--info-deep);
+  border: 1px solid var(--info);
+  font-size: calc(12.5px * var(--fs));
+}
 
 /* ---- Панель «о чём говорят покупатели» ---- */
 .page-feedback-insights__panel {
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
   padding: 14px 16px;
   margin-bottom: 6px;
+  background: var(--surface);
 }
 .page-feedback-insights__panel-head {
   display: flex;
@@ -44,10 +77,10 @@
   margin-bottom: 12px;
   flex-wrap: wrap;
 }
-.page-feedback-insights__panel-title { font-size: 14px; font-weight: 700; }
-.page-feedback-insights__panel-stat { font-size: 12.5px; color: #6c757d; }
-.page-feedback-insights__panel-stat.panel-stat--pos { color: #1a7f37; font-weight: 600; }
-.page-feedback-insights__panel-stat.panel-stat--neg { color: #a33; font-weight: 600; }
+.page-feedback-insights__panel-title { font-size: calc(14px * var(--fs)); font-weight: 700; }
+.page-feedback-insights__panel-stat { font-size: calc(12.5px * var(--fs)); color: var(--ink-muted); }
+.page-feedback-insights__panel-stat.panel-stat--pos { color: var(--good-deep); font-weight: 600; }
+.page-feedback-insights__panel-stat.panel-stat--neg { color: var(--bad-deep); font-weight: 600; }
 
 .page-feedback-insights__panel-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
 @media (max-width: 900px) {
@@ -57,7 +90,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13.5px;
+  font-size: calc(13.5px * var(--fs));
   font-weight: 700;
   margin-bottom: 10px;
 }
@@ -67,70 +100,74 @@
   align-items: center;
   gap: 8px;
   font-weight: 700;
-  font-size: 13.5px;
+  font-size: calc(13.5px * var(--fs));
   margin-bottom: 4px;
 }
 .page-feedback-insights__group-title .mk { font-weight: 700; font-size: 15px; }
-.page-feedback-insights__group.group--pos .mk { color: #1a7f37; }
-.page-feedback-insights__group.group--neg .mk { color: #a33; }
+.page-feedback-insights__group.group--pos .mk { color: var(--good-deep); }
+.page-feedback-insights__group.group--neg .mk { color: var(--bad-deep); }
 .page-feedback-insights__group ul { list-style: none; margin: 0 0 0 20px; padding: 0; }
 .page-feedback-insights__group li {
   position: relative;
   padding: 3px 0 3px 14px;
-  font-size: 12.5px;
-  color: #333;
+  font-size: calc(12.5px * var(--fs));
+  color: var(--ink);
 }
 .page-feedback-insights__group li::before {
   content: "\2022";
   position: absolute;
   left: 0;
-  color: #8a8f98;
+  color: var(--ink-muted);
 }
-.page-feedback-insights__group.group--pos li::before { color: #1a7f37; }
-.page-feedback-insights__group.group--neg li::before { color: #a33; }
+.page-feedback-insights__group.group--pos li::before { color: var(--good-deep); }
+.page-feedback-insights__group.group--neg li::before { color: var(--bad-deep); }
 
 /* ---- Блоки действий ---- */
 .page-feedback-insights__h3 {
-  font-size: 14px;
+  font-size: calc(14px * var(--fs));
   font-weight: 700;
   margin: 22px 0 10px;
   padding-bottom: 5px;
-  border-bottom: 2px solid #8A2BE0;
+  border-bottom: 2px solid var(--brand);
 }
-.page-feedback-insights__act { border: 1px solid #e5e7eb; border-radius: 8px; padding: 11px 13px; }
-.page-feedback-insights__act-issue { font-weight: 700; font-size: 14px; margin: 7px 0; }
-.page-feedback-insights__act-fix { color: #1a7f37; font-size: 13px; margin-bottom: 9px; }
-.page-feedback-insights__quote { font-style: italic; color: #555; font-size: 11.5px; margin: 3px 0; }
-.page-feedback-insights__fix-head { font-weight: 700; font-size: 12px; margin: 11px 0 3px; color: #4a4a55; }
-.page-feedback-insights__fix-list { margin: 0; padding-left: 18px; font-size: 12.5px; }
+.page-feedback-insights__act {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 11px 13px;
+}
+.page-feedback-insights__act-issue { font-weight: 700; font-size: calc(14px * var(--fs)); margin: 7px 0; }
+.page-feedback-insights__act-fix { color: var(--good-deep); font-size: calc(13px * var(--fs)); margin-bottom: 9px; }
+.page-feedback-insights__quote { font-style: italic; color: var(--ink-soft); font-size: calc(11.5px * var(--fs)); margin: 3px 0; }
+.page-feedback-insights__fix-head { font-weight: 700; font-size: calc(12px * var(--fs)); margin: 11px 0 3px; color: var(--ink-soft); }
+.page-feedback-insights__fix-list { margin: 0; padding-left: 18px; font-size: calc(12.5px * var(--fs)); }
 .page-feedback-insights__fix-list li { margin-bottom: 2px; }
 .page-feedback-insights__change {
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--fs));
   margin-bottom: 3px;
   display: flex;
   gap: 7px;
   flex-wrap: wrap;
   align-items: baseline;
 }
-.page-feedback-insights__change-was { text-decoration: line-through; color: #a33; }
-.page-feedback-insights__change-now { color: #1a7f37; font-weight: 600; }
+.page-feedback-insights__change-was { text-decoration: line-through; color: var(--bad-deep); }
+.page-feedback-insights__change-now { color: var(--good-deep); font-weight: 600; }
 .page-feedback-insights__hl {
-  background: #f0f8f1;
-  border-left: 3px solid #1a7f37;
+  background: var(--good-tint);
+  border-left: 3px solid var(--good);
   padding: 6px 9px;
-  border-radius: 0 6px 6px 0;
-  font-size: 12.5px;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: calc(12.5px * var(--fs));
   margin-top: 9px;
 }
-.page-feedback-insights__cap { font-size: 11px; color: #6c757d; margin-bottom: 4px; }
+.page-feedback-insights__cap { font-size: calc(11px * var(--fs)); color: var(--ink-muted); margin-bottom: 4px; }
 .page-feedback-insights__pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: 11px;
+  font-size: calc(11px * var(--fs));
   line-height: 1.5;
-  background: #f7f7fa;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
   padding: 9px;
   max-height: 190px;
   overflow-y: auto;

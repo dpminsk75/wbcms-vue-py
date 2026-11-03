@@ -2,10 +2,10 @@
   <div class="wb-universal-filter">
     <div class="wb-universal-filter__presets">
       <div class="wb-universal-filter__presets-group">
-        <button v-for="p in presets" :key="p.id" class="btn btn-sm" :class="activePreset === p.id ? 'btn--brand' : 'btn--outline'" @click="applyPreset(p.id)">{{ p.label }}</button>
+        <button v-for="p in presets" :key="p.id" class="btn" :class="activePreset === p.id ? 'btn--brand' : 'btn--outline'" @click="applyPreset(p.id)">{{ p.label }}</button>
       </div>
       <div v-if="showQuick && quickButtons.length" class="wb-universal-filter__presets-group wb-universal-filter__presets-group--right">
-        <button v-for="btn in quickButtons" :key="btn.nm_id" class="btn btn-panel btn-sm" @click="onQuickClick(btn)" :title="'nm_id ' + btn.nm_id">
+        <button v-for="btn in quickButtons" :key="btn.nm_id" class="btn btn-panel" @click="onQuickClick(btn)" :title="'nm_id ' + btn.nm_id">
           <i v-if="btn.icon" :class="btn.icon"></i> {{ btn.label }}
         </button>
       </div>
@@ -301,26 +301,19 @@ onBeforeUnmount(() => { if (searchTimer) clearTimeout(searchTimer); reqSeq++ })
 .wb-universal-filter__btns { margin-top: 12px; display: flex; gap: 8px; align-items: flex-end; }
 .wb-universal-filter__apply { width: 120px; }
 
-/* Поля страницы (слот #fields) — отдельная строка над кнопками, сетка с равными колонками */
+/* Поля страницы (слот #fields) — отдельная строка над кнопками, сетка с равными колонками.
+   Ширина колонки — 140–190px (theme.md §5.6): поле не должно раздуваться до
+   полуэкрана. Широкое поле (карточка, поиск) занимает всю строку через .wb-field--wide. */
 .wb-universal-filter__fields {
   margin-top: 12px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 585px));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 190px));
   gap: 10px;
   align-items: start;
 }
 
-/* Поля фильтра — на токенах темы */
-.wb-universal-filter :deep(.form-control) {
-  color: var(--ink);
-  background: var(--surface);
-  border-color: var(--line-strong);
-  font-size: calc(12.5px * var(--fs));
-}
-.wb-universal-filter :deep(.form-control:focus) {
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px var(--brand-tint);
-}
+/* Поля фильтра — на токенах темы: кегль, цвета и фокус задаёт theme/forms.css
+   (.form-control / .form-select), здесь только свои отступы. */
 
 /* Попап подсказок по товару (свой, вместо нативного <datalist>) */
 .wb-universal-filter__product { position: relative; }

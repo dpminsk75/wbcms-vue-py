@@ -1,65 +1,61 @@
 <template>
   <div class="container-xxl page-feedback-review">
-    <FeedbackHead :title="$route.meta.title || 'Разбор отзывов (фон)'" active="review" />
+    <WbWorkspaceHead :title="$route.meta.title || 'Разбор отзывов (фон)'" :workspace-tabs="FEEDBACK_TABS" workspace-active="review" />
 
-    <div class="row mb-3 d-flex align-items-center">
-      <div class="col-auto d-flex gap-2 align-items-center">
-        <span v-if="st?.flags?.paused" class="badge text-bg-warning">Пауза</span>
-        <span v-else-if="st?.flags?.balance_paused" class="badge text-bg-warning">Пауза ИИ</span>
-        <span v-else-if="st?.flags?.manual_running" class="badge text-bg-info">Разбор идёт</span>
-        <span v-else-if="st?.flags?.running" class="badge text-bg-success">Работает</span>
-        <span v-else class="badge text-bg-secondary">Не запущен</span>
-        <button class="btn btn-sm" :class="isPaused ? 'btn-success' : 'btn-outline-warning'"
-                :disabled="!st || toggling" @click="togglePause">
+    <!-- Панель статуса — блок темы .wb-panel (theme.md §5.7.9) -->
+    <div class="wb-panel page-feedback-review__panel">
+      <div class="card__hd">
+        <span><i class="bi bi-activity me-1"></i> Статус фонового разбора</span>
+        <span class="spacer"></span>
+        <span v-if="st?.flags?.paused" class="badge badge--warn">Пауза</span>
+        <span v-else-if="st?.flags?.balance_paused" class="badge badge--warn">Пауза ИИ</span>
+        <span v-else-if="st?.flags?.manual_running" class="badge badge--info">Разбор идёт</span>
+        <span v-else-if="st?.flags?.running" class="badge badge--ok">Работает</span>
+        <span v-else class="badge badge--neutral">Не запущен</span>
+        <button class="hd-btn" :disabled="!st || toggling" @click="togglePause">
           <i class="bi me-1" :class="isPaused ? 'bi-play-fill' : 'bi-pause-fill'"></i>
           {{ isPaused ? 'Возобновить' : 'Пауза' }}
         </button>
-        <button class="btn btn-sm btn-light" @click="refreshAll" :disabled="loading">
+        <button class="hd-btn" :disabled="loading" @click="refreshAll">
           <i class="bi bi-arrow-clockwise me-1"></i> Обновить
         </button>
       </div>
-    </div>
+      <div class="wb-panel__bd">
+        <div v-if="loadErr" class="page-feedback-review__alert page-feedback-review__alert--bad">{{ loadErr }}</div>
+        <div v-if="msg" class="page-feedback-review__alert page-feedback-review__alert--info">{{ msg }}</div>
+        <div v-if="st?.flags?.balance_paused" class="page-feedback-review__alert page-feedback-review__alert--warn">
+          <i class="bi bi-pause-circle"></i>
+          <span>
+            У ИИ-провайдера кончились токены
+            ({{ st?.flags?.balance_pause_reason || 'insufficient_balance' }}) —
+            разбор на паузе до {{ fmtTime(st?.flags?.balance_pause_until) }}
+            <span class="page-feedback-review__muted">(осталось {{ fmtLeft(st?.flags?.balance_pause_left_sec) }})</span>
+          </span>
+          <button class="btn btn--outline btn-sm ms-auto" :disabled="toggling" @click="togglePause">
+            Возобновить сейчас
+          </button>
+        </div>
 
-    <div v-if="loadErr" class="alert alert-danger py-2">{{ loadErr }}</div>
-    <div v-if="msg" class="alert alert-info py-2">{{ msg }}</div>
-
-    <div v-if="st?.flags?.balance_paused" class="alert alert-warning py-2 d-flex align-items-center gap-2 flex-wrap">
-      <i class="bi bi-pause-circle"></i>
-      <span>
-        У ИИ-провайдера кончились токены
-        ({{ st?.flags?.balance_pause_reason || 'insufficient_balance' }}) —
-        разбор на паузе до {{ fmtTime(st?.flags?.balance_pause_until) }}
-        <span class="text-muted">(осталось {{ fmtLeft(st?.flags?.balance_pause_left_sec) }})</span>
-      </span>
-      <button class="btn btn-sm btn-outline-dark ms-auto" :disabled="toggling" @click="togglePause">
-        Возобновить сейчас
-      </button>
-    </div>
-
-    <!-- Статус -->
-    <div class="card mb-3">
-      <div class="card-header"><i class="bi bi-activity me-1"></i> Статус</div>
-      <div class="card-body">
         <div class="row g-3 page-feedback-review__status">
           <div class="col-12 col-md-6 col-xl-3">
             <div class="page-feedback-review__k">Очередь</div>
             <div class="mb-1">
               <b>{{ st?.counts?.queue_count || 0 }}</b> неразобранных отзывов
-              <span class="text-muted small">(за 30 дней)</span>
+              <span class="page-feedback-review__muted page-feedback-review__small">(за 30 дней)</span>
             </div>
             <div class="mb-1">ждут повторного разбора: <b>{{ st?.counts?.pending || 0 }}</b></div>
             <div>готово: <b>{{ st?.counts?.done || 0 }}</b> · ошибок: <b>{{ st?.counts?.error || 0 }}</b></div>
-            <div v-if="st?.quota?.ok" class="mt-1 small">
+            <div v-if="st?.quota?.ok" class="mt-1 page-feedback-review__small">
               Лимит ИИ: <b>{{ st?.quota?.percent }}%</b>
-              <span class="text-muted">· сброс в {{ fmtClock(st?.quota?.reset_at) }}
+              <span class="page-feedback-review__muted">· сброс в {{ fmtClock(st?.quota?.reset_at) }}
                 <template v-if="st?.quota?.reset_left">· осталось {{ st?.quota?.reset_left }}</template>
               </span>
             </div>
-            <div v-else-if="st?.quota?.applicable && !st?.quota?.ok" class="mt-1 small text-muted">
+            <div v-else-if="st?.quota?.applicable && !st?.quota?.ok" class="mt-1 page-feedback-review__muted page-feedback-review__small">
               Лимит ИИ: не удалось проверить ({{ st?.quota?.error || 'нет данных' }})
             </div>
             <div v-if="st?.quota?.weekly_percent !== null && st?.quota?.weekly_percent !== undefined && st?.quota?.weekly_percent < 10"
-                 class="small text-warning-emphasis">
+                 class="page-feedback-review__small page-feedback-review__warn">
               Недельный лимит: {{ st?.quota?.weekly_percent }}%
             </div>
           </div>
@@ -70,11 +66,11 @@
               <input id="fr-auto" v-model="auto" class="form-check-input" type="checkbox" />
               <label class="form-check-label" for="fr-auto">Авторазбор в фоне</label>
             </div>
-            <div class="d-flex align-items-center gap-2">
-              <label class="small text-muted text-nowrap" for="fr-batch">Отзывов за прогон</label>
+            <div class="page-feedback-review__settings">
+              <label class="page-feedback-review__muted page-feedback-review__small" for="fr-batch">Отзывов за прогон</label>
               <input id="fr-batch" v-model.number="batch" type="number" min="1" max="500"
-                     class="form-control form-control-sm" style="width:72px" />
-              <button class="btn btn-sm btn-outline-secondary" :disabled="saving" @click="onSaveSettings">
+                     class="wb-input page-feedback-review__batch" />
+              <button class="btn btn--outline btn-sm" :disabled="saving" @click="onSaveSettings">
                 Сохранить
               </button>
             </div>
@@ -83,17 +79,17 @@
           <div class="col-12 col-md-6 col-xl-3">
             <div class="page-feedback-review__k">Промпт</div>
             <div class="mb-2">
-              <span v-if="st?.prompt_set" class="text-success">задан</span>
-              <span v-else class="text-danger">не задан — разбор не пойдёт</span>
+              <span v-if="st?.prompt_set" class="page-feedback-review__ok">задан</span>
+              <span v-else class="page-feedback-review__bad">не задан — разбор не пойдёт</span>
             </div>
-            <button class="btn btn-sm btn-outline-secondary" @click="openPrompt">
+            <button class="btn btn--outline btn-sm" @click="openPrompt">
               {{ st?.prompt_set ? 'Изменить' : 'Задать' }}
             </button>
           </div>
 
           <div class="col-12 col-md-6 col-xl-3">
             <div class="page-feedback-review__k">Разобрать сейчас</div>
-            <button class="btn btn-sm btn-primary mb-2" :disabled="running || !st?.prompt_set || st?.flags?.balance_paused" @click="onRun">
+            <button class="btn btn--brand btn-sm mb-2" :disabled="running || !st?.prompt_set || st?.flags?.balance_paused" @click="onRun">
               <span v-if="running" class="spinner-border spinner-border-sm me-1"></span>
               {{ running ? 'Разбираем...' : 'Разобрать порцию' }}
             </button>
@@ -103,49 +99,31 @@
       </div>
     </div>
 
-    <!-- Вкладки -->
-    <ul class="nav nav-tabs mb-3">
-      <li class="nav-item">
-        <button class="nav-link" :class="{ active: tab === 'queue' }" @click="switchTab('queue')">
-          Очередь
-        </button>
-      </li>
-      <li class="nav-item">
-        <button class="nav-link" :class="{ active: tab === 'errors' }" @click="switchTab('errors')">
-          Ошибки <span class="badge bg-light text-dark">{{ st?.counts?.error || 0 }}</span>
-        </button>
-      </li>
-      <li class="nav-item">
-        <button class="nav-link" :class="{ active: tab === 'log' }" @click="switchTab('log')">
-          Лог работы <span class="badge bg-light text-dark">{{ logTotal }}</span>
-        </button>
-      </li>
-      <li class="nav-item">
-        <button class="nav-link" :class="{ active: tab === 'cost' }" @click="switchTab('cost')">
-          Затраты ИИ
-        </button>
-      </li>
-    </ul>
+    <!-- Вкладки — чипы темы (§5.6.3) -->
+    <div class="page-feedback-review__tabs">
+      <WbChipGroup v-model="tab" :options="tabOptions" />
+    </div>
 
     <!-- ===== Очередь ===== -->
     <div v-show="tab === 'queue'">
-      <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
+      <div class="tbl-card page-feedback-review__card">
+        <div class="card__hd">
           <span><i class="bi bi-list-ol me-1"></i> Неразобранные отзывы</span>
-          <button class="btn btn-sm btn-light" @click="loadQueue">Обновить</button>
+          <span class="spacer"></span>
+          <button class="hd-btn" @click="loadQueue">Обновить</button>
         </div>
-        <div class="card-body p-0">
-          <div v-if="!queue.length" class="text-center text-muted p-4">Очередь пуста</div>
-          <table v-else class="table table-sm table-striped mb-0">
+        <div v-if="!queue.length" class="page-feedback-review__empty">Очередь пуста</div>
+        <div v-else class="tbl-wrap">
+          <table class="tbl">
             <thead>
-              <tr><th>Дата</th><th>nmID</th><th>★</th><th>Отзыв</th></tr>
+              <tr><th class="t-left">Дата</th><th class="t-left">nmID</th><th class="t-center">★</th><th class="t-left">Отзыв</th></tr>
             </thead>
             <tbody>
               <tr v-for="it in queue" :key="it.id">
-                <td class="text-nowrap small">{{ it.created_at }}</td>
-                <td class="small">{{ it.nm_id }}</td>
-                <td class="text-center small">{{ it.rating }}</td>
-                <td class="small">{{ (it.text || '').slice(0, 200) }}</td>
+                <td class="t-left num page-feedback-review__small">{{ it.created_at }}</td>
+                <td class="t-left page-feedback-review__small">{{ it.nm_id }}</td>
+                <td class="t-center page-feedback-review__small">{{ it.rating }}</td>
+                <td class="t-left page-feedback-review__small">{{ (it.text || '').slice(0, 200) }}</td>
               </tr>
             </tbody>
           </table>
@@ -155,33 +133,31 @@
 
     <!-- ===== Ошибки ===== -->
     <div v-show="tab === 'errors'">
-      <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
+      <div class="tbl-card page-feedback-review__card">
+        <div class="card__hd">
           <span><i class="bi bi-exclamation-triangle me-1"></i> Ошибки разбора</span>
-          <div class="d-flex gap-2">
-            <button class="btn btn-sm btn-outline-secondary" @click="onRetryAll"
-                    :disabled="!(st?.counts?.error || 0)">
-              Вернуть все в очередь
-            </button>
-            <button class="btn btn-sm btn-light" @click="loadErrors">Обновить</button>
-          </div>
+          <span class="spacer"></span>
+          <button class="hd-btn" :disabled="!(st?.counts?.error || 0)" @click="onRetryAll">
+            Вернуть все в очередь
+          </button>
+          <button class="hd-btn" @click="loadErrors">Обновить</button>
         </div>
-        <div class="card-body p-0">
-          <div v-if="!errors.length" class="text-center text-muted p-4">Ошибок нет</div>
-          <table v-else class="table table-sm table-striped mb-0">
+        <div v-if="!errors.length" class="page-feedback-review__empty">Ошибок нет</div>
+        <div v-else class="tbl-wrap">
+          <table class="tbl">
             <thead>
-              <tr><th>Дата</th><th>Товар</th><th>Отзыв</th><th>Ошибка</th><th></th></tr>
+              <tr><th class="t-left">Дата</th><th class="t-left">Товар</th><th class="t-left">Отзыв</th><th class="t-left">Ошибка</th><th></th></tr>
             </thead>
             <tbody>
               <tr v-for="e in errors" :key="e.feedback_id">
-                <td class="text-nowrap small">{{ e.created_at }}</td>
-                <td class="small">{{ e.product_title || e.nm_id }}</td>
-                <td class="small">{{ (e.text || '').slice(0, 120) }}</td>
-                <td class="small text-danger" :title="e.error || ''">
+                <td class="t-left num page-feedback-review__small">{{ e.created_at }}</td>
+                <td class="t-left page-feedback-review__small">{{ e.product_title || e.nm_id }}</td>
+                <td class="t-left page-feedback-review__small">{{ (e.text || '').slice(0, 120) }}</td>
+                <td class="t-left page-feedback-review__small page-feedback-review__bad" :title="e.error || ''">
                   {{ (e.error || '').slice(0, 80) }}
                 </td>
-                <td class="text-end">
-                  <button class="btn btn-sm btn-outline-secondary" @click="onRetryOne(e)">
+                <td class="t-right">
+                  <button class="btn btn--outline btn-sm" @click="onRetryOne(e)">
                     В очередь
                   </button>
                 </td>
@@ -194,32 +170,31 @@
 
     <!-- ===== Лог ===== -->
     <div v-show="tab === 'log'">
-      <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
+      <div class="tbl-card page-feedback-review__card">
+        <div class="card__hd">
           <span><i class="bi bi-journal-text me-1"></i> Лог работы</span>
-          <div class="d-flex gap-2 align-items-center">
-            <select v-model="logLevel" class="form-select form-select-sm w-auto" @change="logOffset = 0; loadLog()">
-              <option value="">Все уровни</option>
-              <option value="info">info</option>
-              <option value="warn">warn</option>
-              <option value="error">error</option>
-            </select>
-            <button class="btn btn-sm btn-light" @click="loadLog">Обновить</button>
-          </div>
+          <span class="spacer"></span>
+          <select v-model="logLevel" class="wb-select page-feedback-review__level" @change="logOffset = 0; loadLog()">
+            <option value="">Все уровни</option>
+            <option value="info">info</option>
+            <option value="warn">warn</option>
+            <option value="error">error</option>
+          </select>
+          <button class="hd-btn" @click="loadLog">Обновить</button>
         </div>
-        <div class="card-body p-0">
-          <div v-if="logErr" class="alert alert-warning py-2 mb-0 rounded-0 border-0">{{ logErr }}</div>
-          <div v-if="!logItems.length" class="text-center text-muted p-4">Журнал пуст</div>
-          <table v-else class="table table-sm table-striped mb-0">
+        <div v-if="logErr" class="page-feedback-review__alert page-feedback-review__alert--warn">{{ logErr }}</div>
+        <div v-if="!logItems.length" class="page-feedback-review__empty">Журнал пуст</div>
+        <div v-else class="tbl-wrap">
+          <table class="tbl tbl-card--compact">
             <thead>
-              <tr><th>Время</th><th>Уровень</th><th>Событие</th><th>Сообщение</th></tr>
+              <tr><th class="t-left">Время</th><th class="t-left">Уровень</th><th class="t-left">Событие</th><th class="t-left">Сообщение</th></tr>
             </thead>
             <tbody>
               <tr v-for="l in logItems" :key="l.id">
-                <td class="text-nowrap small">{{ l.created_at }}</td>
-                <td class="small" :class="l.level === 'error' ? 'text-danger' : ''">{{ l.level }}</td>
-                <td class="small">{{ l.action }}</td>
-                <td class="small">{{ l.message }}</td>
+                <td class="t-left num page-feedback-review__small">{{ l.created_at }}</td>
+                <td class="t-left page-feedback-review__small" :class="l.level === 'error' ? 'page-feedback-review__bad' : ''">{{ l.level }}</td>
+                <td class="t-left page-feedback-review__small">{{ l.action }}</td>
+                <td class="t-left page-feedback-review__small">{{ l.message }}</td>
               </tr>
             </tbody>
           </table>
@@ -229,32 +204,36 @@
 
     <!-- ===== Затраты ИИ ===== -->
     <div v-show="tab === 'cost'">
-      <div class="card">
-        <div class="card-header"><i class="bi bi-cash-coin me-1"></i> Затраты ИИ (сценарий feedback_review)</div>
-        <div class="card-body">
+      <div class="tbl-card page-feedback-review__card">
+        <div class="card__hd">
+          <span><i class="bi bi-cash-coin me-1"></i> Затраты ИИ (сценарий feedback_review)</span>
+        </div>
+        <div class="wb-panel__bd">
           <div class="row g-3 mb-3">
             <div class="col-md-3" v-for="p in costPeriods" :key="p.key">
               <div class="page-feedback-review__k">{{ p.label }}</div>
               <div>вызовов: <b>{{ p.block.calls || 0 }}</b></div>
-              <div class="small text-muted">токенов: {{ p.block.total_tokens || 0 }}</div>
-              <div v-if="st?.can_see_cost" class="small">$ {{ p.block.cost || 0 }}</div>
+              <div class="page-feedback-review__muted page-feedback-review__small">токенов: {{ p.block.total_tokens || 0 }}</div>
+              <div v-if="st?.can_see_cost" class="page-feedback-review__small">$ {{ p.block.cost || 0 }}</div>
             </div>
           </div>
           <div v-if="(st?.ai_usage?.by_model || []).length">
             <div class="page-feedback-review__k mb-1">По моделям</div>
-            <table class="table table-sm table-striped mb-0">
-              <thead>
-                <tr><th>Модель</th><th>Вызовов</th><th>Токенов</th><th v-if="st?.can_see_cost">$</th></tr>
-              </thead>
-              <tbody>
-                <tr v-for="m in st?.ai_usage?.by_model || []" :key="m.grp">
-                  <td class="small">{{ m.grp }}</td>
-                  <td class="small">{{ m.calls || 0 }}</td>
-                  <td class="small">{{ m.total_tokens || 0 }}</td>
-                  <td v-if="st?.can_see_cost" class="small">{{ m.cost || 0 }}</td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="tbl-wrap">
+              <table class="tbl tbl-card--compact">
+                <thead>
+                  <tr><th class="t-left">Модель</th><th class="t-center">Вызовов</th><th class="t-center">Токенов</th><th v-if="st?.can_see_cost" class="t-center">$</th></tr>
+                </thead>
+                <tbody>
+                  <tr v-for="m in st?.ai_usage?.by_model || []" :key="m.grp">
+                    <td class="t-left page-feedback-review__small">{{ m.grp }}</td>
+                    <td class="t-center page-feedback-review__small">{{ m.calls || 0 }}</td>
+                    <td class="t-center page-feedback-review__small">{{ m.total_tokens || 0 }}</td>
+                    <td v-if="st?.can_see_cost" class="t-center page-feedback-review__small">{{ m.cost || 0 }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -266,22 +245,23 @@
       <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header py-2">
-            <h5 class="modal-title">Промпт разбора отзыва</h5>
+            <span class="modal-title page-feedback-review__modal-title">Промпт разбора отзыва</span>
             <button type="button" class="btn-close" @click="promptOpen = false"></button>
           </div>
           <div class="modal-body">
-            <p class="text-muted small">
+            <p class="page-feedback-review__muted page-feedback-review__small">
               Промпт применяется к каждому отзыву отдельно. Модель — «Модель (сводка)».
               Формат ответа: JSON с полями emotion, constructiveness, tone.
             </p>
-            <textarea v-model="promptText" class="form-control font-monospace" rows="18"></textarea>
+            <textarea v-model="promptText" class="wb-input page-feedback-review__prompt" rows="18"></textarea>
           </div>
           <div class="modal-footer py-2">
-            <span v-if="promptMsg" class="me-auto small" :class="promptMsgOk ? 'text-success' : 'text-danger'">
+            <span v-if="promptMsg" class="me-auto page-feedback-review__small"
+                  :class="promptMsgOk ? 'page-feedback-review__ok' : 'page-feedback-review__bad'">
               {{ promptMsg }}
             </span>
-            <button class="btn btn-light" @click="promptOpen = false">Закрыть</button>
-            <button class="btn btn-primary" :disabled="promptSaving" @click="onSavePrompt">
+            <button class="btn btn--outline" @click="promptOpen = false">Закрыть</button>
+            <button class="btn btn--brand" :disabled="promptSaving" @click="onSavePrompt">
               {{ promptSaving ? 'Сохраняем...' : 'Сохранить' }}
             </button>
           </div>
@@ -293,7 +273,7 @@
 
 <script setup lang="ts">
 import '@/assets/css/pages/page-feedback-review.css'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { feedbackApi } from '@/api/feedback'
 import {
@@ -302,7 +282,9 @@ import {
   type ReviewQueueItem,
   type ReviewStatusFull,
 } from '@/api/feedbackReview'
-import FeedbackHead from '@/components/feedback/FeedbackHead.vue'
+import WbChipGroup from '@/components/common/WbChipGroup.vue'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import { FEEDBACK_TABS } from '@/components/common/workspaceTabs'
 
 const route = useRoute()
 
@@ -314,6 +296,14 @@ const logTotal = ref(0)
 const logErr = ref('')
 const logLevel = ref('')
 const tab = ref<'queue' | 'errors' | 'log' | 'cost'>('queue')
+
+/** Вкладки — чипы темы (§5.6.3). */
+const tabOptions = computed(() => [
+  { value: 'queue', label: 'Очередь' },
+  { value: 'errors', label: `Ошибки (${st.value?.counts?.error || 0})` },
+  { value: 'log', label: `Лог работы (${logTotal.value})` },
+  { value: 'cost', label: 'Затраты ИИ' },
+])
 const loading = ref(false)
 const loadErr = ref('')
 const msg = ref('')
@@ -403,10 +393,10 @@ async function refreshAll() {
   }
 }
 
-function switchTab(t: string) {
-  tab.value = t as any
+/** Смена вкладки — перезагружаем данные вкладки. */
+watch(tab, () => {
   refreshAll()
-}
+})
 
 async function togglePause() {
   toggling.value = true

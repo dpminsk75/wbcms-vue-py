@@ -15,7 +15,7 @@
       <template #fields>
         <div class="wb-field">
           <label class="wb-field__label">Статус</label>
-          <select v-model="filters.status" class="form-control">
+          <select v-model="filters.status" class="wb-select">
             <option value="">Все</option>
             <option value="unanswered">Без ответа</option>
             <option value="answered">С ответом</option>
@@ -27,7 +27,7 @@
           <label class="wb-field__label">Поиск</label>
           <input
             v-model="filters.q"
-            class="form-control"
+            class="wb-input"
             placeholder="текст вопроса или ответа"
             @keydown.enter="onApply"
           />
@@ -47,7 +47,7 @@
       </template>
     </WbUniversalFilter>
 
-    <div v-if="syncMsg" class="alert alert-info py-1 px-2 small mb-3">{{ syncMsg }}</div>
+    <div v-if="syncMsg" class="page-questions__sync-msg">{{ syncMsg }}</div>
 
     <!-- KPI: счётчики за выбранный период -->
     <div class="grid-4 page-questions__kpi">
@@ -66,8 +66,8 @@
         <span class="page-questions__count">Всего: {{ total }} · Стр {{ page }} / {{ totalPages }}</span>
         <ExcelButton :disabled="!items.length" @click="exportExcel" />
       </div>
-      <div v-if="isLoading" class="p-4 text-center text-muted">Загрузка...</div>
-      <div v-else-if="error" class="p-4 text-center text-danger">Не удалось загрузить данные.</div>
+      <div v-if="isLoading" class="page-questions__state">Загрузка...</div>
+      <div v-else-if="error" class="page-questions__state page-questions__state--bad">Не удалось загрузить данные.</div>
       <div v-else class="tbl-wrap">
         <table class="tbl page-questions__table">
           <thead>
@@ -81,7 +81,7 @@
           </thead>
           <tbody>
             <tr v-if="!items.length">
-              <td colspan="5" class="text-center text-muted">Нет данных</td>
+              <td colspan="5" class="t-center page-questions__muted">Нет данных</td>
             </tr>
             <tr
               v-for="q in items"
@@ -124,14 +124,14 @@
     <div v-if="modalOpen && current" class="wb-modal-backdrop" @click.self="modalOpen = false">
       <div class="wb-modal-box wb-modal-box--wide page-questions__modal">
         <div class="d-flex align-items-center gap-2">
-          <h5 class="mb-0">Вопрос покупателя</h5>
+          <span class="page-questions__modal-title">Вопрос покупателя</span>
           <span class="badge" :class="stateClass(current)">{{ current.state_label }}</span>
           <span v-if="current.is_warned" class="badge badge--bad" title="WB помечает вопрос как подозрительный">
             <i class="bi bi-exclamation-triangle"></i> подозрительный
           </span>
           <button type="button" class="btn-close ms-auto" aria-label="Закрыть" @click="modalOpen = false"></button>
         </div>
-        <div class="page-questions__modal-meta small text-muted">
+        <div class="page-questions__modal-meta">
           {{ fmtDate(current.created_date) }}
           <template v-if="current.nm_id">
             · WB:
@@ -142,8 +142,8 @@
         </div>
         <div><b>Вопрос:</b> {{ current.q_text || '—' }}</div>
         <div v-if="current.answer_text"><b>Ответ:</b> {{ current.answer_text }}</div>
-        <div v-else class="text-muted">Ответа нет</div>
-        <div v-if="current.answer_date" class="small text-muted">Ответ: {{ fmtDate(current.answer_date) }}</div>
+        <div v-else class="page-questions__muted">Ответа нет</div>
+        <div v-if="current.answer_date" class="page-questions__modal-meta">Ответ: {{ fmtDate(current.answer_date) }}</div>
         <div class="wb-modal-actions">
           <button class="btn btn--outline" @click="modalOpen = false">Закрыть</button>
         </div>
@@ -164,6 +164,7 @@ import ProductCell from '@/components/common/ProductCell.vue'
 import ExcelButton from '@/components/common/ExcelButton.vue'
 import Pager from '@/components/common/Pager.vue'
 import KpiTile from '@/components/common/KpiTile.vue'
+import { exportXlsx } from '@/utils/exportXlsx'
 
 // локальное время (toISOString даёт UTC и сдвигает сутки)
 const toIsoDate = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
@@ -291,7 +292,6 @@ const fetchData = async () => {
 
 const exportExcel = async () => {
   if (!items.value.length) return
-  const XLSX = await import('xlsx')
   const data = items.value.map((q: QuestionItem) => ({
     'Дата': fmtDate(q.created_date),
     'Товар': q.card_title || q.product_name || '',
@@ -303,14 +303,15 @@ const exportExcel = async () => {
     'Дата ответа': q.answer_date ? fmtDate(q.answer_date) : '',
     'Подозрительный': q.is_warned ? 'да' : 'нет',
   }))
-  const ws = XLSX.utils.json_to_sheet(data)
-  ws['!cols'] = [
-    { wch: 16 }, { wch: 32 }, { wch: 12 }, { wch: 16 },
-    { wch: 60 }, { wch: 60 }, { wch: 14 }, { wch: 16 }, { wch: 14 },
-  ]
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Вопросы')
-  XLSX.writeFile(wb, 'wb-questions.xlsx')
+  await exportXlsx({
+    rows: data,
+    filename: 'wb-questions.xlsx',
+    sheetName: 'Вопросы',
+    cols: [
+      { wch: 16 }, { wch: 32 }, { wch: 12 }, { wch: 16 },
+      { wch: 60 }, { wch: 60 }, { wch: 14 }, { wch: 16 }, { wch: 14 },
+    ],
+  })
 }
 
 /** Применение фильтра: маска товара → nm_id, значения полей → запрос. */

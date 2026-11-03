@@ -1,91 +1,109 @@
 <template>
   <div class="container-xxl page-reply-rules">
-    <FeedbackHead :title="title" active="rules" :subtabs="FEEDBACK_RULES_SUB_TABS" />
-    <form @submit.prevent="onSave">
-      <div class="card mb-4 shadow-sm">
-        <div class="card-header bg-light"><h5 class="card-title mb-0">Условия применения</h5></div>
-        <div class="card-body">
-          <div class="mb-3">
-            <label class="form-label">Название правила</label>
-            <input v-model="form.title" class="form-control" maxlength="255" placeholder="Например: Отзыв на 5 звезд без текста" />
+    <WbWorkspaceHead :title="title" :workspace-tabs="FEEDBACK_TABS" workspace-active="rules" :subtabs="FEEDBACK_RULES_SUB_TABS" />
+    <form class="page-reply-rules__form" @submit.prevent="onSave">
+      <!-- Условия применения — блок темы .wb-panel (theme.md §5.4) -->
+      <div class="wb-panel page-reply-rules__panel">
+        <div class="card__hd">
+          <span>Условия применения</span>
+        </div>
+        <div class="wb-panel__bd">
+          <div class="page-reply-rules__field">
+            <label class="page-reply-rules__field-label">Название правила</label>
+            <input v-model="form.title" class="wb-input" maxlength="255" placeholder="Например: Отзыв на 5 звезд без текста" />
           </div>
-          <div class="mb-3 form-check">
+          <div class="form-check mb-3">
             <input id="rr-active" v-model="form.is_active" type="checkbox" class="form-check-input" :true-value="1" :false-value="0" />
             <label for="rr-active" class="form-check-label">Активно</label>
           </div>
           <div class="row">
             <div class="col-md-4 mb-3">
-              <label class="form-label">Тип правила</label>
-              <div class="btn-group d-flex" role="group">
-                <button v-for="o in ruleTypeOpts" :key="o.v" type="button" class="btn" :class="form.rule_type === o.v ? 'btn-secondary active' : 'btn-outline-secondary'" @click="form.rule_type = o.v">{{ o.t }}</button>
+              <span class="page-reply-rules__field-label">Тип правила</span>
+              <div class="page-reply-rules__types">
+                <button v-for="o in ruleTypeOpts" :key="o.v" type="button" class="opt"
+                        :aria-pressed="form.rule_type === o.v" @click="form.rule_type = o.v">{{ o.t }}</button>
               </div>
             </div>
             <div class="col-md-4 mb-3">
-              <label class="form-label">Рейтинг отзыва</label>
-              <div class="d-flex align-items-center gap-2">
-                <select v-model.number="form.rating_min" class="form-select">
+              <label class="page-reply-rules__field-label">Рейтинг отзыва</label>
+              <div class="page-reply-rules__rating">
+                <select v-model.number="form.rating_min" class="wb-select">
                   <option v-for="n in 5" :key="'min' + n" :value="n">{{ n }}</option>
                 </select>
                 <span>—</span>
-                <select v-model.number="form.rating_max" class="form-select">
+                <select v-model.number="form.rating_max" class="wb-select">
                   <option v-for="n in 5" :key="'max' + n" :value="n">{{ n }}</option>
                 </select>
               </div>
             </div>
             <div class="col-md-4 mb-3">
-              <label class="form-label">Содержимое отзыва</label>
-              <div class="btn-group d-flex" role="group">
-                <button v-for="o in textCondOpts" :key="o.v" type="button" class="btn" :class="form.text_condition === o.v ? 'btn-secondary active' : 'btn-outline-secondary'" @click="form.text_condition = o.v">{{ o.t }}</button>
+              <span class="page-reply-rules__field-label">Содержимое отзыва</span>
+              <div class="page-reply-rules__types">
+                <button v-for="o in textCondOpts" :key="o.v" type="button" class="opt"
+                        :aria-pressed="form.text_condition === o.v" @click="form.text_condition = o.v">{{ o.t }}</button>
               </div>
             </div>
           </div>
           <div v-if="form.rule_type === 'brand'" class="mb-3">
-            <label class="form-label">Бренды</label>
-            <input v-model="brandQuery" class="form-control mb-2" placeholder="Начните вводить название бренда..." @input="onBrandQuery" />
-            <div v-if="brandOptions.length" class="list-group mb-2 page-reply-rules__scope">
-              <button v-for="b in brandOptions" :key="b.id" type="button" class="list-group-item list-group-item-action py-1" @click="addBrand(b.id)">{{ b.text }}</button>
+            <label class="page-reply-rules__field-label">Бренды</label>
+            <input v-model="brandQuery" class="wb-input mb-2" placeholder="Начните вводить название бренда..." @input="onBrandQuery" />
+            <div v-if="brandOptions.length" class="page-reply-rules__scope page-reply-rules__options">
+              <button v-for="b in brandOptions" :key="b.id" type="button" class="page-reply-rules__option" @click="addBrand(b.id)">{{ b.text }}</button>
             </div>
-            <div class="d-flex flex-wrap gap-1">
-              <span v-for="b in form.brands" :key="b" class="badge page-reply-rules__pill page-reply-rules__pill--brand">{{ b }} <a href="#" class="text-decoration-none ms-1" @click.prevent="removeBrand(b)">×</a></span>
+            <div class="page-reply-rules__chips">
+              <span v-for="b in form.brands" :key="b" class="badge badge--info">
+                {{ b }}
+                <button type="button" class="page-reply-rules__chip-x" title="Убрать" @click.prevent="removeBrand(b)">×</button>
+              </span>
             </div>
           </div>
           <div v-if="form.rule_type === 'product'" class="mb-3">
-            <label class="form-label">Товары</label>
-            <input v-model="productQuery" class="form-control mb-2" placeholder="Начните вводить название или nmID..." @input="onProductQuery" />
-            <div v-if="productOptions.length" class="list-group mb-2 page-reply-rules__scope">
-              <button v-for="p in productOptions" :key="p.id" type="button" class="list-group-item list-group-item-action py-1" @click="addProduct(p)">{{ p.text }}</button>
+            <label class="page-reply-rules__field-label">Товары</label>
+            <input v-model="productQuery" class="wb-input mb-2" placeholder="Начните вводить название или nmID..." @input="onProductQuery" />
+            <div v-if="productOptions.length" class="page-reply-rules__scope page-reply-rules__options">
+              <button v-for="p in productOptions" :key="p.id" type="button" class="page-reply-rules__option" @click="addProduct(p)">{{ p.text }}</button>
             </div>
-            <div class="d-flex flex-wrap gap-1">
-              <span v-for="p in selectedProducts" :key="p.nmID" class="badge page-reply-rules__pill page-reply-rules__pill--product">[{{ p.nmID }}] {{ p.title || '' }} <a href="#" class="text-decoration-none ms-1" @click.prevent="removeProduct(p.nmID)">×</a></span>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="card mb-4 shadow-sm">
-        <div class="card-header bg-light"><h5 class="card-title mb-0">Текст ответа</h5></div>
-        <div class="card-body">
-          <p class="text-muted small">Можно использовать переменную <code v-text="'{{имя}}'"></code> — вместо неё подставится имя покупателя.</p>
-          <div v-for="sec in sections" :key="sec.key" class="mb-4">
-            <label class="form-label fw-bold">{{ sec.title }}</label>
-            <div v-for="(t, i) in sec.list" :key="i" class="d-flex align-items-start gap-2 mb-2">
-              <textarea v-model="sec.list[i]" class="form-control" rows="3" placeholder="Введите вариант текста..."></textarea>
-              <button type="button" class="btn btn-outline-danger" title="Удалить" @click="removePart(sec.key, i)"><i class="bi bi-trash"></i></button>
-            </div>
-            <button type="button" class="btn btn-outline-primary btn-sm" @click="addPart(sec.key)"><i class="bi bi-plus-lg me-1"></i>Добавить вариант</button>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Разделитель частей ответа</label>
-            <div class="btn-group d-flex" role="group">
-              <button v-for="o in sepOpts" :key="o.v" type="button" class="btn" :class="form.part_separator === o.v ? 'btn-secondary active' : 'btn-outline-secondary'" @click="form.part_separator = o.v">{{ o.t }}</button>
+            <div class="page-reply-rules__chips">
+              <span v-for="p in selectedProducts" :key="p.nmID" class="badge badge--warn">
+                [{{ p.nmID }}] {{ p.title || '' }}
+                <button type="button" class="page-reply-rules__chip-x" title="Убрать" @click.prevent="removeProduct(p.nmID)">×</button>
+              </span>
             </div>
           </div>
         </div>
       </div>
 
-      <div v-if="error" class="alert alert-danger">{{ error }}</div>
-      <div class="d-flex gap-2 mb-4">
-        <button type="submit" class="btn btn-success" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
-        <router-link to="/wb-feedback-reply-rules" class="btn btn-light">Отмена</router-link>
+      <!-- Текст ответа — блок темы .wb-panel -->
+      <div class="wb-panel page-reply-rules__panel">
+        <div class="card__hd">
+          <span>Текст ответа</span>
+        </div>
+        <div class="wb-panel__bd">
+          <p class="page-reply-rules__hint">
+            Можно использовать переменную <code v-text="'{{имя}}'"></code> — вместо неё подставится имя покупателя.
+          </p>
+          <div v-for="sec in sections" :key="sec.key" class="mb-4">
+            <label class="page-reply-rules__field-label">{{ sec.title }}</label>
+            <div v-for="(t, i) in sec.list" :key="i" class="page-reply-rules__part">
+              <textarea v-model="sec.list[i]" class="wb-input" rows="3" placeholder="Введите вариант текста..."></textarea>
+              <button type="button" class="btn btn--danger" title="Удалить" @click="removePart(sec.key, i)"><i class="bi bi-trash"></i></button>
+            </div>
+            <button type="button" class="btn btn--soft btn-sm" @click="addPart(sec.key)"><i class="bi bi-plus-lg me-1"></i>Добавить вариант</button>
+          </div>
+          <div class="mb-3">
+            <span class="page-reply-rules__field-label">Разделитель частей ответа</span>
+            <div class="page-reply-rules__types">
+              <button v-for="o in sepOpts" :key="o.v" type="button" class="opt"
+                      :aria-pressed="form.part_separator === o.v" @click="form.part_separator = o.v">{{ o.t }}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="error" class="page-reply-rules__error">{{ error }}</div>
+      <div class="page-reply-rules__actions">
+        <button type="submit" class="btn btn--brand" :disabled="saving">{{ saving ? 'Сохранение...' : 'Сохранить' }}</button>
+        <router-link to="/wb-feedback-reply-rules" class="btn btn--outline">Отмена</router-link>
       </div>
     </form>
   </div>
@@ -97,8 +115,8 @@ import '@/assets/css/pages/page-reply-rules.css'
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { replyRulesApi, type ReplyRulePayload } from '@/api/replyRules'
-import FeedbackHead from '@/components/feedback/FeedbackHead.vue'
-import { FEEDBACK_RULES_SUB_TABS } from '@/components/common/workspaceTabs'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import { FEEDBACK_TABS, FEEDBACK_RULES_SUB_TABS } from '@/components/common/workspaceTabs'
 
 const route = useRoute()
 const router = useRouter()

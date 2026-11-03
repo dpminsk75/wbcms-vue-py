@@ -1,6 +1,6 @@
 <template>
   <div class="container-xxl page-feedback-dashboard">
-    <FeedbackHead :title="$route.meta.title || 'Отзывы: Обзор'" active="dashboard" />
+    <WbWorkspaceHead :title="$route.meta.title || 'Отзывы: Обзор'" :workspace-tabs="FEEDBACK_TABS" workspace-active="dashboard" />
 
     <!-- Фильтр (тот же, что в /geo/sales-map) -->
     <WbUniversalFilter
@@ -17,8 +17,8 @@
       <!-- дополнительный фильтр блока «Отзывы»: какие отзывы считаем -->
       <template #extra>
         <div class="page-feedback-dashboard__rev-filter">
-          <label class="form-label mb-0 small fw-medium text-muted">Отзывы</label>
-          <select v-model="filters.rev_mode" class="form-control form-control-sm"
+          <label class="wb-field__label">Отзывы</label>
+          <select v-model="filters.rev_mode" class="wb-select"
                   @change="load">
             <option v-for="m in revModes" :key="m.id" :value="m.id" :title="m.title">
               {{ m.label }}
@@ -95,7 +95,9 @@ import '@/assets/css/pages/page-feedback-dashboard.css'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import WbUniversalFilter from '@/components/common/WbUniversalFilter.vue'
-import FeedbackHead from '@/components/feedback/FeedbackHead.vue'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import { resolveTokenColor } from '@/utils/chartTheme'
+import { FEEDBACK_TABS } from '@/components/common/workspaceTabs'
 import FeedbackKpiCards from '@/components/feedback/FeedbackKpiCards.vue'
 import FeedbackDonutChart, { type DonutItem } from '@/components/feedback/FeedbackDonutChart.vue'
 import FeedbackEmptyDonut from '@/components/feedback/FeedbackEmptyDonut.vue'
@@ -240,6 +242,18 @@ function syncRoute() {
   router.replace({ path: route.path, query: q }).catch(() => {})
 }
 
+// --- палитра серий графиков ---
+// Значения токенов темы (theme/tokens.css, §5.9: палитра серий фиксированная,
+// от темы не зависит). echarts рисует на canvas — цвет нужен готовый,
+// поэтому токен резолвится в rgb через пробный элемент (utils/chartTheme.ts).
+const C = {
+  chartBlue: resolveTokenColor('--chart-blue'),
+  chartGreen: resolveTokenColor('--chart-green'),
+  chartOrange: resolveTokenColor('--chart-orange'),
+  chartGrey: resolveTokenColor('--chart-grey'),
+  chartPurple: resolveTokenColor('--chart-purple'),
+}
+
 // --- данные для графиков ---
 
 const toneData = computed<DonutItem[]>(() => {
@@ -250,9 +264,9 @@ const toneData = computed<DonutItem[]>(() => {
   const neg = Math.round((s.sentiment.negative || 0) * 100 / total)
   const none = Math.max(0, 100 - pos - neg)
   return [
-    { name: 'Позитив', value: pos, color: '#4f7d5b' },
-    { name: 'Негатив', value: neg, color: '#e0a16f' },
-    { name: 'Без оценки', value: none, color: '#c9ccd4' },
+    { name: 'Позитив', value: pos, color: C.chartGreen },
+    { name: 'Негатив', value: neg, color: C.chartOrange },
+    { name: 'Без оценки', value: none, color: C.chartGrey },
   ]
 })
 
@@ -261,7 +275,7 @@ const AI_LEVELS: Record<string, string> = {
   low: 'низкая', mid: 'средняя', high: 'высокая',
 }
 const AI_COLORS: Record<string, string> = {
-  low: '#c9ccd4', mid: '#e0a16f', high: '#4f7d5b',
+  low: C.chartGrey, mid: C.chartOrange, high: C.chartGreen,
 }
 const aiSentiment = computed(() => summary.value?.ai_sentiment || null)
 const aiParsed = computed(() => aiSentiment.value?.parsed || 0)
@@ -271,7 +285,7 @@ const aiData = (levels: { name: string; cnt: number }[] | undefined): DonutItem[
   (levels || []).map((l) => ({
     name: AI_LEVELS[l.name] || l.name,
     value: l.cnt || 0,
-    color: AI_COLORS[l.name] || '#c9ccd4',
+    color: AI_COLORS[l.name] || C.chartGrey,
   }))
 
 const emotionData = computed<DonutItem[]>(() => aiData(aiSentiment.value?.emotion))
@@ -289,12 +303,12 @@ const aiToneText = computed(() =>
 
 const dayCategories = computed(() => (summary.value?.daily || []).map((d) => d.d))
 const countSeries = computed<LineSeries[]>(() => [
-  { name: 'Всего', color: '#2563eb', values: (summary.value?.daily || []).map((d) => d.cnt) },
-  { name: 'Позитив', color: '#4f7d5b', values: (summary.value?.daily || []).map((d) => d.pos) },
-  { name: 'Негатив', color: '#e0a16f', values: (summary.value?.daily || []).map((d) => d.neg) },
+  { name: 'Всего', color: C.chartBlue, values: (summary.value?.daily || []).map((d) => d.cnt) },
+  { name: 'Позитив', color: C.chartGreen, values: (summary.value?.daily || []).map((d) => d.pos) },
+  { name: 'Негатив', color: C.chartOrange, values: (summary.value?.daily || []).map((d) => d.neg) },
 ])
 const ratingSeries = computed<LineSeries[]>(() => [
-  { name: 'Средняя оценка', color: '#7c3aed', values: (summary.value?.daily || []).map((d) => d.avg_rating) },
+  { name: 'Средняя оценка', color: C.chartPurple, values: (summary.value?.daily || []).map((d) => d.avg_rating) },
 ])
 
 watch(cardsLimit, () => loadCards())

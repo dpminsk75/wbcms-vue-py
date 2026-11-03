@@ -1,6 +1,6 @@
 <template>
   <div class="container-xxl page-feedback-insights">
-    <FeedbackHead :title="$route.meta.title || 'Инсайты'" active="insights" />
+    <WbWorkspaceHead :title="$route.meta.title || 'Инсайты'" :workspace-tabs="FEEDBACK_TABS" workspace-active="insights" />
 
     <!-- Фильтр (тот же, что в /geo/sales-map) -->
     <WbUniversalFilter
@@ -16,198 +16,213 @@
     />
 
     <!-- Запуск: показаны инсайты только этого задания -->
-    <div v-if="jobId" class="alert alert-info page-feedback-insights__job-note">
+    <div v-if="jobId" class="page-feedback-insights__job-note">
       <i class="bi bi-filters"></i>
       Показаны инсайты задания <b>#{{ jobId }}</b>.
-      <button class="btn btn-sm btn-light ms-2" @click="showAllJobs">Показать все</button>
+      <button class="btn btn--outline btn-sm ms-2" @click="showAllJobs">Показать все</button>
     </div>
 
     <div v-if="error" class="wb-error mb-3">{{ error }}</div>
 
-    <div class="card">
-      <div class="wb-card-header">
-        Инсайты
-        <span class="page-feedback-insights__count">Всего: {{ total }}</span>
-        <span class="page-feedback-insights__spacer"></span>
-        <button class="btn btn-light btn-sm wb-excel-btn" @click="exportExcel">
-          <i class="bi bi-file-earmark-excel"></i> Excel
-        </button>
+    <!-- Таблица инсайтов — блок темы .tbl-card -->
+    <div class="tbl-card page-feedback-insights__card">
+      <div class="card__hd">
+        <span>Инсайты</span>
+        <span class="hd-badge">Разборов: {{ total }}</span>
+        <span class="spacer"></span>
+        <ExcelButton :disabled="!insights.length" @click="exportExcel" />
       </div>
-      <div class="card-body p-0">
-        <div class="wb-table-wrap">
-          <table class="table table-striped align-middle mb-0">
-            <thead>
-              <tr>
-                <th class="page-feedback-insights__col-check"></th>
-                <th class="page-feedback-insights__col-card">Карточка</th>
-                <th class="page-feedback-insights__col-num">Отзывов</th>
-                <th class="page-feedback-insights__col-num">Ср. оценка</th>
-                <th>Что делать</th>
-                <th class="page-feedback-insights__col-num">Период отзывов</th>
-                <th class="page-feedback-insights__col-check"></th>
-                <th class="page-feedback-insights__col-check"></th>
-              </tr>
-            </thead>
-            <tbody>
-              <template v-for="it in insights" :key="it.id">
-              <tr :class="{ 'page-feedback-insights__row--picked': openInsight === it.id }">
-                <td class="text-center">
-                  <button class="btn btn-sm btn-outline-secondary"
-                          @click="openInsight = openInsight === it.id ? 0 : it.id">
-                    <i class="bi" :class="openInsight === it.id ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
-                  </button>
-                </td>
-                <td>
-                  <div class="page-feedback-insights__title">{{ it.card_title || '(без названия)' }}</div>
-                  <div class="page-feedback-insights__sub">
-                    <span v-if="it.brand">{{ it.brand }} · </span>
-                    <span v-if="it.subject_name">{{ it.subject_name }} · </span>
-                    <span v-if="it.vendor_code">{{ it.vendor_code }} · </span>
-                    WB: {{ it.nm_id }}
+      <p class="page-feedback-insights__note">
+        Строка — ИИ-разбор одной карточки по отзывам за период; строки сгруппированы по запускам разбора.
+      </p>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th class="page-feedback-insights__col-check"></th>
+              <th class="page-feedback-insights__col-card t-left">Карточка</th>
+              <th class="t-center">Отзывов</th>
+              <th class="t-center">Ср. оценка</th>
+              <th class="t-left">Что делать</th>
+              <th class="t-center">Период отзывов</th>
+              <th class="t-center">Разобрано</th>
+              <th class="page-feedback-insights__col-check"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <template v-for="g in grouped" :key="g.key">
+            <tr class="page-feedback-insights__group">
+              <td :colspan="8">
+                <span class="page-feedback-insights__group-title">
+                  {{ g.job != null ? 'Запуск #' + g.job : 'Без запуска' }}
+                </span>
+                <span class="page-feedback-insights__group-meta">{{ g.at }} · {{ g.items.length }} карточек</span>
+              </td>
+            </tr>
+            <template v-for="it in g.items" :key="it.id">
+            <tr :class="{ 'page-feedback-insights__row--picked': openInsight === it.id }">
+              <td class="t-center">
+                <button class="btn btn--outline btn-sm"
+                        @click="openInsight = openInsight === it.id ? 0 : it.id">
+                  <i class="bi" :class="openInsight === it.id ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+                </button>
+              </td>
+              <td class="t-left">
+                <ProductCell
+                  :photo="it.card_photos"
+                  :title="it.card_title || ''"
+                  :brand="it.brand || ''"
+                  :subject="it.subject_name || ''"
+                  :vendor="it.vendor_code || ''"
+                  :nm-id="it.nm_id"
+                  :link="'/wb/detail?nm_id=' + it.nm_id"
+                  :link-label="'WB: ' + it.nm_id"
+                  copy-nm
+                  copy-link
+                />
+              </td>
+              <td class="t-center">{{ it.reviews_cnt }}</td>
+              <td class="t-center">{{ it.avg_rating ?? '—' }}</td>
+              <td class="t-left">{{ it.summary || '—' }}</td>
+              <td class="t-center num page-feedback-insights__small">
+                {{ fmtD(it.period_from) }} — {{ fmtD(it.period_to) }}
+              </td>
+              <td class="t-center num page-feedback-insights__muted page-feedback-insights__small">
+                {{ fmtDT(it.created_at) }}
+              </td>
+              <td class="t-center num">
+                <button class="btn btn--outline btn-sm"
+                        title="Скопировать ссылку на инсайт" @click="copyLink(it)">
+                  <i class="bi bi-link-45deg"></i>
+                  <span v-if="copiedId === it.id" class="page-feedback-insights__copied">Скопировано</span>
+                  <span v-else>Ссылка</span>
+                </button>
+                <a class="btn btn--outline btn-sm ms-1" :href="insightPath(it.id)"
+                   target="_blank" rel="noopener" title="Открыть в новой вкладке">
+                  <i class="bi bi-box-arrow-up-right"></i>
+                </a>
+              </td>
+            </tr>
+
+            <tr v-if="openInsight === it.id" class="page-feedback-insights__expand-row">
+              <td :colspan="8">
+                <!-- О чём говорят покупатели -->
+                <div class="page-feedback-insights__panel">
+                  <div class="page-feedback-insights__panel-head">
+                    <span class="page-feedback-insights__panel-title">О чём говорят покупатели</span>
+                    <span class="page-feedback-insights__panel-stat">{{ it.reviews_cnt }} отзыва</span>
+                    <span class="page-feedback-insights__panel-stat panel-stat--pos">👍 {{ posPct(it) }}%</span>
+                    <span class="page-feedback-insights__panel-stat panel-stat--neg">👎 {{ negPct(it) }}%</span>
                   </div>
-                </td>
-                <td class="text-center">{{ it.reviews_cnt }}</td>
-                <td class="text-center">{{ it.avg_rating ?? '—' }}</td>
-                <td>{{ it.summary || '—' }}</td>
-                <td class="text-center text-nowrap small">
-                  {{ fmtD(it.period_from) }} — {{ fmtD(it.period_to) }}
-                </td>
-                <td class="text-center text-nowrap">
-                  <span class="text-muted small">{{ fmtDT(it.created_at) }}</span>
-                </td>
-                <td class="text-center text-nowrap">
-                  <button class="btn btn-sm btn-outline-secondary"
-                          title="Скопировать ссылку на инсайт" @click="copyLink(it)">
-                    <i class="bi bi-link-45deg"></i>
-                    <span v-if="copiedId === it.id" class="page-feedback-insights__copied">Скопировано</span>
-                    <span v-else>Ссылка</span>
-                  </button>
-                  <button class="btn btn-sm btn-outline-secondary ms-1"
-                          title="Открыть в новой вкладке" @click="openInNewTab(it)">
-                    <i class="bi bi-box-arrow-up-right"></i>
-                  </button>
-                </td>
-              </tr>
-
-              <tr v-if="openInsight === it.id" class="page-feedback-insights__expand-row">
-                <td :colspan="8">
-                  <!-- О чём говорят покупатели -->
-                  <div class="page-feedback-insights__panel">
-                    <div class="page-feedback-insights__panel-head">
-                      <span class="page-feedback-insights__panel-title">О чём говорят покупатели</span>
-                      <span class="page-feedback-insights__panel-stat">{{ it.reviews_cnt }} отзыва</span>
-                      <span class="page-feedback-insights__panel-stat panel-stat--pos">👍 {{ posPct(it) }}%</span>
-                      <span class="page-feedback-insights__panel-stat panel-stat--neg">👎 {{ negPct(it) }}%</span>
-                    </div>
-                    <div class="page-feedback-insights__panel-cols">
-                      <div>
-                        <div class="page-feedback-insights__col-head">👍 Чаще всего упоминаемые плюсы</div>
-                        <div v-if="!it.panel.plus.length" class="text-muted small">—</div>
-                        <div v-for="g in it.panel.plus" :key="'p-' + g.title"
-                             class="page-feedback-insights__group group--pos">
-                          <div class="page-feedback-insights__group-title">
-                            <span class="mk">+</span> {{ g.title }}
-                          </div>
-                          <ul>
-                            <li v-for="(s, j) in g.items" :key="'pi' + j">{{ s }}</li>
-                          </ul>
+                  <div class="page-feedback-insights__panel-cols">
+                    <div>
+                      <div class="page-feedback-insights__col-head">👍 Чаще всего упоминаемые плюсы</div>
+                      <div v-if="!it.panel.plus.length" class="page-feedback-insights__muted page-feedback-insights__small">—</div>
+                      <div v-for="g in it.panel.plus" :key="'p-' + g.title"
+                           class="page-feedback-insights__group group--pos">
+                        <div class="page-feedback-insights__group-title">
+                          <span class="mk">+</span> {{ g.title }}
                         </div>
-                      </div>
-                      <div>
-                        <div class="page-feedback-insights__col-head">👎 Чаще всего упоминаемые проблемы</div>
-                        <div v-if="!it.panel.minus.length" class="text-muted small">—</div>
-                        <div v-for="g in it.panel.minus" :key="'m-' + g.title"
-                             class="page-feedback-insights__group group--neg">
-                          <div class="page-feedback-insights__group-title">
-                            <span class="mk">−</span> {{ g.title }}
-                          </div>
-                          <ul>
-                            <li v-for="(s, j) in g.items" :key="'mi' + j">{{ s }}</li>
-                          </ul>
-                        </div>
+                        <ul>
+                          <li v-for="(s, j) in g.items" :key="'pi' + j">{{ s }}</li>
+                        </ul>
                       </div>
                     </div>
-                  </div>
-
-                  <!-- Что сделать с описанием -->
-                  <h3 class="page-feedback-insights__h3">Что сделать с описанием</h3>
-                  <div v-if="!it.card_rec" class="text-muted small">Ничего конкретного нет.</div>
-                  <div v-else class="page-feedback-insights__act">
-                    <span class="badge" :class="priorityClass(it.card_rec.priority)">
-                      {{ priorityLabel(it.card_rec.priority) }}</span>
-                    <div class="page-feedback-insights__act-issue">{{ it.card_rec.issue }}</div>
-                    <div v-if="it.card_rec.fix" class="page-feedback-insights__act-fix">
-                      <i class="bi bi-wrench"></i> {{ it.card_rec.fix }}
-                    </div>
-                    <div v-for="(ev, j) in it.card_rec.evidence" :key="'e' + j"
-                         class="page-feedback-insights__quote">«{{ ev }}»</div>
-
-                    <div v-if="(it.card_rec.desc_add || []).length" class="mt-2">
-                      <div class="page-feedback-insights__fix-head">Дописать</div>
-                      <ul class="page-feedback-insights__fix-list">
-                        <li v-for="(x, j) in it.card_rec.desc_add" :key="'da' + j">{{ x }}</li>
-                      </ul>
-                    </div>
-                    <div v-if="(it.card_rec.desc_change || []).length" class="mt-2">
-                      <div class="page-feedback-insights__fix-head">Изменить</div>
-                      <div v-for="(ch, j) in it.card_rec.desc_change" :key="'dc' + j"
-                           class="page-feedback-insights__change">
-                        <span class="page-feedback-insights__change-was">{{ ch.was }}</span>
-                        <i class="bi bi-arrow-right"></i>
-                        <span class="page-feedback-insights__change-now">{{ ch.now }}</span>
-                      </div>
-                    </div>
-                    <div v-if="(it.card_rec.desc_remove || []).length" class="mt-2">
-                      <div class="page-feedback-insights__fix-head">Убрать</div>
-                      <ul class="page-feedback-insights__fix-list">
-                        <li v-for="(x, j) in it.card_rec.desc_remove" :key="'dr' + j">{{ x }}</li>
-                      </ul>
-                    </div>
-                    <div v-if="it.card_rec.highlight" class="page-feedback-insights__hl">
-                      <b>Что подчеркнуть:</b> {{ it.card_rec.highlight }}
-                    </div>
-                    <div v-if="it.card_rec.desc_new" class="mt-2">
-                      <div class="row g-2">
-                        <div class="col-12 col-md-6">
-                          <div class="page-feedback-insights__cap">Было — описание</div>
-                          <pre class="page-feedback-insights__pre">{{ it.card_rec.desc_old }}</pre>
+                    <div>
+                      <div class="page-feedback-insights__col-head">👎 Чаще всего упоминаемые проблемы</div>
+                      <div v-if="!it.panel.minus.length" class="page-feedback-insights__muted page-feedback-insights__small">—</div>
+                      <div v-for="g in it.panel.minus" :key="'m-' + g.title"
+                           class="page-feedback-insights__group group--neg">
+                        <div class="page-feedback-insights__group-title">
+                          <span class="mk">−</span> {{ g.title }}
                         </div>
-                        <div class="col-12 col-md-6">
-                          <div class="page-feedback-insights__cap">
-                            Стало — черновик (проверьте ключи и факты)</div>
-                          <pre class="page-feedback-insights__pre">{{ it.card_rec.desc_new }}</pre>
-                        </div>
+                        <ul>
+                          <li v-for="(s, j) in g.items" :key="'mi' + j">{{ s }}</li>
+                        </ul>
                       </div>
                     </div>
                   </div>
+                </div>
 
-                  <!-- Что улучшить в товаре -->
-                  <h3 class="page-feedback-insights__h3">Что улучшить в товаре</h3>
-                  <div v-if="!it.product_rec" class="text-muted small">Ничего конкретного нет.</div>
-                  <div v-else class="page-feedback-insights__act">
-                    <span class="badge" :class="priorityClass(it.product_rec.priority)">
-                      {{ priorityLabel(it.product_rec.priority) }}</span>
-                    <div class="page-feedback-insights__act-issue">{{ it.product_rec.issue }}</div>
-                    <div v-if="it.product_rec.action" class="page-feedback-insights__act-fix">
-                      <i class="bi bi-tools"></i> {{ it.product_rec.action }}
-                    </div>
-                    <div v-for="(ev, j) in it.product_rec.evidence" :key="'pe' + j"
-                         class="page-feedback-insights__quote">«{{ ev }}»</div>
+                <!-- Что сделать с описанием -->
+                <div class="page-feedback-insights__h3">Что сделать с описанием</div>
+                <div v-if="!it.card_rec" class="page-feedback-insights__muted page-feedback-insights__small">Ничего конкретного нет.</div>
+                <div v-else class="page-feedback-insights__act">
+                  <span class="badge" :class="priorityClass(it.card_rec.priority)">
+                    {{ priorityLabel(it.card_rec.priority) }}</span>
+                  <div class="page-feedback-insights__act-issue">{{ it.card_rec.issue }}</div>
+                  <div v-if="it.card_rec.fix" class="page-feedback-insights__act-fix">
+                    <i class="bi bi-wrench"></i> {{ it.card_rec.fix }}
                   </div>
-                </td>
-              </tr>
-              </template>
-              <tr v-if="!insights.length">
-                <td colspan="8" class="text-center text-muted p-4">Инсайтов пока нет</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+                  <div v-for="(ev, j) in it.card_rec.evidence" :key="'e' + j"
+                       class="page-feedback-insights__quote">«{{ ev }}»</div>
+
+                  <div v-if="(it.card_rec.desc_add || []).length" class="mt-2">
+                    <div class="page-feedback-insights__fix-head">Дописать</div>
+                    <ul class="page-feedback-insights__fix-list">
+                      <li v-for="(x, j) in it.card_rec.desc_add" :key="'da' + j">{{ x }}</li>
+                    </ul>
+                  </div>
+                  <div v-if="(it.card_rec.desc_change || []).length" class="mt-2">
+                    <div class="page-feedback-insights__fix-head">Изменить</div>
+                    <div v-for="(ch, j) in it.card_rec.desc_change" :key="'dc' + j"
+                         class="page-feedback-insights__change">
+                      <span class="page-feedback-insights__change-was">{{ ch.was }}</span>
+                      <i class="bi bi-arrow-right"></i>
+                      <span class="page-feedback-insights__change-now">{{ ch.now }}</span>
+                    </div>
+                  </div>
+                  <div v-if="(it.card_rec.desc_remove || []).length" class="mt-2">
+                    <div class="page-feedback-insights__fix-head">Убрать</div>
+                    <ul class="page-feedback-insights__fix-list">
+                      <li v-for="(x, j) in it.card_rec.desc_remove" :key="'dr' + j">{{ x }}</li>
+                    </ul>
+                  </div>
+                  <div v-if="it.card_rec.highlight" class="page-feedback-insights__hl">
+                    <b>Что подчеркнуть:</b> {{ it.card_rec.highlight }}
+                  </div>
+                  <div v-if="it.card_rec.desc_new" class="mt-2">
+                    <div class="row g-2">
+                      <div class="col-12 col-md-6">
+                        <div class="page-feedback-insights__cap">Было — описание</div>
+                        <pre class="page-feedback-insights__pre">{{ it.card_rec.desc_old }}</pre>
+                      </div>
+                      <div class="col-12 col-md-6">
+                        <div class="page-feedback-insights__cap">
+                          Стало — черновик (проверьте ключи и факты)</div>
+                        <pre class="page-feedback-insights__pre">{{ it.card_rec.desc_new }}</pre>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Что улучшить в товаре -->
+                <div class="page-feedback-insights__h3">Что улучшить в товаре</div>
+                <div v-if="!it.product_rec" class="page-feedback-insights__muted page-feedback-insights__small">Ничего конкретного нет.</div>
+                <div v-else class="page-feedback-insights__act">
+                  <span class="badge" :class="priorityClass(it.product_rec.priority)">
+                    {{ priorityLabel(it.product_rec.priority) }}</span>
+                  <div class="page-feedback-insights__act-issue">{{ it.product_rec.issue }}</div>
+                  <div v-if="it.product_rec.action" class="page-feedback-insights__act-fix">
+                    <i class="bi bi-tools"></i> {{ it.product_rec.action }}
+                  </div>
+                  <div v-for="(ev, j) in it.product_rec.evidence" :key="'pe' + j"
+                       class="page-feedback-insights__quote">«{{ ev }}»</div>
+                </div>
+              </td>
+            </tr>
+            </template>
+            </template>
+            <tr v-if="!insights.length">
+              <td colspan="8" class="t-center page-feedback-insights__empty">Инсайтов пока нет</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-      <div class="card-body page-feedback-insights__pager">
-        <button class="btn btn-sm btn-light" :disabled="page <= 1" @click="page--; load()">‹ Назад</button>
-        <span class="page-feedback-insights__pager-label">Стр. {{ page }} из {{ totalPages }}</span>
-        <button class="btn btn-sm btn-light" :disabled="page >= totalPages" @click="page++; load()">
+      <div class="wb-pager">
+        <button class="btn btn--outline btn-sm" :disabled="page <= 1" @click="page--; load()">‹ Назад</button>
+        <span class="wb-pager__label">Стр. {{ page }} из {{ totalPages }}</span>
+        <button class="btn btn--outline btn-sm" :disabled="page >= totalPages" @click="page++; load()">
           Вперёд ›</button>
       </div>
     </div>
@@ -219,9 +234,13 @@ import '@/assets/css/pages/page-feedback-insights.css'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import WbUniversalFilter from '@/components/common/WbUniversalFilter.vue'
-import FeedbackHead from '@/components/feedback/FeedbackHead.vue'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import ProductCell from '@/components/common/ProductCell.vue'
+import ExcelButton from '@/components/common/ExcelButton.vue'
+import { FEEDBACK_TABS } from '@/components/common/workspaceTabs'
 import { feedbackInsightsApi, type FeedbackInsight } from '@/api/feedbackInsights'
 import { useDateFmt } from '@/composables/useDateFmt'
+import { exportXlsx } from '@/utils/exportXlsx'
 import { daysAgoStr, todayStr } from '@/utils/dates'
 
 const route = useRoute()
@@ -249,6 +268,26 @@ const copiedId = ref(0)
 const jobId = ref<number | null>(null)
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
+
+/**
+ * Разборы, сгруппированные по запуску (job_id): запусков у пользователя
+ * 2–3, а строк — по числу карточек в каждом запуске (десятки). Без
+ * группировки таблица выглядит «огромной» и непонятно, что в ней.
+ */
+const grouped = computed(() => {
+  const map = new Map<string, { key: string; job: number | null; at: string; items: FeedbackInsight[] }>()
+  for (const it of insights.value) {
+    const key = it.job_id != null ? String(it.job_id) : 'none'
+    let g = map.get(key)
+    if (!g) {
+      g = { key, job: it.job_id ?? null, at: '', items: [] }
+      map.set(key, g)
+    }
+    if (!g.at) g.at = fmtDT(it.created_at) || ''
+    g.items.push(it)
+  }
+  return Array.from(map.values())
+})
 
 function fmtD(v: string | null): string {
   return v ? String(v).slice(0, 10) : '—'
@@ -290,6 +329,11 @@ function syncRoute() {
   if (filters.value.brand) q.brand = filters.value.brand
   if (filters.value.category) q.category = filters.value.category
   if (jobId.value) q.job = String(jobId.value)
+  // параметр deep-link'а сохраняем: без него router.replace стирает его,
+  // и applyDeepLink() успевает прочитать уже пустое значение — ссылка
+  // на инсайт открывала страницу, но нужный разбор не раскрывался.
+  const ins = Number(route.query.insight || 0)
+  if (ins > 0) q.insight = String(ins)
   router.replace({ path: route.path, query: q }).catch(() => {})
 }
 
@@ -312,22 +356,56 @@ function showAllJobs() {
 }
 
 // --- ссылка на инсайт ---
+/** Путь строит роутер — он знает базу приложения (location.origin + route.path
+ *  её не знает: на сервере приложение живёт не в корне домена). */
+function insightPath(id: number): string {
+  return router.resolve({ path: route.path, query: { insight: id } }).href
+}
+/** Абсолютный URL — для буфера обмена. */
 function insightUrl(id: number): string {
-  return `${location.origin}${route.path}?insight=${id}`
+  return location.origin + insightPath(id)
 }
 
-async function copyLink(it: FeedbackInsight) {
+/**
+ * Копирование в буфер. Clipboard API есть только в secure context
+ * (https/localhost) — на http приложение живёт без него, и `navigator.clipboard`
+ * там undefined. Поэтому запасной путь — execCommand через скрытое поле.
+ */
+async function copyToClipboard(text: string): Promise<boolean> {
   try {
-    await navigator.clipboard.writeText(insightUrl(it.id))
-    copiedId.value = it.id
-    setTimeout(() => { if (copiedId.value === it.id) copiedId.value = 0 }, 2000)
+    if (window.isSecureContext && navigator.clipboard) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch { /* пробуем запасной способ */ }
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.setAttribute('readonly', '')
+    ta.style.position = 'fixed'
+    ta.style.top = '-1000px'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    ta.setSelectionRange(0, text.length)
+    const ok = document.execCommand('copy')
+    document.body.removeChild(ta)
+    return ok
   } catch {
-    error.value = 'не удалось скопировать ссылку'
+    return false
   }
 }
 
-function openInNewTab(it: FeedbackInsight) {
-  window.open(insightUrl(it.id), '_blank')
+async function copyLink(it: FeedbackInsight) {
+  const url = insightUrl(it.id)
+  const ok = await copyToClipboard(url)
+  if (ok) {
+    copiedId.value = it.id
+    setTimeout(() => { if (copiedId.value === it.id) copiedId.value = 0 }, 2000)
+  } else {
+    // буфер недоступен — показываем саму ссылку, чтобы скопировать руками
+    error.value = 'Буфер обмена недоступен — скопируйте ссылку вручную: ' + url
+  }
 }
 
 async function applyDeepLink() {
@@ -346,9 +424,9 @@ async function applyDeepLink() {
 }
 
 function priorityClass(p: number): string {
-  if (p === 1) return 'bg-danger'
-  if (p === 2) return 'bg-warning text-dark'
-  return 'bg-secondary'
+  if (p === 1) return 'badge--bad'
+  if (p === 2) return 'badge--warn'
+  return 'badge--neutral'
 }
 function priorityLabel(p: number): string {
   if (p === 1) return 'критично'
@@ -368,7 +446,6 @@ function negPct(it: FeedbackInsight): number {
 
 async function exportExcel() {
   if (!insights.value.length) return
-  const XLSX = await import('xlsx')
   const rowsOut = insights.value.map((it) => ({
     'Карточка': it.card_title || '',
     'nmID': it.nm_id,
@@ -392,18 +469,19 @@ async function exportExcel() {
     'Товар: что сделать': it.product_rec ? (it.product_rec.action || '') : '',
     'Разобрано': it.created_at || '',
   }))
-  const ws = XLSX.utils.json_to_sheet(rowsOut)
-  ws['!cols'] = [
-    { wch: 38 }, { wch: 12 }, { wch: 16 }, { wch: 22 }, { wch: 16 }, { wch: 24 },
-    { wch: 9 }, { wch: 11 }, { wch: 44 },
-    { wch: 50 }, { wch: 50 },
-    { wch: 42 }, { wch: 46 }, { wch: 40 }, { wch: 46 }, { wch: 46 }, { wch: 40 }, { wch: 50 },
-    { wch: 42 }, { wch: 46 },
-    { wch: 19 },
-  ]
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Инсайты')
-  XLSX.writeFile(wb, 'insighty_otzyvov.xlsx')
+  await exportXlsx({
+    rows: rowsOut,
+    filename: 'insighty_otzyvov.xlsx',
+    sheetName: 'Инсайты',
+    cols: [
+      { wch: 38 }, { wch: 12 }, { wch: 16 }, { wch: 22 }, { wch: 16 }, { wch: 24 },
+      { wch: 9 }, { wch: 11 }, { wch: 44 },
+      { wch: 50 }, { wch: 50 },
+      { wch: 42 }, { wch: 46 }, { wch: 40 }, { wch: 46 }, { wch: 46 }, { wch: 40 }, { wch: 50 },
+      { wch: 42 }, { wch: 46 },
+      { wch: 19 },
+    ],
+  })
 }
 
 watch(() => route.query.insight, () => {

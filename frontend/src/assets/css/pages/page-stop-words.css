@@ -1,5 +1,37 @@
-/* page-stop-words.css — чанк StopWordsPage (/wb-reply-rules/stop-words, «Стоп-слова»).
- * Маленькая справочная таблица: слово / статус / тоггл / удалить.
- */
-.page-stop-words__form { max-width: 520px; }
+/* page-stop-words.css — стили страницы «Стоп-слова» (/wb-feedback-reply-rules/stop-words).
+ * Каркас — общие блоки темы: .tbl-card → .card__hd → .tbl-wrap → .tbl,
+ * .wb-input, .btn--brand / .btn--outline / .btn--danger, .badge--*.
+ * Цвета — только токены темы (§8.1.1): hex в CSS страницы запрещён. */
+
+.page-stop-words__hint {
+  font-size: calc(12.5px * var(--fs));
+  color: var(--ink-soft);
+  margin-bottom: 12px;
+}
+/* Форма добавления: поле + кнопки в один ряд */
+.page-stop-words__form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  max-width: 720px;
+  margin-bottom: 12px;
+}
+.page-stop-words__form .wb-input { flex: 1 1 260px; }
+.page-stop-words__error {
+  padding: 7px 12px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bad-tint);
+  color: var(--bad-deep);
+  border: 1px solid var(--bad);
+  font-size: calc(12.5px * var(--fs));
+}
+.page-stop-words__card { margin-bottom: 16px; }
+.page-stop-words__loading {
+  padding: 24px;
+  text-align: center;
+  color: var(--ink-muted);
+  font-size: calc(13px * var(--fs));
+}
+.page-stop-words__empty { padding: 20px; color: var(--ink-muted); }
 .page-stop-words__word { font-weight: 600; }

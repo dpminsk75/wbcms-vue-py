@@ -161,7 +161,6 @@ const spaMap: Record<string,string> = {
   '/companies': '/companies', 
   '/admin/users': '/admin/users',
   '/admin/roles': '/admin/roles',
-  '/companies': '/companies',
   '/competitor/new-cards': '/competitor/new-cards',
   '/competitor/captured': '/competitor/captured',
   '/competitor/pick': '/competitor/pick',
@@ -183,7 +182,9 @@ const spaMap: Record<string,string> = {
   '/wb-feedback-analysis': '/wb-feedback-analysis',
   '/wb-feedback-insights': '/wb-feedback-insights',
   '/wb-feedback-reply-rules/index': '/wb-feedback-reply-rules/index',
-  '/wb-feedback-tags/index': '/wb-feedback-tags/index'
+  '/wb-feedback-tags/index': '/wb-feedback-tags/index',
+  // «Вопросы» — самостоятельная страница (в меню раздела «Отзывы» не входит)
+  '/wb-questions': '/wb-questions'
 }
 const toSpa = (url?: string): string | null => {
   if (!url || url==='#') return null

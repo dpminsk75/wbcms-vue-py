@@ -5,6 +5,56 @@
    и новые имена (.wb-input, .opt).
    ============================================================ */
 
+/* ---------- размеры кнопок и полей ----------
+   Едут вместе с осью «Размер шрифта»: меняются и кегль, и высота
+   (отступы считаются тем же множителем).
+   Уровни — по лестнице §4.2: значение в поле = текст на странице
+   (= <p>, 14px) = кнопка «Применить»; пресеты — на ступень ниже;
+   подписи полей — уровень подписи (12,5px).
+
+   Bootstrap задаёт кегль и отступы кнопок через --bs-btn-*, поэтому
+   переопределяем переменные, а не сами правила. */
+.btn {
+  --bs-btn-font-size: calc(14px * var(--fs));
+  --bs-btn-padding-y: calc(5px * var(--fs));
+  --bs-btn-padding-x: calc(9px * var(--fs));
+  --bs-btn-line-height: 1.45;
+}
+.btn-sm {
+  --bs-btn-font-size: calc(13px * var(--fs));
+  --bs-btn-padding-y: calc(4px * var(--fs));
+  --bs-btn-padding-x: calc(9px * var(--fs));
+}
+.btn-lg {
+  --bs-btn-font-size: calc(15px * var(--fs));
+  --bs-btn-padding-y: calc(10px * var(--fs));
+  --bs-btn-padding-x: calc(18px * var(--fs));
+}
+
+/* Поля ввода и выбора — на токенах темы, размер от --fs */
+.form-control,
+.form-select {
+  color: var(--ink);
+  background-color: var(--surface);
+  border-color: var(--line-strong);
+  font-size: calc(14px * var(--fs));
+  line-height: 1.45;
+}
+.form-control {
+  padding: calc(7px * var(--fs)) calc(10px * var(--fs));
+}
+/* У select правый отступ занят системной стрелкой — сохраняем его */
+.form-select {
+  padding: calc(7px * var(--fs)) calc(30px * var(--fs)) calc(7px * var(--fs)) calc(10px * var(--fs));
+  background-position: right calc(10px * var(--fs)) center;
+}
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-tint);
+}
+.form-label { font-size: calc(12.5px * var(--fs)); }
+
 /* ---------- кнопки (модификаторы к .btn Bootstrap) ---------- */
 .btn--brand {
   --bs-btn-bg: var(--brand);
@@ -84,14 +134,81 @@
 }
 .btn--soft i { color: var(--brand); }
 
+/* Контурные кнопки-варианты с цветом — ВЫБОР СОСТОЯНИЯ (как в PHP-оригинале):
+   рамка + цветной текст на белом; активное состояние (.is-on) — заливка;
+   hover — светлая заливка своего тона. Отличие от .btn--danger: это не опасное
+   действие, а один из вариантов («Позитивный» / «Негативный» у тега отзыва).
+
+   Селектор с .btn — намеренно: специфичность 0,2,0 перебивает bootstrap `.btn`
+   (0,1,0) **в любом порядке подключения**. Одного класса не хватало: правило
+   выигрывало только за счёт того, что forms.css идёт после bootstrap.css —
+   при перестановке импортов кнопки молча теряли оформление. */
+.btn.btn--outline-ok {
+  --bs-btn-bg: var(--surface);
+  --bs-btn-border-color: var(--good);
+  --bs-btn-color: var(--good-deep);
+  --bs-btn-hover-bg: var(--good-tint);
+  --bs-btn-hover-border-color: var(--good);
+  --bs-btn-hover-color: var(--good-deep);
+  --bs-btn-active-bg: var(--good-tint);
+  --bs-btn-active-border-color: var(--good);
+  --bs-btn-active-color: var(--good-deep);
+}
+.btn.btn--outline-ok.is-on {
+  --bs-btn-bg: var(--good);
+  --bs-btn-border-color: var(--good);
+  --bs-btn-color: var(--brand-ink);
+  --bs-btn-hover-bg: var(--good-deep);
+  --bs-btn-hover-border-color: var(--good-deep);
+  --bs-btn-hover-color: var(--brand-ink);
+  --bs-btn-active-bg: var(--good-deep);
+  --bs-btn-active-border-color: var(--good-deep);
+  --bs-btn-active-color: var(--brand-ink);
+}
+.btn.btn--outline-bad {
+  --bs-btn-bg: var(--surface);
+  --bs-btn-border-color: var(--bad);
+  --bs-btn-color: var(--bad-deep);
+  --bs-btn-hover-bg: var(--bad-tint);
+  --bs-btn-hover-border-color: var(--bad);
+  --bs-btn-hover-color: var(--bad-deep);
+  --bs-btn-active-bg: var(--bad-tint);
+  --bs-btn-active-border-color: var(--bad);
+  --bs-btn-active-color: var(--bad-deep);
+}
+.btn.btn--outline-bad.is-on {
+  --bs-btn-bg: var(--bad);
+  --bs-btn-border-color: var(--bad);
+  --bs-btn-color: var(--brand-ink);
+  --bs-btn-hover-bg: var(--bad-deep);
+  --bs-btn-hover-border-color: var(--bad-deep);
+  --bs-btn-hover-color: var(--brand-ink);
+  --bs-btn-active-bg: var(--bad-deep);
+  --bs-btn-active-border-color: var(--bad-deep);
+  --bs-btn-active-color: var(--brand-ink);
+}
+
+/* Нейтральное действие серой заливкой («Сбросить» — снять разметку тега). */
+.btn.btn--secondary {
+  --bs-btn-bg: color-mix(in srgb, var(--ink-soft) 80%, var(--surface));
+  --bs-btn-border-color: color-mix(in srgb, var(--ink-soft) 80%, var(--surface));
+  --bs-btn-color: var(--brand-ink);
+  --bs-btn-hover-bg: var(--ink-soft);
+  --bs-btn-hover-border-color: var(--ink-soft);
+  --bs-btn-hover-color: var(--brand-ink);
+  --bs-btn-active-bg: var(--ink-soft);
+  --bs-btn-active-border-color: var(--ink-soft);
+  --bs-btn-active-color: var(--brand-ink);
+}
+
 /* быстрые фильтры (legacy .btn-panel из site.css) — мягкие пилюли акцентом */
 .btn-panel {
   background: var(--brand-tint);
   color: var(--brand-deep);
   border: 1px solid transparent;
   border-radius: 99px;
-  padding: 6px 12px;
-  font-size: calc(12.5px * var(--fs));
+  padding: calc(5px * var(--fs)) calc(9px * var(--fs));
+  font-size: calc(14px * var(--fs));
   font-weight: 600;
   display: inline-flex;
   align-items: center;
@@ -101,7 +218,7 @@
 }
 .btn-panel i { color: var(--brand); }
 /* перекрываем .panel-btns .btn из site.css (специфичность выше) — чтобы кегль шёл от --fs */
-.panel-btns .btn-panel { font-size: calc(12.5px * var(--fs)); }
+.panel-btns .btn-panel { font-size: calc(14px * var(--fs)); }
 .btn-panel:hover,
 .btn-panel:focus {
   background: color-mix(in srgb, var(--brand) 22%, var(--surface));
@@ -128,6 +245,9 @@
 .ch-icon-btn:hover { background: color-mix(in srgb, currentColor 18%, transparent); }
 
 /* ---------- бейджи (модификаторы к .badge) ---------- */
+/* Bootstrap задаёт бейдж 0.75em от родителя — из-за этого в обычных блоках
+   бейдж не реагировал на ось «Размер шрифта». Свой кегль от --fs: едет везде. */
+.badge { font-size: calc(12px * var(--fs)); }
 .badge--ok      { background: var(--good-tint); color: var(--good-deep); }
 .badge--bad     { background: var(--bad-tint);  color: var(--bad-deep); }
 .badge--warn    { background: var(--warn-tint); color: var(--warn-deep); }
@@ -140,9 +260,9 @@
    через mask — но у select маска съела бы фон поля, поэтому стрелка системная). */
 .wb-select {
   font-family: inherit;
-  font-size: calc(12.5px * var(--fs));
+  font-size: calc(14px * var(--fs));
   color: var(--ink);
-  padding: 7px 10px;
+  padding: calc(7px * var(--fs)) calc(10px * var(--fs));
   border-radius: var(--radius-sm);
   border: 1px solid var(--line-strong);
   background-color: var(--surface);
@@ -157,13 +277,13 @@
 
 /* ---------- поля ---------- */
 .wb-field { display: flex; flex-direction: column; gap: 5px; }
-.wb-field__label { font-size: calc(11.5px * var(--fs)); font-weight: 600; color: var(--ink-soft); }
+.wb-field__label { font-size: calc(12.5px * var(--fs)); font-weight: 600; color: var(--ink-soft); }
 
 .wb-input {
   font-family: inherit;
-  font-size: calc(12.5px * var(--fs));
+  font-size: calc(14px * var(--fs));
   color: var(--ink);
-  padding: 7px 10px;
+  padding: calc(7px * var(--fs)) calc(10px * var(--fs));
   border-radius: var(--radius-sm);
   border: 1px solid var(--line-strong);
   background: var(--surface);
@@ -185,6 +305,42 @@
    поэтому любое поле страницы иначе зажато 190px. */
 .wb-field--wide { grid-column: 1 / -1; max-width: 460px; }
 
+/* Группа полей в слоте #fields — несколько полей рядом как ОДИН логический блок.
+   Без неё каждое поле занимает отдельную колонку сетки (140–190px) и ряд
+   разъезжается.
+
+   Ширина блока задаётся `grid-column: span N` — по числу колонок, которые
+   блок занимает в сетке #fields (`repeat(auto-fit, minmax(140px, 190px))`):
+     * первый блок — 2 колонки: два поля по 190px («Оценка» + «Статус ответа»);
+     * блок `--sep` — 3 колонки: три чипа занимают ~574px, в одной колонке
+       (190px) они переносятся в столбик, а это не то, что нужно.
+   Фильтр по компании — не при чём: JOIN/разметка тут не используется.
+
+   `--sep` — второй логический блок: отступ 16px + вертикальная черта --line. */
+.wb-field-group {
+  grid-column: span 2;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.wb-field-group > .wb-field { flex: 1 1 0; min-width: 0; }
+.wb-field-group--sep {
+  grid-column: span 3;
+  padding-left: 16px;
+  border-left: 1px solid var(--line);
+}
+/* Блок с одним элементом (переключатель отображения) — одна колонка. */
+.wb-field-group--one { grid-column: span 1; }
+/* Узкий экран — блоки во всю строку (чипы переносятся сами). */
+@media (max-width: 700px) {
+  .wb-field-group,
+  .wb-field-group--sep {
+    grid-column: 1 / -1;
+    padding-left: 0;
+    border-left: 0;
+  }
+}
+
 /* ---------- ссылка на поисковый запрос в таблице ----------
    Общий класс для раздела «Поиск» (/wb-search/*): жирная, цветом темы,
    без подчёркивания до наведения. Раньше вид был разный на trend / analytics /
@@ -204,7 +360,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 12px;
+  padding: calc(7px * var(--fs)) calc(12px * var(--fs));
   border-radius: var(--radius-sm);
   border: 1px solid var(--line-strong);
   background: var(--surface);

@@ -1,7 +1,10 @@
 <template>
-  <div class="page-feedback-dashboard__chart-card">
-    <div class="page-feedback-dashboard__section-title">{{ title }}</div>
-    <div class="page-feedback-dashboard__chart">
+  <!-- Карточка графика — блок темы: .wb-panel + шапка .card__hd (§5.9). -->
+  <div class="wb-panel page-feedback-dashboard__chart">
+    <div class="card__hd">
+      <span>{{ title }}</span>
+    </div>
+    <div class="wb-panel__bd page-feedback-dashboard__chart-body">
       <VChart v-if="data.length" :option="option" autoresize
                class="page-feedback-dashboard__chart-inner" />
       <div v-else class="page-feedback-dashboard__empty">Нет данных</div>
@@ -27,6 +30,7 @@ import { use } from 'echarts/core'
 import { PieChart } from 'echarts/charts'
 import { LegendComponent, GraphicComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import { resolveTokenColor } from '@/utils/chartTheme'
 
 use([PieChart, TooltipComponent, LegendComponent, GraphicComponent, CanvasRenderer])
 
@@ -60,11 +64,10 @@ const option = computed(() => ({
   tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
   legend: { show: false },
   series: [{
-    type: 'pie',
-    radius: ['58%', '80%'],
-    center: ['50%', '50%'],
+    type: 'pie', radius: ['58%', '80%'], center: ['50%', '50%'],
     avoidLabelOverlap: true,
-    itemStyle: { borderColor: '#fff', borderWidth: 2 },
+    // разделитель секторов — цвет поверхности (тема), не hex в коде
+    itemStyle: { borderColor: resolveTokenColor('--surface'), borderWidth: 2 },
     label: { show: false },
     emphasis: { label: { show: true, fontSize: 20, fontWeight: 700, formatter: '{d}%' } },
     data: props.data
@@ -83,7 +86,7 @@ const option = computed(() => ({
         style: {
           text: `${total.value}\nвсего`,
           textAlign: 'center',
-          fill: '#111827',
+          fill: resolveTokenColor('--ink'),
           fontSize: 13,
           fontWeight: 700,
           lineHeight: 16,
@@ -92,52 +95,3 @@ const option = computed(() => ({
     : [],
 }))
 </script>
-
-<style scoped>
-.page-feedback-dashboard__chart-card {
-  background: #fff;
-  border: 1px solid #d5dae1;
-  border-radius: 10px;
-  padding: 16px 18px;
-  height: 100%;
-}
-.page-feedback-dashboard__section-title { font-size: 13px; font-weight: 600; color: #111827; }
-.page-feedback-dashboard__chart { height: 260px; margin-top: 8px; }
-.page-feedback-dashboard__chart-inner { height: 100%; }
-.page-feedback-dashboard__empty {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #9ca3af;
-  font-size: 13px;
-}
-.page-feedback-dashboard__legend {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px 14px;
-  margin-top: 10px;
-}
-.page-feedback-dashboard__legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: #374151;
-}
-/* легенда-кнопка: клик отключает сектор */
-.page-feedback-dashboard__legend-btn {
-  background: none;
-  border: 0;
-  padding: 0;
-  font: inherit;
-  cursor: pointer;
-}
-.page-feedback-dashboard__legend-btn:hover { color: #111827; }
-.page-feedback-dashboard__legend-item--off {
-  opacity: .4;
-  text-decoration: line-through;
-}
-.page-feedback-dashboard__legend-dot { width: 10px; height: 10px; border-radius: 3px; }
-</style>

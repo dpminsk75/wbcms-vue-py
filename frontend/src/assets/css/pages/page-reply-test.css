@@ -1,8 +1,51 @@
-/* page-reply-test.css — чанк ReplyTestPage (/wb-reply-rules/test-generation).
- * Порт views/wb-reply-rules/test-generation.php: бейджи оценок, зелёная рамка ответа.
- */
-.page-reply-test__rating { color: #fff; font-size: 14px; padding: 5px 10px; border-radius: 4px; font-weight: bold; min-width: 45px; }
-.page-reply-test__pill--general { background-color: #e6f7ed; color: #1e7e34; }
-.page-reply-test__pill--brand { background-color: #e1f5fe; color: #01579b; }
-.page-reply-test__pill--product { background-color: #fff8e1; color: #000; }
-.page-reply-test__answer { font-size: 13px; border-left: 4px solid #28a745 !important; white-space: pre-wrap; }
+/* page-reply-test.css — стили страницы «Тест генерации» (/wb-feedback-reply-rules/test-generation).
+ * Каркас — общие блоки темы: .tbl-card → .card__hd → .tbl-wrap → .tbl,
+ * .badge--*, .hd-btn.
+ * Цвета — только токены темы (§8.1.1): hex в CSS страницы запрещён. */
+
+.page-reply-test__notice {
+  padding: 9px 14px;
+  margin-bottom: 14px;
+  border-radius: var(--radius-sm);
+  background: var(--warn-tint);
+  color: var(--warn-deep);
+  border: 1px solid var(--warn);
+  font-size: calc(12.5px * var(--fs));
+}
+.page-reply-test__card { margin-bottom: 16px; }
+.page-reply-test__loading {
+  padding: 24px;
+  text-align: center;
+  color: var(--ink-muted);
+  font-size: calc(13px * var(--fs));
+}
+.page-reply-test__empty { padding: 20px; color: var(--ink-muted); }
+.page-reply-test__muted { color: var(--ink-muted); }
+.page-reply-test__small { font-size: calc(11.5px * var(--fs)); }
+.page-reply-test__bad { color: var(--bad-deep); }
+
+.page-reply-test__title { font-weight: 700; color: var(--brand); }
+.page-reply-test__meta {
+  font-size: calc(11.5px * var(--fs));
+  color: var(--ink-muted);
+  margin-bottom: 4px;
+}
+.page-reply-test__rule-title { font-weight: 700; }
+
+/* Текст отзыва — блок на поверхности */
+.page-reply-test__review {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: calc(12px * var(--fs));
+}
+.page-reply-test__review-author { font-weight: 700; color: var(--ink-soft); }
+
+/* Сгенерированный ответ — рамка акцентом слева */
+.page-reply-test__answer {
+  font-size: calc(13px * var(--fs));
+  border-left: 4px solid var(--good);
+  padding-left: 10px;
+  white-space: pre-wrap;
+}

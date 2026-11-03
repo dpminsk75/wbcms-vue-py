@@ -1,25 +1,149 @@
-/* page-feedback-answers.css — чанк FeedbackAnswersPage (/wb-feedback-answers, «Отзывы и ответы»).
- * Порт views/wb-feedback-answers/index.php: фильтр bg-light p-3 rounded,
- * грид Товар 25 / Отзыв 45 / Ответ 25 / Правило 5%, платные #fff8e1.
+/* page-feedback-answers.css — стили страницы «Отзывы и ответы» (/wb-feedback-answers).
+ * Каркас — общие блоки темы: WbUniversalFilter, .tbl-card / .card__hd / .tbl-wrap / .tbl,
+ * .wb-pager, .badge--*, .btn--*, .wb-select.
+ * Здесь только то, чего в общих блоках нет: разметка отзыва, медиа, метки ИИ-разбора.
+ * Цвета — только токены темы (§8.1.1): hex в CSS страницы запрещён.
  */
-.page-feedback-answers__filter { border: 1px solid #e5e7eb; border-radius: 12px; }
-.page-feedback-answers__quick { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-.page-feedback-answers__answer { font-size: 0.9em; }
-.page-feedback-answers__rule { cursor: help; border-bottom: 1px dotted #999; }
-.page-feedback-answers__paid { background-color: #fff8e1; }
-.page-feedback-answers__photo { height: 120px; width: auto; flex: 0 0 auto; margin-right: 10px; margin-bottom: 10px; border-radius: 4px; border: 1px solid #ddd; }
-.page-feedback-answers__media { display: flex; flex-wrap: wrap; }
-.page-feedback-answers__media-item { flex: 0 0 auto; margin-right: 10px; margin-bottom: 10px; text-align: center; }
-.page-feedback-answers__video { width: auto; border-radius: 4px; background: #000; max-width: 100%; display: block; }
-.page-feedback-answers__media-btn { font-size: 12px; cursor: pointer; }
-.page-feedback-answers__sort { font-size: 11px; color: #6c757d; text-decoration: none; }
-.page-feedback-answers__video { max-width: 100%; }
-.page-feedback-answers__pager { display: flex; gap: 8px; justify-content: center; margin: 12px 0; }
-.page-feedback-answers__pager-label { align-self: center; font-size: 12px; }
 
-/* Разбор отзыва через ИИ: метки + кнопки */
-.page-feedback-answers__ai { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+/* ---------- сообщения страницы ---------- */
+.page-feedback-answers__msg {
+  margin: 10px 0;
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--info-tint);
+  color: var(--info-deep);
+  border: 1px solid var(--info);
+  font-size: calc(12.5px * var(--fs));
+}
+
+/* ---------- таблица ---------- */
+.page-feedback-answers__card { margin-top: 16px; }
+/* Первая колонка — карточка товара (фото 50×66 + «артикул • бренд • предмет»
+   + ссылка WB с иконками) — не уже 350px, иначе название рвётся, а строка
+   подписи обрезается в многоточие. */
+.page-feedback-answers__table th:first-child { min-width: 350px; }
+.page-feedback-answers__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--ink-muted);
+  font-size: calc(13px * var(--fs));
+}
+.page-feedback-answers__empty {
+  padding: 20px;
+  color: var(--ink-muted);
+}
+
+/* Заголовок колонки «Отзыв» — сортировка кликом по дате */
+.page-feedback-answers__sort {
+  font-size: calc(11px * var(--fs));
+  font-weight: 400;
+  color: var(--ink-muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.page-feedback-answers__sort:hover { color: var(--brand); }
+
+/* ---------- содержимое ячейки «Отзыв» ---------- */
+.page-feedback-answers__row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.page-feedback-answers__date {
+  color: var(--ink-muted);
+  font-size: calc(11.5px * var(--fs));
+}
+.page-feedback-answers__answer {
+  font-size: calc(12.5px * var(--fs));
+}
+.page-feedback-answers__muted { color: var(--ink-muted); font-size: calc(12px * var(--fs)); }
+.page-feedback-answers__small { font-size: calc(11.5px * var(--fs)); }
+.page-feedback-answers__ok { color: var(--good-deep); font-size: calc(11.5px * var(--fs)); }
+.page-feedback-answers__error { color: var(--bad-deep); font-size: calc(11.5px * var(--fs)); }
+
+/* Правило автоответа — номер с подсказкой (название) */
+.page-feedback-answers__rule {
+  cursor: help;
+  border-bottom: 1px dotted var(--ink-muted);
+}
+
+/* ---------- медиа отзыва ---------- */
+.page-feedback-answers__media {
+  display: flex;
+  flex-wrap: wrap;
+}
+.page-feedback-answers__media-item {
+  flex: 0 0 auto;
+  margin-right: 10px;
+  margin-bottom: 10px;
+}
+.page-feedback-answers__video {
+  width: auto;
+  max-width: 100%;
+  display: block;
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+}
+.page-feedback-answers__photo {
+  height: 120px;
+  width: auto;
+  flex: 0 0 auto;
+  margin-right: 10px;
+  margin-bottom: 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+}
+.page-feedback-answers__media-acts {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.page-feedback-answers__media-btn {
+  font-size: calc(11.5px * var(--fs));
+  cursor: pointer;
+  color: var(--brand);
+  text-decoration: none;
+}
+.page-feedback-answers__media-btn:hover { color: var(--brand-hover); text-decoration: underline; }
+
+/* ---------- метки отзыва (теги) ---------- */
+.page-feedback-answers__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* ---------- разбор отзыва через ИИ ---------- */
+.page-feedback-answers__ai {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
 .page-feedback-answers__ai-badge { font-weight: 500; }
-.page-feedback-answers__ai-btn { font-size: 11px; padding: 2px 8px; }
-/* Модалка ошибок разбора */
+.page-feedback-answers__ai-btn { font-size: calc(11px * var(--fs)); padding: 2px 8px; }
+
+/* ---------- модалки (ошибки разбора / промпт) ---------- */
 .page-feedback-answers__errors-modal { background: rgba(0, 0, 0, .4); }
+.page-feedback-answers__modal-title {
+  font-size: calc(16px * var(--fs));
+  font-weight: 700;
+  color: var(--ink);
+}
+.page-feedback-answers__prompt-opts {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.page-feedback-answers__prompt-batch { max-width: 180px; }
+.page-feedback-answers__prompt-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  min-height: 320px;
+}

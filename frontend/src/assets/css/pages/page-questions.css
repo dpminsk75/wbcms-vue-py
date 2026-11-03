@@ -11,6 +11,26 @@
   font-size: calc(11px * var(--fs));
   color: var(--ink-soft);
 }
+.page-questions__muted { color: var(--ink-muted); }
+
+/* Сообщение о синке — блок темы с тонированным фоном */
+.page-questions__sync-msg {
+  padding: 6px 12px;
+  margin-bottom: 14px;
+  border-radius: var(--radius-sm);
+  background: var(--info-tint);
+  color: var(--info-deep);
+  border: 1px solid var(--info);
+  font-size: calc(12px * var(--fs));
+}
+
+/* Состояния таблицы: загрузка / ошибка */
+.page-questions__state {
+  padding: 20px;
+  text-align: center;
+  color: var(--ink-muted);
+}
+.page-questions__state--bad { color: var(--bad-deep); }
 
 /* Ширины колонок: у Bootstrap нет утилиты ширины колонки таблицы. */
 .page-questions__table th:nth-child(1) { width: 120px; }
@@ -44,4 +64,12 @@
 }
 .page-questions__modal-meta {
   margin-top: -4px;
+  font-size: calc(11.5px * var(--fs));
+  color: var(--ink-muted);
+}
+/* Заголовок модалки — текстом (в таблицах и шапках блоков заголовков h1–h6 нет, §8.1.12) */
+.page-questions__modal-title {
+  font-size: calc(16px * var(--fs));
+  font-weight: 700;
+  color: var(--ink);
 }

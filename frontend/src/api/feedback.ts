@@ -18,6 +18,14 @@ export interface FeedbackAnswer {
   f_cost: number | null
   bables: string[]
   product_title: string | null
+  /** Фото карточки товара (из wbcards.photos) — для общего ProductCell. */
+  product_photos?: string | null
+  /** Бренд карточки товара. */
+  product_brand?: string
+  /** Предмет (subjectName) карточки товара. */
+  product_subject?: string
+  /** Артикул продавца (vendorCode) карточки товара. */
+  product_vendor_code?: string
   rule_title: string | null
   /** Метки ИИ-разбора отзыва: low|mid|high / neg|pos|neutral; null — не разобран. */
   ai_emotion: string | null
@@ -48,6 +56,8 @@ export interface FeedbackAnswersParams {
   status?: string
   has_media?: boolean
   paid_only?: boolean
+  /** Только отзывы с текстом (поле text отзыва). */
+  with_text?: boolean
   sort?: string
   order?: string
   page?: number

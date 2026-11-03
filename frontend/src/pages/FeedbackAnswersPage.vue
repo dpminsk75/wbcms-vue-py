@@ -1,92 +1,91 @@
 <template>
   <div class="container-xxl page-feedback-answers">
-    <FeedbackHead :title="$route.meta.title || 'Отзывы и ответы'" active="answers" />
-    <div class="bg-light p-3 rounded mb-4 page-feedback-answers__filter">
-      <div class="row g-3 mb-3">
-        <div class="col-12 col-md-2">
-          <label class="form-label fw-medium text-muted small mb-1">С даты</label>
-          <WbDateInput v-model="filters.date_from" />
-        </div>
-        <div class="col-12 col-md-2">
-          <label class="form-label fw-medium text-muted small mb-1">По дату</label>
-          <WbDateInput v-model="filters.date_to" />
-        </div>
-        <div class="col-12 col-md-3">
-          <label class="form-label fw-medium text-muted small mb-1">Оценка</label>
-          <select v-model="filters.rating" class="form-select">
-            <option value="">Все оценки</option>
-            <option value="5">5 ★</option>
-            <option value="4">4 ★</option>
-            <option value="3">3 ★</option>
-            <option value="2">2 ★</option>
-            <option value="1">1 ★</option>
-          </select>
-        </div>
-        <div class="col-12 col-md-2">
-          <label class="form-label fw-medium text-muted small mb-1">Статус ответа</label>
-          <select v-model="filters.status" class="form-select">
-            <option value="">Все</option>
-            <option value="answered">Есть ответ</option>
-            <option value="not_answered">Нет ответа</option>
-          </select>
-        </div>
-        <div class="col-12 col-md-3">
-          <label class="form-label fw-medium text-muted small mb-1">Товар (артикул)</label>
-          <div class="d-flex gap-2">
-            <input v-model="cardQuery" class="form-control" placeholder="nmID..." @keydown.enter="onApply" />
-            <button v-if="filters.nm_id" class="btn btn-light" title="Очистить" @click="clearCard">×</button>
+    <WbWorkspaceHead :title="$route.meta.title || 'Отзывы и ответы'" :workspace-tabs="FEEDBACK_TABS" workspace-active="answers" />
+
+    <!-- Фильтр — общий WbUniversalFilter (theme.md §5.6): поля страницы в слоте #fields -->
+    <WbUniversalFilter
+      v-model:date-from="filters.date_from"
+      v-model:date-to="filters.date_to"
+      v-model:product="filters.nm_id"
+      :show-brand-category="false"
+      @apply="onApply"
+      @reset="onReset"
+    >
+      <template #fields>
+        <!-- блок 1: «какой отзыв» — оценка и статус ответа рядом, один логический блок -->
+        <div class="wb-field-group">
+          <div class="wb-field">
+            <label class="wb-field__label">Оценка</label>
+            <select v-model="filters.rating" class="wb-select">
+              <option value="">Все оценки</option>
+              <option value="5">5 ★</option>
+              <option value="4">4 ★</option>
+              <option value="3">3 ★</option>
+              <option value="2">2 ★</option>
+              <option value="1">1 ★</option>
+            </select>
+          </div>
+          <div class="wb-field">
+            <label class="wb-field__label">Статус ответа</label>
+            <select v-model="filters.status" class="wb-select">
+              <option value="">Все</option>
+              <option value="answered">Есть ответ</option>
+              <option value="not_answered">Нет ответа</option>
+            </select>
           </div>
         </div>
+
+        <!-- блок 2: «какие отзывы показывать» — фильтры-чипы, применяются сразу -->
+        <div class="wb-field-group wb-field-group--sep">
+          <div class="wb-field">
+            <span class="wb-chip-group__label">Только</span>
+            <WbChipGroup v-model="onlyFlags" :options="onlyOptions" multiple
+                         @update:model-value="onApply" />
+          </div>
+        </div>
+
+        <!-- блок 3: переключатель отображения — прячет колонку «Ответ»
+             (выборку не меняет, поэтому без apply). Подпись — как у блока 2,
+             чтобы чипы стояли на одной линии. -->
+        <div class="wb-field-group wb-field-group--sep wb-field-group--one">
+          <div class="wb-field">
+            <span class="wb-chip-group__label">Ответ</span>
+            <WbChipGroup v-model="hideAnswers" :options="hideAnswerOptions" toggle
+                         @update:model-value="syncRoute" />
+          </div>
+        </div>
+      </template>
+    </WbUniversalFilter>
+
+    <div v-if="reviewMsg" class="page-feedback-answers__msg">{{ reviewMsg }}</div>
+
+    <!-- Таблица — блок темы .tbl-card (theme.md §5.7.9) -->
+    <div class="tbl-card page-feedback-answers__card">
+      <div class="card__hd">
+        <span>Отзывы и ответы</span>
+        <span class="hd-badge">Всего: {{ total }}</span>
+        <span class="spacer"></span>
+        <button type="button" class="hd-btn" @click="openPrompt">Промпт разбора</button>
+        <button type="button" class="hd-btn" @click="openErrors">Ошибки разбора</button>
       </div>
-      <div class="row g-3 align-items-end">
-        <div class="col-6 col-md-4 d-flex gap-3">
-          <div class="form-check">
-            <input id="fa-media" v-model="filters.has_media" type="checkbox" class="form-check-input" />
-            <label for="fa-media" class="form-check-label">Только с фото/видео</label>
-          </div>
-          <div class="form-check">
-            <input id="fa-paid" v-model="filters.paid_only" type="checkbox" class="form-check-input" />
-            <label for="fa-paid" class="form-check-label">Только платные</label>
-          </div>
-          <div class="form-check">
-            <input id="fa-hide" v-model="filters.hide_answers" type="checkbox" class="form-check-input" />
-            <label for="fa-hide" class="form-check-label">Не выводить ответы</label>
-          </div>
-        </div>
-        <div class="col-6 col-md-4 d-flex gap-2">
-          <button class="btn btn-primary" :disabled="isLoading" @click="onApply">Применить</button>
-          <button class="btn btn-light" @click="onReset">Сбросить</button>
-        </div>
-        <div class="col-12 col-md-4 text-end text-muted small">
-          <button class="btn btn-sm btn-outline-secondary me-2" @click="openPrompt">
-            Промпт разбора
-          </button>
-          <button class="btn btn-sm btn-outline-warning me-2" @click="openErrors">
-            Ошибки разбора
-          </button>
-          Всего: {{ total }}
-        </div>
+
+      <div v-if="isLoading" class="page-feedback-answers__loading">
+        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        <span>Загрузка данных…</span>
       </div>
-      <div v-if="reviewMsg" class="alert alert-info py-1 px-2 small mb-0 mt-2">{{ reviewMsg }}</div>
-    </div>
-    <div class="card">
-      <div v-if="isLoading" class="text-center p-5">
-        <div class="spinner-border text-primary" role="status"></div>
-        <div class="mt-2 text-muted">Загрузка данных...</div>
-      </div>
-      <div v-else class="wb-table-wrap">
-        <table class="table table-striped align-middle mb-0">
+      <div v-else class="tbl-wrap">
+        <table class="tbl page-feedback-answers__table">
           <thead>
             <tr>
-              <th>Товар</th>
-              <th>
+              <th class="t-left">Товар</th>
+              <th class="t-left">
                 Отзыв
                 <a href="#" class="page-feedback-answers__sort" title="Сортировка по дате" @click.prevent="onSort('createdDate')">
                   Дата <i class="bi" :class="sortIcon('createdDate')"></i>
                 </a>
               </th>
-              <th v-if="!filters.hide_answers">Ответ</th>
-              <th class="text-center">
+              <th v-if="!filters.hide_answers" class="t-left">Ответ</th>
+              <th class="t-center">
                 Правило
                 <a href="#" class="page-feedback-answers__sort" title="Сортировка по оценке" @click.prevent="onSort('productValuation')">
                   ★ <i class="bi" :class="sortIcon('productValuation')"></i>
@@ -96,17 +95,27 @@
           </thead>
           <tbody>
             <tr v-for="fb in rows" :key="fb.id">
-              <td>
-                <div class="fw-bold">{{ fb.product_title || '(без названия)' }}</div>
-                <div class="small text-muted">Арт WB:
-                  <router-link :to="`/wb/detail?nm_id=${fb.nmID}`" target="_blank" class="adv-link">{{ fb.nmID }}</router-link>
+              <td class="t-left">
+                <ProductCell
+                  :photo="fb.product_photos"
+                  :title="fb.product_title || ''"
+                  :brand="fb.product_brand || ''"
+                  :subject="fb.product_subject || ''"
+                  :vendor="fb.product_vendor_code || ''"
+                  :nm-id="fb.nmID"
+                  :link="'/wb/detail?nm_id=' + fb.nmID"
+                  :link-label="'WB: ' + fb.nmID"
+                  copy-nm
+                  copy-link
+                />
+                <div v-if="Number(fb.f_cost) > 0" class="mt-1">
+                  <span class="badge badge--warn">Оплачен: {{ fb.f_cost }} ₽</span>
                 </div>
-                <div v-if="Number(fb.f_cost) > 0" class="mt-1"><span class="badge bg-warning text-dark">Оплачен: {{ fb.f_cost }} ₽</span></div>
               </td>
-              <td>
-                <div class="d-flex gap-2 align-items-center mb-1">
-                  <span class="text-muted small">{{ fmtDate(fb.createdDate) }}</span>
-                  <span class="badge" :style="{ background: ratingColor(Number(fb.productValuation)) }">{{ fb.productValuation }} ★</span>
+              <td class="t-left">
+                <div class="page-feedback-answers__row-head">
+                  <span class="page-feedback-answers__date">{{ fmtDate(fb.createdDate) }}</span>
+                  <span class="badge" :class="ratingBadge(Number(fb.productValuation))">{{ fb.productValuation }} ★</span>
                 </div>
                 <div v-if="fb.text" class="mb-1"><b>Отзыв:</b> {{ fb.text }}</div>
                 <div v-if="fb.pros" class="mb-1"><b>Плюсы:</b> {{ fb.pros }}</div>
@@ -114,17 +123,16 @@
                 <div v-if="mediaOf(fb).video || mediaOf(fb).photos.length" class="mt-3 page-feedback-answers__media">
                   <div v-if="mediaOf(fb).video" class="page-feedback-answers__media-item">
                     <video :src="mediaOf(fb).video.link" controls :poster="mediaOf(fb).video.poster" class="page-feedback-answers__video" :style="{ height: (bigVideo[fb.id] ? 360 : 120) + 'px' }"></video>
-                    <div class="mt-1 d-flex align-items-center justify-content-center">
-                      <a href="#" class="text-decoration-none text-primary fw-medium me-2 page-feedback-answers__media-btn" @click.prevent="bigVideo[fb.id] = !bigVideo[fb.id]">{{ bigVideo[fb.id] ? 'Уменьшить' : '+' }}</a>
-                      <span class="text-muted small me-2">•</span>
-                      <a :href="mediaOf(fb).video.link" target="_blank" rel="noopener" class="text-decoration-none text-secondary fw-medium page-feedback-answers__media-btn">&gt;&gt;</a>
+                    <div class="mt-1 page-feedback-answers__media-acts">
+                      <a href="#" class="page-feedback-answers__media-btn" @click.prevent="bigVideo[fb.id] = !bigVideo[fb.id]">{{ bigVideo[fb.id] ? 'Уменьшить' : 'Развернуть' }}</a>
+                      <a :href="mediaOf(fb).video.link" target="_blank" rel="noopener" class="page-feedback-answers__media-btn">Открыть видео</a>
                     </div>
                   </div>
                   <a v-for="(p, i) in mediaOf(fb).photos" :key="i" :href="p.full" target="_blank" rel="noopener">
                     <img :src="p.mini" loading="lazy" class="page-feedback-answers__photo" />
                   </a>
                 </div>
-                <div v-if="fb.bables?.length" class="d-flex flex-wrap gap-1">
+                <div v-if="fb.bables?.length" class="page-feedback-answers__tags">
                   <span v-for="t in fb.bables" :key="t" class="badge" :class="tagClass(t)">{{ t }}</span>
                 </div>
                 <!-- разбор отзыва через ИИ: эмоциональность / конструктивность / тональность -->
@@ -143,46 +151,50 @@
                       Тональность: {{ aiLabel('ai_tone', fb) }}
                     </span>
                   </template>
-                  <span v-else-if="fb.text" class="text-muted small">Отзыв не разобран</span>
+                  <span v-else-if="fb.text" class="page-feedback-answers__muted">Отзыв не разобран</span>
                   <button v-if="fb.text" type="button"
-                          class="btn btn-sm btn-outline-secondary page-feedback-answers__ai-btn"
+                          class="btn btn--outline btn-sm page-feedback-answers__ai-btn"
                           :disabled="reviewingId === fb.id"
                           @click="onReview(fb)">
                     <span v-if="reviewingId === fb.id" class="spinner-border spinner-border-sm me-1"></span>
                     {{ reviewingId === fb.id ? 'Разбираем...' : 'Разобрать' }}
                   </button>
                   <button v-if="fb.ai_status === 'error'" type="button"
-                          class="btn btn-sm btn-outline-warning page-feedback-answers__ai-btn"
+                          class="btn btn--outline btn-sm page-feedback-answers__ai-btn"
                           title="Вернуть отзыв в очередь разбора"
                           @click="onRetry(fb)">
                     Вернуть в очередь
                   </button>
-                  <span v-if="fb.ai_status === 'error'" class="text-danger small"
+                  <span v-if="fb.ai_status === 'error'" class="page-feedback-answers__error"
                         :title="fb.ai_error || ''">ошибка разбора</span>
                 </div>
               </td>
-              <td v-if="!filters.hide_answers">
+              <td v-if="!filters.hide_answers" class="t-left">
                 <div v-if="fb.answer_text">
-                  <div class="text-muted small mb-1">{{ fmtDate(fb.updatedDate) }}</div>
+                  <div class="page-feedback-answers__date mb-1">{{ fmtDate(fb.updatedDate) }}</div>
                   <div class="page-feedback-answers__answer">{{ fb.answer_text }}</div>
                 </div>
-                <span v-else class="text-muted">—</span>
+                <span v-else class="page-feedback-answers__muted">—</span>
               </td>
-              <td class="text-center">
+              <td class="t-center">
                 <span v-if="fb.rule_id" class="page-feedback-answers__rule" :title="ruleTitle(fb)">{{ fb.rule_id }}</span>
-                <span v-else class="text-muted">—</span>
+                <span v-else class="page-feedback-answers__muted">—</span>
               </td>
             </tr>
-            <tr v-if="!rows.length"><td :colspan="filters.hide_answers ? 3 : 4" class="text-center text-muted p-4">Отзывов не найдено</td></tr>
+            <tr v-if="!rows.length">
+              <td :colspan="filters.hide_answers ? 3 : 4" class="t-center page-feedback-answers__empty">Отзывов не найдено</td>
+            </tr>
           </tbody>
         </table>
       </div>
-    </div>
 
-    <div class="page-feedback-answers__pager">
-      <button class="btn btn-sm btn-light" :disabled="page <= 1" @click="goPage(page - 1)">‹ Назад</button>
-      <span class="page-feedback-answers__pager-label">Стр. {{ page }} из {{ totalPages }}</span>
-      <button class="btn btn-sm btn-light" :disabled="page >= totalPages" @click="goPage(page + 1)">Вперёд ›</button>
+      <div class="wb-pager">
+        <button class="btn btn--outline btn-sm" :disabled="page <= 1" @click="goPage(page - 1)">‹ Назад</button>
+        <span class="wb-pager__label">
+          Стр. {{ page }} из {{ totalPages }}<span v-if="total"> · показано {{ rows.length }} из {{ total }}</span>
+        </span>
+        <button class="btn btn--outline btn-sm" :disabled="page >= totalPages" @click="goPage(page + 1)">Вперёд ›</button>
+      </div>
     </div>
 
     <!-- Ошибки разбора отзывов — вернуть в очередь -->
@@ -191,25 +203,25 @@
       <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header py-2">
-            <h5 class="modal-title">Ошибки разбора отзывов ({{ reviewErrors.length }})</h5>
+            <span class="modal-title page-feedback-answers__modal-title">Ошибки разбора отзывов ({{ reviewErrors.length }})</span>
             <button type="button" class="btn-close" @click="errorsOpen = false"></button>
           </div>
           <div class="modal-body">
-            <div v-if="!reviewErrors.length" class="text-muted">Ошибок нет.</div>
-            <table v-else class="table table-sm table-striped mb-0">
+            <div v-if="!reviewErrors.length" class="page-feedback-answers__muted">Ошибок нет.</div>
+            <table v-else class="tbl">
               <thead>
-                <tr><th>Дата</th><th>Товар</th><th>Отзыв</th><th>Ошибка</th><th></th></tr>
+                <tr><th class="t-left">Дата</th><th class="t-left">Товар</th><th class="t-left">Отзыв</th><th class="t-left">Ошибка</th><th></th></tr>
               </thead>
               <tbody>
                 <tr v-for="e in reviewErrors" :key="e.feedback_id">
-                  <td class="text-nowrap small">{{ e.created_at }}</td>
-                  <td class="small">{{ e.product_title || e.nm_id }}</td>
-                  <td class="small">{{ (e.text || '').slice(0, 140) }}</td>
-                  <td class="small text-danger" :title="e.error || ''">
+                  <td class="t-left num page-feedback-answers__small">{{ e.created_at }}</td>
+                  <td class="t-left page-feedback-answers__small">{{ e.product_title || e.nm_id }}</td>
+                  <td class="t-left page-feedback-answers__small">{{ (e.text || '').slice(0, 140) }}</td>
+                  <td class="t-left page-feedback-answers__small page-feedback-answers__error" :title="e.error || ''">
                     {{ (e.error || '').slice(0, 80) }}
                   </td>
-                  <td class="text-end">
-                    <button class="btn btn-sm btn-outline-secondary" @click="onRetryError(e)">
+                  <td class="t-right">
+                    <button class="btn btn--outline btn-sm" @click="onRetryError(e)">
                       В очередь
                     </button>
                   </td>
@@ -226,34 +238,35 @@
       <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header py-2">
-            <h5 class="modal-title">Промпт разбора отзыва</h5>
+            <span class="modal-title page-feedback-answers__modal-title">Промпт разбора отзыва</span>
             <button type="button" class="btn-close" @click="promptOpen = false"></button>
           </div>
           <div class="modal-body">
-            <p class="text-muted small">
+            <p class="page-feedback-answers__muted page-feedback-answers__small">
               Промпт применяется к каждому отзыву отдельно. Модель — «Модель (сводка)».
               Формат ответа: JSON с полями emotion, constructiveness, tone.
             </p>
-            <div class="d-flex gap-3 align-items-end mb-2">
+            <div class="page-feedback-answers__prompt-opts">
               <div class="form-check">
                 <input id="fa-autoreview" v-model="autoReview" type="checkbox" class="form-check-input" />
                 <label for="fa-autoreview" class="form-check-label">
                   Авторазбор в фоне (таймер, каждый час)
                 </label>
               </div>
-              <div style="max-width:180px">
-                <label class="form-label small mb-0">Отзывов за прогон</label>
-                <input v-model.number="reviewBatch" type="number" min="1" max="500" class="form-control form-control-sm" />
+              <div class="wb-field page-feedback-answers__prompt-batch">
+                <label class="wb-field__label">Отзывов за прогон</label>
+                <input v-model.number="reviewBatch" type="number" min="1" max="500" class="wb-input" />
               </div>
             </div>
-            <textarea v-model="promptText" class="form-control font-monospace" rows="18"></textarea>
+            <textarea v-model="promptText" class="wb-input page-feedback-answers__prompt-text" rows="18"></textarea>
           </div>
           <div class="modal-footer py-2">
-            <span v-if="promptMsg" class="me-auto small" :class="promptMsgOk ? 'text-success' : 'text-danger'">
+            <span v-if="promptMsg" class="me-auto page-feedback-answers__small"
+                  :class="promptMsgOk ? 'page-feedback-answers__ok' : 'page-feedback-answers__error'">
               {{ promptMsg }}
             </span>
-            <button class="btn btn-light" @click="promptOpen = false">Закрыть</button>
-            <button class="btn btn-primary" :disabled="promptSaving" @click="onSavePrompt">
+            <button class="btn btn--outline" @click="promptOpen = false">Закрыть</button>
+            <button class="btn btn--brand" :disabled="promptSaving" @click="onSavePrompt">
               {{ promptSaving ? 'Сохраняем...' : 'Сохранить' }}
             </button>
           </div>
@@ -268,8 +281,12 @@ import '@/assets/css/pages/page-feedback-answers.css'
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { feedbackApi, type FeedbackAnswer, type FeedbackReviewError } from '@/api/feedback'
-import WbDateInput from '../components/common/WbDateInput.vue'
-import FeedbackHead from '../components/feedback/FeedbackHead.vue'
+import { api } from '@/api/client'
+import ProductCell from '@/components/common/ProductCell.vue'
+import WbChipGroup from '@/components/common/WbChipGroup.vue'
+import WbUniversalFilter from '@/components/common/WbUniversalFilter.vue'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import { FEEDBACK_TABS } from '@/components/common/workspaceTabs'
 
 const route = useRoute()
 const router = useRouter()
@@ -289,9 +306,40 @@ const filters = ref({
   status: String(route.query.status || ''),
   has_media: route.query.has_media === '1',
   paid_only: route.query.paid_only === '1',
+  with_text: route.query.with_text === '1',
   hide_answers: route.query.hide_answers === '1',
 })
-const cardQuery = ref(filters.value.nm_id)
+
+/** Фильтры-чипы «Только …» — применяются сразу (как чипы типов в новостях).
+ *  «Фото/видео», «Платные», «Текст» — независимые флаги (можно включить все). */
+const onlyOptions = [
+  { value: 'media', label: 'Фото/видео' },
+  { value: 'paid', label: 'Платные' },
+  { value: 'text', label: 'Текст' },
+]
+const onlyFlags = computed<string[]>({
+  get: () => [
+    ...(filters.value.has_media ? ['media'] : []),
+    ...(filters.value.paid_only ? ['paid'] : []),
+    ...(filters.value.with_text ? ['text'] : []),
+  ],
+  set: (v: string[]) => {
+    filters.value.has_media = v.includes('media')
+    filters.value.paid_only = v.includes('paid')
+    filters.value.with_text = v.includes('text')
+  },
+})
+
+/** «Без ответов» — не фильтр, а переключатель отображения: колонка «Ответ»
+ *  просто пропадает. Отдельный блок, поэтому свой чип (single) и без apply. */
+const hideAnswerOptions = [{ value: 'on', label: 'Без ответов' }]
+const hideAnswers = computed({
+  get: () => (filters.value.hide_answers ? 'on' : ''),
+  set: (v: string) => {
+    filters.value.hide_answers = v === 'on'
+  },
+})
+
 const rows = ref<FeedbackAnswer[]>([])
 const bigVideo = ref<Record<string, boolean>>({})
 const total = ref(0)
@@ -324,13 +372,13 @@ function aiLabel(key: string, fb: FeedbackAnswer) {
 function aiClass(key: string, fb: FeedbackAnswer) {
   const v = String((fb as any)[key] || '')
   if (key === 'ai_tone') {
-    if (v === 'pos') return 'bg-success'
-    if (v === 'neg') return 'bg-danger'
-    return 'bg-secondary'
+    if (v === 'pos') return 'badge--ok'
+    if (v === 'neg') return 'badge--bad'
+    return 'badge--neutral'
   }
-  if (v === 'high') return 'bg-primary'
-  if (v === 'mid') return 'bg-info text-dark'
-  return 'bg-light text-dark border'
+  if (v === 'high') return 'badge--brand'
+  if (v === 'mid') return 'badge--info'
+  return 'badge--neutral'
 }
 
 /** Разобрать отзыв (синхронный вызов ИИ). */
@@ -439,7 +487,27 @@ function buildParams() {
   }
   if (filters.value.has_media) p.has_media = true
   if (filters.value.paid_only) p.paid_only = true
+  if (filters.value.with_text) p.with_text = true
   return p
+}
+
+/**
+ * WbUniversalFilter даёт свободную маску (nm_id / артикул / название),
+ * а бэкенд ждёт чистый nm_id. Резолвим маску так же, как на /wb-questions.
+ */
+async function resolveNmId(mask: string): Promise<string> {
+  const q = String(mask || '').trim()
+  if (!q) return ''
+  if (/^\d+$/.test(q)) return q
+  try {
+    const { data } = await api.get('/api/wb/cards', { params: { q, limit: 20 } })
+    const list: any[] = Array.isArray(data) ? data : (data?.items ?? [])
+    const exact = list.find((c: any) => String(c.nmID) === q || String(c.vendorCode || '') === q)
+    if (exact) return String(exact.nmID)
+    return list.length === 1 ? String(list[0].nmID) : ''
+  } catch {
+    return ''
+  }
 }
 
 let syncing = false
@@ -452,6 +520,7 @@ function syncRoute() {
   if (filters.value.status) q.status = filters.value.status
   if (filters.value.has_media) q.has_media = '1'
   if (filters.value.paid_only) q.paid_only = '1'
+  if (filters.value.with_text) q.with_text = '1'
   if (filters.value.hide_answers) q.hide_answers = '1'
   if (sort.value !== 'createdDate' || order.value !== 'desc') {
     q.sort = sort.value
@@ -481,23 +550,16 @@ async function fetchData() {
   }
 }
 
-function onApply() {
-  filters.value.nm_id = cardQuery.value.trim()
+async function onApply() {
+  filters.value.nm_id = await resolveNmId(filters.value.nm_id)
   page.value = 1
   fetchData()
 }
 function onReset() {
   filters.value = {
     date_from: twoDaysAgo(), date_to: today(), nm_id: '', rating: '',
-    status: '', has_media: false, paid_only: false, hide_answers: false,
+    status: '', has_media: false, paid_only: false, with_text: false, hide_answers: false,
   }
-  cardQuery.value = ''
-  page.value = 1
-  fetchData()
-}
-function clearCard() {
-  cardQuery.value = ''
-  filters.value.nm_id = ''
   page.value = 1
   fetchData()
 }
@@ -523,15 +585,16 @@ function sortIcon(col: string) {
 
 import { useDateFmt } from '../composables/useDateFmt'
 const { fmtDateTime: fmtDate } = useDateFmt()
-function ratingColor(r: number) {
-  if (r === 5) return '#198754'
-  if (r === 4) return '#ffc107'
-  if (r === 3) return '#6c757d'
-  return '#dc3545'
+/** Оценка — бейдж темы (theme.md §5.7): без hex в разметке. */
+function ratingBadge(r: number) {
+  if (r === 5) return 'badge--ok'
+  if (r === 4) return 'badge--warn'
+  if (r === 3) return 'badge--neutral'
+  return 'badge--bad'
 }
 function tagClass(t: string) {
   const s = tagsSentiment.value[t] || 'neutral'
-  return s === 'positive' ? 'bg-success' : s === 'negative' ? 'bg-danger' : 'bg-secondary'
+  return s === 'positive' ? 'badge--ok' : s === 'negative' ? 'badge--bad' : 'badge--neutral'
 }
 function ruleTitle(fb: FeedbackAnswer) {
   return rulesById.value[String(fb.rule_id)] || 'Неизвестное правило'

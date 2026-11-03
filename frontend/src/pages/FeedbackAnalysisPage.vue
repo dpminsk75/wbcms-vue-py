@@ -1,6 +1,6 @@
 <template>
   <div class="container-xxl page-feedback-analysis">
-    <FeedbackHead :title="$route.meta.title || 'Разбор'" active="analysis" />
+    <WbWorkspaceHead :title="$route.meta.title || 'Разбор'" :workspace-tabs="FEEDBACK_TABS" workspace-active="analysis" />
 
     <!-- Фильтр (тот же, что в /geo/sales-map) -->
     <WbUniversalFilter
@@ -17,170 +17,179 @@
 
     <div v-if="error" class="wb-error mb-3">{{ error }}</div>
 
-    <!-- Панель запуска -->
-    <div class="page-feedback-analysis__bar">
-      <div class="page-feedback-analysis__bar-info">
-        <template v-if="selected.length">
-          Отмечено карточек: <b>{{ selected.length }}</b>
-          <span class="page-feedback-analysis__bar-hint">
-            ИИ разберёт отзывы по этим карточкам</span>
-        </template>
-        <template v-else>
-          <i class="bi bi-hand-index"></i>
-          <span class="page-feedback-analysis__bar-hint">
-            Отметьте карточки галочками слева — и нажмите «Проанализировать»</span>
-        </template>
-      </div>
-      <div class="page-feedback-analysis__bar-actions">
-        <button class="btn btn-sm btn-outline-secondary" @click="openPrompt">
-          <i class="bi bi-sliders"></i> Промпт
-          <span v-if="promptIsCustom" class="page-feedback-analysis__bar-dot"
-                title="Используется свой промпт"></span>
-        </button>
-        <button class="btn btn-sm btn-outline-secondary" :disabled="!rows.length"
-                @click="toggleAll">
-          {{ allSelected ? 'Снять выбор со страницы' : 'Выбрать все на странице' }}
-        </button>
-        <button class="btn btn-sm btn-primary" :disabled="!selected.length || running" @click="run">
-          <span v-if="running" class="spinner-border spinner-border-sm me-1"></span>
-          <i v-else class="bi bi-robot"></i>
-          Проанализировать<template v-if="selected.length"> ({{ selected.length }})</template>
-        </button>
-        <button v-if="selected.length" class="btn btn-sm btn-outline-secondary"
-                @click="selected = []">Снять выбор</button>
+    <!-- Панель запуска — блок темы .wb-panel (theme.md §5.4) -->
+    <div class="wb-panel page-feedback-analysis__bar">
+      <div class="wb-panel__bd page-feedback-analysis__bar-body">
+        <div class="page-feedback-analysis__bar-info">
+          <template v-if="selected.length">
+            Отмечено карточек: <b>{{ selected.length }}</b>
+            <span class="page-feedback-analysis__bar-hint">
+              ИИ разберёт отзывы по этим карточкам</span>
+          </template>
+          <template v-else>
+            <i class="bi bi-hand-index"></i>
+            <span class="page-feedback-analysis__bar-hint">
+              Отметьте карточки галочками слева — и нажмите «Проанализировать»</span>
+          </template>
+        </div>
+        <div class="page-feedback-analysis__bar-actions">
+          <button class="btn btn--outline btn-sm" @click="openPrompt">
+            <i class="bi bi-sliders"></i> Промпт
+            <span v-if="promptIsCustom" class="page-feedback-analysis__bar-dot"
+                  title="Используется свой промпт"></span>
+          </button>
+          <button class="btn btn--outline btn-sm" :disabled="!rows.length"
+                  @click="toggleAll">
+            {{ allSelected ? 'Снять выбор со страницы' : 'Выбрать все на странице' }}
+          </button>
+          <button class="btn btn--brand btn-sm" :disabled="!selected.length || running" @click="run">
+            <span v-if="running" class="spinner-border spinner-border-sm me-1"></span>
+            <i v-else class="bi bi-robot"></i>
+            Проанализировать<template v-if="selected.length"> ({{ selected.length }})</template>
+          </button>
+          <button v-if="selected.length" class="btn btn--soft btn-sm"
+                  @click="selected = []">Снять выбор</button>
+        </div>
       </div>
     </div>
 
     <!-- Прогресс ИИ-задачи -->
-    <div v-if="job.job.value" class="alert alert-info page-feedback-analysis__job">
-      <span v-if="!job.finished.value" class="spinner-border spinner-border-sm text-primary"></span>
-      <i v-else-if="job.job.value.status === 'done'" class="bi bi-check-circle text-success"></i>
-      <i v-else class="bi bi-x-circle text-danger"></i>
-      Задача #{{ job.job.value.id }}: {{ job.job.value.done }}/{{ job.job.value.total }}
-      ({{ job.progress.value }}%) <span v-if="elapsed">· прошло {{ elapsed }} с</span>
-      <span v-if="job.finished.value"> — {{ job.job.value.status }}</span>
-      <button v-if="job.finished.value && job.job.value.status === 'done'"
-              class="btn btn-sm btn-primary ms-2" @click="goToInsights">
-        <i class="bi bi-arrow-right"></i> К инсайтам
-      </button>
-      <ul class="page-feedback-analysis__job-items">
-        <li v-for="it in job.job.value.items" :key="it.id">
-          <span v-if="it.status === 'done'" class="text-success"><i class="bi bi-check-circle"></i></span>
-          <span v-else-if="it.status === 'error'" class="text-danger"><i class="bi bi-x-circle"></i></span>
-          <span v-else class="spinner-border spinner-border-sm text-primary"></span>
-          {{ it.label }}
-          <span v-if="it.note && it.status !== 'done' && it.status !== 'error'" class="text-muted small">
-            — {{ it.note }}</span>
-          <span v-if="it.error" class="text-danger small"> — {{ it.error }}</span>
-        </li>
-      </ul>
+    <div v-if="job.job.value" class="wb-panel page-feedback-analysis__job">
+      <div class="wb-panel__bd">
+        <div class="page-feedback-analysis__job-line">
+          <span v-if="!job.finished.value" class="spinner-border spinner-border-sm page-feedback-analysis__job-spin"></span>
+          <i v-else-if="job.job.value.status === 'done'" class="bi bi-check-circle page-feedback-analysis__job-ok"></i>
+          <i v-else class="bi bi-x-circle page-feedback-analysis__job-bad"></i>
+          Задача #{{ job.job.value.id }}: {{ job.job.value.done }}/{{ job.job.value.total }}
+          ({{ job.progress.value }}%) <span v-if="elapsed">· прошло {{ elapsed }} с</span>
+          <span v-if="job.finished.value"> — {{ job.job.value.status }}</span>
+          <button v-if="job.finished.value && job.job.value.status === 'done'"
+                  class="btn btn--brand btn-sm ms-2" @click="goToInsights">
+            <i class="bi bi-arrow-right"></i> К инсайтам
+          </button>
+        </div>
+        <ul class="page-feedback-analysis__job-items">
+          <li v-for="it in job.job.value.items" :key="it.id">
+            <span v-if="it.status === 'done'" class="page-feedback-analysis__job-ok"><i class="bi bi-check-circle"></i></span>
+            <span v-else-if="it.status === 'error'" class="page-feedback-analysis__job-bad"><i class="bi bi-x-circle"></i></span>
+            <span v-else class="spinner-border spinner-border-sm page-feedback-analysis__job-spin"></span>
+            {{ it.label }}
+            <span v-if="it.note && it.status !== 'done' && it.status !== 'error'" class="page-feedback-analysis__job-note">
+              — {{ it.note }}</span>
+            <span v-if="it.error" class="page-feedback-analysis__job-bad page-feedback-analysis__small"> — {{ it.error }}</span>
+          </li>
+        </ul>
+      </div>
     </div>
 
-    <!-- Карточки с отзывами -->
-    <div class="card mb-3">
-      <div class="wb-card-header">
-        Карточки с отзывами — отметьте, что разбирать
-        <span class="page-feedback-analysis__count">Всего: {{ total }}</span>
+    <!-- Карточки с отзывами — блок темы .tbl-card -->
+    <div class="tbl-card page-feedback-analysis__card">
+      <div class="card__hd">
+        <span>Карточки с отзывами — отметьте, что разбирать</span>
+        <span class="hd-badge">Всего: {{ total }}</span>
       </div>
-      <div class="card-body p-0">
-        <div class="wb-table-wrap">
-          <table class="table table-striped align-middle mb-0">
-            <thead>
-              <tr>
-                <th class="page-feedback-analysis__col-check">
-                  <input type="checkbox" :checked="allSelected" :disabled="!rows.length"
-                         title="Выбрать все на странице" @change="toggleAll" />
-                </th>
-                <th>Карточка</th>
-                <th class="page-feedback-analysis__col-num">Отзывов</th>
-                <th class="page-feedback-analysis__col-num">Ср. оценка</th>
-                <th class="page-feedback-analysis__col-num">👍 / 👎</th>
-                <th class="page-feedback-analysis__col-num">Дней</th>
-                <th>Последняя</th>
-                <th class="page-feedback-analysis__col-num">Разбор</th>
-                <th class="page-feedback-analysis__col-check"></th>
-              </tr>
-            </thead>
-            <tbody>
-              <template v-for="c in rows" :key="c.nm_id">
-              <tr :class="{ 'page-feedback-analysis__row--picked': isSelected(c.nm_id) }">
-                <td class="text-center">
-                  <input type="checkbox" :checked="isSelected(c.nm_id)"
-                         @change="toggle(c.nm_id)" />
-                </td>
-                <td>
-                  <div class="page-feedback-analysis__title">{{ c.title || '(без названия)' }}</div>
-                  <div class="page-feedback-analysis__sub">
-                    <span v-if="c.brand">{{ c.brand }} · </span>
-                    <span v-if="c.subject_name">{{ c.subject_name }} · </span>
-                    <span v-if="c.vendor_code">{{ c.vendor_code }} · </span>
-                    WB: {{ c.nm_id }}
-                  </div>
-                </td>
-                <td class="text-center">{{ c.cnt }}</td>
-                <td class="text-center">{{ c.avg_rating ?? '—' }}</td>
-                <td class="text-center text-nowrap">
-                  <span class="text-success">{{ c.pos_pct }}%</span>
-                  <span class="text-muted"> / </span>
-                  <span class="text-danger">{{ c.neg_pct }}%</span>
-                </td>
-                <td class="text-center">{{ c.days_cnt }}</td>
-                <td class="text-nowrap">{{ fmtDT(c.last_at) }}</td>
-                <td class="text-center text-nowrap">
-                  <span v-if="c.last_insight_at" class="text-muted small">
-                    {{ fmtDT(c.last_insight_at) }}
-                  </span>
-                  <span v-else class="text-muted small">—</span>
-                </td>
-                <td class="text-center">
-                  <button class="btn btn-sm btn-outline-secondary"
-                          @click="toggleExpand(c.nm_id)">
-                    {{ expanded === c.nm_id ? 'Скрыть' : 'Отзывы' }}
-                  </button>
-                </td>
-              </tr>
-              <tr v-if="expanded === c.nm_id" class="page-feedback-analysis__expand-row">
-                <td :colspan="9">
-                  <div v-if="loadingReviews" class="text-muted small">Загрузка отзывов…</div>
-                  <div v-else-if="!reviews.length" class="text-muted small">Отзывов не найдено.</div>
-                  <div v-else class="page-feedback-analysis__reviews">
-                    <div v-for="rv in reviews" :key="rv.id" class="page-feedback-analysis__review">
-                      <span class="badge" :class="ratingClass(rv.rating)">{{ rv.rating }} ★</span>
-                      <span class="page-feedback-analysis__review-date">{{ fmtDT(rv.created_at) }}</span>
-                      <div v-if="rv.text" class="page-feedback-analysis__review-text">{{ rv.text }}</div>
-                      <div v-if="rv.cons" class="page-feedback-analysis__review-cons">
-                        <b>Минусы:</b> {{ rv.cons }}
-                      </div>
-                      <div v-if="rv.pros" class="page-feedback-analysis__review-pros">
-                        <b>Плюсы:</b> {{ rv.pros }}
-                      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th class="page-feedback-analysis__col-check">
+                <input type="checkbox" :checked="allSelected" :disabled="!rows.length"
+                       title="Выбрать все на странице" @change="toggleAll" />
+              </th>
+              <th class="t-left page-feedback-analysis__col-card">Карточка</th>
+              <th class="t-center">Отзывов</th>
+              <th class="t-center">Ср. оценка</th>
+              <th class="t-center">👍 / 👎</th>
+              <th class="t-center">Дней</th>
+              <th class="t-left">Последняя</th>
+              <th class="t-center">Разбор</th>
+              <th class="page-feedback-analysis__col-check"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <template v-for="c in rows" :key="c.nm_id">
+            <tr :class="{ 'page-feedback-analysis__row--picked': isSelected(c.nm_id) }">
+              <td class="t-center">
+                <input type="checkbox" :checked="isSelected(c.nm_id)"
+                       @change="toggle(c.nm_id)" />
+              </td>
+              <td class="t-left">
+                <ProductCell
+                  :photo="c.photos"
+                  :title="c.title || ''"
+                  :brand="c.brand || ''"
+                  :subject="c.subject_name || ''"
+                  :vendor="c.vendor_code || ''"
+                  :nm-id="c.nm_id"
+                  :link="'/wb/detail?nm_id=' + c.nm_id"
+                  :link-label="'WB: ' + c.nm_id"
+                  copy-nm
+                  copy-link
+                />
+              </td>
+              <td class="t-center">{{ c.cnt }}</td>
+              <td class="t-center">{{ c.avg_rating ?? '—' }}</td>
+              <td class="t-center num">
+                <span class="t-pos">{{ c.pos_pct }}%</span>
+                <span class="page-feedback-analysis__slash"> / </span>
+                <span class="t-neg">{{ c.neg_pct }}%</span>
+              </td>
+              <td class="t-center">{{ c.days_cnt }}</td>
+              <td class="t-left num">{{ fmtDT(c.last_at) }}</td>
+              <td class="t-center num">
+                <span v-if="c.last_insight_at" class="page-feedback-analysis__muted">
+                  {{ fmtDT(c.last_insight_at) }}
+                </span>
+                <span v-else class="page-feedback-analysis__muted">—</span>
+              </td>
+              <td class="t-center">
+                <button class="btn btn--outline btn-sm"
+                        @click="toggleExpand(c.nm_id)">
+                  {{ expanded === c.nm_id ? 'Скрыть' : 'Отзывы' }}
+                </button>
+              </td>
+            </tr>
+            <tr v-if="expanded === c.nm_id" class="page-feedback-analysis__expand-row">
+              <td :colspan="9">
+                <div v-if="loadingReviews" class="page-feedback-analysis__muted page-feedback-analysis__small">Загрузка отзывов…</div>
+                <div v-else-if="!reviews.length" class="page-feedback-analysis__muted page-feedback-analysis__small">Отзывов не найдено.</div>
+                <div v-else class="page-feedback-analysis__reviews">
+                  <div v-for="rv in reviews" :key="rv.id" class="page-feedback-analysis__review">
+                    <span class="badge" :class="ratingClass(rv.rating)">{{ rv.rating }} ★</span>
+                    <span class="page-feedback-analysis__review-date">{{ fmtDT(rv.created_at) }}</span>
+                    <div v-if="rv.text" class="page-feedback-analysis__review-text">{{ rv.text }}</div>
+                    <div v-if="rv.cons" class="page-feedback-analysis__review-cons">
+                      <b>Минусы:</b> {{ rv.cons }}
+                    </div>
+                    <div v-if="rv.pros" class="page-feedback-analysis__review-pros">
+                      <b>Плюсы:</b> {{ rv.pros }}
                     </div>
                   </div>
-                </td>
-              </tr>
-              </template>
-              <tr v-if="!rows.length">
-                <td colspan="9" class="text-center text-muted p-4">Отзывов не найдено</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+                </div>
+              </td>
+            </tr>
+            </template>
+            <tr v-if="!rows.length">
+              <td colspan="9" class="t-center page-feedback-analysis__empty">Отзывов не найдено</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-      <div class="card-body page-feedback-analysis__pager">
-        <button class="btn btn-sm btn-light" :disabled="page <= 1" @click="page--; load()">‹ Назад</button>
-        <span class="page-feedback-analysis__pager-label">Стр. {{ page }} из {{ totalPages }}</span>
-        <button class="btn btn-sm btn-light" :disabled="page >= totalPages" @click="page++; load()">
+      <div class="wb-pager">
+        <button class="btn btn--outline btn-sm" :disabled="page <= 1" @click="page--; load()">‹ Назад</button>
+        <span class="wb-pager__label">Стр. {{ page }} из {{ totalPages }}</span>
+        <button class="btn btn--outline btn-sm" :disabled="page >= totalPages" @click="page++; load()">
           Вперёд ›</button>
       </div>
     </div>
 
     <!-- Модалка: промпт разбора -->
-    <div v-if="promptOpen" class="wb-modal-backdrop" @click.self="promptOpen = false">
+    <div v-if="promptOpen" class="wb-modal-backdrop page-feedback-analysis__backdrop" @click.self="promptOpen = false">
       <div class="wb-modal-box wb-modal-box--wide page-feedback-analysis__prompt-modal">
         <h5 class="mb-0"><i class="bi bi-sliders"></i> Промпт разбора отзывов</h5>
         <PromptField label="Промпт разбора отзывов" @saved="onPromptSaved" />
         <div class="wb-modal-actions">
-          <button class="btn btn-sm btn-light" @click="promptOpen = false">Закрыть</button>
+          <button class="btn btn--outline btn-sm" @click="promptOpen = false">Закрыть</button>
         </div>
       </div>
     </div>
@@ -192,7 +201,9 @@ import '@/assets/css/pages/page-feedback-analysis.css'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import WbUniversalFilter from '@/components/common/WbUniversalFilter.vue'
-import FeedbackHead from '@/components/feedback/FeedbackHead.vue'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import ProductCell from '@/components/common/ProductCell.vue'
+import { FEEDBACK_TABS } from '@/components/common/workspaceTabs'
 import PromptField from '@/components/cms/PromptField.vue'
 import { feedbackInsightsApi, type FeedbackCard, type FeedbackItem } from '@/api/feedbackInsights'
 import { useAiJob } from '@/composables/useAiJob'
@@ -388,10 +399,10 @@ watch(() => job.finished.value, (f) => {
 
 function ratingClass(r: number | null): string {
   const v = Number(r || 0)
-  if (v <= 2) return 'bg-danger'
-  if (v === 3) return 'bg-warning text-dark'
-  if (v === 4) return 'bg-info text-dark'
-  return 'bg-success'
+  if (v <= 2) return 'badge--bad'
+  if (v === 3) return 'badge--warn'
+  if (v === 4) return 'badge--info'
+  return 'badge--ok'
 }
 
 onMounted(async () => {

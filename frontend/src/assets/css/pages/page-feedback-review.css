@@ -1,13 +1,91 @@
 /* page-feedback-review.css — страница «Разбор отзывов (фон)» (/wb-feedback-review).
-   Образец оформления — /competitor/phrase-miner (page-pminer). */
+ * Каркас — общие блоки темы: .wb-panel + .card__hd + .wb-panel__bd,
+ * .tbl-card → .card__hd → .tbl-wrap → .tbl, WbChipGroup (чипы .opt),
+ * .badge--*, .btn--*, .wb-input, .wb-select.
+ * Здесь только то, чего в общих блоках нет: подписи блоков, оповещения,
+ * настройки прогона, модалка промпта.
+ * Цвета — только токены темы (§8.1.1): hex в CSS страницы запрещён. */
+
+.page-feedback-review__panel { margin-bottom: 16px; }
+.page-feedback-review__card { margin-bottom: 16px; }
+
 .page-feedback-review__k {
-  font-size: 12px;
+  font-size: calc(12px * var(--fs));
   font-weight: 600;
-  color: #6b7280;
+  color: var(--ink-muted);
   margin-bottom: 6px;
 }
 .page-feedback-review__hint {
-  font-size: 12px;
-  color: #6b7280;
+  font-size: calc(12px * var(--fs));
+  color: var(--ink-muted);
 }
+.page-feedback-review__muted { color: var(--ink-muted); }
+.page-feedback-review__small { font-size: calc(11.5px * var(--fs)); }
+.page-feedback-review__ok { color: var(--good-deep); }
+.page-feedback-review__bad { color: var(--bad-deep); }
+.page-feedback-review__warn { color: var(--warn-deep); }
+
+.page-feedback-review__empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--ink-muted);
+}
+
+/* Оповещения — блоки темы с тонированным фоном (вместо alert alert-*) */
+.page-feedback-review__alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 12px;
+  margin-bottom: 10px;
+  border-radius: var(--radius-sm);
+  font-size: calc(12.5px * var(--fs));
+}
+.page-feedback-review__alert--bad {
+  background: var(--bad-tint);
+  color: var(--bad-deep);
+  border: 1px solid var(--bad);
+}
+.page-feedback-review__alert--info {
+  background: var(--info-tint);
+  color: var(--info-deep);
+  border: 1px solid var(--info);
+}
+.page-feedback-review__alert--warn {
+  background: var(--warn-tint);
+  color: var(--warn-deep);
+  border: 1px solid var(--warn);
+}
+
+/* Настройки прогона: подпись, поле и кнопка в один ряд */
+.page-feedback-review__settings {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.page-feedback-review__batch { width: 72px; flex: none; }
+
+/* Вкладки — чипы темы */
+.page-feedback-review__tabs { margin-bottom: 14px; }
+
+/* Выбор уровня лога — в шапке блока */
+.page-feedback-review__level {
+  width: auto;
+  min-width: 120px;
+  font-size: calc(11.5px * var(--fs));
+  padding: 3px 8px;
+}
+
+/* Модалка промпта */
 .page-feedback-review__modal { background: rgba(0, 0, 0, .4); }
+.page-feedback-review__modal-title {
+  font-size: calc(16px * var(--fs));
+  font-weight: 700;
+  color: var(--ink);
+}
+.page-feedback-review__prompt {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  min-height: 320px;
+}

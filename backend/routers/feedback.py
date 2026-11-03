@@ -57,6 +57,7 @@ async def feedback_answers(
     status: str | None = Query(default=None),
     has_media: bool = Query(default=False),
     paid_only: bool = Query(default=False),
+    with_text: bool = Query(default=False),
     sort: str = Query(default="createdDate"),
     order: str = Query(default="desc"),
     page: int = Query(default=1, ge=1),
@@ -66,7 +67,7 @@ async def feedback_answers(
 ):
     svc = FeedbackService(db, company_id=company_id)
     data = await svc.list(date_from, date_to, nm_id, rating, status,
-                          has_media, paid_only, sort, order, page, page_size)
+                          has_media, paid_only, with_text, sort, order, page, page_size)
     data["tags_sentiment"] = await svc.tags_sentiment()
     data["rules"] = await svc.rules_options()
     return data

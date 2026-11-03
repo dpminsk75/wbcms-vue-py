@@ -35,8 +35,12 @@
       </template>
       <template v-else>
         <div class="prod-cell__title" :title="title">{{ title || '(нет карточки)' }}</div>
+        <!-- Подпись — тот же порядок, что в компактном виде: артикул • бренд • предмет.
+             Если страница передала `sub` — это её подпись (переопределение), и артикул
+             идёт отдельной строкой, как раньше. Иначе — metaLine (артикул внутри). -->
         <div v-if="sub" class="prod-cell__sub">{{ sub }}</div>
-        <div v-if="vendor" class="prod-cell__sub">{{ vendor }}</div>
+        <div v-else-if="metaLine" class="prod-cell__sub">{{ metaLine }}</div>
+        <div v-if="sub && vendor" class="prod-cell__sub">{{ vendor }}</div>
         <div class="prod-cell__acts">
           <a v-if="link" class="prod-cell__link" :href="link" target="_blank" rel="noopener">{{ linkLabel }}</a>
           <button
@@ -161,7 +165,7 @@ const fullTitle = computed(() => {
 })
 </script>
 <style scoped>
-.prod-cell { display: flex; gap: 10px; align-items: flex-start; }
+.prod-cell { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 5px; }
 .prod-cell__img {
   width: 50px; height: 66px; object-fit: cover;
   border-radius: var(--radius-sm); flex: none;
@@ -174,8 +178,9 @@ const fullTitle = computed(() => {
   color: var(--ink); line-height: 1.3;
   /* перенос по словам + обрезка с многоточием (как .product-name / .cart-item-title
      в оригинале): колонка не раздувает таблицу, длинное название не ломает строку.
-     Без overflow-wrap: anywhere — слова не рвутся посредине, перенос идёт по пробелам. */
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1;
+     Без overflow-wrap: anywhere — слова не рвутся посредине, перенос идёт по пробелам.
+     Полный вид — название в 2 строки; компактный — в одну (см. .prod-cell--compact). */
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
   overflow: hidden;
 }
 .prod-cell__sub {
@@ -198,10 +203,13 @@ const fullTitle = computed(() => {
 
 /* Плотный вариант: фото 30×40, кегль на 1px меньше обычного.
    Структура та же: название / «артикул • бренд • предмет» / ссылка WB.
-   Высота строки падает с ~83px до ~60px — важно для широких реестров. */
-.prod-cell--compact { gap: 8px; align-items: flex-start; }
+   Высота строки падает с ~83px до ~60px — важно для широких реестров.
+   Название — в одну строку и без отступа снизу (в полном виде — 2 строки). */
+.prod-cell--compact { gap: 8px; align-items: flex-start; margin-bottom: 0; }
 .prod-cell--compact .prod-cell__img { width: 30px; height: 40px; font-size: 14px; }
-.prod-cell--compact .prod-cell__title { font-size: calc(12px * var(--fs)); line-height: 1.3; }
+.prod-cell--compact .prod-cell__title {
+  font-size: calc(12px * var(--fs)); line-height: 1.3; -webkit-line-clamp: 1;
+}
 .prod-cell--compact .prod-cell__sub { font-size: calc(11px * var(--fs)); }
 .prod-cell--compact .prod-cell__link { font-size: calc(11px * var(--fs)); }
 </style>

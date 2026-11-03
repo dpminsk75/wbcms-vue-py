@@ -30,7 +30,13 @@ const props = withDefaults(defineProps<{
   options: { value: string | number; label: string; sub?: string }[]
   /** Множественный выбор (значение — массив). */
   multiple?: boolean
-}>(), { label: '', multiple: false })
+  /**
+   * Переключатель вкл/выкл: повторный клик по уже выбранному значению
+   * сбрасывает его (значение — ''). Для одиночных переключателей вида
+   * «показать/скрыть», где чип должен отжиматься.
+   */
+  toggle?: boolean
+}>(), { label: '', multiple: false, toggle: false })
 
 const model = defineModel<any>({ default: '' })
 
@@ -46,6 +52,10 @@ function pick(v: string | number) {
     if (i >= 0) cur.splice(i, 1)
     else cur.push(v)
     model.value = cur
+  } else if (props.toggle && model.value === v) {
+    // повторный клик по выбранному — сброс (иначе значение «залипает»:
+    // присваиваем то же самое, emit не происходит)
+    model.value = ''
   } else {
     model.value = v
   }

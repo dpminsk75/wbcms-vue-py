@@ -1,15 +1,126 @@
-/* page-reply-rules.css — чанк ReplyRulesPage/ReplyRuleFormPage (/wb-reply-rules, «Автоответы на отзывы»).
- * Порт views/wb-reply-rules/index.php + _form.php: пилюли типов, btn-group radio, динамические textarea.
- */
-.page-reply-rules__scope { max-width: 320px; }
-.page-reply-rules__title-sub { font-size: 12px; }
-.page-reply-rules__pill { display: inline-block; padding: 5px 10px; border-radius: 6px; font-size: 13px; }
-.page-reply-rules__pill--general { background-color: #e6f7ed; color: #1e7e34; }
-.page-reply-rules__pill--brand { background-color: #e1f5fe; color: #01579b; }
-.page-reply-rules__pill--product { background-color: #fff8e1; border: 1px solid #ffe082; color: #000; }
-.page-reply-rules__type--none { font-size: 13px; }
-.page-reply-rules__notext { background-color: #fff3cd; color: #856404; }
+/* page-reply-rules.css — стили страниц «Правила автоответа» и формы правила
+ * (/wb-feedback-reply-rules, /create, /:id/edit).
+ * Каркас — общие блоки темы: .tbl-card → .card__hd → .tbl-wrap → .tbl,
+ * .wb-panel + .card__hd + .wb-panel__bd, .wb-input, .wb-select, .badge--*, .btn--*.
+ * Цвета — только токены темы (§8.1.1): hex в CSS страницы запрещён. */
+
+.page-reply-rules__card { margin-bottom: 16px; }
+.page-reply-rules__loading {
+  padding: 24px;
+  text-align: center;
+  color: var(--ink-muted);
+  font-size: calc(13px * var(--fs));
+}
+.page-reply-rules__empty { padding: 20px; color: var(--ink-muted); }
+.page-reply-rules__muted { color: var(--ink-muted); }
+.page-reply-rules__bad { color: var(--bad-deep); font-size: calc(11.5px * var(--fs)); }
+.page-reply-rules__col-check { width: 36px; }
+.page-reply-rules__title-sub {
+  font-size: calc(11.5px * var(--fs));
+  color: var(--ink-muted);
+  margin-top: 3px;
+}
+.page-reply-rules__badge { margin-right: 4px; margin-bottom: 3px; }
+.page-reply-rules__type--none { font-size: calc(12px * var(--fs)); }
 .page-reply-rules__action { margin-right: 4px; }
-.page-reply-rules__pager { display: flex; gap: 8px; justify-content: center; margin: 12px 0; }
-.page-reply-rules__pager-label { align-self: center; font-size: 12px; }
+
+/* ---------- форма правила ---------- */
+.page-reply-rules__scope { max-width: 320px; }
 .page-reply-rules__part-add { white-space: nowrap; }
+.page-reply-rules__form {
+  max-width: 900px;
+}
+.page-reply-rules__panel { margin-bottom: 16px; }
+.page-reply-rules__field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+.page-reply-rules__field-label {
+  display: block;
+  font-size: calc(12.5px * var(--fs));
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin-bottom: 5px;
+}
+.page-reply-rules__hint {
+  font-size: calc(12px * var(--fs));
+  color: var(--ink-muted);
+}
+/* Переключатель типа правила — чипы темы (§5.6.3) */
+.page-reply-rules__types {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+/* Рейтинг: два селекта в ряд */
+.page-reply-rules__rating {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Список подсказок (бренды / товары) */
+.page-reply-rules__options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.page-reply-rules__option {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  font: inherit;
+  font-size: calc(12.5px * var(--fs));
+  color: var(--ink);
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.page-reply-rules__option:last-child { border-bottom: 0; }
+.page-reply-rules__option:hover { background: var(--brand-tint); }
+/* Выбранные значения — бейджи с крестиком */
+.page-reply-rules__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.page-reply-rules__chip-x {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0 0 0 4px;
+  font: inherit;
+  font-weight: 700;
+  color: inherit;
+  cursor: pointer;
+}
+/* Блок «текст ответа»: textarea + кнопка удаления */
+.page-reply-rules__part {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.page-reply-rules__part .wb-input { flex: 1 1 auto; }
+.page-reply-rules__error {
+  padding: 9px 14px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bad-tint);
+  color: var(--bad-deep);
+  border: 1px solid var(--bad);
+  font-size: calc(12.5px * var(--fs));
+}
+.page-reply-rules__actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}

@@ -14,6 +14,8 @@ export interface FeedbackCard {
   vendor_code: string | null
   brand: string | null
   subject_name: string | null
+  /** Фото карточки (из wbcards.photos) — для общего ProductCell. */
+  photos?: string | null
   last_insight_at: string | null
 }
 
@@ -74,6 +76,8 @@ export interface FeedbackInsight {
   vendor_code: string | null
   brand: string | null
   subject_name: string | null
+  /** Фото карточки (из wbcards.photos) — для общего ProductCell. */
+  card_photos?: string | null
 }
 
 export const feedbackInsightsApi = {

@@ -1,6 +1,30 @@
-/* page-feedback-tags.css — чанк FeedbackTagsPage (/wb-feedback-tags, «Разметка тегов отзывов»).
- * Порт views/wb-feedback-tags/index.php: кнопки-фильтры, таблица Тег/Встречается/Статус/Действия.
- */
-.page-feedback-tags__hint { font-size: 13px; }
-.page-feedback-tags__table-wrap { overflow-x: auto; }
-.page-feedback-tags__actions { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+/* page-feedback-tags.css — стили страницы «Разметка тегов отзывов» (/wb-feedback-tags).
+ * Каркас — общие блоки темы: .tbl-card → .card__hd → .tbl-wrap → .tbl,
+ * WbChipGroup (чипы .opt), .badge--*, .btn--*.
+ * Здесь только то, чего в общих блоках нет: подсказка, состояния загрузки,
+ * ряд кнопок «Отметить как».
+ * Цвета — только токены темы (§8.1.1): hex в CSS страницы запрещён. */
+
+.page-feedback-tags__hint {
+  font-size: calc(12.5px * var(--fs));
+  color: var(--ink-soft);
+  margin-bottom: 12px;
+}
+.page-feedback-tags__ok { color: var(--good-deep); }
+.page-feedback-tags__card { margin-bottom: 16px; }
+.page-feedback-tags__loading {
+  padding: 24px;
+  text-align: center;
+  color: var(--ink-muted);
+  font-size: calc(13px * var(--fs));
+}
+.page-feedback-tags__empty {
+  padding: 20px;
+  margin: 0;
+  color: var(--ink-muted);
+}
+.page-feedback-tags__actions {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}

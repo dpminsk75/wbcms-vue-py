@@ -1,82 +1,82 @@
 <template>
   <div class="container-xxl page-reply-rules">
-    <FeedbackHead :title="$route.meta.title || 'Автоответы на отзывы'" active="rules"
+    <WbWorkspaceHead :title="$route.meta.title || 'Автоответы на отзывы'" :workspace-tabs="FEEDBACK_TABS" workspace-active="rules"
                   :subtabs="FEEDBACK_RULES_SUB_TABS" />
 
-    <!-- кнопки страницы — отдельный блок, чтобы не ломать меню в шапке -->
-    <div class="d-flex justify-content-end gap-2 mb-3">
-      <router-link to="/wb-feedback-reply-rules/stop-words" class="btn btn-outline-danger">
-        <i class="bi bi-slash-circle me-1"></i>Стоп-слова
-      </router-link>
-      <router-link to="/wb-feedback-reply-rules/test-generation" class="btn btn-outline-secondary">
-        <i class="bi bi-flask me-1"></i>Тест генерации
-      </router-link>
-      <router-link to="/wb-feedback-reply-rules/create" class="btn btn-primary">
-        <i class="bi bi-plus-lg me-1"></i>Добавить правило
-      </router-link>
-    </div>
+    <!-- Таблица правил — блок темы .tbl-card (theme.md §5.7.9) -->
+    <div class="tbl-card page-reply-rules__card">
+      <div class="card__hd">
+        <span>Правила автоответа</span>
+        <span class="hd-badge">Всего: {{ total }}</span>
+        <span class="spacer"></span>
+        <router-link to="/wb-feedback-reply-rules/stop-words" class="hd-btn">
+          <i class="bi bi-slash-circle me-1"></i>Стоп-слова
+        </router-link>
+        <router-link to="/wb-feedback-reply-rules/test-generation" class="hd-btn">
+          <i class="bi bi-flask me-1"></i>Тест генерации
+        </router-link>
+        <router-link to="/wb-feedback-reply-rules/create" class="hd-btn">
+          <i class="bi bi-plus-lg me-1"></i>Добавить правило
+        </router-link>
+      </div>
 
-    <div v-if="isLoading" class="text-center p-5">
-      <div class="spinner-border text-primary" role="status"></div>
-      <div class="mt-2 text-muted">Загрузка данных...</div>
-    </div>
-    <div v-else class="card">
-      <div class="wb-table-wrap">
-        <table class="table table-striped table-bordered align-middle mb-0">
+      <div v-if="isLoading" class="page-reply-rules__loading">Загрузка данных…</div>
+      <div v-else class="tbl-wrap">
+        <table class="tbl">
           <thead>
             <tr>
-              <th></th>
-              <th>Название</th>
-              <th>Товары</th>
-              <th>Рейтинг</th>
-              <th>Тип отзыва</th>
+              <th class="page-reply-rules__col-check"></th>
+              <th class="t-left">Название</th>
+              <th class="t-left">Товары</th>
+              <th class="t-left">Рейтинг</th>
+              <th class="t-left">Тип отзыва</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="r in rows" :key="r.id">
-              <td class="text-center">
+              <td class="t-center">
                 <input type="checkbox" :checked="!!r.is_active" :title="r.is_active ? 'Выключить' : 'Включить'" @change="onToggle(r)" />
               </td>
-              <td>
+              <td class="t-left">
                 <strong>{{ r.title }}</strong>
-                <div class="small text-muted mt-1 page-reply-rules__title-sub">
+                <div class="page-reply-rules__title-sub">
                   <i class="bi bi-pencil"></i> {{ fmtDate(r.updated_at) }}
                 </div>
               </td>
-              <td>
-                <span v-if="r.rule_type === 'general'" class="page-reply-rules__pill page-reply-rules__pill--general">Общее</span>
+              <td class="t-left">
+                <span v-if="r.rule_type === 'general'" class="badge badge--neutral">Общее</span>
                 <span v-else-if="r.rule_type === 'brand'">
-                  <span v-if="!r.brands.length" class="text-danger small">Для брендов (не выбраны)</span>
-                  <span v-else v-for="b in r.brands" :key="b" class="badge me-1 mb-1 page-reply-rules__pill page-reply-rules__pill--brand">{{ b }}</span>
+                  <span v-if="!r.brands.length" class="page-reply-rules__bad">Для брендов (не выбраны)</span>
+                  <span v-else v-for="b in r.brands" :key="b" class="badge badge--info page-reply-rules__badge">{{ b }}</span>
                 </span>
                 <span v-else-if="r.rule_type === 'product'">
-                  <span v-if="!r.products.length" class="text-danger small">Для товаров (не выбраны)</span>
-                  <span v-else v-for="p in r.products" :key="p.nmID" class="badge me-1 mb-1 page-reply-rules__pill page-reply-rules__pill--product">[{{ p.nmID }}] {{ p.title || ('Товар ' + p.nmID) }}</span>
+                  <span v-if="!r.products.length" class="page-reply-rules__bad">Для товаров (не выбраны)</span>
+                  <span v-else v-for="p in r.products" :key="p.nmID" class="badge badge--warn page-reply-rules__badge">[{{ p.nmID }}] {{ p.title || ('Товар ' + p.nmID) }}</span>
                 </span>
-                <span v-else class="text-muted small page-reply-rules__type--none">{{ r.rule_type }}</span>
+                <span v-else class="page-reply-rules__muted page-reply-rules__type--none">{{ r.rule_type }}</span>
               </td>
-              <td class="text-nowrap">{{ r.rating_min === r.rating_max ? `${r.rating_min} ★` : `${r.rating_min}–${r.rating_max} ★` }}</td>
-              <td>
+              <td class="t-left num">{{ r.rating_min === r.rating_max ? `${r.rating_min} ★` : `${r.rating_min}–${r.rating_max} ★` }}</td>
+              <td class="t-left">
                 <span v-if="r.text_condition === 'any'">Любой</span>
                 <span v-else-if="r.text_condition === 'with_text'">С текстом</span>
-                <span v-else class="badge page-reply-rules__notext">Без текста</span>
+                <span v-else class="badge badge--warn">Без текста</span>
               </td>
-              <td class="text-nowrap text-end">
-                <router-link :to="`/wb-feedback-reply-rules/${r.id}/edit`" class="btn btn-sm btn-light page-reply-rules__action" title="Редактировать"><i class="bi bi-pencil"></i></router-link>
-                <button class="btn btn-sm btn-light" title="Удалить" @click="onDelete(r)"><i class="bi bi-trash"></i></button>
+              <td class="t-right num">
+                <router-link :to="`/wb-feedback-reply-rules/${r.id}/edit`" class="btn btn--outline btn-sm page-reply-rules__action" title="Редактировать"><i class="bi bi-pencil"></i></router-link>
+                <button class="btn btn--danger btn-sm" title="Удалить" @click="onDelete(r)"><i class="bi bi-trash"></i></button>
               </td>
             </tr>
-            <tr v-if="!rows.length"><td colspan="6" class="text-center text-muted p-4">Правил пока нет</td></tr>
+            <tr v-if="!rows.length"><td colspan="6" class="t-center page-reply-rules__empty">Правил пока нет</td></tr>
           </tbody>
         </table>
       </div>
-    </div>
 
-    <div class="page-reply-rules__pager">
-      <button class="btn btn-sm btn-light" :disabled="page <= 1" @click="goPage(page - 1)">‹ Назад</button>
-      <span class="page-reply-rules__pager-label">Стр. {{ page }} из {{ totalPages }}</span>
-      <button class="btn btn-sm btn-light" :disabled="page >= totalPages" @click="goPage(page + 1)">Вперёд ›</button>
+      <div class="wb-pager">
+        <button class="btn btn--outline btn-sm" :disabled="page <= 1" @click="goPage(page - 1)">‹ Назад</button>
+        <span class="wb-pager__label">Стр. {{ page }} из {{ totalPages }}</span>
+        <button class="btn btn--outline btn-sm" :disabled="page >= totalPages" @click="goPage(page + 1)">Вперёд ›</button>
+      </div>
     </div>
   </div>
 </template>
@@ -85,8 +85,8 @@
 import '@/assets/css/pages/page-reply-rules.css'
 import { ref, computed, onMounted } from 'vue'
 import { replyRulesApi, type ReplyRuleItem } from '@/api/replyRules'
-import FeedbackHead from '@/components/feedback/FeedbackHead.vue'
-import { FEEDBACK_RULES_SUB_TABS } from '@/components/common/workspaceTabs'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import { FEEDBACK_TABS, FEEDBACK_RULES_SUB_TABS } from '@/components/common/workspaceTabs'
 
 const rows = ref<ReplyRuleItem[]>([])
 const total = ref(0)
@@ -138,4 +138,3 @@ async function onDelete(r: ReplyRuleItem) {
 
 onMounted(fetchData)
 </script>
-

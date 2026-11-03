@@ -1,70 +1,72 @@
 <template>
   <div class="container-xxl page-reply-test">
-    <FeedbackHead :title="$route.meta.title || 'Тестирование генерации автоответов'" active="rules"
+    <WbWorkspaceHead :title="$route.meta.title || 'Тестирование генерации автоответов'" :workspace-tabs="FEEDBACK_TABS" workspace-active="rules"
                   :subtabs="FEEDBACK_RULES_SUB_TABS" />
 
-    <!-- кнопки страницы — отдельный блок, чтобы не ломать меню в шапке -->
-    <div class="d-flex justify-content-end mb-3">
-      <router-link to="/wb-feedback-reply-rules" class="btn btn-outline-secondary">
-        <i class="bi bi-list me-1"></i>Вернуться к правилам
-      </router-link>
+    <div class="page-reply-test__notice">
+      <b>Внимание:</b> На этой странице отображается тестовая сборка ответов для 100 последних отзывов.
+      Никакие ответы на Wildberries сейчас <b>не отправляются</b>.
     </div>
 
-    <div class="alert alert-warning">
-      <strong>Внимание:</strong> На этой странице отображается тестовая сборка ответов для 100 последних отзывов. Никакие ответы на Wildberries сейчас <strong>не отправляются</strong>.
-    </div>
+    <!-- Тестовая сборка — блок темы .tbl-card (theme.md §5.7.9) -->
+    <div class="tbl-card page-reply-test__card">
+      <div class="card__hd">
+        <span>Тест генерации автоответов</span>
+        <span class="spacer"></span>
+        <router-link to="/wb-feedback-reply-rules" class="hd-btn">
+          <i class="bi bi-list me-1"></i>Вернуться к правилам
+        </router-link>
+      </div>
 
-    <div v-if="isLoading" class="text-center p-5">
-      <div class="spinner-border text-primary" role="status"></div>
-      <div class="mt-2 text-muted">Загрузка данных...</div>
-    </div>
-    <div v-else class="table-responsive">
-      <table class="table table-bordered table-striped align-middle mb-0">
-        <thead class="table-dark">
-          <tr>
-            <th>Товар / Отзыв</th>
-            <th class="text-center">Оценка</th>
-            <th>Сработавшее правило</th>
-            <th>Сгенерированный текст ответа</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="!rows.length">
-            <td colspan="4" class="text-center text-muted">Отзывов для генерации не найдено.</td>
-          </tr>
-          <tr v-for="item in rows" :key="item.feedback.id">
-            <td>
-              <div class="fw-bold text-primary">[{{ item.feedback.nmID || '—' }}] {{ item.feedback.card_title || 'Неизвестный товар' }}</div>
-              <div class="small text-muted mb-2">Бренд: <strong>{{ item.feedback.card_brand || '—' }}</strong></div>
-              <div class="small text-muted mb-2">Имя: <strong>{{ item.feedback.userName || '—' }}</strong></div>
-              <div class="p-2 border rounded bg-white small">
-                <span class="fw-bold text-secondary">{{ item.feedback.userName || 'Покупатель' }}:</span>
-                <span class="text-dark">{{ item.feedback.text || '(Отзыв без текста)' }}</span>
-              </div>
-            </td>
-            <td class="text-center">
-              <span class="badge page-reply-test__rating" :style="{ background: ratingColor(Number(item.feedback.productValuation)) }">{{ item.feedback.productValuation }} ★</span>
-            </td>
-            <td>
-              <div v-if="item.matched_rule">
-                <div class="fw-bold">{{ item.matched_rule.title }}</div>
-                <div class="mt-1">
-                  <span v-if="item.matched_rule.rule_type === 'general'" class="badge page-reply-test__pill--general">Общее</span>
-                  <span v-else-if="item.matched_rule.rule_type === 'brand'" class="badge page-reply-test__pill--brand">По бренду</span>
-                  <span v-else class="badge page-reply-test__pill--product">По товару</span>
+      <div v-if="isLoading" class="page-reply-test__loading">Загрузка данных…</div>
+      <div v-else class="tbl-wrap">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th class="t-left">Товар / Отзыв</th>
+              <th class="t-center">Оценка</th>
+              <th class="t-left">Сработавшее правило</th>
+              <th class="t-left">Сгенерированный текст ответа</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="!rows.length">
+              <td colspan="4" class="t-center page-reply-test__empty">Отзывов для генерации не найдено.</td>
+            </tr>
+            <tr v-for="item in rows" :key="item.feedback.id">
+              <td class="t-left">
+                <div class="page-reply-test__title">[{{ item.feedback.nmID || '—' }}] {{ item.feedback.card_title || 'Неизвестный товар' }}</div>
+                <div class="page-reply-test__meta">Бренд: <b>{{ item.feedback.card_brand || '—' }}</b></div>
+                <div class="page-reply-test__meta">Имя: <b>{{ item.feedback.userName || '—' }}</b></div>
+                <div class="page-reply-test__review">
+                  <span class="page-reply-test__review-author">{{ item.feedback.userName || 'Покупатель' }}:</span>
+                  <span>{{ item.feedback.text || '(Отзыв без текста)' }}</span>
                 </div>
-              </div>
-              <span v-if="item.stop_hit" class="text-danger small"><i class="bi bi-slash-circle"></i> Стоп-слово: {{ item.stop_hit }}</span>
-              <span v-else class="text-danger small"><i class="bi bi-exclamation-triangle"></i> Правило не найдено</span>
-            </td>
-            <td>
-              <div v-if="item.matched_rule" class="p-2 rounded border bg-light page-reply-test__answer">{{ item.generated_text }}</div>
-              <div v-else-if="item.stop_hit" class="text-muted small fst-italic">Ответ пропущен: в отзыве стоп-слово «{{ item.stop_hit }}».</div>
-              <div v-else class="text-muted small fst-italic">Ответ пропущен, так как ни одно из правил не соответствует параметрам (оценка, наличие текста, бренд).</div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+              </td>
+              <td class="t-center">
+                <span class="badge" :class="ratingBadge(Number(item.feedback.productValuation))">{{ item.feedback.productValuation }} ★</span>
+              </td>
+              <td class="t-left">
+                <div v-if="item.matched_rule">
+                  <div class="page-reply-test__rule-title">{{ item.matched_rule.title }}</div>
+                  <div class="mt-1">
+                    <span v-if="item.matched_rule.rule_type === 'general'" class="badge badge--neutral">Общее</span>
+                    <span v-else-if="item.matched_rule.rule_type === 'brand'" class="badge badge--info">По бренду</span>
+                    <span v-else class="badge badge--warn">По товару</span>
+                  </div>
+                </div>
+                <span v-if="item.stop_hit" class="page-reply-test__bad page-reply-test__small"><i class="bi bi-slash-circle"></i> Стоп-слово: {{ item.stop_hit }}</span>
+                <span v-else class="page-reply-test__bad page-reply-test__small"><i class="bi bi-exclamation-triangle"></i> Правило не найдено</span>
+              </td>
+              <td class="t-left">
+                <div v-if="item.matched_rule" class="page-reply-test__answer">{{ item.generated_text }}</div>
+                <div v-else-if="item.stop_hit" class="page-reply-test__muted page-reply-test__small">Ответ пропущен: в отзыве стоп-слово «{{ item.stop_hit }}».</div>
+                <div v-else class="page-reply-test__muted page-reply-test__small">Ответ пропущен, так как ни одно из правил не соответствует параметрам (оценка, наличие текста, бренд).</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 </template>
@@ -74,17 +76,18 @@
 import '@/assets/css/pages/page-reply-test.css'
 import { ref, onMounted } from 'vue'
 import { replyRulesApi, type ReplyTestItem } from '@/api/replyRules'
-import FeedbackHead from '@/components/feedback/FeedbackHead.vue'
-import { FEEDBACK_RULES_SUB_TABS } from '@/components/common/workspaceTabs'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import { FEEDBACK_TABS, FEEDBACK_RULES_SUB_TABS } from '@/components/common/workspaceTabs'
 
 const rows = ref<ReplyTestItem[]>([])
 const isLoading = ref(false)
 
-function ratingColor(r: number) {
-  if (r === 5) return '#198754'
-  if (r === 4) return '#ffc107'
-  if (r === 3) return '#6c757d'
-  return '#dc3545'
+/** Оценка — бейдж темы (§5.7): без hex в разметке. */
+function ratingBadge(r: number) {
+  if (r === 5) return 'badge--ok'
+  if (r === 4) return 'badge--warn'
+  if (r === 3) return 'badge--neutral'
+  return 'badge--bad'
 }
 
 onMounted(async () => {

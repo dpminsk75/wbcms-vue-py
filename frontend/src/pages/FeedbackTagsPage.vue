@@ -1,50 +1,51 @@
 <template>
   <div class="container-xxl page-feedback-tags">
-    <FeedbackHead :title="$route.meta.title || 'Разметка тегов отзывов'" active="tags" />
+    <WbWorkspaceHead :title="$route.meta.title || 'Разметка тегов отзывов'" :workspace-tabs="FEEDBACK_TABS" workspace-active="tags" />
 
-    <!-- кнопки страницы — отдельный блок, чтобы не ломать меню в шапке -->
-    <div class="d-flex justify-content-end mb-3">
-      <button class="btn btn-outline-secondary btn-sm" :disabled="syncing" @click="onSync">
-        <i class="bi bi-arrow-repeat me-1"></i>{{ syncing ? 'Синхронизация...' : 'Синхронизировать' }}
-      </button>
-    </div>
-
-    <p class="text-muted page-feedback-tags__hint">
+    <p class="page-feedback-tags__hint">
       Теги подтягиваются из поля <code>bables</code> отзывов.
-      <span v-if="syncResult" class="ms-2 text-success">{{ syncResult }}</span>
+      <span v-if="syncResult" class="page-feedback-tags__ok">{{ syncResult }}</span>
     </p>
 
-    <div class="mb-3 d-flex gap-2">
-      <button class="btn btn-sm" :class="filt === 'unclassified' ? 'btn-primary' : 'btn-outline-primary'" @click="setFilter('unclassified')">Только неразмеченные</button>
-      <button class="btn btn-sm" :class="filt === 'all' ? 'btn-primary' : 'btn-outline-primary'" @click="setFilter('all')">Все теги</button>
-    </div>
+    <!-- Таблица тегов — блок темы .tbl-card (theme.md §5.7.9) -->
+    <div class="tbl-card page-feedback-tags__card">
+      <div class="card__hd">
+        <span>Теги отзывов</span>
+        <span class="spacer"></span>
+        <!-- переключатель «неразмеченные / все» — чипы темы (§5.6.3) -->
+        <WbChipGroup v-model="filt" :options="filterOptions" />
+        <button type="button" class="hd-btn" :disabled="syncing" @click="onSync">
+          <i class="bi bi-arrow-repeat me-1"></i>{{ syncing ? 'Синхронизация...' : 'Синхронизировать' }}
+        </button>
+      </div>
 
-    <div v-if="isLoading" class="text-center p-5">
-      <div class="spinner-border text-primary" role="status"></div>
-      <div class="mt-2 text-muted">Загрузка данных...</div>
-    </div>
-    <p v-else-if="!rows.length" class="text-muted">{{ filt === 'unclassified' ? 'Все теги уже размечены 🎉' : 'Теги пока не собраны — нажмите «Синхронизировать».' }}</p>
-    <div v-else class="card">
-      <div class="page-feedback-tags__table-wrap wb-table-wrap">
-        <table class="table table-striped table-bordered align-middle mb-0">
+      <div v-if="isLoading" class="page-feedback-tags__loading">Загрузка данных…</div>
+      <p v-else-if="!rows.length" class="page-feedback-tags__empty">
+        {{ filt === 'unclassified' ? 'Все теги уже размечены 🎉' : 'Теги пока не собраны — нажмите «Синхронизировать».' }}
+      </p>
+      <div v-else class="tbl-wrap">
+        <table class="tbl">
           <thead>
             <tr>
-              <th>Тег</th>
-              <th>Встречается</th>
-              <th>Текущий статус</th>
-              <th>Отметить как</th>
+              <th class="t-left">Тег</th>
+              <th class="t-center">Встречается</th>
+              <th class="t-center">Текущий статус</th>
+              <th class="t-left">Отметить как</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="t in rows" :key="t.id">
-              <td>{{ t.tag_text }}</td>
-              <td>{{ t.usage_count }}</td>
-              <td><span class="badge" :class="badgeClass(t.sentiment)">{{ labelOf(t.sentiment) }}</span></td>
-              <td>
+              <td class="t-left">{{ t.tag_text }}</td>
+              <td class="t-center">{{ t.usage_count }}</td>
+              <td class="t-center"><span class="badge" :class="badgeClass(t.sentiment)">{{ labelOf(t.sentiment) }}</span></td>
+              <td class="t-left">
                 <span class="page-feedback-tags__actions">
-                  <button class="btn btn-sm" :class="t.sentiment === 'positive' ? 'btn-success' : 'btn-outline-success'" @click="setSentiment(t, 'positive')">Позитивный</button>
-                  <button class="btn btn-sm" :class="t.sentiment === 'negative' ? 'btn-danger' : 'btn-outline-danger'" @click="setSentiment(t, 'negative')">Негативный</button>
-                  <button class="btn btn-sm" :class="t.sentiment === 'neutral' ? 'btn-secondary' : 'btn-outline-secondary'" @click="setSentiment(t, 'neutral')">Сбросить</button>
+                  <button class="btn btn--outline-ok btn-sm" :class="{ 'is-on': t.sentiment === 'positive' }"
+                          @click="setSentiment(t, 'positive')">Позитивный</button>
+                  <button class="btn btn--outline-bad btn-sm" :class="{ 'is-on': t.sentiment === 'negative' }"
+                          @click="setSentiment(t, 'negative')">Негативный</button>
+                  <button class="btn btn--secondary btn-sm"
+                          @click="setSentiment(t, 'neutral')">Сбросить</button>
                 </span>
               </td>
             </tr>
@@ -60,7 +61,9 @@ import '@/assets/css/pages/page-feedback-tags.css'
 import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { feedbackApi, type FeedbackTag } from '@/api/feedback'
-import FeedbackHead from '@/components/feedback/FeedbackHead.vue'
+import WbChipGroup from '@/components/common/WbChipGroup.vue'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import { FEEDBACK_TABS } from '@/components/common/workspaceTabs'
 
 const route = useRoute()
 const router = useRouter()
@@ -70,13 +73,19 @@ const isLoading = ref(false)
 const syncing = ref(false)
 const syncResult = ref('')
 
+/** Переключатель «неразмеченные / все теги» — чипы темы (§5.6.3). */
+const filterOptions = [
+  { value: 'unclassified', label: 'Только неразмеченные' },
+  { value: 'all', label: 'Все теги' },
+]
+
 const LABELS: Record<string, string> = { positive: 'Позитивный', negative: 'Негативный', neutral: 'Не размечен' }
 
 function labelOf(s: string) {
   return LABELS[s] || s
 }
 function badgeClass(s: string) {
-  return s === 'positive' ? 'bg-success' : s === 'negative' ? 'bg-danger' : 'bg-secondary'
+  return s === 'positive' ? 'badge--ok' : s === 'negative' ? 'badge--bad' : 'badge--neutral'
 }
 
 async function fetchData() {
@@ -89,11 +98,11 @@ async function fetchData() {
     isLoading.value = false
   }
 }
-function setFilter(f: string) {
-  filt.value = f
+/** Переключатель чипов меняет фильтр и перезагружает список. */
+watch(filt, (f) => {
   router.replace({ path: '/wb-feedback-tags', query: f === 'all' ? { filter: 'all' } : {} })
   fetchData()
-}
+})
 async function setSentiment(t: FeedbackTag, s: string) {
   try {
     await feedbackApi.setSentiment(t.id, s)
@@ -120,8 +129,10 @@ async function onSync() {
 }
 
 onMounted(fetchData)
+/* Смена фильтра в адресной строке («назад/вперёд», переход по ссылке) —
+   обновляем чипы; сам список перезагружает watch(filt). */
 watch(() => route.query.filter, (v) => {
-  filt.value = String(v || 'unclassified')
-  fetchData()
+  const next = String(v || 'unclassified')
+  if (next !== filt.value) filt.value = next
 })
 </script>

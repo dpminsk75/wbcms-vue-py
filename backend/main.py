@@ -40,6 +40,8 @@ app.add_middleware(
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://31.130.204.146:3000",
+        "https://www.selbi.top",
+        "https://selbi.top",
     ],
     allow_credentials=True,
     allow_methods=["*"],
