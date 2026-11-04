@@ -10,6 +10,7 @@ import logging
 import time
 from collections import deque
 from backend.database import get_db
+from backend.app_env import BACKGROUND_TASKS_ENABLED, APP_ENV, env_info
 from backend.deps import get_current_user, get_optional_user, require_admin, require_seo, get_current_company
 from backend.routers import auth_router, companies_router, dashboard_router, admin_router, admin_timers_router, news_router, tags_router, wb_search_router, cost_router, wb_orders_router, wb_sales_router, feedback_router, questions_router, feedback_dashboard_router, feedback_insights_router, reply_rules_router, wb_tokens_router, wb_tokens_expiring_router, competitor_router, competitors_newcard_router, competitors_captured_router, competitors_pick_router, competitors_refresh_router, competitors_positions_router, reports_router, ai_jobs_router, seo_router, seo_models_router, cms_router, ext_router, ext_tokens_admin_router, ext_diag_admin_router, ext_download_router, ext_filters_router, fbs_router, fbs_orders_router, fbs_cancels_router, fbs_commission_router, fbs_pvz_router, geo_sales_router, seo_watch_router, queue_router, phrase_miner_router, penalty_router, profit_router, wb_profit_router, profit_products_router, warehouse_router, stock_doc_router, fbs_virtual_router, stock_report_router, stock_analytics_router, production_router, smolensk_stock_router, product_catalog_router, wb_cards_router, images_router
 from backend.services import auth_service as AuthService
@@ -148,25 +149,34 @@ async def _recover_ai_jobs():
         await _jobs.recover_interrupted()
     except Exception:
         pass
-    # Фоновый разбор phrases (план 2026-10-28): постоянный воркер очереди.
-    try:
-        from backend.services import phrase_miner_service as _miner
-        _miner.start()
-    except Exception:
-        pass
-    # Фоновый ИИ-разбор отзывов: цикл внутри процесса (без systemd-таймера),
-    # пауза/старт — на странице /wb-feedback-review.
-    try:
-        from backend.services import feedback_review_service as _review
-        _review.start()
-    except Exception:
-        pass
-    # Робот кэша фото WB: обход источников, скачивание, недельный обход.
-    try:
-        from backend.services import images_sync_service as _images
-        _images.start()
-    except Exception:
-        pass
+    # Фоновые разбор phrases / ИИ-разбор отзывов / робот фото.
+    # Это ЦИКЛЫ ВНУТРИ процесса бэка: снаружи их не остановить —
+    # любой рестарт systemd-юнита поднял бы их заново. Поэтому режим
+    # задаётся через .env: APP_ENV=dev или DISABLE_BACKGROUND_TASKS=1.
+    if BACKGROUND_TASKS_ENABLED:
+        # Фоновый разбор phrases (план 2026-10-28): постоянный воркер очереди.
+        try:
+            from backend.services import phrase_miner_service as _miner
+            _miner.start()
+        except Exception:
+            pass
+        # Фоновый ИИ-разбор отзывов: цикл внутри процесса (без systemd-таймера),
+        # пауза/старт — на странице /wb-feedback-review.
+        try:
+            from backend.services import feedback_review_service as _review
+            _review.start()
+        except Exception:
+            pass
+        # Робот кэша фото WB: обход источников, скачивание, недельный обход.
+        try:
+            from backend.services import images_sync_service as _images
+            _images.start()
+        except Exception:
+            pass
+    else:
+        logging.getLogger("wbcms").info(
+            "фоновые задачи выключены (APP_ENV=%s, DISABLE_BACKGROUND_TASKS=1)", APP_ENV
+        )
 
 
 @app.on_event("shutdown")
@@ -294,7 +304,7 @@ async def login(payload: LoginIn, request: Request, db: AsyncSession = Depends(g
 
 @app.get("/health")
 def health():
-    return {"ok": True}
+    return {"ok": True, **env_info()}
 
 @app.get("/health/db")
 async def health_db():
