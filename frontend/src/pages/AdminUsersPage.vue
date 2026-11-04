@@ -1,69 +1,85 @@
 <template>
   <div class="container-xxl page-admin-users">
-    <div class="page-admin-users__head">
-      <h1 class="page-admin-users__title">Пользователи{{ isGlobal ? ' (админ)' : '' }}</h1>
-      <button @click="openCreate = true" class="wb-btn-brand wb-btn-brand--lg">Создать пользователя</button>
-    </div>
+    <h1 class="page-title">Пользователи</h1>
     <div v-if="!isGlobal" class="page-admin-users__scope-note">Показаны только пользователи ваших компаний ({{ managedNames }}).</div>
     <div v-if="error" class="wb-error">{{ error }}</div>
-    <div class="page-admin-users__table-wrap">
-    <table class="wb-admin-table">
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>Логин</th>
-          <th>Email</th>
-          <th>Статус</th>
-          <th>Компании</th>
-          <th v-if="isGlobal">Роли/пермы</th>
-          <th>Регистрация</th>
-          <th>Последний вход</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="u in users" :key="u.id">
-          <td>{{ u.id }}</td>
-          <td>{{ u.username }}</td>
-          <td>{{ u.email }}</td>
-          <td>{{ u.blocked ? 'Заблокирован' : 'Активен' }}</td>
-          <td>
-            <span v-for="c in u.companies" :key="c.company_id" class="page-admin-users__company">
-              {{ c.company_name }} <small>({{ c.role }}/{{ c.status }})</small>
-            </span>
-            <span v-if="!u.companies.length" class="page-admin-users__none">—</span>
-          </td>
-          <td v-if="isGlobal">
-            <span v-for="it in (u.items || [])" :key="it.name" class="page-admin-users__rbac" :title="it.type === 1 ? 'роль' : 'перм'">
-              {{ it.name }}<a href="#" @click.prevent="dropRole(u.id, it.name)" class="page-admin-users__rbac-drop" title="Снять">×</a>
-            </span>
-            <select v-model="addSel[u.id]" @change="addRole(u.id)" class="page-admin-users__rbac-select">
-              <option value="">+ дать...</option>
-              <option v-for="r in rbacItems" :key="r.name" :value="r.name" :disabled="(u.items || []).some((x: any) => x.name === r.name) || r.name === 'global_admin'">{{ r.name }}</option>
-            </select>
-          </td>
-          <td class="page-admin-users__date">{{ fmtDTRu(u.created_at) }}</td>
-          <td class="page-admin-users__date" :title="u.last_login_ip ? 'IP: ' + u.last_login_ip : undefined">{{ fmtDTRu(u.last_login_at) }}</td>
-          <td class="page-admin-users__row-actions">
-            <button @click="openPwd(u)" class="wb-btn-brand wb-btn-brand--sm page-admin-users__pwd-btn">Изменить пароль</button>
-            <span v-if="canLink(u)" class="page-admin-users__menu-wrap">
-              <button @click.stop="toggleMenu(u.id)" class="btn btn--soft btn-sm page-admin-users__menu-btn" title="Ещё действия" :aria-expanded="openMenu === u.id">
-                <i class="bi bi-three-dots-vertical"></i>
-              </button>
-              <span v-if="openMenu === u.id" class="page-admin-users__menu" role="menu">
-                <span class="page-admin-users__menu-hint">Одноразовая ссылка, живёт 3 дня</span>
-                <button class="page-admin-users__menu-item" role="menuitem" :disabled="linkBusy === u.id" @click="makeResetLink(u)">
-                  <i class="bi bi-link-45deg"></i>{{ linkBusy === u.id ? 'Создаём…' : 'Ссылка для смены пароля…' }}
-                </button>
-              </span>
-            </span>
-            <button v-if="isGlobal" @click="toggle(u)" :disabled="busy === u.id" :style="{background: u.blocked ? '#0a0' : '#c00', color:'#fff', border:'none', padding:'4px 10px', borderRadius:'6px'}">
-              {{ u.blocked ? 'Разблокировать' : 'Заблокировать' }}
-            </button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+
+    <div class="tbl-card tbl-card--compact">
+      <div class="card__hd">
+        Пользователи
+        <span class="hd-badge">{{ users.length }}</span>
+        <span class="spacer"></span>
+        <button @click="openCreate = true" class="hd-btn" type="button"><i class="bi bi-plus-lg"></i>Создать пользователя</button>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th class="t-left">Логин</th>
+              <th class="t-left">Email</th>
+              <th class="t-center">Статус</th>
+              <th class="t-left">Компании</th>
+              <th v-if="isGlobal" class="t-left">Роли / пермы</th>
+              <th class="num">Регистрация</th>
+              <th class="num">Последний вход</th>
+              <th><span class="visually-hidden">Действия</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="u in users" :key="u.id">
+              <td>{{ u.id }}</td>
+              <td class="t-left fw-semibold">{{ u.username }}</td>
+              <td class="t-left">{{ u.email }}</td>
+              <td class="t-center"><span class="badge" :class="u.blocked ? 'badge--bad' : 'badge--ok'">{{ u.blocked ? 'Заблокирован' : 'Активен' }}</span></td>
+              <td class="t-left">
+                <div class="page-admin-users__companies">
+                  <span v-for="c in u.companies" :key="c.company_id" class="page-admin-users__company">
+                    <span class="page-admin-users__company-name">{{ c.company_name }}</span>
+                    <span class="page-admin-users__company-meta">{{ c.role }} / {{ c.status }}</span>
+                  </span>
+                  <span v-if="!u.companies.length" class="page-admin-users__none">—</span>
+                </div>
+              </td>
+              <td v-if="isGlobal" class="t-left">
+                <div class="page-admin-users__perms">
+                  <span v-for="it in (u.items || [])" :key="it.name" class="badge badge--neutral page-admin-users__perm" :title="it.type === 1 ? 'роль' : 'перм'">
+                    {{ it.name }}<button type="button" class="page-admin-users__perm-drop" :aria-label="'Снять ' + it.name" @click="dropRole(u.id, it.name)">×</button>
+                  </span>
+                  <select v-model="addSel[u.id]" @change="addRole(u.id)" class="page-admin-users__perm-add" aria-label="Добавить роль или право">
+                    <option value="">+ добавить…</option>
+                    <option v-for="r in rbacItems" :key="r.name" :value="r.name" :disabled="(u.items || []).some((x: any) => x.name === r.name) || r.name === 'global_admin'">{{ r.name }}</option>
+                  </select>
+                </div>
+              </td>
+              <td class="num">{{ fmtDTRu(u.created_at) }}</td>
+              <td class="num" :title="u.last_login_ip ? 'IP: ' + u.last_login_ip : undefined">{{ fmtDTRu(u.last_login_at) }}</td>
+              <td class="t-center">
+                <span class="page-admin-users__menu-wrap">
+                  <button @click.stop="toggleMenu(u.id)" class="btn btn--soft btn-sm page-admin-users__menu-btn" title="Действия" :aria-expanded="openMenu === u.id" :aria-label="'Действия для ' + u.username">
+                    <i class="bi bi-gear"></i><i class="bi bi-chevron-down page-admin-users__menu-caret" :class="{ 'page-admin-users__menu-caret--open': openMenu === u.id }"></i>
+                  </button>
+                  <span v-if="openMenu === u.id" class="page-admin-users__menu" role="menu">
+                    <button class="page-admin-users__menu-item" role="menuitem" @click="closeMenu(); openPwd(u)">
+                      <i class="bi bi-key"></i>Изменить пароль
+                    </button>
+                    <button v-if="canLink(u)" class="page-admin-users__menu-item" role="menuitem" :disabled="linkBusy === u.id" @click="makeResetLink(u)">
+                      <i class="bi bi-link-45deg"></i>{{ linkBusy === u.id ? 'Создаём…' : 'Сгенерировать ссылку' }}
+                    </button>
+                    <template v-if="isGlobal">
+                      <span class="page-admin-users__menu-divider"></span>
+                      <button class="page-admin-users__menu-item page-admin-users__menu-item--danger" role="menuitem" :disabled="busy === u.id" @click="closeMenu(); toggle(u)">
+                        <i class="bi" :class="u.blocked ? 'bi-unlock' : 'bi-lock'"></i>{{ u.blocked ? 'Разблокировать' : 'Заблокировать' }}
+                      </button>
+                    </template>
+                  </span>
+                </span>
+              </td>
+            </tr>
+            <tr v-if="!users.length"><td :colspan="isGlobal ? 9 : 8" class="t-center page-admin-users__empty">Пользователей не найдено</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <div v-if="pwdTarget" class="wb-modal-backdrop">
