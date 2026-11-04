@@ -616,6 +616,101 @@ async def _sweep(db: AsyncSession, limit: int, current: dict) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Проверка папки кэша (после переезда сервера и т.п.)
+# ---------------------------------------------------------------------------
+
+async def verify_cache(db: AsyncSession, chunk: int = 500) -> dict:
+    """Проверить, что скачанные фото на месте: запись в БД без файла → в очередь.
+
+    Проверяем `state='ok'` (файл должен лежать в папке кэша); если в строке задан
+    `bytes` — размер файла должен совпадать (иначе файл битый/оборванный).
+    Отсутствующие возвращаем в `state='pending'` — дальше их качает робот штатно.
+
+    Ничего не удаляем и не качаем здесь — только состояние строк и журнал.
+    Файлы-«сироты» (лежат в папке, но записи в БД нет) считаем и отдаём
+    отдельно: их удаление — отдельное явное действие.
+    """
+    files_on_disk = svc.scan_cache()
+    # все ключи из БД (любые состояния) — чтобы отличить «сироту» от нашего файла
+    known_rows = (await db.execute(text("SELECT src_key FROM wb_images"))).mappings().all()
+    known = {str(r["src_key"]) for r in known_rows}
+
+    checked = 0
+    missing: list[tuple[int, str, str]] = []   # (id, src_key, причина)
+    last_id = 0
+    while True:
+        rows = (await db.execute(text(
+            "SELECT id, src_key, bytes FROM wb_images "
+            "WHERE state = 'ok' AND id > :last ORDER BY id LIMIT :lim"),
+            {"last": last_id, "lim": max(1, int(chunk))})).mappings().all()
+        if not rows:
+            break
+        for r in rows:
+            checked += 1
+            key = str(r["src_key"])
+            size = files_on_disk.get(key)
+            if size is None:
+                missing.append((int(r["id"]), key, "файла нет"))
+                continue
+            want = r.get("bytes")
+            if want is not None and int(want) != int(size):
+                missing.append((int(r["id"]), key, f"размер не совпал ({size} ≠ {int(want)})"))
+        last_id = int(rows[-1]["id"])
+        if len(rows) < max(1, int(chunk)):
+            break
+
+    if missing:
+        ids = [m[0] for m in missing]
+        for i in range(0, len(ids), 400):
+            part = ids[i:i + 400]
+            ph = ",".join(f":i{x}" for x in range(len(part)))
+            params = {f"i{x}": v for x, v in enumerate(part)}
+            await db.execute(text(
+                f"UPDATE wb_images SET state='pending', attempts=0, last_error=:err "
+                f"WHERE id IN ({ph})"), {**params, "err": "файл не найден при проверке папки"})
+            await db.commit()
+        await svc.log_event(
+            "warn",
+            f"проверка папки: проверено {checked}, отсутствует {len(missing)} "
+            f"— поставлено в очередь на скачивание",
+            action="verify")
+
+    orphans = [k for k in files_on_disk if k not in known]
+    orphan_bytes = sum(files_on_disk.get(k, 0) for k in orphans)
+    await svc.log_event(
+        "info",
+        f"проверка папки: файлов-сирот {len(orphans)} ({orphan_bytes} Б) — без записи в БД",
+        action="verify")
+    await db.commit()
+    return {
+        "ok": True,
+        "checked": checked,
+        "missing": len(missing),
+        "orphans": len(orphans),
+        "orphan_bytes": orphan_bytes,
+        "files_on_disk": len(files_on_disk),
+    }
+
+
+async def delete_orphans(db: AsyncSession) -> dict:
+    """Удалить файлы кэша, для которых нет записи в `wb_images`.
+
+    Только по явному подтверждению (вызывается из UI после вопроса).
+    """
+    files_on_disk = svc.scan_cache()
+    rows = (await db.execute(text("SELECT src_key FROM wb_images"))).mappings().all()
+    known = {str(r["src_key"]) for r in rows}
+    orphans = [k for k in files_on_disk if k not in known]
+    deleted, total = svc.delete_cache_files(orphans)
+    await svc.log_event(
+        "info",
+        f"удалено файлов-сирот: {deleted} ({total} Б)",
+        action="verify")
+    await db.commit()
+    return {"ok": True, "deleted": deleted, "bytes": total}
+
+
+# ---------------------------------------------------------------------------
 # Уборка
 # ---------------------------------------------------------------------------
 

@@ -278,6 +278,37 @@ async def images_queue_requeue(
     return {"ok": True}
 
 
+@router.post("/images/verify")
+async def images_verify(
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+):
+    """Проверить папку кэша: записи в БД без файла → в очередь на скачивание.
+
+    После переезда на другой сервер файлы могли не доехать. Проверка смотрит
+    `state='ok'`: файл должен лежать в папке, а размер — совпадать с `bytes`.
+    Отсутствующие возвращаются в `state='pending'` (их качает робот штатно).
+    Файлы-«сироты» (в папке, но без записи в БД) только считаются —
+    удаление отдельным явным запросом.
+    """
+    return await worker.verify_cache(db)
+
+
+@router.post("/images/verify/delete-orphans")
+async def images_verify_delete_orphans(
+    payload: dict | None = Body(default=None),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(require_seo),
+):
+    """Удалить файлы кэша, для которых нет записи в `wb_images`.
+
+    Только по явному подтверждению: `{"confirm": "delete"}`.
+    """
+    if str((payload or {}).get("confirm") or "") != "delete":
+        raise HTTPException(status_code=400, detail="нужно подтверждение: confirm='delete'")
+    return await worker.delete_orphans(db)
+
+
 @router.post("/images/run")
 async def images_run(
     payload: dict | None = Body(default=None),

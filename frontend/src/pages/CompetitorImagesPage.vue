@@ -13,6 +13,7 @@ import {
   type ImagesQueueRow,
   type ImagesSettings,
   type ImagesStatus,
+  type ImagesVerifyResult,
 } from '@/api/images'
 
 /**
@@ -66,6 +67,11 @@ const form = ref<ImagesSettings>({
 })
 const formTouched = ref(false)
 const saving = ref(false)
+
+/* ---------------- проверка папки кэша ---------------- */
+const verifyBusy = ref(false)
+const verifyRes = ref<ImagesVerifyResult | null>(null)
+const orphanBusy = ref(false)
 
 const STATE_OPTIONS = [
   { v: '', label: 'Все' },
@@ -232,6 +238,36 @@ async function requeue(id: number) {
   }
 }
 
+/** Проверить папку кэша: записи в БД без файла → в очередь на скачивание. */
+async function verifyFolder() {
+  verifyBusy.value = true
+  err.value = ''
+  try {
+    verifyRes.value = await imagesApi.verify()
+    await Promise.all([loadQueue(), loadStatus()])
+  } catch (e: any) {
+    err.value = e?.response?.data?.detail || e?.message || String(e)
+  } finally {
+    verifyBusy.value = false
+  }
+}
+
+/** Удалить файлы без записей в БД — только после явного «Да». */
+async function deleteOrphans() {
+  orphanBusy.value = true
+  err.value = ''
+  try {
+    const res = await imagesApi.deleteOrphans()
+    notice.value = `Удалено файлов без записей в БД: ${res.deleted} (${fmtBytes(res.bytes)})`
+    verifyRes.value = null
+    await Promise.all([loadQueue(), loadStatus()])
+  } catch (e: any) {
+    err.value = e?.response?.data?.detail || e?.message || String(e)
+  } finally {
+    orphanBusy.value = false
+  }
+}
+
 async function saveSettings() {
   saving.value = true
   try {
@@ -371,6 +407,37 @@ onMounted(async () => {
                   В очередь
                 </button>
               </div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small mb-1">Проверка папки кэша</label>
+              <div class="d-flex gap-2">
+                <button class="btn btn-sm btn-outline-secondary text-nowrap"
+                        :disabled="verifyBusy"
+                        title="Проверить, что все скачанные фото лежат в папке кэша. Отсутствующие (запись в БД есть, файла нет) поставятся в очередь на скачивание."
+                        @click="verifyFolder">
+                  <span v-if="verifyBusy" class="spinner-border spinner-border-sm"></span>
+                  <i v-else class="bi bi-folder-check"></i>
+                  Проверить папку
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- результат проверки -->
+          <div v-if="verifyRes" class="alert py-2 mb-0"
+               :class="verifyRes.missing || verifyRes.orphans ? 'alert-warning' : 'alert-success'">
+            <div>
+              Проверено записей: <b>{{ verifyRes.checked }}</b> ·
+              файлов в папке: <b>{{ verifyRes.files_on_disk }}</b> ·
+              отсутствует (поставлено в очередь): <b>{{ verifyRes.missing }}</b> ·
+              файлов без записи в БД: <b>{{ verifyRes.orphans }}</b>
+            </div>
+            <div v-if="verifyRes.orphans" class="d-flex align-items-center gap-2 mt-1">
+              <span>Удалить {{ verifyRes.orphans }} файлов ({{ fmtBytes(verifyRes.orphan_bytes) }}) без записей в БД?</span>
+              <button class="btn btn-sm btn-outline-danger" :disabled="orphanBusy" @click="deleteOrphans">
+                Да, удалить
+              </button>
+              <button class="btn btn-sm btn-light" @click="verifyRes = null">Оставить</button>
             </div>
           </div>
         </div>

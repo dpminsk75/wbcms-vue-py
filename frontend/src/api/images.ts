@@ -82,6 +82,21 @@ export interface ImagesList<T> {
   offset: number
 }
 
+/** Результат проверки папки кэша. */
+export interface ImagesVerifyResult {
+  ok: boolean
+  /** Сколько записей со state='ok' проверено. */
+  checked: number
+  /** Сколько файлов отсутствует (поставлены в очередь на скачивание). */
+  missing: number
+  /** Файлов в папке без записи в БД («сироты»). */
+  orphans: number
+  /** Размер сирот в байтах. */
+  orphan_bytes: number
+  /** Всего файлов в папке. */
+  files_on_disk: number
+}
+
 export const imagesApi = {
   status: () => api.get<ImagesStatus>('/api/images/status').then(r => r.data),
 
@@ -112,6 +127,16 @@ export const imagesApi = {
   /** Прогнать порцию скачивания прямо сейчас. */
   run: (limit = 50) =>
     api.post<{ ok: boolean; error?: string }>('/api/images/run', { limit }).then(r => r.data),
+
+  /** Проверить папку кэша: записи в БД без файла → в очередь на скачивание. */
+  verify: () =>
+    api.post<ImagesVerifyResult>('/api/images/verify').then(r => r.data),
+
+  /** Удалить файлы кэша без записи в БД (только по явному подтверждению). */
+  deleteOrphans: () =>
+    api.post<{ ok: boolean; deleted: number; bytes: number }>(
+      '/api/images/verify/delete-orphans', { confirm: 'delete' },
+    ).then(r => r.data),
 
   /** Пауза/старт фонового цикла. */
   pause: (paused: boolean) =>

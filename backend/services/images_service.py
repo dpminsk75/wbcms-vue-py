@@ -112,6 +112,42 @@ def dir_stats() -> dict:
     return {"files": count, "bytes": total}
 
 
+def scan_cache() -> dict[str, int]:
+    """Файлы кэша: src_key → размер в байтах.
+
+    Только `.webp` (другие расширения в папке — не наши).
+    """
+    out: dict[str, int] = {}
+    try:
+        with os.scandir(img_root()) as it:
+            for entry in it:
+                if not entry.name.endswith(".webp") or not entry.is_file():
+                    continue
+                try:
+                    out[entry.name[:-5]] = entry.stat().st_size
+                except OSError:
+                    continue
+    except OSError as exc:
+        log.warning("images: не удалось прочитать папку кэша: %s", exc)
+    return out
+
+
+def delete_cache_files(keys) -> tuple[int, int]:
+    """Удалить файлы кэша по списку src_key. Возвращает (файлов, байт)."""
+    files = 0
+    total = 0
+    for key in keys:
+        path = file_path(str(key))
+        try:
+            size = path.stat().st_size
+            path.unlink(missing_ok=True)
+            files += 1
+            total += size
+        except OSError:
+            continue
+    return files, total
+
+
 # ---------------------------------------------------------------------------
 # URL
 # ---------------------------------------------------------------------------
