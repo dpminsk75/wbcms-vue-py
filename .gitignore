@@ -11,6 +11,7 @@ __pycache__/
 venv/
 env/
 .env.venv
+.gitignore
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -20,6 +21,11 @@ htmlcov/
 *.egg-info/
 dist/
 build/
+mds/
+plans/
+mockups/
+docs/
+backend/migrations/bak/
 
 # --- node / Vite / Vue3 ---
 node_modules/
@@ -51,3 +57,6 @@ Thumbs.db
 logs/
 tmp/
 temp/
+
+# --- локальный кэш фото WB (генерируется роботом, в git не коммитим) ---
+wb_images/
