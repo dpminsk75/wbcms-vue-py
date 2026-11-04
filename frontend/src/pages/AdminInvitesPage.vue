@@ -38,8 +38,8 @@
       <tbody>
         <tr v-for="t in rows" :key="t.id">
           <td>{{ t.id }}</td>
-          <td>{{ t.token_type }}</td>
-          <td>{{ t.token_type === 'company' ? t.company_name : `${t.company_label || ('#' + t.company_id)} / ${t.target_email}` }}</td>
+          <td>{{ typeLabel(t.token_type) }}</td>
+          <td>{{ t.token_type === 'company' ? t.company_name : t.token_type === 'password_reset' ? `Пароль: ${t.target_user_name || ('#' + t.target_user_id)}` : `${t.company_label || ('#' + t.company_id)} / ${t.target_email}` }}</td>
           <td>{{ t.role || '—' }}</td>
           <td><span :style="statusStyle(t.status)">{{ statusLabel(t.status) }}</span></td>
           <td>{{ t.used_by_name ? `${t.used_by_name} (${t.used_by})` : '—' }}</td>
@@ -62,6 +62,7 @@
 import '@/assets/css/pages/page-admin-invites.css'
 import { reactive, ref, computed, onMounted } from 'vue'
 import { authApi } from '../api/auth'
+import { copyText } from '../composables/useCopyText'
 
 const rows = ref<any[]>([])
 const error = ref('')
@@ -76,31 +77,12 @@ const registerLink = computed(() => last.value ? `${location.origin}/register?in
 import { useDateFmt } from '../composables/useDateFmt'
 const { fmtDT } = useDateFmt()
 const statusLabel = (s: string) => s === 'active' ? 'Активен' : s === 'used' ? 'Использован' : 'Просрочен'
+const typeLabel = (t: string) => t === 'password_reset' ? 'Сброс пароля' : t === 'company' ? 'Компания' : 'Пользователь'
 const statusStyle = (s: string) => {
   const base = 'display:inline-block; padding:2px 8px; border-radius:10px; font-size:12px; white-space:nowrap;'
   if (s === 'active') return base + 'background:#E4F5EF; color:#1E9E7C'
   if (s === 'used') return base + 'background:#F1F1F4; color:#6E6A80'
   return base + 'background:#FBEBEC; color:#E0525C'
-}
-
-// navigator.clipboard работает только в secure-контексте (https/localhost) —
-// на http по IP падаем в fallback через textarea (как PageHeaderWidget copyId)
-async function copyText(t: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(t)
-    return true
-  } catch { /* fallback ниже */ }
-  try {
-    const ta = document.createElement('textarea')
-    ta.value = t
-    ta.style.position = 'fixed'
-    ta.style.opacity = '0'
-    document.body.appendChild(ta)
-    ta.select()
-    const ok = document.execCommand('copy')
-    document.body.removeChild(ta)
-    return ok
-  } catch { return false }
 }
 
 async function load() {

@@ -26,8 +26,8 @@
         <input v-model="form.email" type="email" required class="wb-field" />
       </label>
       <label>
-        <div>Пароль</div>
-        <input v-model="form.password" type="password" required minlength="6" class="wb-field" />
+        <div>Пароль (мин. 8, буквы и цифры)</div>
+        <input v-model="form.password" type="password" required minlength="8" pattern="(?=.*[A-Za-zА-Яа-яЁё])(?=.*\d).{8,}" title="Минимум 8 символов, буквы и цифры" class="wb-field" autocomplete="new-password" />
       </label>
       <template v-if="tokenInfo?.type === 'company'">
         <label>

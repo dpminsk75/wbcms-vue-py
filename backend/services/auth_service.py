@@ -20,6 +20,7 @@ except Exception:  # pragma: no cover
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
 ALGO = "HS256"
 EXPIRE_MIN = int(os.getenv("JWT_EXPIRE_MIN", "720"))
+PASSWORD_RESET_DAYS = 3
 
 # --- v3: собственная модель прав (role/role_perm/user_role/user_perm) вместо yii2 auth_* ---
 # Флаг переключает модель целиком: 0 — старое поведение (auth_*), 1 — новая (свои таблицы).
@@ -71,6 +72,15 @@ LEGACY_PERM_TRANSLATION: dict[str, tuple[str, ...]] = {
     "viewSeo": ("viewSeo",),
     "manageFbsStocks": ("manageFbs", "viewFbs"),
 }
+
+
+def validate_password(password: str) -> None:
+    """Требование к паролю (8+, буквы и цифры). Один источник правды для всех путей."""
+    p = password or ""
+    if len(p) < 8:
+        raise ValueError("password must be at least 8 characters")
+    if not any(ch.isalpha() for ch in p) or not any(ch.isdigit() for ch in p):
+        raise ValueError("password must contain letters and digits")
 
 
 def normalize_email(email: str) -> str:
@@ -155,8 +165,7 @@ async def create_user(db: AsyncSession, username: str, email: str, password: str
     email = normalize_email(email)
     if not username or not email or not password:
         raise ValueError("username, email and password are required")
-    if len(password) < 6:
-        raise ValueError("password must be at least 6 characters")
+    validate_password(password)
     if await get_user_by_username(db, username) or await get_user_by_email(db, email):
         raise ValueError("username or email already exists")
 
@@ -182,8 +191,9 @@ async def create_user(db: AsyncSession, username: str, email: str, password: str
 async def update_user_password(db: AsyncSession, user_id: int, password: str) -> None:
     # Смена пароля при первой активации: юзер предсоздан инвайтом со случайным паролем,
     # свой пароль он задаёт в форме регистрации — молча игнорировать его нельзя (иначе 200 + вечный 401).
-    if not password or len(password) < 6:
-        raise ValueError("password must be at least 6 characters")
+    if not password:
+        raise ValueError("password is required")
+    validate_password(password)
     await db.execute(text("UPDATE `user` SET password_hash=:h WHERE id=:i"), {
         "h": hash_password(password), "i": user_id,
     })
@@ -913,7 +923,7 @@ async def create_invite_token(
     expires_in_days: int = 7,
     perms: list[str] | None = None,
 ) -> str:
-    if token_type not in ("company", "user"):
+    if token_type not in ("company", "user", "password_reset"):
         raise ValueError("invalid token type")
     expires_at = expires_at or (_now_utc_naive() + timedelta(days=expires_in_days))
     raw_token = secrets.token_urlsafe(32)
@@ -1000,6 +1010,29 @@ async def create_user_invite_token(
         expires_in_days=expires_in_days,
         perms=perms,
     )
+
+
+async def create_password_reset_token(
+    db: AsyncSession,
+    *,
+    created_by: int,
+    target_user_id: int,
+    expires_in_days: int = PASSWORD_RESET_DAYS,
+) -> tuple[str, datetime]:
+    """Одноразовый токен для /reset-password?token=... Возвращает (raw_token, expires_at naive UTC)."""
+    expires_at = _now_utc_naive() + timedelta(days=expires_in_days)
+    raw_token = await create_invite_token(
+        db=db,
+        token_type="password_reset",
+        company_id=None,
+        target_user_id=target_user_id,
+        target_email=None,
+        role=None,
+        company_name=None,
+        created_by=created_by,
+        expires_at=expires_at,
+    )
+    return raw_token, expires_at
 
 
 async def create_company_invite_token(

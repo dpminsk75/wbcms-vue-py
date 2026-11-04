@@ -27,8 +27,10 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', name: 'login', component: () => import('../pages/Login.vue'), meta: { title: 'Вход', public: true } },
+    { path: '/reset-password', name: 'reset-password', component: () => import('../pages/ResetPasswordPage.vue'), meta: { title: 'Смена пароля', public: true } },
     { path: '/register', name: 'register', component: () => import('../pages/RegisterPage.vue'), meta: { title: 'Регистрация', public: true } },
     { path: '/', name: 'dashboard', component: Dashboard, meta: { title: 'Управление товарами и карточками', h1: 'Дашборд' } },
+    { path: '/settings/password', name: 'settings-password', component: () => import('../pages/ChangePasswordPage.vue'), meta: { title: 'Сменить пароль' } },
     { path: '/settings/appearance', name: 'settings-appearance', component: () => import('../pages/SettingsAppearancePage.vue'), meta: { title: 'Настройки стилей' } },
     { path: '/companies', name: 'companies', component: () => import('../pages/CompaniesPage.vue'), meta: { title: 'Компании' } },
     { path: '/companies/:id', name: 'company-detail', component: () => import('../pages/CompanyDetailPage.vue'), meta: { title: 'Компания' } },

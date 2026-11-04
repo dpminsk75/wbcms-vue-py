@@ -165,9 +165,7 @@
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Диагностика расширения", "url": "/ext/diag", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
       {"label": "Установка расширения", "url": "/ext/install", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
-      {"label": "Фильтры расширения", "url": "/ext/install?block=filters", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
-      {"divider": true, "visibleIn": ["top", "side"]},
-      {"label": "Настройки профиля", "url": "/user/profile", "visibleIn": ["top", "side"]}
+      {"label": "Фильтры расширения", "url": "/ext/install?block=filters", "visibleIn": ["top", "side"], "roles": ["viewSeo"]}
     ]
   }
 ]

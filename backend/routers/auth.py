@@ -58,6 +58,16 @@ class CompanyCreateIn(BaseModel):
     seo_summary_prompt: str | None = None
 
 
+class ResetPasswordIn(BaseModel):
+    token: str
+    password: str
+
+
+class ChangePasswordIn(BaseModel):
+    old_password: str
+    new_password: str
+
+
 class MemberInviteIn(BaseModel):
     email: str
     role: Literal["admin", "member"] = "member"
@@ -89,6 +99,9 @@ async def register(payload: RegisterInviteIn, db: AsyncSession = Depends(get_db)
         async with db.begin():
             # resolve возвращает (row, payload): id токена — в row, данные — в payload
             token_row, token_payload = await auth_service.resolve_invite_token(db, payload.invite_token)
+            if token_payload.get("type") not in ("company", "user"):
+                # например password_reset — не для регистрации
+                raise HTTPException(status_code=400, detail="invalid invite token")
 
             if token_payload.get("type") == "company":
                 # Имя компании НЕ сверяем с инвайтом (2026-09-15): пользователь может править
@@ -230,6 +243,84 @@ async def invite_info(token: str = Path(...), db: AsyncSession = Depends(get_db)
     }
 
 
+@router.get("/reset/{token}/info")
+async def reset_info(token: str = Path(...), db: AsyncSession = Depends(get_db)):
+    # Публичный peek для /reset-password: маска email + срок. Сам токен не раскрываем.
+    try:
+        _, payload = await auth_service.resolve_invite_token(db, token)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="invalid or expired reset link")
+    if payload.get("type") != "password_reset":
+        raise HTTPException(status_code=404, detail="invalid or expired reset link")
+    target = await auth_service.get_user_by_id(db, int(payload.get("target_user_id") or 0))
+    if not target or target.get("blocked_at") is not None:
+        raise HTTPException(status_code=404, detail="invalid or expired reset link")
+    exp = payload.get("exp")
+    expires_at = None
+    if exp:
+        try:
+            expires_at = datetime.fromtimestamp(int(exp)).replace(microsecond=0).isoformat() + "Z"
+        except (TypeError, ValueError):
+            expires_at = None
+    return {
+        "type": "password_reset",
+        "email_masked": _mask_email(target.get("email") or ""),
+        "expires_at": expires_at,
+    }
+
+
+@router.post("/reset-password")
+async def reset_password(payload: ResetPasswordIn, db: AsyncSession = Depends(get_db)):
+    # Погашение токена и смена пароля — одна транзакция; использованный/протухший токен гасится.
+    await db.rollback()
+    try:
+        async with db.begin():
+            try:
+                token_row, token_payload = await auth_service.resolve_invite_token(db, payload.token)
+            except ValueError:
+                raise HTTPException(status_code=404, detail="invalid or expired reset link")
+            if token_payload.get("type") != "password_reset":
+                raise HTTPException(status_code=404, detail="invalid or expired reset link")
+            target = await auth_service.get_user_by_id(db, int(token_payload.get("target_user_id") or 0))
+            if not target:
+                raise HTTPException(status_code=404, detail="invalid or expired reset link")
+            if target.get("blocked_at") is not None:
+                raise HTTPException(status_code=403, detail="user is blocked")
+            try:
+                auth_service.validate_password(payload.password)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            await auth_service.update_user_password(db, int(target["id"]), payload.password)
+            consumed = await auth_service.consume_invite_token(db, token_row["id"], int(target["id"]))
+            if not consumed:
+                raise HTTPException(status_code=409, detail="reset link was already used or expired")
+            return {"ok": True}
+    except HTTPException:
+        raise
+
+
+@router.post("/change-password")
+async def change_password(
+    payload: ChangePasswordIn,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    # Смена своего пароля по текущему; ссылка не нужна.
+    row = (await db.execute(
+        text("SELECT password_hash FROM `user` WHERE id=:i LIMIT 1"), {"i": user["id"]}
+    )).first()
+    current_hash = row[0] if row else None
+    if not auth_service.verify_password_uniform(payload.old_password, current_hash):
+        raise HTTPException(status_code=400, detail="Неверный текущий пароль")
+    try:
+        auth_service.validate_password(payload.new_password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    await auth_service.update_user_password(db, int(user["id"]), payload.new_password)
+    await db.commit()
+    return {"ok": True}
+
+
 @router.get("/invites")
 async def list_invites(db: AsyncSession = Depends(get_db), user: dict = Depends(require_admin)):
     # Список токенов со статусами для страницы /admin/invites. Сырых токенов в БД нет
@@ -239,13 +330,15 @@ async def list_invites(db: AsyncSession = Depends(get_db), user: dict = Depends(
     is_global = await auth_service.is_global_admin(db, user["id"])
     rows = (await db.execute(_text("""
         SELECT t.id, t.token_type, t.company_id, c.name AS company_label,
-               t.target_email, t.role, t.company_name,
+               t.target_email, t.target_user_id, v.username AS target_user_name,
+               t.role, t.company_name,
                t.expires_at, t.created_at, t.used_at, t.created_by, u.username AS created_by_name,
                t.used_by, w.username AS used_by_name
         FROM auth_invite_tokens t
         LEFT JOIN companies c ON c.id = t.company_id
         LEFT JOIN `user` u ON u.id = t.created_by
         LEFT JOIN `user` w ON w.id = t.used_by
+        LEFT JOIN `user` v ON v.id = t.target_user_id
         WHERE (:all = 1 OR t.created_by = :me)
         ORDER BY t.created_at DESC
         LIMIT 200

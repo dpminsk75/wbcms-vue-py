@@ -304,12 +304,12 @@ async def list_users(db: AsyncSession = Depends(get_db), user: dict = Depends(ge
             raise HTTPException(status_code=403, detail="company admin access denied")
     if scope_ids is None:
         rows = (await db.execute(text(
-            "SELECT id, username, email, blocked_at FROM `user` WHERE gdpr_deleted=0 ORDER BY id"
+            "SELECT id, username, email, blocked_at, created_at, last_login_at, last_login_ip FROM `user` WHERE gdpr_deleted=0 ORDER BY id"
         ))).mappings().all()
     else:
         placeholders = ",".join(f":c{i}" for i in range(len(scope_ids)))
         rows = (await db.execute(text(
-            "SELECT DISTINCT u.id, u.username, u.email, u.blocked_at FROM `user` u "
+            "SELECT DISTINCT u.id, u.username, u.email, u.blocked_at, u.created_at, u.last_login_at, u.last_login_ip FROM `user` u "
             f"JOIN company_members cm ON cm.user_id=u.id WHERE u.gdpr_deleted=0 AND cm.company_id IN ({placeholders}) "
             "ORDER BY u.id"
         ), {f"c{i}": v for i, v in enumerate(scope_ids)})).mappings().all()
@@ -349,10 +349,40 @@ async def list_users(db: AsyncSession = Depends(get_db), user: dict = Depends(ge
             "username": r["username"],
             "email": r["email"],
             "blocked": r["blocked_at"] is not None,
+            "created_at": r["created_at"],
+            "last_login_at": r["last_login_at"],
+            "last_login_ip": r["last_login_ip"],
             "companies": by_user.get(r["id"], []),
             "items": sorted(items_by_user.get(r["id"], []), key=lambda x: x["name"]),
         })
     return out
+
+
+@router.post("/users/{user_id}/reset-link")
+async def admin_reset_link(
+    user_id: int = Path(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_admin),
+):
+    # Ссылка для смены пароля — только global_admin (обычному owner/admin компании —
+    # POST /api/companies/{cid}/members/{uid}/reset-link). Ссылку показываем один раз.
+    if not await auth_service.is_global_admin(db, user["id"]):
+        raise HTTPException(status_code=403, detail="global_admin required")
+    target = await auth_service.get_user_by_id(db, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="user not found")
+    if target.get("blocked_at") is not None:
+        raise HTTPException(status_code=403, detail="user is blocked")
+    await db.rollback()
+    async with db.begin():
+        token, expires_at = await auth_service.create_password_reset_token(
+            db, created_by=user["id"], target_user_id=user_id
+        )
+    return {
+        "invite_token": token,
+        "expires_at": expires_at.replace(microsecond=0).isoformat() + "Z",
+        "reset_path": f"/reset-password?token={token}",
+    }
 
 
 @router.patch("/users/{user_id}/blocked")

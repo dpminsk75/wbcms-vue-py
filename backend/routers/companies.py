@@ -474,6 +474,38 @@ async def set_member_password(
         raise
 
 
+@router.post("/{company_id}/members/{user_id}/reset-link")
+async def member_reset_link(
+    company_id: int = Path(..., ge=1),
+    user_id: int = Path(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+    actor: dict = Depends(require_company_admin),
+):
+    # Ссылка для смены пароля члену компании (owner/admin). Ссылку показываем один раз.
+    try:
+        await db.rollback()
+        async with db.begin():
+            member = await auth_service.get_company_member(db, company_id, user_id)
+            if not member:
+                raise HTTPException(status_code=404, detail="member not found")
+            target = await auth_service.get_user_by_id(db, user_id)
+            if not target:
+                raise HTTPException(status_code=404, detail="user not found")
+            if target.get("blocked_at") is not None:
+                raise HTTPException(status_code=403, detail="user is blocked")
+            token, expires_at = await auth_service.create_password_reset_token(
+                db, created_by=actor["id"], target_user_id=user_id
+            )
+            return {
+                "company_id": company_id,
+                "invite_token": token,
+                "expires_at": expires_at.replace(microsecond=0).isoformat() + "Z",
+                "reset_path": f"/reset-password?token={token}",
+            }
+    except HTTPException:
+        raise
+
+
 @router.patch("/{company_id}/members/{user_id}")
 async def update_member(company_id: int = Path(..., ge=1), user_id: int = Path(..., ge=1), payload: MemberUpdateIn = Body(...), db: AsyncSession = Depends(get_db), actor: dict = Depends(require_company_admin)):
     try:

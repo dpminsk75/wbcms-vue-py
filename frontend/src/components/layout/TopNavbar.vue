@@ -16,6 +16,7 @@
         <div style="font-weight:700; padding:6px 0">{{ companyLabel }}</div>
         <a v-if="isGlobalAdmin" href="#" @click.prevent="pickCompany('all')" style="display:block; padding:4px 0; font-size:13px; color:#4A3A8C; text-decoration:none">Все компании</a>
         <a v-for="c in auth.companies" :key="c.id" href="#" @click.prevent="pickCompany(c.id)" style="display:block; padding:4px 0; font-size:13px; color:#4A3A8C; text-decoration:none">{{ c.name }}</a>
+        <router-link to="/settings/password" @click="mobileOpen=false" style="display:block; padding:8px 0; font-size:13px; color:#4A3A8C; text-decoration:none">Сменить пароль</router-link>
         <a href="#" @click.prevent="doLogout" style="display:block; padding:8px 0; font-size:13px; color:#c00; text-decoration:none">Выйти ({{ auth.user?.username || '...' }})</a>
       </div>
       <div v-for="s in menu" :key="s.label" style="margin-bottom:12px">
@@ -71,6 +72,12 @@
               <span class="wb-text">Стиль</span>
             </router-link>
           </li>
+          <li class="nav-item ms-2 wb-menu__theme">
+            <router-link class="nav-link wb-theme-link" to="/settings/password" title="Сменить пароль">
+              <span class="wb-icon"><i class="bi bi-key"></i></span>
+              <span class="wb-text">Сменить пароль</span>
+            </router-link>
+          </li>
           <li class="nav-item ms-2 wb-menu__logout">
             <!-- Компании/Пользователи идут из backend/config/menu.json (секция Админка), хардкода тут нет -->
             <button class="wb-logout-btn" @click="doLogout">
@@ -122,7 +129,7 @@ const fallbackMenu = [
   { label:'Данные', icon:'data', iconClass:'bi bi-pie-chart', items:[ {label:'Лента заказов', url:'/wb-order/feed'},{label:'', divider:true},{label:'Заказы', url:'/wb-order/index'},{label:'Продажи', url:'/wb-sales/index'},{label:'', divider:true},{label:'Себестоимость', url:'/cost-import/list'} ] },
   { label:'Склад', icon:'warehouse', iconClass:'bi bi-box-seam', items:[ {label:'Управление остатками', url:'/wb-fbs-virtual'},{label:'Документы', url:'/wb-doc'},{label:'', divider:true},{label:'Наличие', url:'/wb-stock-reports/balance'},{label:'Оборотная ведомость', url:'/wb-stock-reports/turnover'},{label:'Карточка товара', url:'/wb-stock-reports/card'},{label:'Неликвиды', url:'/wb-stock-reports/nonliquid'},{label:'', divider:true},{label:'Производство', url:'/wb-production'} ] },
   { label:'Справочники', icon:'book', iconClass:'bi bi-book', items:[ {label:'Карточки WB', url:'/wb/cards'},{label:'Склады', url:'/wb-warehouses'},{label:'Виртуальные склады', url:'/wb-fbs-virtual'},{label:'', divider:true},{label:'Теги', url:'/tag/index'},{label:'Товары', url:'/product/index'},{label:'Составные товары', url:'/product-wb-card/index'} ] },
-  { label:'Админка', icon:'gear', iconClass:'bi bi-gear', items:[ {label:'Пользователи', url:'/admin/users'},{label:'Роли', url:'/admin/roles'},{label:'Компании', url:'/companies'},{label:'', divider:true},{label:'Быстрые кнопки', url:'/admin/quick-buttons'},{label:'SEO-модели', url:'/admin/seo-models'},{label:'Меню', url:'/admin/menu'},{label:'Настройки профиля', url:'/user/profile'} ] },
+  { label:'Админка', icon:'gear', iconClass:'bi bi-gear', items:[ {label:'Пользователи', url:'/admin/users'},{label:'Роли', url:'/admin/roles'},{label:'Компании', url:'/companies'},{label:'', divider:true},{label:'Быстрые кнопки', url:'/admin/quick-buttons'},{label:'SEO-модели', url:'/admin/seo-models'},{label:'Меню', url:'/admin/menu'} ] },
 ]
 
 const { data: menuRaw, isError } = useQuery({ queryKey: ['menu','top', computed(() => auth.user?.username || 'guest')], queryFn: ()=> (dashboardApi as any).menu('top'), initialData: fallbackMenu as any })

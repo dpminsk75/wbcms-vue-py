@@ -55,5 +55,11 @@ export function useDateFmt() {
     return `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
   }
 
-  return { fmtDate, fmtDateTime, fmtTime, fmtAxis, fmtDT: fmtDateTime }
+  // 15.06.2022, 12:42 — для /admin/users (эпох-секунды тоже принимаются)
+  const fmtDTRu = (v: any): string => {
+    const d = toDate(v)
+    if (!d) return v == null || v === '' ? '—' : String(v)
+    return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+  return { fmtDate, fmtDateTime, fmtTime, fmtAxis, fmtDT: fmtDateTime, fmtDTRu }
 }

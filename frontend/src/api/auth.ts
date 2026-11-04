@@ -66,10 +66,21 @@ export const authApi = {
     api.get(`/api/auth/invites/${encodeURIComponent(token)}/info`).then((r) => r.data as { type: 'company' | 'user'; company_name?: string; company_id?: number; company?: Company; email_masked?: string; role?: string; expires_at?: string }),
 
   listInvites: () =>
-    api.get('/api/auth/invites').then((r) => r.data as Array<{ id: number; token_type: 'company' | 'user'; company_id: number | null; company_label: string | null; target_email: string | null; role: string | null; company_name: string | null; expires_at: string; created_at: string; used_at: string | null; created_by: number | null; created_by_name: string | null; status: 'active' | 'used' | 'expired' }>),
+    api.get('/api/auth/invites').then((r) => r.data as Array<{ id: number; token_type: 'company' | 'user' | 'password_reset'; company_id: number | null; company_label: string | null; target_email: string | null; target_user_id: number | null; target_user_name: string | null; role: string | null; company_name: string | null; expires_at: string; created_at: string; used_at: string | null; created_by: number | null; created_by_name: string | null; status: 'active' | 'used' | 'expired' }>),
 
   inviteLink: (id: number) =>
     api.get(`/api/auth/invites/by-id/${id}/link`).then((r) => r.data as { invite_token: string; register_path: string }),
+
+  resetInfo: (token: string) =>
+    api.get(`/api/auth/reset/${encodeURIComponent(token)}/info`).then((r) => r.data as { type: 'password_reset'; email_masked?: string; expires_at?: string }),
+  resetPassword: (token: string, password: string) =>
+    api.post('/api/auth/reset-password', { token, password }).then((r) => r.data as { ok: boolean }),
+  changePassword: (oldPassword: string, newPassword: string) =>
+    api.post('/api/auth/change-password', { old_password: oldPassword, new_password: newPassword }).then((r) => r.data as { ok: boolean }),
+  adminResetLink: (userId: number) =>
+    api.post(`/api/admin/users/${userId}/reset-link`).then((r) => r.data as { invite_token: string; expires_at: string; reset_path: string }),
+  memberResetLink: (companyId: number, userId: number) =>
+    api.post(`/api/companies/${companyId}/members/${userId}/reset-link`).then((r) => r.data as { company_id: number; invite_token: string; expires_at: string; reset_path: string }),
 
   updateCompany: (companyId: number, payload: {
     name?: string; abbreviation?: string; inn?: string; api_key?: string; is_active?: boolean
@@ -120,7 +131,7 @@ export const authApi = {
   deleteMember: (companyId: number, userId: number) =>
     api.delete(`/api/companies/${companyId}/members/${userId}`).then((r) => r.data),
 
-  adminUsers: () => api.get('/api/admin/users').then((r) => r.data as Array<{ id: number; username: string; email: string; blocked: boolean; companies: Array<{ company_id: number; company_name: string; role: string; status: string }> }>),
+  adminUsers: () => api.get('/api/admin/users').then((r) => r.data as Array<{ id: number; username: string; email: string; blocked: boolean; created_at: number | string | null; last_login_at: number | string | null; last_login_ip: string | null; companies: Array<{ company_id: number; company_name: string; role: string; status: string }> }>),
   setUserBlocked: (userId: number, blocked: boolean) =>
     api.patch(`/api/admin/users/${userId}/blocked`, blocked).then((r) => r.data),
   setUserPasswordAdmin: (userId: number, password: string) =>
