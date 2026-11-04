@@ -1978,7 +1978,7 @@ async def ext_download(
     _ = db
     _ = company_id
     src = os.getenv("EXTENSION_DIR", "").rstrip("/\\")
-    base = os.getenv("EXT_PUBLIC_BASE", "http://31.130.204.146:3000").rstrip("/")
+    base = os.getenv("EXT_PUBLIC_BASE", "https://www.selbi.top").rstrip("/")
     if not src:
         raise HTTPException(status_code=500, detail="EXTENSION_DIR is not set (см. backend/.env.example)")
     root = pathlib.Path(src)

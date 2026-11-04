@@ -15,7 +15,7 @@
   transition: background .18s, border-color .18s, box-shadow .18s, color .18s;
 }
 .tile__label { font-size: calc(11.5px * var(--fs)); opacity: .72; margin-bottom: 6px; }
-.tile__value { font-size: calc(23px * var(--fs)); font-weight: 700; letter-spacing: -.025em; line-height: 1.1; }
+.tile__value { font-size: calc(24px * var(--fs)); font-weight: 700; letter-spacing: -.025em; line-height: 1.1; }
 .tile__foot { margin-top: 7px; font-size: calc(11.5px * var(--fs)); opacity: .7; display: flex; align-items: center; gap: 6px; }
 .tile__delta {
   display: inline-flex; align-items: center; gap: 3px;

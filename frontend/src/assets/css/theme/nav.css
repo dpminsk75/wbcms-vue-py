@@ -33,6 +33,23 @@
 .appbar__brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: calc(17px * var(--fs)); letter-spacing: -.02em; text-decoration: none; }
 .appbar__logo { width: 30px; height: 30px; border-radius: 8px; display: block; flex: none; box-shadow: 0 0 0 1px rgba(255,255,255,.4), 0 1px 3px rgba(0,0,0,.25); }
 .appbar__nav { display: flex; gap: 2px; flex-wrap: wrap; }
+/* ============================================================
+   ГЛОБАЛЬНАЯ ШАПКА ПРИЛОЖЕНИЯ
+   TopNavbar собран на legacy-классах (menu.css), где размеры зафиксированы
+   в px: подпись раздела 12px, иконка 22px в рамке 48×48, пункт списка 14px.
+   Из-за этого шапка не реагировала на ось «Размер шрифта» — хотя §4.2 требует,
+   чтобы меню масштабировалось. Перекрываем размеры из темы; menu.css не правим.
+   ============================================================ */
+.wb-menu__item > a { font-size: calc(13px * var(--fs)); }
+.wb-icon {
+  font-size: calc(22px * var(--fs));
+  width: calc(48px * var(--fs));
+  height: calc(48px * var(--fs));
+}
+.wb-icon svg { width: calc(22px * var(--fs)); height: calc(22px * var(--fs)); }
+.wb-text { font-size: calc(14px * var(--fs)); }
+.dropdown-menu a { font-size: calc(14px * var(--fs)); }
+
 .appbar__link {
   display: flex; align-items: center; gap: 7px;
   padding: 7px 10px; border-radius: var(--radius-sm);
@@ -51,17 +68,45 @@
 /* ============================================================
    МЕНЮ РАБОЧИХ МЕСТ — пилюли (решение заказчика)
    ============================================================ */
+/* ============================================================
+   ШАПКА РАБОЧЕГО МЕСТА
+   Заголовок всегда слева и никогда не режется; меню всегда справа
+   и не опускается под заголовок — при нехватке места переносятся
+   сами пункты внутри блока меню, перенесённые строки прижаты вправо.
+   ============================================================ */
 .wsp { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 14px 16px; }
-.wsp__head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-.wsp__title { margin: 0; font-size: calc(20px * var(--fs)); font-weight: 700; letter-spacing: -.012em; color: var(--ink); white-space: nowrap; }
-.wsp__menu { margin-left: auto; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-.wsp__sub { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.wsp__head {
+  display: flex;
+  align-items: baseline;      /* заголовок — по базовой линии первой строки меню */
+  gap: 16px;
+  flex-wrap: nowrap;          /* меню не падает под заголовок */
+}
+.wsp__title {
+  margin: 0;
+  font-size: calc(22px * var(--fs));   /* заголовок страницы — уровень h1 (§4.3) */
+  font-weight: 700;
+  letter-spacing: -.015em;
+  color: var(--ink);
+  white-space: nowrap;
+  flex: 0 0 auto;             /* никогда не сжимается и не режется */
+}
+.wsp__menu {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;            /* переносы — внутри блока меню */
+  gap: 4px;
+  align-items: center;
+  justify-content: flex-end;  /* перенесённые строки тоже прижаты вправо */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.wsp__sub { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0px; }
 
 .mn {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 5px 11px; border-radius: 99px; border: 1px solid transparent;
   background: transparent; color: var(--ink-soft);
-  font-size: calc(12px * var(--fs)); font-weight: 600;
+  font-size: calc(15px * var(--fs)); font-weight: 500;   /* уровень h6 (§4.3) */
   white-space: nowrap; cursor: pointer; font-family: inherit;
   text-decoration: none; transition: background .15s, color .15s;
 }
@@ -81,8 +126,9 @@
 .stab {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 5px 12px; border-radius: 99px; border: 1px solid transparent;
-  font-size: calc(12.5px * var(--fs)); font-weight: 600;
+  font-size: calc(15px * var(--fs)); font-weight: 700;   /* уровень h6 (§4.3) */
   color: var(--brand-deep); background: var(--brand-tint);
+  font-family: inherit; cursor: pointer;   /* пункты бывают <button> — шрифт должен наследоваться */
   text-decoration: none; transition: background .15s, color .15s;
 }
 .stab:hover { background: color-mix(in srgb, var(--brand) 16%, transparent); }
@@ -90,7 +136,7 @@
 
 .stab--line {
   background: none; border: none; border-radius: 0;
-  padding: 6px 4px; border-bottom: 2px solid transparent;
+  padding: 6px 4px; border-bottom: 3px solid transparent;
   color: var(--ink-soft);
 }
 .stab--line:hover { background: none; color: var(--ink); }
@@ -99,6 +145,6 @@
 .stab__count {
   min-width: 18px; padding: 0 5px; border-radius: 9px;
   background: color-mix(in srgb, currentColor 14%, transparent);
-  font-size: calc(10.5px * var(--fs)); font-weight: 700;
+  font-size: calc(13px * var(--fs)); font-weight: 700;
   font-variant-numeric: tabular-nums; text-align: center;
 }

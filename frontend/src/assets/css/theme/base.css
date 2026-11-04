@@ -119,14 +119,39 @@ body {
 a { color: var(--brand); }
 a:hover { color: var(--brand-hover); }
 
-/* ---------- заголовок страницы — 20px по теме (§5.7.5) ----------
-   site.css задаёт .container-xxl h1 = 30px, и из-за большей специфичности
-   правило .page-title (20px) не работало: заголовки на старых страницах были
-   30px, а на новых (WbWorkspaceHead, h2) — 20px. Теперь размер один. */
-.container-xxl h1.page-title {
-  font-size: calc(20px * var(--fs));
-  font-weight: 700;
-}
+/* ============================================================
+   ЗАГОЛОВКИ h1–h6 — лестница темы (§4.3)
+   Размер задаёт тег; страница переопределяет классом (класс сильнее
+   тега) — исключения §5.7.5: 28px (карточка товара), 21px (витрина).
+   Шкала строго убывает, и нижний заголовок (h6) крупнее текста страницы.
+   Bootstrap задаёт h1–h6 плавно (RFS: 2.5rem…0.75rem) — это не лестница
+   темы, поэтому переопределяем.
+   ============================================================ */
+h1 { font-size: calc(22px * var(--fs)); font-weight: 700; letter-spacing: -.015em; color: var(--ink); }
+h2 { font-size: calc(20px * var(--fs)); font-weight: 700; letter-spacing: -.012em; color: var(--ink); }
+h3 { font-size: calc(18px * var(--fs)); font-weight: 700; color: var(--ink); }
+h4 { font-size: calc(17px * var(--fs)); font-weight: 600; color: var(--ink); }
+h5 { font-size: calc(16px * var(--fs)); font-weight: 600; color: var(--ink); }
+h6 { font-size: calc(15px * var(--fs)); font-weight: 600; color: var(--ink-soft); }
+
+/* legacy 30px: site.css:20-21 (.site-index h1, .container-xxl h1) —
+   тот же селектор, тема подключена последней → перекрывает. */
+.container-xxl h1,
+.site-index h1 { font-size: calc(22px * var(--fs)); }
+/* Заголовок на теме — .page-title (стандарт §4.3.1): без min-width и без
+   доп. отступов, иначе не встаёт в одну строку с фильтрами дат. */
+.site-index h1:not(.page-title) { padding: 6px 4px; min-width: 400px; }
+
+/* Заголовок страницы: .page-title (wb-ui.css:76) и .wb-workspace-head__title
+   (wb-ui.css:96) — тот же размер, что h1. */
+.page-title,
+.wb-workspace-head__title { font-size: calc(22px * var(--fs)); }
+
+/* ---------- текст на странице ----------
+   Уровень между ячейкой таблицы (13px) и подписью (12,5px) — §4.2:
+   14px база, масштабируется от --fs. Плаги с собственным кеглем
+   (классы страниц, bootstrap .small) переопределяют его своим. */
+p { font-size: calc(14px * var(--fs)); }
 
 .num { font-variant-numeric: tabular-nums; }
 
