@@ -25,7 +25,7 @@
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Анализ остатков", "url": "/wb-stock", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
       {"label": "Детализация", "url": "/wb-detail-by-period/weekly-report-nmid", "visibleIn": ["top", "side"], "roles": ["viewFinance"]},
-      {"label": "Новости WB", "url": "/news", "visibleIn": ["top", "side"], "roles": ["admin", "global_admin"]}
+      {"label": "Новости WB", "url": "/news", "visibleIn": ["top"], "roles": ["admin", "global_admin"]}
     ]
   },
   {
@@ -49,8 +49,8 @@
       {"label": "Собранные карточки", "url": "/competitor/captured", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
       {"label": "Поисковые запросы", "url": "/competitor/positions", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
       {"divider": true, "visibleIn": ["top", "side"]},
-      {"label": "Затраты ИИ", "url": "/seo/ai-usage", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
-      {"label": "Разбор фраз (фон)", "url": "/competitor/phrase-miner", "visibleIn": ["top", "side"], "roles": ["viewSeo"]}
+      {"label": "Затраты ИИ", "url": "/seo/ai-usage", "visibleIn": ["top"], "roles": ["viewSeo"]},
+      {"label": "Разбор фраз (фон)", "url": "/competitor/phrase-miner", "visibleIn": ["top"], "roles": ["viewSeo"]}
     ]
   },
   {
@@ -64,7 +64,7 @@
       {"label": "Заказы", "url": "/tag/orders", "visibleIn": ["top", "side"], "roles": ["viewTags"]},
       {"label": "Маржа", "url": "/tag/margin", "visibleIn": ["top", "side"], "roles": ["viewTags"]},
       {"divider": true, "visibleIn": ["top", "side"]},
-      {"label": "Список тегов", "url": "/tag/index", "visibleIn": ["top", "side"], "roles": ["viewTags"]}
+      {"label": "Список тегов", "url": "/tag/index", "visibleIn": ["top"], "roles": ["viewTags"]}
     ]
   },
   {
@@ -72,7 +72,7 @@
     "icon": "product",
     "iconClass": "bi bi-box",
     "url": "#",
-    "visibleIn": ["top", "side"],
+    "visibleIn": ["top"],
     "roles": ["viewFinance"],
     "items": [
       {"label": "Детализация", "url": "/wb-detail-by-period/weekly-report", "visibleIn": ["top", "side"], "roles": ["viewFinance"]}
@@ -88,7 +88,7 @@
     "items": [
       {"label": "Отзывы", "url": "/wb-feedback", "visibleIn": ["top", "side"], "roles": ["viewFeedback"]},
       {"divider": true, "visibleIn": ["top", "side"]},
-      {"label": "Разбор отзывов", "url": "/wb-feedback-review", "visibleIn": ["top", "side"], "roles": ["viewFeedback"]},
+      {"label": "Разбор отзывов", "url": "/wb-feedback-review", "visibleIn": ["top"], "roles": ["viewFeedback"]},
       {"label": "Вопросы", "url": "/wb-questions", "visibleIn": ["top", "side"], "roles": ["viewFeedback"]},
       {"label": "Правила ответов", "url": "/wb-feedback-reply-rules", "visibleIn": ["top", "side"], "roles": ["manageFeedback"]}
     ]
@@ -98,7 +98,7 @@
     "icon": "data",
     "iconClass": "bi bi-pie-chart",
     "url": "#",
-    "visibleIn": ["top", "side"],
+    "visibleIn": ["top"],
     "roles": ["viewOrders"],
     "items": [
       {"label": "Лента заказов", "url": "/wb-order/feed", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
@@ -117,17 +117,10 @@
     "visibleIn": ["top", "side"],
     "roles": ["viewFbs", "viewProduction"],
     "items": [
-      {"label": "FBS дашборд", "url": "/fbs-report", "visibleIn": ["top", "side"], "roles": ["viewFbs"]},
-      {"label": "Управление остатками", "url": "/wb-fbs-virtual", "visibleIn": ["top", "side"], "roles": ["manageFbs"]},
-      {"label": "Документы", "url": "/wb-doc", "visibleIn": ["top", "side"], "roles": ["manageFbs"]},
-      {"divider": true, "visibleIn": ["top", "side"]},
-      {"label": "Наличие", "url": "/wb-stock-reports/balance", "visibleIn": ["top", "side"], "roles": ["viewFbs"]},
-      {"label": "Оборотная ведомость", "url": "/wb-stock-reports/turnover", "visibleIn": ["top", "side"], "roles": ["viewFbs"]},
-      {"label": "Карточка товара", "url": "/wb-stock-reports/card", "visibleIn": ["top", "side"], "roles": ["viewFbs"]},
-      {"label": "Неликвиды", "url": "/wb-stock-reports/nonliquid", "visibleIn": ["top", "side"], "roles": ["viewFbs"]},
-      {"divider": true, "visibleIn": ["top", "side"]},
-      {"label": "Производство", "url": "/wb-production", "visibleIn": ["top", "side"], "roles": ["viewProduction"]},
-      {"label": "Смоленск", "url": "/wb-production/smolensk", "visibleIn": ["top", "side"], "roles": ["viewProduction"]}
+      {"label": "FBS", "url": "/fbs-report", "visibleIn": ["top", "side"], "roles": ["viewFbs"]},
+      {"label": "Отчёты", "url": "/wb-stock-reports/balance", "visibleIn": ["top", "side"], "roles": ["viewFbs"]},
+      {"label": "Документы", "url": "/wb-doc", "visibleIn": ["top", "side"], "roles": ["viewFbs"]},
+      {"label": "Производство", "url": "/wb-production", "visibleIn": ["top", "side"], "roles": ["viewProduction"]}
     ]
   },
   {
@@ -135,12 +128,11 @@
     "icon": "book",
     "iconClass": "bi bi-book",
     "url": "#",
-    "visibleIn": ["top", "side"],
+    "visibleIn": ["top"],
     "items": [
       {"label": "Карточки WB", "url": "/wb/cards", "visibleIn": ["top", "side"]},
-      {"label": "Склады", "url": "/wb-warehouses", "visibleIn": ["top", "side"]},
       {"divider": true, "visibleIn": ["top", "side"]},
-      {"label": "Теги", "url": "/tag/index", "visibleIn": ["top", "side"], "roles": ["viewTags"]},
+      {"label": "Теги", "url": "/tag/index", "visibleIn": ["top"], "roles": ["viewTags"]},
       {"label": "Линейки товаров", "url": "/product-catalog", "visibleIn": ["top", "side"], "roles": ["viewTags"]}
     ]
   },
@@ -149,7 +141,7 @@
     "icon": "gear",
     "iconClass": "bi bi-gear",
     "url": "#",
-    "visibleIn": ["top", "side"],
+    "visibleIn": ["top"],
     "roles": ["admin", "global_admin", "manageUsers", "manageCompanies", "manageCompanyUsers"],
     "items": [
       {"label": "Пользователи", "url": "/admin/users", "visibleIn": ["top", "side"], "roles": ["manageUsers", "manageCompanyUsers"]},

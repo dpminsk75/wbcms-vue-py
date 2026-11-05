@@ -24,7 +24,7 @@
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Анализ остатков", "url": "/wb-stock", "visibleIn": ["top", "side"]},
       {"label": "Детализация", "url": "/wb-detail-by-period/weekly-report-nmid", "visibleIn": ["top", "side"]},
-      {"label": "Новости WB", "url": "/news", "visibleIn": ["top", "side"]}
+      {"label": "Новости WB", "url": "/news", "visibleIn": ["top"]}
     ]
   },
   {
@@ -48,9 +48,9 @@
       {"label": "Собранные карточки", "url": "/competitor/captured", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
       {"label": "Поисковые запросы", "url": "/competitor/positions", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
       {"divider": true, "visibleIn": ["top", "side"]},
-      {"label": "Затраты ИИ", "url": "/seo/ai-usage", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
-      {"label": "Разбор фраз (фон)", "url": "/competitor/phrase-miner", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
-      {"label": "Фото карточек (фон)", "url": "/competitor/images", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]}
+      {"label": "Затраты ИИ", "url": "/seo/ai-usage", "visibleIn": ["top"], "roles": ["viewSeo", "admin"]},
+      {"label": "Разбор фраз (фон)", "url": "/competitor/phrase-miner", "visibleIn": ["top"], "roles": ["viewSeo", "admin"]},
+      {"label": "Фото карточек (фон)", "url": "/competitor/images", "visibleIn": ["top"], "roles": ["viewSeo", "admin"]}
     ]
   },
   {
@@ -64,7 +64,7 @@
       {"label": "Заказы", "url": "/tag/orders", "visibleIn": ["top", "side"]},
       {"label": "Маржа", "url": "/tag/margin", "visibleIn": ["top", "side"]},
       {"divider": true, "visibleIn": ["top", "side"]},
-      {"label": "Список тегов", "url": "/tag/index", "visibleIn": ["top", "side"]}
+      {"label": "Список тегов", "url": "/tag/index", "visibleIn": ["top"]}
     ]
   },
   {
@@ -72,7 +72,7 @@
     "icon": "product",
     "iconClass": "bi bi-box",
     "url": "#",
-    "visibleIn": ["top", "side"],
+    "visibleIn": ["top"],
     "roles": ["viewReports", "admin"],
     "items": [
       {"label": "Маржа по линейкам", "url": "/wb-profit/products", "visibleIn": ["top", "side"]},
@@ -90,7 +90,7 @@
     "items": [
       {"label": "Отзывы", "url": "/wb-feedback", "visibleIn": ["top", "side"]},
       {"divider": true, "visibleIn": ["top", "side"]},
-      {"label": "Разбор отзывов", "url": "/wb-feedback-review", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
+      {"label": "Разбор отзывов", "url": "/wb-feedback-review", "visibleIn": ["top"], "roles": ["viewSeo", "admin"]},
       {"label": "Вопросы", "url": "/wb-questions", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]}
     ]
   },
@@ -99,7 +99,7 @@
     "icon": "data",
     "iconClass": "bi bi-pie-chart",
     "url": "#",
-    "visibleIn": ["top", "side"],
+    "visibleIn": ["top"],
     "roles": ["viewOrders", "admin"],
     "items": [
       {"label": "Лента заказов", "url": "/wb-order/feed", "visibleIn": ["top", "side"]},
@@ -118,17 +118,10 @@
     "visibleIn": ["top", "side"],
     "roles": ["manageFbsStocks", "admin"],
     "items": [
-      {"label": "FBS дашборд", "url": "/fbs-report", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
-      {"label": "Управление остатками", "url": "/wb-fbs-virtual", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
+      {"label": "FBS", "url": "/fbs-report", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
+      {"label": "Отчёты", "url": "/wb-stock-reports/balance", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
       {"label": "Документы", "url": "/wb-doc", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
-      {"divider": true, "visibleIn": ["top", "side"]},
-      {"label": "Наличие", "url": "/wb-stock-reports/balance", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
-      {"label": "Оборотная ведомость", "url": "/wb-stock-reports/turnover", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
-      {"label": "Карточка товара", "url": "/wb-stock-reports/card", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
-      {"label": "Неликвиды", "url": "/wb-stock-reports/nonliquid", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
-      {"divider": true, "visibleIn": ["top", "side"]},
-      {"label": "Производство", "url": "/wb-production", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]},
-      {"label": "Смоленск", "url": "/wb-production/smolensk", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]}
+      {"label": "Производство", "url": "/wb-production", "visibleIn": ["top", "side"], "roles": ["manageFbsStocks", "admin"]}
     ]
   },
   {
@@ -136,13 +129,12 @@
     "icon": "book",
     "iconClass": "bi bi-book",
     "url": "#",
-    "visibleIn": ["top", "side"],
+    "visibleIn": ["top"],
     "roles": ["viewReports", "manageFbsStocks", "admin"],
     "items": [
       {"label": "Карточки WB", "url": "/wb/cards", "visibleIn": ["top", "side"], "roles": ["viewReports", "manageFbsStocks", "admin"]},
-      {"label": "Склады", "url": "/wb-warehouses", "visibleIn": ["top", "side"], "roles": ["viewReports", "manageFbsStocks", "admin"]},
       {"divider": true, "visibleIn": ["top", "side"]},
-      {"label": "Теги", "url": "/tag/index", "visibleIn": ["top", "side"], "roles": ["viewReports", "admin"]},
+      {"label": "Теги", "url": "/tag/index", "visibleIn": ["top"], "roles": ["viewReports", "admin"]},
       {"label": "Линейки товаров", "url": "/product-catalog", "visibleIn": ["top", "side"], "roles": ["viewReports", "admin"]}
     ]
   },
@@ -151,7 +143,7 @@
     "icon": "gear",
     "iconClass": "bi bi-gear",
     "url": "#",
-    "visibleIn": ["top", "side"],
+    "visibleIn": ["top"],
     "roles": ["admin", "manageUsers", "manageCompanyUsers"],
     "items": [
       {"label": "Пользователи", "url": "/admin/users", "visibleIn": ["top", "side"], "roles": ["manageUsers", "manageCompanyUsers"]},

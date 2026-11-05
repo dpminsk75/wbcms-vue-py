@@ -1,21 +1,23 @@
 <template>
-  <div class="list-group side-menu-list" style="font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px">
+  <!-- Боковое меню рабочих мест. Размеры и цвета — из темы (.side-menu-*, theme/nav.css):
+       инлайнов нет, поэтому кегль едет вместе с настройкой размера шрифта. -->
+  <div class="list-group side-menu-list">
     <template v-if="menu.length">
-      <div v-for="section in menu" :key="section.label" style="margin-bottom:12px">
-        <div style="font-weight:700; color:#1D1B2A; padding:6px 8px; display:flex; align-items:center; gap:6px">
+      <div v-for="section in menu" :key="section.label" class="side-menu__sec">
+        <div class="side-menu__head">
           <span class="wb-icon"><i :class="sectionIconClass(section)"></i></span>
           {{ section.label }}
         </div>
         <template v-for="(it, idx) in section.items" :key="(it?.label || 'div') + idx">
-          <div v-if="it?.divider" style="width:70px; margin:5px 0; border-top:1px solid #e0e0e0"></div>
-          <a v-else-if="it?.label" :href="it.url || '#'" style="display:block; padding:4px 8px 4px 28px; color:#4A3A8C; text-decoration:none; font-size:12px">{{ it.label }}</a>
+          <div v-if="it?.divider" class="side-menu__div"></div>
+          <a v-else-if="it?.label" class="side-menu__item" :href="it.url || '#'">{{ it.label }}</a>
         </template>
       </div>
     </template>
-    <div v-else style="padding:8px; font-size:12px; color:#6E6A80">
+    <div v-else class="side-menu__note">
       {{ isError ? 'Меню недоступно — обновите страницу' : 'Загрузка меню…' }}
     </div>
-    <div style="padding:8px; font-size:12px; color:#6E6A80">Выйти (demo)</div>
+    <div class="side-menu__note">Выйти (demo)</div>
   </div>
 </template>
 <script setup lang="ts">

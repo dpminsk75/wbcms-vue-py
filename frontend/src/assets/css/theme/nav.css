@@ -50,6 +50,47 @@
 .wb-text { font-size: calc(14px * var(--fs)); }
 .dropdown-menu a { font-size: calc(14px * var(--fs)); }
 
+/* ============================================================
+   ВЕРТИКАЛЬНОЕ МЕНЮ (SideMenu дашборда)
+   Было: сплошные инлайны — фиксированные px и хардкоды цветов,
+   поэтому настройка размера шрифта на меню не влияла вообще.
+   Теперь: кегли от --fs, цвета токенов, инлайнов нет.
+   ============================================================ */
+.side-menu-list { font-size: calc(13px * var(--fs)); color: var(--ink); padding-right: 20px; }
+.side-menu__sec { margin-bottom: calc(8px * var(--fs)); }
+.side-menu__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: calc(4px * var(--fs)) 8px;
+  font-weight: 700;
+  color: var(--ink);
+}
+/* иконка в боковом меню компактная: .wb-icon в теме настроен под глобальную шапку (рамка 48×48) */
+.side-menu__head .wb-icon {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  font-size: calc(16px * var(--fs));
+  color: var(--brand);
+}
+.side-menu__head .wb-icon svg { width: calc(16px * var(--fs)); height: calc(16px * var(--fs)); fill: currentColor; }
+.side-menu__div { width: 70px; margin: 4px 0; border-top: 1px solid var(--line); }
+.side-menu__item {
+  display: block;
+  padding: calc(3px * var(--fs)) 8px calc(3px * var(--fs)) 28px;
+  color: var(--brand-deep);
+  text-decoration: none;
+}
+.side-menu__item:hover { color: var(--brand); }
+.side-menu__note { padding: 8px; font-size: calc(12px * var(--fs)); color: var(--ink-soft); }
+
+/* На узких экранах (< 992px) колонка col-md-2 схлопывается в 100% —
+   полоса уехала бы от левого края, поэтому её снимаем. */
+@media (max-width: 991.98px) {
+  .side-menu-list { padding-right: 0; }
+}
+
 .appbar__link {
   display: flex; align-items: center; gap: 7px;
   padding: 7px 10px; border-radius: var(--radius-sm);
