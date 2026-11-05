@@ -47,7 +47,10 @@ async def process_company(db, company: dict, date_from: str, date_to: str, dry_r
             stats["skipped"] += 1
             continue
         if dry_run:
-            print(f"  [dry] {fb['id']} rule={gen['rule']['id']}: {gen['text'][:80]}")
+            # печатаем ответ ЦЕЛИКОМ (раньше было обрезание [:80] — текста не было видно)
+            print(f"  [dry] {fb['id']} rule={gen['rule']['id']}:")
+            for line in gen["text"].splitlines():
+                print(f"      {line}")
             continue
         res = await sender.send_answer(dict(fb), gen["text"], gen["rule"]["id"])
         if res["ok"]:
@@ -139,7 +142,7 @@ async def run(args) -> int:
                     st = await FeedbackSyncService(db, company_id=cid).sync(
                         date_from=args.date_from, date_to=args.date_to,
                         include_current=True, include_archive=False,
-                        narrow_update=True)
+                        narrow_update=True, dry_run=args.dry_run)
                 except Exception as e:
                     print(f"[{comp['name']}] sync ERROR: {e}", flush=True)
                     total["errors"] += 1
@@ -148,8 +151,9 @@ async def run(args) -> int:
                     print(f"[{comp['name']}] sync SKIP: {st['skipped']}", flush=True)
                 else:
                     cur = st.get("current") or {}
+                    mode = " DRY-RUN (в БД не писали)" if args.dry_run else ""
                     print(f"[{comp['name']}] sync: fetched={cur.get('fetched')} "
-                          f"saved={cur.get('saved')} стр.{cur.get('pages')}", flush=True)
+                          f"saved={cur.get('saved')} стр.{cur.get('pages')}{mode}", flush=True)
             st = await process_company(
                 db, dict(comp), args.date_from, args.date_to, args.dry_run)
             for k in total:
