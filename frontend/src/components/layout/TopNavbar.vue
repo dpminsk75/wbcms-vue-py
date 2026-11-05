@@ -16,13 +16,13 @@
         <div style="font-weight:700; padding:6px 0">{{ companyLabel }}</div>
         <a v-if="isGlobalAdmin" href="#" @click.prevent="pickCompany('all')" style="display:block; padding:4px 0; font-size:13px; color:#4A3A8C; text-decoration:none">Все компании</a>
         <a v-for="c in auth.companies" :key="c.id" href="#" @click.prevent="pickCompany(c.id)" style="display:block; padding:4px 0; font-size:13px; color:#4A3A8C; text-decoration:none">{{ c.name }}</a>
-        <router-link to="/settings/password" @click="mobileOpen=false" style="display:block; padding:8px 0; font-size:13px; color:#4A3A8C; text-decoration:none">Сменить пароль</router-link>
         <a href="#" @click.prevent="doLogout" style="display:block; padding:8px 0; font-size:13px; color:#c00; text-decoration:none">Выйти ({{ auth.user?.username || '...' }})</a>
       </div>
       <div v-for="s in menu" :key="s.label" style="margin-bottom:12px">
         <div style="font-weight:700; padding:6px 0">{{ s.label }}</div>
         <template v-for="(it, idx) in s.items" :key="(it?.label || 'div') + idx">
-          <a v-if="it?.label && !it.divider" href="#" @click.prevent style="display:block; padding:4px 0; font-size:13px; color:#4A3A8C; text-decoration:none">{{ it.label }}</a>
+          <router-link v-if="it?.label && !it.divider && isSpa(it.url)" :to="toSpa(it.url)!" @click="mobileOpen=false" style="display:block; padding:4px 0; font-size:13px; color:#4A3A8C; text-decoration:none">{{ it.label }}</router-link>
+          <a v-else-if="it?.label && !it.divider" href="#" @click.prevent style="display:block; padding:4px 0; font-size:13px; color:#4A3A8C; text-decoration:none">{{ it.label }}</a>
         </template>
       </div>
     </div>
@@ -65,18 +65,6 @@
                 <a class="dropdown-item" :class="{ active: auth.companyId === c.id }" href="#" @click.prevent="pickCompany(c.id)">{{ c.name }}</a>
               </li>
             </ul>
-          </li>
-          <li class="nav-item ms-2 wb-menu__theme">
-            <router-link class="nav-link wb-theme-link" to="/settings/appearance" title="Настройки стилей">
-              <span class="wb-icon"><i class="bi bi-palette"></i></span>
-              <span class="wb-text">Стиль</span>
-            </router-link>
-          </li>
-          <li class="nav-item ms-2 wb-menu__theme">
-            <router-link class="nav-link wb-theme-link" to="/settings/password" title="Сменить пароль">
-              <span class="wb-icon"><i class="bi bi-key"></i></span>
-              <span class="wb-text">Сменить пароль</span>
-            </router-link>
           </li>
           <li class="nav-item ms-2 wb-menu__logout">
             <!-- Компании/Пользователи идут из backend/config/menu.json (секция Админка), хардкода тут нет -->
@@ -127,9 +115,9 @@ const fallbackMenu = [
   { label:'По тегам', icon:'tag', iconClass:'bi bi-tag', items:[ {label:'Заказы', url:'/tag/view'},{label:'', divider:true},{label:'Список тегов', url:'/tag/index'} ] },
   { label:'По товарам', icon:'product', iconClass:'bi bi-box', items:[ {label:'Детализация', url:'/wb-detail-by-period/weekly-report'} ] },
   { label:'Данные', icon:'data', iconClass:'bi bi-pie-chart', items:[ {label:'Лента заказов', url:'/wb-order/feed'},{label:'', divider:true},{label:'Заказы', url:'/wb-order/index'},{label:'Продажи', url:'/wb-sales/index'},{label:'', divider:true},{label:'Себестоимость', url:'/cost-import/list'} ] },
-  { label:'Склад', icon:'warehouse', iconClass:'bi bi-box-seam', items:[ {label:'Управление остатками', url:'/wb-fbs-virtual'},{label:'Документы', url:'/wb-doc'},{label:'', divider:true},{label:'Наличие', url:'/wb-stock-reports/balance'},{label:'Оборотная ведомость', url:'/wb-stock-reports/turnover'},{label:'Карточка товара', url:'/wb-stock-reports/card'},{label:'Неликвиды', url:'/wb-stock-reports/nonliquid'},{label:'', divider:true},{label:'Производство', url:'/wb-production'} ] },
-  { label:'Справочники', icon:'book', iconClass:'bi bi-book', items:[ {label:'Карточки WB', url:'/wb/cards'},{label:'Склады', url:'/wb-warehouses'},{label:'Виртуальные склады', url:'/wb-fbs-virtual'},{label:'', divider:true},{label:'Теги', url:'/tag/index'},{label:'Товары', url:'/product/index'},{label:'Составные товары', url:'/product-wb-card/index'} ] },
-  { label:'Админка', icon:'gear', iconClass:'bi bi-gear', items:[ {label:'Пользователи', url:'/admin/users'},{label:'Роли', url:'/admin/roles'},{label:'Компании', url:'/companies'},{label:'', divider:true},{label:'Быстрые кнопки', url:'/admin/quick-buttons'},{label:'SEO-модели', url:'/admin/seo-models'},{label:'Меню', url:'/admin/menu'} ] },
+  { label:'Склад', icon:'warehouse', iconClass:'bi bi-box-seam', items:[ {label:'FBS', url:'/fbs-report'},{label:'Отчёты', url:'/wb-stock-reports/balance'},{label:'Документы', url:'/wb-doc'},{label:'Производство', url:'/wb-production'} ] },
+  { label:'Справочники', icon:'book', iconClass:'bi bi-book', items:[ {label:'Карточки WB', url:'/wb/cards'},{label:'', divider:true},{label:'Теги', url:'/tag/index'},{label:'Товары', url:'/product/index'},{label:'Составные товары', url:'/product-wb-card/index'} ] },
+  { label:'Админка', icon:'gear', iconClass:'bi bi-gear', items:[ {label:'Пользователи', url:'/admin/users'},{label:'Роли', url:'/admin/roles'},{label:'Компании', url:'/companies'},{label:'', divider:true},{label:'Быстрые кнопки', url:'/admin/quick-buttons'},{label:'SEO-модели', url:'/admin/seo-models'},{label:'Меню', url:'/admin/menu'},{label:'', divider:true},{label:'Стиль', url:'/settings/appearance'},{label:'Сменить пароль', url:'/settings/password'} ] },
 ]
 
 const { data: menuRaw, isError } = useQuery({ queryKey: ['menu','top', computed(() => auth.user?.username || 'guest')], queryFn: ()=> (dashboardApi as any).menu('top'), initialData: fallbackMenu as any })
@@ -165,9 +153,12 @@ const spaMap: Record<string,string> = {
   '/admin/quick-buttons': '/admin/quick-buttons', 
   '/admin/menu': '/admin/menu', 
   '/admin/invites': '/admin/invites', 
-  '/companies': '/companies', 
+  '/companies': '/companies',
   '/admin/users': '/admin/users',
   '/admin/roles': '/admin/roles',
+  // личные настройки — из раздела «Админка» верхнего меню
+  '/settings/appearance': '/settings/appearance',
+  '/settings/password': '/settings/password',
   '/competitor/new-cards': '/competitor/new-cards',
   '/competitor/captured': '/competitor/captured',
   '/competitor/pick': '/competitor/pick',
@@ -182,6 +173,15 @@ const spaMap: Record<string,string> = {
   '/wb-stock-reports/card': '/wb-stock-reports/card',
   '/wb-stock-reports/nonliquid': '/wb-stock-reports/nonliquid',
   '/wb-production': '/wb-production',
+  // блок «Склад» — FBS (5 страниц) + «Анализ остатков» (в группе «Отчеты»)
+  '/fbs-report': '/fbs-report',
+  '/fbs-orders': '/fbs-orders',
+  '/fbs-cancels': '/fbs-cancels',
+  '/fbs-commission': '/fbs-commission',
+  '/fbs-pvz': '/fbs-pvz',
+  '/wb-stock': '/wb-stock',
+  '/wb-promotions': '/wb-promotions',
+  '/wb-promotions/selection': '/wb-promotions/selection',
   // блок «Отзывы» — разделы переехали в /wb-feedback-*
   '/wb-feedback': '/wb-feedback',
   '/wb-feedback-review': '/wb-feedback-review',

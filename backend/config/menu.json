@@ -159,7 +159,10 @@
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Диагностика расширения", "url": "/ext/diag", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
       {"label": "Установка расширения", "url": "/ext/install", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
-      {"label": "Фильтры расширения", "url": "/ext/install?block=filters", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]}
+      {"label": "Фильтры расширения", "url": "/ext/install?block=filters", "visibleIn": ["top", "side"], "roles": ["viewSeo", "admin"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "Стиль", "url": "/settings/appearance", "visibleIn": ["top", "side"], "roles": ["admin"]},
+      {"label": "Сменить пароль", "url": "/settings/password", "visibleIn": ["top", "side"], "roles": ["admin"]}
     ]
   }
 ]

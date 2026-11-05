@@ -14,6 +14,7 @@
       {"label": "Тепловая карта", "url": "/wb-order/heatmap", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Реклама", "url": "/wb-adv-report/", "visibleIn": ["top", "side"], "roles": ["viewAdv"]},
+      {"label": "Акции WB", "url": "/wb-promotions", "visibleIn": ["top", "side"], "roles": ["viewFinance"]},
       {"label": "По ГЕО", "url": "/geo/sales-map", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
       {"label": "Возвраты", "url": "/unclaimed-orders/", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
       {"label": "Штрафы и потери", "url": "/wb-penalty/logistics", "visibleIn": ["top", "side"], "roles": ["viewOrders"]},
@@ -157,7 +158,10 @@
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Диагностика расширения", "url": "/ext/diag", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
       {"label": "Установка расширения", "url": "/ext/install", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
-      {"label": "Фильтры расширения", "url": "/ext/install?block=filters", "visibleIn": ["top", "side"], "roles": ["viewSeo"]}
+      {"label": "Фильтры расширения", "url": "/ext/install?block=filters", "visibleIn": ["top", "side"], "roles": ["viewSeo"]},
+      {"divider": true, "visibleIn": ["top", "side"]},
+      {"label": "Стиль", "url": "/settings/appearance", "visibleIn": ["top", "side"], "roles": ["admin", "global_admin"]},
+      {"label": "Сменить пароль", "url": "/settings/password", "visibleIn": ["top", "side"], "roles": ["admin", "global_admin"]}
     ]
   }
 ]
