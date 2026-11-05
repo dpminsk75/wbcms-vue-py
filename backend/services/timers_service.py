@@ -119,6 +119,11 @@ ALLOWED: dict[str, dict] = {
         "default": "*:00,30",
         "group": "day",
     },
+    "wbcms-feedback-auto-reply": {
+        "title": "Автоответы на отзывы WB (каждый час в :25)",
+        "default": "*:25",
+        "group": "day",
+    },
     "wbcms-questions-sync": {
         "title": "Синк вопросов WB (каждые 4 часа)",
         "default": "00,04,08,12,16,20:15",

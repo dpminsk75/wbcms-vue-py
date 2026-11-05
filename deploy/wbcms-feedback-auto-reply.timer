@@ -1,0 +1,9 @@
+[Unit]
+Description=Run wbcms feedback auto-reply every hour at :25 (порт PHP-крона 25 * * * *)
+
+[Timer]
+OnCalendar=*-*-* *:25:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target

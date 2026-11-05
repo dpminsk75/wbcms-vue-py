@@ -4,7 +4,12 @@
   python3 backend/workers/feedback_auto_reply.py --date 2026-09-18
   python3 backend/workers/feedback_auto_reply.py --date-from 2026-09-10 --date-to 2026-09-17
   python3 backend/workers/feedback_auto_reply.py --feedback-id jB4SVlEFyWfyyvKhTvst [--force]
+  python3 backend/workers/feedback_auto_reply.py --date-from -1 --date-to 0   # вчера–сегодня
   DRY_RUN=1 python3 backend/workers/feedback_auto_reply.py ...  # только sync+select+match+build, без POST
+
+Даты вида «-N» (или «N») = N дней назад, «0» = сегодня (как в feedback_sync.py).
+Таймер: deploy/wbcms-feedback-auto-reply.service/.timer (OnCalendar=*-*-* *:25:00 —
+порт PHP-крона `25 * * * * php yii wb-auto-reply/process`, окно «вчера–сегодня»).
 
 Цикл по активным компаниям с api_key (как processPeriod:84-97):
   DRY_RUN=1 python3 backend/workers/feedback_auto_reply.py --date 2026-09-18 --sync
@@ -55,14 +60,37 @@ async def process_company(db, company: dict, date_from: str, date_to: str, dry_r
     return stats
 
 
+def _rel_date(value: str | None) -> str | None:
+    """«-1» / «1» → дата N дней назад (YYYY-MM-DD). Остальное — как есть.
+
+    Нужно для systemd-юнита: `--date-from -1 --date-to 0` = «вчера–сегодня»
+    (в PHP было окно «сегодня», из-за чего отзывы после 23:00 ждали вечно).
+    """
+    if not value:
+        return None
+    s = str(value).strip()
+    raw = s[1:] if s.startswith("-") else s
+    if raw.isdigit() and int(raw) <= 31:
+        from datetime import date, timedelta
+        return (date.today() - timedelta(days=int(raw))).isoformat()
+    return s
+
+
 async def run(args) -> int:
     from sqlalchemy import text
     from backend.database import get_session
     if args.date:
         args.date_from = args.date_to = args.date
+    else:
+        # «-N» = N дней назад, «N» (0..31) = N дней назад (0 = сегодня)
+        args.date_from = _rel_date(args.date_from)
+        args.date_to = _rel_date(args.date_to)
     if not args.date_from:
         from datetime import date as _date
-        args.date_from = args.date_to = _date.today().isoformat()
+        args.date_from = _date.today().isoformat()
+    if not args.date_to:
+        from datetime import date as _date
+        args.date_to = _date.today().isoformat()
     async with get_session() as db:
         companies = (await db.execute(text(
             "SELECT id, name, api_key FROM companies WHERE is_active = 1"

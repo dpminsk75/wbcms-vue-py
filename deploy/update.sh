@@ -28,6 +28,7 @@ sudo cp "$DEPLOY"/wbcms-py.service "$DEPLOY"/wbcms-web.service \
   "$DEPLOY"/wbcms-adv-index.service "$DEPLOY"/wbcms-adv-index.timer \
   "$DEPLOY"/wbcms-news.service "$DEPLOY"/wbcms-news.timer \
   "$DEPLOY"/wbcms-feedback-sync.service "$DEPLOY"/wbcms-feedback-sync.timer \
+  "$DEPLOY"/wbcms-feedback-auto-reply.service "$DEPLOY"/wbcms-feedback-auto-reply.timer \
   "$DEPLOY"/wbcms-cards-sync.service "$DEPLOY"/wbcms-cards-sync.timer \
   "$DEPLOY"/wbcms-stocks-all.service "$DEPLOY"/wbcms-stocks-all.timer \
   "$DEPLOY"/wbcms-paid-storage.service "$DEPLOY"/wbcms-paid-storage.timer \
@@ -57,6 +58,7 @@ sudo systemctl enable --now \
   wbcms-commission-tariffs.timer wbcms-finance-balance.timer \
   wbcms-funnel-sync.timer wbcms-funnel-missing.timer wbcms-adv-queries.timer \
   wbcms-adv-index.timer wbcms-news.timer wbcms-feedback-sync.timer wbcms-cards-sync.timer \
+  wbcms-feedback-auto-reply.timer \
   wbcms-stocks-all.timer wbcms-paid-storage.timer wbcms-acceptance.timer \
   wbcms-fbs-all.timer wbcms-orders-sync.timer wbcms-sales-fetch.timer \
   wbcms-search-report.timer wbcms-fbs-supplies.timer \
