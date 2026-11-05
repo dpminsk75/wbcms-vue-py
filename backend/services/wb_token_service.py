@@ -182,12 +182,59 @@ async def ping_token(raw: str, only_in_token: bool = True) -> dict:
             "checked_at": datetime.now(timezone.utc).isoformat()}
 
 
+def token_digest(raw: str) -> str:
+    """sha256 токена — отпечаток, по которому сверяем строку проверки
+    (company_wb_tokens.token_sha256) с текущим companies.api_key."""
+    return hashlib.sha256((raw or "").strip().encode("utf-8")).hexdigest()
+
+
+async def refresh_saved_token(db: AsyncSession, company_id: int) -> bool:
+    """Токен companies.api_key сменили — активная строка проверки устарела.
+
+    Пересобираем её БЕЗ запросов к WB (только decode JWT): гейт воркеров
+    (wb_sync_base.company_sync_plan) и /wb-token/status сразу видят новый токен,
+    а не ждут ночного healthcheck. Живой ping не делаем — его гоняют
+    /wb-token/check и wb_token_healthcheck.
+
+    True — строка перезаписана.
+    """
+    row = (await db.execute(
+        text("SELECT api_key FROM companies WHERE id=:c LIMIT 1"), {"c": company_id},
+    )).first()
+    raw = ((row[0] if row else "") or "").strip()
+    if not raw:
+        return False
+    digest = token_digest(raw)
+    cur = (await db.execute(
+        text("SELECT token_sha256 FROM company_wb_tokens "
+             "WHERE company_id=:c AND is_active=1 LIMIT 1"), {"c": company_id},
+    )).first()
+    if cur and (cur[0] or "") == digest:
+        # активная строка уже про текущий токен — не трогаем (иначе потеряем живой ping)
+        return False
+    dec = decode_token(raw)
+    if not dec.get("valid"):
+        # токен нечитаемый — активную строку снимаем, чтобы гейт не смотрел на старый токен
+        try:
+            await db.rollback()
+            async with db.begin():
+                await db.execute(
+                    text("UPDATE company_wb_tokens SET is_active=0 WHERE company_id=:c"),
+                    {"c": company_id},
+                )
+        except Exception:
+            await db.rollback()
+        return False
+    # save_check с active=True: старые строки в архив, новая — активная (ping без живой проверки)
+    return await save_check(db, company_id, raw, dec, active=True)
+
+
 async def save_check(db: AsyncSession, company_id: int, raw: str, out: dict, active: bool) -> bool:
     """UPSERT результата проверки в company_wb_tokens. False — нечего/некуда писать
     (невалидный токен, нет таблицы). Используется и роутером, и daily-скриптом."""
     if not out.get("valid"):
         return False
-    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    digest = token_digest(raw)
     exp_at = None
     try:
         exp_at = datetime.fromisoformat(out["exp_at"]) if out.get("exp_at") else None

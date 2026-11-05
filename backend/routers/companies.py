@@ -210,7 +210,17 @@ async def update_company(
         await db.rollback()  # сбрасываем autobegin от deps/gates перед begin (B6)
         async with db.begin():
             company = await auth_service.update_company(db, company_id, data)
-            return auth_service.public_company(company)
+            result = auth_service.public_company(company)
+        # Токен сменили — активная строка проверки (company_wb_tokens) про старый токен:
+        # пересобираем её БЕЗ запросов к WB (decode JWT). Иначе /wb-token/status и гейт
+        # воркеров (wb_sync_base.company_sync_plan) до ночного healthcheck смотрят на старый.
+        if data.get("api_key"):
+            try:
+                from backend.services import wb_token_service as wb_tok
+                await wb_tok.refresh_saved_token(db, company_id)
+            except Exception:
+                await db.rollback()
+        return result
     except ValueError as exc:
         await db.rollback()
         raise HTTPException(status_code=400 if str(exc) != "company not found" else 404, detail=str(exc))

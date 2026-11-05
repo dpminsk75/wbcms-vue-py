@@ -89,6 +89,7 @@
                     </button>
                     <span v-if="wbChecking" class="page-company-detail__wb-hint">проверяю WB: {{ wbCheckingPhase }}…</span>
                     <span v-else-if="wbError" class="wb-error">{{ wbError }}</span>
+                    <span v-else-if="wbNotice" class="page-company-detail__wb-hint">{{ wbNotice }}</span>
                   </div>
                   <div v-if="wbToken && wbToken.has_token && wbToken.valid" class="page-company-detail__wb-status">
                     <div class="page-company-detail__wb-line">
@@ -99,11 +100,13 @@
                       <span v-else class="badge bg-success" title="Бит 30 маски s не установлен — токен на чтение и запись">чтение и запись</span>
                       <span :class="typeClass" :title="typeTitle">{{ wbToken.token_type_ru || '—' }}</span>
                       <span v-if="wbToken.is_test" class="badge bg-light text-muted border" title="Бит 0 маски s — тестовый контур, боевых данных нет">test</span>
+                      <span v-if="wbToken.token_sha" class="page-company-detail__wb-hint" title="Отпечаток токена (sha256, первые 8 симв.) — сверяется с записью в БД">sha {{ wbToken.token_sha }}</span>
                     </div>
                     <div class="page-company-detail__wb-cats" title="Категории из битмаски s токена. Зелёная — доступ есть, серая — нет. Наведите на букву для деталей.">
                       <span v-for="c in WB_TOKEN_CATS" :key="c.key" :class="catClass(c.key)" :title="catTitle(c.key)">{{ c.letter }}</span>
                     </div>
                     <div v-if="wbToken.source === 'draft'" class="page-company-detail__wb-hint">проверен черновик из поля (не сохранён)</div>
+                    <div v-else-if="wbToken.stale" class="page-company-detail__wb-hint">живой ping по этому токену ещё не прогонялся — нажмите «Проверить»</div>
                   </div>
                   <div v-else-if="wbToken && wbToken.has_token && wbToken.valid === false" class="wb-error">Токен не разбирается: {{ wbToken.error }}</div>
                   <div v-else-if="wbToken && !wbToken.has_token" class="page-company-detail__wb-hint">токен не задан</div>
@@ -614,6 +617,8 @@ const wbLoading = ref(false)
 const wbChecking = ref(false)
 const wbCheckingPhase = ref('')
 const wbError = ref('')
+// Сообщения без ошибки: живая проверка отложена троттлингом (1 проверка в минуту)
+const wbNotice = ref('')
 // даты — useDateFmt (см. выше: fmtDT/fmtDate/fmtDateTime)
 // Тип токена по acc/for/t: personal — наш случай (on-premise), service — чужой SaaS (нам нельзя)
 const TYPE_CLASS: Record<string, string> = { personal: 'bg-success', service: 'bg-info text-dark', basic: 'bg-secondary', test: 'bg-warning text-dark', unknown: 'bg-danger' }
@@ -695,6 +700,7 @@ async function loadWbProfile() {
 async function checkWb() {
   wbChecking.value = true
   wbError.value = ''
+  wbNotice.value = ''
   try {
     const draft = companyForm.api_key?.trim() ? companyForm.api_key.trim() : undefined
     // Этап 1: decode + ping категорий (~5-10с)
@@ -714,6 +720,7 @@ async function checkWb() {
     // Сразу после ручной проверки бэк троттлит (60с) — тогда просто обновляем статус без сети
     if (e?.response?.status === 429) {
       wbError.value = ''
+      wbNotice.value = 'живая проверка отложена: лимит 1 проверка в минуту — показан статус сохранённого токена'
       loadWbStatus()
     } else {
       wbError.value = e?.response?.data?.detail || String(e)
@@ -894,6 +901,7 @@ async function onSaveCompany() {
     await load()
     // «Сохранено» — ПОСЛЕ load(): load() сбрасывает флаг, иначе надпись гаснет сразу
     companySaved.value = true
+    wbNotice.value = ''
     savedAt.value = fmtTime(new Date())
     if (savedTimer) clearTimeout(savedTimer)
     savedTimer = setTimeout(() => { companySaved.value = false }, 8000)

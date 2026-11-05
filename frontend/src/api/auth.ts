@@ -13,6 +13,7 @@ export interface WbTokenCategory { key: string; bit: number; letter: string; nam
 export interface WbTokenPing { http: number | null; ok: boolean; ms: number | null; skipped?: boolean; no_jam?: boolean; error?: string }
 export interface WbTokenState {
   has_token: boolean; source?: 'saved' | 'draft'; valid?: boolean; error?: string;
+  stale?: boolean; token_sha?: string;
   token_id?: string | null; sid?: string | null; exp_at?: string | null;
   days_left?: number | null; expired?: boolean; s_mask?: number;
   is_test?: boolean; is_readonly?: boolean;

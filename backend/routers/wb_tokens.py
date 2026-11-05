@@ -6,7 +6,6 @@ POST /check принимает опциональный {"api_key"} — черн
 до сохранения, пишется с is_active=0). Троттлинг живых проверок — 60с на компанию.
 """
 
-import hashlib
 import json
 import time
 from datetime import datetime, timezone
@@ -72,6 +71,9 @@ def _row_to_status(row: dict) -> dict[str, Any]:
         "token_type_ru": svc.TOKEN_TYPES.get(row.get("token_type") or "unknown", "Неизвестный"),
         "categories": cats,
         "ping": ping,
+        # ping IS NULL — строка собрана без живой проверки (decode-only, после смены токена)
+        "stale": ping is None,
+        "token_sha": (row.get("token_sha256") or "")[:8],
         "checked_at": row["last_check_at"].isoformat() if hasattr(row.get("last_check_at"), "isoformat") else row.get("last_check_at"),
     }
 
@@ -111,14 +113,18 @@ async def wb_token_status(
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(require_company_admin),
 ) -> dict[str, Any]:
-    row = await _active_row(db, company_id)
-    if row:
-        return _row_to_status(row)
+    # Сверяем активную строку проверки с текущим companies.api_key: если токен
+    # сменили (сохранили новый), строка про старый токен — показываем статус
+    # сохранённого токена (decode, без сети), а не устаревшую строку.
     raw = await _saved_token(db, company_id)
+    row = await _active_row(db, company_id)
+    if row and raw and (row.get("token_sha256") or "") == svc.token_digest(raw):
+        return _row_to_status(row)
     if not raw:
         return {"has_token": False}
     out = svc.decode_token(raw)
-    return {"has_token": True, "source": "saved", **out, "ping": None}
+    return {"has_token": True, "source": "saved", **out, "ping": None,
+            "stale": True, "token_sha": svc.token_digest(raw)[:8]}
 
 
 @router.post("/check")
@@ -135,7 +141,7 @@ async def wb_token_check(
         # Черновик, совпадающий с сохранённым токеном, — это сохранённый (иначе
         # поле формы, подставляющее api_key при загрузке, вечно давало бы draft
         # и активная строка в company_wb_tokens никогда не появлялась бы).
-        if saved_raw and hashlib.sha256(saved_raw.encode("utf-8")).hexdigest() == hashlib.sha256(draft.encode("utf-8")).hexdigest():
+        if saved_raw and svc.token_digest(saved_raw) == svc.token_digest(draft):
             source = "saved"
         else:
             source = "draft"
@@ -158,7 +164,7 @@ def _resolve_raw(saved_raw: str | None, draft: str) -> tuple[str | None, str]:
         # Черновик, совпадающий с сохранённым токеном, — это сохранённый (иначе
         # поле формы, подставляющее api_key при загрузке, вечно давало бы draft
         # и активная строка в company_wb_tokens никогда не появлялась бы).
-        if saved_raw and hashlib.sha256(saved_raw.encode("utf-8")).hexdigest() == hashlib.sha256(draft.encode("utf-8")).hexdigest():
+        if saved_raw and svc.token_digest(saved_raw) == svc.token_digest(draft):
             return draft, "saved"
         return draft, "draft"
     return saved_raw, "saved"
