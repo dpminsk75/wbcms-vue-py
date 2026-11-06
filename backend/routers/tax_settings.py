@@ -91,6 +91,39 @@ async def tax_create_version(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.put("/versions/{version_id}")
+async def tax_update_version(
+    version_id: int,
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+    user: dict = Depends(get_current_user),
+    _u: dict = Depends(require_manage_settings),
+):
+    """Изменить версию настроек (ставка/режим/НДС/причина/даты)."""
+    svc = _svc(db, company_id, user)
+    try:
+        return await svc.update_version(version_id, payload)
+    except TaxSettingsError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/versions/{version_id}")
+async def tax_delete_version(
+    version_id: int,
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+    user: dict = Depends(get_current_user),
+    _u: dict = Depends(require_manage_settings),
+):
+    """Удалить версию настроек."""
+    svc = _svc(db, company_id, user)
+    try:
+        return await svc.delete_version(version_id)
+    except TaxSettingsError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.get("/nds-coverage")
 async def tax_nds_coverage(
     db: AsyncSession = Depends(get_db),

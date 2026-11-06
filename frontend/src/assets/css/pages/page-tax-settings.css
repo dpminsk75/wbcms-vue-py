@@ -32,3 +32,11 @@
 
 /* Информационная панель (нет manageSettings / ошибка) */
 .page-tax-settings__alert .badge { margin-right: 6px; }
+
+/* Модалка правки версии — поверх содержимого страницы
+   (у .wb-modal-backdrop z-index нет, это легаси-каркас). */
+.page-tax-settings__backdrop { z-index: 1060; }
+.page-tax-settings__modal-title { font-size: calc(16px * var(--fs)); font-weight: 700; }
+
+/* Подпись под полем (например «пусто — бессрочно») */
+.page-tax-settings__hint { color: var(--ink-soft); font-size: calc(11.5px * var(--fs)); }

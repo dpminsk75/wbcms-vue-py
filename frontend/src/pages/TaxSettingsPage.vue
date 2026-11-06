@@ -56,6 +56,7 @@
                 <th class="t-left">НДС</th>
                 <th class="t-left">Причина</th>
                 <th class="t-left">Кто</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -70,9 +71,17 @@
                 <td class="t-left">{{ v.vat_source === 'cards' ? 'по ставке карточки' : 'не выделять' }}</td>
                 <td class="t-left">{{ v.reason || '—' }}</td>
                 <td class="t-left">{{ v.created_by_name || v.created_by || '—' }}</td>
+                <td class="t-right">
+                  <button class="hd-btn" type="button" :disabled="!canManage" @click="openVersion(v)">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                  <button class="hd-btn" type="button" :disabled="!canManage" @click="removeVersion(v)">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </td>
               </tr>
               <tr v-if="!versions.length">
-                <td colspan="7" class="text-center text-muted py-3">Настроек пока нет</td>
+                <td colspan="8" class="text-center text-muted py-3">Настроек пока нет</td>
               </tr>
             </tbody>
           </table>
@@ -139,6 +148,69 @@
         </div>
       </div>
     </template>
+
+    <!-- ==================== ПРАВКА ВЕРСИИ ==================== -->
+    <div v-if="editModal" class="wb-modal-backdrop page-tax-settings__backdrop" @click.self="editModal = false">
+      <form class="wb-modal-box wb-modal-box--wide" @submit.prevent="saveVersion">
+        <div class="d-flex align-items-center gap-2">
+          <span class="page-tax-settings__modal-title">Версия настроек от {{ editForm.valid_from }}</span>
+          <button type="button" class="btn-close ms-auto" aria-label="Закрыть" @click="editModal = false"></button>
+        </div>
+        <div class="row g-3">
+          <div class="col-4">
+            <div class="wb-field">
+              <label class="wb-field__label">Действует с</label>
+              <WbDateInput v-model="editForm.valid_from" />
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="wb-field">
+              <label class="wb-field__label">по</label>
+              <WbDateInput v-model="editForm.valid_to" />
+              <span class="page-tax-settings__hint">пусто — бессрочно</span>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="wb-field">
+              <label class="wb-field__label">Режим</label>
+              <select v-model="editForm.mode" class="wb-select">
+                <option v-for="m in meta.modes" :key="m.value" :value="m.value">{{ m.label }}</option>
+              </select>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="wb-field">
+              <label class="wb-field__label">Ставка налога, %</label>
+              <input v-model.number="editForm.main_rate" class="wb-input" type="number" min="0" max="100" step="0.1">
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="wb-field">
+              <label class="wb-field__label">НДС</label>
+              <select v-model="editForm.vat_source" class="wb-select">
+                <option v-for="v in meta.vat_sources" :key="v.value" :value="v.value">{{ v.label }}</option>
+              </select>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="wb-field">
+              <label class="wb-field__label">Причина</label>
+              <input v-model="editForm.reason" class="wb-input">
+            </div>
+          </div>
+        </div>
+        <p class="page-tax-settings__hint mb-0">
+          Даты не должны наезжать на другие версии. Если «по» пусто — версия бессрочная.
+        </p>
+        <div v-if="editMsg" class="page-tax-settings__hint">
+          <span class="badge badge--bad">Ошибка</span> {{ editMsg }}
+        </div>
+        <div class="wb-modal-actions">
+          <button type="button" class="btn btn--outline" @click="editModal = false">Отмена</button>
+          <button type="submit" class="btn btn--brand" :disabled="saving">Сохранить</button>
+        </div>
+      </form>
+    </div>
 
     <!-- ==================== 3. СТАВКИ НДС ==================== -->
     <template v-else-if="tab === 'nds'">
@@ -380,6 +452,66 @@ async function loadAll() {
     coverage.value = await taxSettingsApi.ndsCoverage()
   } catch (e: any) {
     coverageErr.value = e?.response?.data?.detail || e?.message || String(e)
+  }
+}
+
+/* ------------------------------------------------- правка версии */
+const editModal = ref(false)
+const editMsg = ref('')
+const editForm = ref({
+  id: 0,
+  valid_from: '',
+  valid_to: '',
+  mode: 'income',
+  main_rate: 7 as number | null,
+  vat_source: 'cards',
+  reason: '',
+})
+
+function openVersion(v: TaxVersion) {
+  editMsg.value = ''
+  editForm.value = {
+    id: v.id,
+    valid_from: v.valid_from,
+    valid_to: v.valid_to || '',
+    mode: v.mode,
+    main_rate: v.main_rate,
+    vat_source: v.vat_source,
+    reason: v.reason || '',
+  }
+  editModal.value = true
+}
+
+async function saveVersion() {
+  if (!editForm.value.id) return
+  editMsg.value = ''
+  saving.value = true
+  try {
+    await taxSettingsApi.updateVersion(editForm.value.id, {
+      mode: editForm.value.mode,
+      main_rate: Number(editForm.value.main_rate || 0),
+      vat_source: editForm.value.vat_source,
+      valid_from: editForm.value.valid_from,
+      valid_to: editForm.value.valid_to || null,
+      reason: editForm.value.reason,
+    })
+    editModal.value = false
+    await loadAll()
+  } catch (e: any) {
+    editMsg.value = e?.response?.data?.detail || e?.message || String(e)
+  } finally {
+    saving.value = false
+  }
+}
+
+async function removeVersion(v: TaxVersion) {
+  if (!confirm(`Удалить версию от ${v.valid_from}?`)) return
+  try {
+    await taxSettingsApi.deleteVersion(v.id)
+    await loadAll()
+  } catch (e: any) {
+    saveOk.value = false
+    saveMsg.value = e?.response?.data?.detail || e?.message || String(e)
   }
 }
 

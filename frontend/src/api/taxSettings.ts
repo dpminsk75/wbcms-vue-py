@@ -91,6 +91,23 @@ export const taxSettingsApi = {
     const { data } = await api.post('/api/tax-settings/versions', payload)
     return data as { ok: boolean; valid_from: string; closed_previous_to: string }
   },
+  /** Изменить версию настроек. */
+  async updateVersion(id: number, payload: {
+    mode: string
+    main_rate: number
+    vat_source: string
+    valid_from: string
+    valid_to?: string | null
+    reason?: string | null
+  }) {
+    const { data } = await api.put(`/api/tax-settings/versions/${id}`, payload)
+    return data as { ok: boolean; id: number; valid_from: string; valid_to: string | null }
+  },
+  /** Удалить версию настроек. */
+  async deleteVersion(id: number) {
+    const { data } = await api.delete(`/api/tax-settings/versions/${id}`)
+    return data as { ok: boolean; id: number }
+  },
   async ndsCoverage() {
     const { data } = await api.get('/api/tax-settings/nds-coverage')
     return data as NdsCoverage
