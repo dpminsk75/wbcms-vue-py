@@ -56,8 +56,11 @@ async def run(args) -> int:
                     warn = f" WARNING: {st['warning']}" if st.get("warning") else ""
                     det = st.get("details") or {}
                     stats = st.get("stats") or {}
+                    bud = st.get("budget") or {}
                     print(f"[{comp['name'] or cid}] campaigns={st.get('count')} "
-                          f"items={det.get('items')} apps={stats.get('apps')} "
+                          f"items={det.get('items')} card_bids={det.get('card_bids')} "
+                          f"budgets={bud.get('budgets')} "
+                          f"apps={stats.get('apps')} "
                           f"nms={stats.get('nms')} {st.get('token_type')}{warn}")
                     ok += 1
             except Exception as e:

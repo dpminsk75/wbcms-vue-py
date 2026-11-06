@@ -1,0 +1,9 @@
+[Unit]
+Description=Run wbcms adv catalog sync (daily)
+
+[Timer]
+OnCalendar=04:40
+Persistent=false
+
+[Install]
+WantedBy=timers.target

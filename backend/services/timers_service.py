@@ -45,6 +45,31 @@ ALLOWED: dict[str, dict] = {
         "default": "00,04,08,12,16,20:10",
         "group": "day",
     },
+    "wbcms-adv-bids": {
+        "title": "Реклама WB (снимок: ставки, кластеры, минус-фразы, лимиты)",
+        "default": "*:15,45",
+        "group": "day",
+    },
+    "wbcms-adv-hour": {
+        "title": "Реклама WB (почасовые дельты)",
+        "default": "*:55",
+        "group": "day",
+    },
+    "wbcms-adv-bid-rec": {
+        "title": "Реклама WB (рекомендации ставок)",
+        "default": "03:35",
+        "group": "night",
+    },
+    "wbcms-adv-upd": {
+        "title": "Реклама WB (история списаний)",
+        "default": "04:25",
+        "group": "night",
+    },
+    "wbcms-adv-catalog": {
+        "title": "Реклама WB (предметы и доступные карточки)",
+        "default": "04:40",
+        "group": "night",
+    },
     "wbcms-news": {
         "title": "Новости WB (hourly :05)",
         "default": "*:05",

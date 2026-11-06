@@ -26,6 +26,11 @@ sudo cp "$DEPLOY"/wbcms-py.service "$DEPLOY"/wbcms-web.service \
   "$DEPLOY"/wbcms-funnel-missing.service "$DEPLOY"/wbcms-funnel-missing.timer \
   "$DEPLOY"/wbcms-adv-queries.service "$DEPLOY"/wbcms-adv-queries.timer \
   "$DEPLOY"/wbcms-adv-index.service "$DEPLOY"/wbcms-adv-index.timer \
+  "$DEPLOY"/wbcms-adv-bids.service "$DEPLOY"/wbcms-adv-bids.timer \
+  "$DEPLOY"/wbcms-adv-hour.service "$DEPLOY"/wbcms-adv-hour.timer \
+  "$DEPLOY"/wbcms-adv-bid-rec.service "$DEPLOY"/wbcms-adv-bid-rec.timer \
+  "$DEPLOY"/wbcms-adv-upd.service "$DEPLOY"/wbcms-adv-upd.timer \
+  "$DEPLOY"/wbcms-adv-catalog.service "$DEPLOY"/wbcms-adv-catalog.timer \
   "$DEPLOY"/wbcms-news.service "$DEPLOY"/wbcms-news.timer \
   "$DEPLOY"/wbcms-feedback-sync.service "$DEPLOY"/wbcms-feedback-sync.timer \
   "$DEPLOY"/wbcms-feedback-auto-reply.service "$DEPLOY"/wbcms-feedback-auto-reply.timer \
@@ -58,7 +63,9 @@ sudo systemctl enable --now \
   wbcms-py-healthcheck.timer wbcms-wb-tokens.timer \
   wbcms-commission-tariffs.timer wbcms-finance-balance.timer \
   wbcms-funnel-sync.timer wbcms-funnel-missing.timer wbcms-adv-queries.timer \
-  wbcms-adv-index.timer wbcms-news.timer wbcms-feedback-sync.timer wbcms-cards-sync.timer \
+  wbcms-adv-index.timer wbcms-adv-bids.timer wbcms-adv-hour.timer \
+  wbcms-adv-bid-rec.timer wbcms-adv-upd.timer wbcms-adv-catalog.timer \
+  wbcms-news.timer wbcms-feedback-sync.timer wbcms-cards-sync.timer \
   wbcms-feedback-auto-reply.timer \
   wbcms-stocks-all.timer wbcms-paid-storage.timer wbcms-acceptance.timer \
   wbcms-fbs-all.timer wbcms-orders-sync.timer wbcms-sales-fetch.timer \

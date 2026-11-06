@@ -1,14 +1,20 @@
 """Поисковые запросы рекламы WB (normquery) — порт wb-adv-sync/queries.
 
+По умолчанию используется v1 API: один запрос на весь период с детализацией
+по дням (+ средняя позиция avg_pos). Откат на v0 (по запросу на день) —
+автоматический, если v1 не даёт ожидаемый формат, или принудительно ключом
+--api-version v0.
+
 Запуск (на сервере, только venv):
   .venv/bin/python backend/workers/adv_queries_sync.py
   .venv/bin/python backend/workers/adv_queries_sync.py --date-from 2026-10-01 --date-to 2026-10-06  # бэкфилл
+  .venv/bin/python backend/workers/adv_queries_sync.py --api-version v0
   DRY_RUN=1 .venv/bin/python backend/workers/adv_queries_sync.py  # опрос без записи
   Таймер: wbcms-adv-queries (03:45, окно 3д по дефолту)
 
 Цикл по активным компаниям с api_key. Гейт токена (promotion, протухание,
 правило 2ч для базовых) — backend/services/wb_sync_base.py.
-Таблица: wb_campaign_query (upsert).
+Таблица: wb_campaign_query (upsert, с avg_pos).
 """
 import argparse
 import asyncio
@@ -58,6 +64,7 @@ async def run(args) -> int:
                 st = await AdvQueriesService(db, company_id=cid).sync(
                     date_from=args.date_from, date_to=args.date_to,
                     dry_run=args.dry_run,
+                    api_version=args.api_version,
                     progress=_make_progress(comp["name"] or str(cid)))
                 if st.get("skipped"):
                     print(f"[{comp['name'] or cid}] SKIP: {st['skipped']}")
@@ -65,6 +72,7 @@ async def run(args) -> int:
                 else:
                     warn = f" WARNING: {st['warning']}" if st.get("warning") else ""
                     print(f"[{comp['name'] or cid}] items={st['items']} days={st['days']} "
+                          f"requests={st.get('requests')} api={st.get('api')} "
                           f"upserted={st['upserted']} {st.get('token_type')}{warn}")
                     ok += 1
             except Exception as e:
@@ -79,6 +87,8 @@ def main() -> None:
     ap.add_argument("--company-id", type=int, default=None)
     ap.add_argument("--date-from", default=None)
     ap.add_argument("--date-to", default=None)
+    ap.add_argument("--api-version", choices=("v1", "v0"), default="v1",
+                    help="v1 — один запрос на период (по умолчанию); v0 — по запросу на день")
     ap.add_argument("--dry-run", action="store_true",
                     default=bool(os.environ.get("DRY_RUN")))
     args = ap.parse_args()

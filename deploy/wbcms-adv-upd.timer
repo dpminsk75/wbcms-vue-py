@@ -1,0 +1,9 @@
+[Unit]
+Description=Run wbcms adv upd sync (daily)
+
+[Timer]
+OnCalendar=04:25
+Persistent=false
+
+[Install]
+WantedBy=timers.target

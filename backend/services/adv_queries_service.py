@@ -1,6 +1,10 @@
-"""Поисковые запросы рекламы WB: normquery/stats -> wb_campaign_query.
+"""Поисковые запросы рекламы WB (normquery) — порт wb-adv-sync/queries.
 
-Порт WbAdvSyncController::syncQueries/parseQueryBatch (actionQueries).
+Версия API: v1 (`adv/v1/normquery/stats`) — ОДИН запрос на весь период с
+детализацией по дням (v0 требовал по запросу на каждый день). В ответе v1
+есть `avgPos` — средняя позиция кластера, её пишем в `wb_campaign_query.avg_pos`.
+Если v1 не даёт ожидаемый формат — автоматический откат на v0 (по дням).
+
 Выборка пар campaign×nm — ОДИН SELECT до дневного цикла (в PHP — на каждый день).
 Токен — companies.api_key (категория promotion), гейт + паузы — wb_sync_base
 (personal/service 20с, basic 60мин, правило 2ч). Только stdlib.
@@ -13,9 +17,43 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.services.wb_sync_base import company_sync_plan, post_json
 
-NORMQUERY_URL = "https://advert-api.wildberries.ru/adv/v0/normquery/stats"
+NORMQUERY_URL_V0 = "https://advert-api.wildberries.ru/adv/v0/normquery/stats"
+NORMQUERY_URL_V1 = "https://advert-api.wildberries.ru/adv/v1/normquery/stats"
 TIMEOUT_S = 15  # ответы быстрые; 15с — чтобы stall стоил 15с, а не 30
 CHUNK_ITEMS = 100
+PAIRS_DAYS = 30         # окно, за которое берём карточки из статистики
+PAUSE_FAST_S = 20
+PAUSE_SLOW_S = 3600
+
+
+def _i(v) -> int:
+    try:
+        return int(v or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _f(v) -> float:
+    try:
+        return round(float(v or 0), 2)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _pick(d, *names, default=None):
+    """Взять поле по любому из вариантов написания (camelCase и snake_case).
+
+    В семействе normquery WB фактически отдаёт snake_case (norm_query,
+    advert_id) — это видно по работающему v0, — но в спецификации те же
+    поля названы camelCase (normQuery, advertId). Читаем оба варианта.
+    """
+    if not isinstance(d, dict):
+        return default
+    for n in names:
+        v = d.get(n)
+        if v is not None:
+            return v
+    return default
 
 
 class AdvQueriesService:
@@ -25,17 +63,29 @@ class AdvQueriesService:
 
     async def _items(self) -> list[dict]:
         """Пары campaign×nm — один запрос (не в цикле по дням).
+
+        Источник пар — wb_campaign_stats_nms (карточки, РЕАЛЬНО участвующие
+        в рекламе), а не wb_campaign_item: в item по одной карточке на
+        кампанию (это примеры по предметам из nm_settings), а в рекламе
+        крутятся десятки карточек на кампанию. На staging разница была
+        21 пара против 1409 за 30 дней (проверено 06.11).
+
         Только идущие РК (status=9): завершённые/пауза показов не дают,
         normquery по ним пустой (проверено 2026-10-07: кампания 8951580,
         status=7 с марта — 396 пар вхолостую). Пауза оживёт → change_time
         обновится и пара вернётся в выборку следующим прогоном."""
-        rows = (await self.db.execute(text("""
-            SELECT i.campaign_id, i.nm_id FROM wb_campaign_item i
-            INNER JOIN wb_campaign c ON c.campaign_id = i.campaign_id
+        rows = (await self.db.execute(text(f"""
+            SELECT DISTINCT s.campaign_id, n.nm_id
+            FROM wb_campaign_stats s
+            JOIN wb_campaign_stats_nms n
+              ON n.parent_id = s.id AND n.company_id = s.company_id
+            JOIN wb_campaign c ON c.campaign_id = s.campaign_id
               AND c.company_id = :cid
-            WHERE i.company_id = :cid AND c.status = 9
-              AND c.change_time > '2025-12-01'"""),
-            {"cid": self.company_id})).mappings().all()
+            WHERE s.company_id = :cid AND n.nm_id > 0
+              AND c.status = 9 AND c.change_time > '2025-12-01'
+              AND s.date >= DATE_SUB(CURDATE(), INTERVAL {PAIRS_DAYS} DAY)
+            ORDER BY s.campaign_id, n.nm_id"""),
+            {"cid": self.company_id})).all()
         return [{"advert_id": int(r["campaign_id"]), "nm_id": int(r["nm_id"])}
                 for r in rows if r["campaign_id"] and r["nm_id"]]
 
@@ -50,7 +100,8 @@ class AdvQueriesService:
         return out
 
     async def sync(self, date_from: str | None = None, date_to: str | None = None,
-                   dry_run: bool = False, progress=None) -> dict:
+                   dry_run: bool = False, progress=None,
+                   api_version: str = "v1") -> dict:
         df = date_from or (date.today() - timedelta(days=1)).isoformat()
         dt = date_to or df
         days = self._days(df, dt)
@@ -59,61 +110,148 @@ class AdvQueriesService:
             return {"company_id": self.company_id, "items": 0, "upserted": 0,
                     "dry_run": dry_run}
         per_day = (len(items) + CHUNK_ITEMS - 1) // CHUNK_ITEMS
+        reqs_estimate = per_day if api_version == "v1" else len(days) * per_day
         plan = await company_sync_plan(
-            self.db, self.company_id, "promotion", len(days) * per_day,
-            pause_fast_s=20, pause_slow_s=3600)
+            self.db, self.company_id, "promotion", reqs_estimate,
+            pause_fast_s=PAUSE_FAST_S, pause_slow_s=PAUSE_SLOW_S)
         if plan.get("skip"):
             return {"company_id": self.company_id, "items": len(items),
                     "days": len(days), "skipped": plan["skip"],
                     "token_type": plan.get("token_type"), "dry_run": dry_run}
         auth, pause = plan["token"], plan["pause_s"]
         upserted, reqs = 0, 0
-        total_reqs = len(days) * per_day
-        for day in days:
-            for i in range(0, len(items), CHUNK_ITEMS):
-                t0 = time.monotonic()
-
-                def _log(m, _r=reqs, _n=total_reqs):
-                    if progress:
-                        st = "send" if m == "send" else "retry"
-                        progress(_r + 1, _n, st, 0, 0.0, 0.0, pause, m)
-
-                data = post_json(NORMQUERY_URL, {
-                    "from": day, "to": day, "items": items[i:i + CHUNK_ITEMS],
-                }, auth, timeout=TIMEOUT_S, log=_log if progress else None)
-                el = time.monotonic() - t0
-                rows = self._rows(data.get("stats") if isinstance(data, dict) else [], day)
-                if progress:
-                    progress(reqs + 1, total_reqs, "api", len(rows), el, 0.0, pause)
-                t1 = time.monotonic()
-                if rows and not dry_run:
-                    await self.db.execute(text("""
-                        INSERT INTO wb_campaign_query(
-                            campaign_id, company_id, nm_id, date, query,
-                            views, clicks, ctr, `sum`, atbs, orders, shks)
-                        VALUES(:c, :comp, :nm, :d, :q,
-                            :v, :cl, :ctr, :s, :a, :o, :sh) AS new
-                        ON DUPLICATE KEY UPDATE
-                            views = new.views, clicks = new.clicks, ctr = new.ctr,
-                            `sum` = new.`sum`, atbs = new.atbs,
-                            orders = new.orders, shks = new.shks"""), rows)
-                    await self.db.commit()
-                upserted += len(rows)
-                reqs += 1
-                el_db = time.monotonic() - t1
-                wait = max(0.0, pause - el - el_db)  # цикл держим ~pause
-                if progress:
-                    progress(reqs, total_reqs, "db", len(rows), el, el_db, wait)
-                    progress(reqs, total_reqs, "pause", len(rows), el, el_db, wait)
-                time.sleep(wait)  # пауза без условий — и между днями тоже
+        used_v1 = api_version == "v1"
+        if used_v1:
+            rows, reqs = await self._sync_v1(auth, items, df, dt, dry_run, pause, progress)
+            if rows is None:
+                # v1 не дал ожидаемый формат — откат на v0 по дням
+                used_v1 = False
+                rows, reqs = [], 0
+        if not used_v1:
+            rows, reqs = await self._sync_v0(auth, items, days, dry_run, pause, progress)
+        if rows and not dry_run:
+            await self.db.execute(text("""
+                INSERT INTO wb_campaign_query(
+                    campaign_id, company_id, nm_id, date, query,
+                    views, clicks, ctr, `sum`, atbs, orders, shks, avg_pos)
+                VALUES(:c, :comp, :nm, :d, :q,
+                    :v, :cl, :ctr, :s, :a, :o, :sh, :ap) AS new
+                ON DUPLICATE KEY UPDATE
+                    views = new.views, clicks = new.clicks, ctr = new.ctr,
+                    `sum` = new.`sum`, atbs = new.atbs,
+                    orders = new.orders, shks = new.shks, avg_pos = new.avg_pos"""),
+                rows)
+            await self.db.commit()
+            upserted = len(rows)
         out = {"company_id": self.company_id, "items": len(items), "days": len(days),
-               "requests": reqs, "upserted": 0 if dry_run else upserted,
+               "requests": reqs, "upserted": upserted, "api": "v1" if used_v1 else "v0",
                "token_type": plan["token_type"], "dry_run": dry_run}
         if plan.get("warning"):
             out["warning"] = plan["warning"]
         return out
 
+    # ---------- v1: один запрос на период, детализация по дням ----------
+
+    async def _sync_v1(self, auth: str, items: list[dict], df: str, dt: str,
+                       dry_run: bool, pause: int, progress=None):
+        """POST /adv/v1/normquery/stats → items[].dailyStats[].stat.
+        Возвращает (rows, requests) либо (None, 0), если формат неожиданный."""
+        rows: list[dict] = []
+        reqs = 0
+        chunks = [items[i:i + CHUNK_ITEMS] for i in range(0, len(items), CHUNK_ITEMS)]
+        for i, ch in enumerate(chunks):
+            t0 = time.monotonic()
+
+            def _log(m, _r=reqs, _n=len(chunks)):
+                if progress:
+                    progress(_r + 1, _n, "retry" if m != "send" else "send", 0, 0.0, 0.0, 0, m)
+
+            # в items шлём оба написания полей: фактически WB ждёт snake_case
+            # (как в v0), в спеке указано camelCase — лишние поля WB обычно
+            # игнорирует; если нет — запрос вернёт 400 и мы откатимся на v0
+            payload = {"from": df, "to": dt, "items": [
+                {"advert_id": it["advert_id"], "nm_id": it["nm_id"],
+                 "advertId": it["advert_id"], "nmId": it["nm_id"]}
+                for it in ch]}
+            try:
+                data = post_json(NORMQUERY_URL_V1, payload, auth, timeout=TIMEOUT_S,
+                                 log=_log if progress else None)
+            except RuntimeError as e:
+                if progress:
+                    progress(reqs + 1, len(chunks), "retry", 0, 0.0, 0.0, 0,
+                             f"v1: {e} — откат на v0")
+                return None, 0
+            el = time.monotonic() - t0
+            got = _pick(data, "items", default=None) if isinstance(data, dict) else None
+            if got is None:
+                if progress:
+                    progress(reqs + 1, len(chunks), "retry", 0, 0.0, 0.0, 0,
+                             "v1: неожиданный формат ответа, откат на v0")
+                return None, 0
+            for it in got:
+                cid = _i(_pick(it, "advert_id", "advertId"))
+                nm = _i(_pick(it, "nm_id", "nmId"))
+                if not cid or not nm:
+                    continue
+                for day in (_pick(it, "dailyStats", "daily_stats", default=[]) or []):
+                    d = str(_pick(day, "date", default="") or "")[:10]
+                    stat = _pick(day, "stat", "stats", default={}) or {}
+                    q = str(_pick(stat, "norm_query", "normQuery", default="") or "").strip()
+                    if not q or not d:
+                        continue
+                    views = _i(_pick(stat, "views"))
+                    clicks = _i(_pick(stat, "clicks"))
+                    avg_pos = _pick(stat, "avg_pos", "avgPos")
+                    rows.append({
+                        "c": cid, "comp": self.company_id, "nm": nm, "d": d, "q": q[:255],
+                        "v": views, "cl": clicks,
+                        "ctr": round(clicks / views * 100, 2) if views else 0,
+                        "s": _f(_pick(stat, "spend")), "a": _i(_pick(stat, "atbs")),
+                        "o": _i(_pick(stat, "orders")), "sh": _i(_pick(stat, "shks")),
+                        "ap": _f(avg_pos) if avg_pos is not None else None,
+                    })
+            reqs += 1
+            if progress:
+                progress(reqs, len(chunks), "api", len(rows), el, 0.0, pause)
+            if i + 1 < len(chunks):
+                time.sleep(pause)
+        return rows, reqs
+
+    # ---------- v0: по одному запросу на день (fallback) ----------
+
+    async def _sync_v0(self, auth: str, items: list[dict], days: list[str],
+                       dry_run: bool, pause: int, progress=None):
+        rows: list[dict] = []
+        reqs = 0
+        total = len(days) * ((len(items) + CHUNK_ITEMS - 1) // CHUNK_ITEMS)
+        for day in days:
+            for i in range(0, len(items), CHUNK_ITEMS):
+                t0 = time.monotonic()
+
+                def _log(m, _r=reqs, _n=total):
+                    if progress:
+                        st = "send" if m == "send" else "retry"
+                        progress(_r + 1, _n, st, 0, 0.0, 0.0, 0, m)
+
+                data = post_json(NORMQUERY_URL_V0, {
+                    "from": day, "to": day, "items": items[i:i + CHUNK_ITEMS],
+                }, auth, timeout=TIMEOUT_S, log=_log if progress else None)
+                el = time.monotonic() - t0
+                rows += self._rows(data.get("stats") if isinstance(data, dict) else [], day)
+                reqs += 1
+                if progress:
+                    progress(reqs, total, "api", len(rows), el, 0.0, 0)
+                if i + CHUNK_ITEMS < len(items):
+                    time.sleep(pause)
+        return rows, reqs
+
     def _rows(self, stats: list, day: str) -> list[dict]:
+        """Разбор ответа v0 (snake_case): norm_query, views, clicks, atbs,
+        orders, shks, spend, avg_pos, cpc, cpm, currency.
+
+        avg_pos в v0 тоже есть (проверено по спецификации WB) — читаем,
+        чтобы при откате с v1 на v0 позиция не терялась.
+        """
         rows = []
         for it in stats or []:
             try:
@@ -124,13 +262,15 @@ class AdvQueriesService:
                 txt = (q or {}).get("norm_query")
                 if not txt:
                     continue
-                v = int(q.get("views") or 0)
-                cl = int(q.get("clicks") or 0)
+                views = _i(q.get("views"))
+                clicks = _i(q.get("clicks"))
+                avg_pos = q.get("avg_pos")
                 rows.append({
                     "c": cid, "comp": self.company_id, "nm": nm, "d": day,
-                    "q": str(txt)[:255], "v": v, "cl": cl,
-                    "ctr": round(cl / v * 100, 2) if v else 0,
-                    "s": float(q.get("spend") or 0), "a": int(q.get("atbs") or 0),
-                    "o": int(q.get("orders") or 0), "sh": int(q.get("shks") or 0),
+                    "q": str(txt)[:255], "v": views, "cl": clicks,
+                    "ctr": round(clicks / views * 100, 2) if views else 0,
+                    "s": _f(q.get("spend")), "a": _i(q.get("atbs")),
+                    "o": _i(q.get("orders")), "sh": _i(q.get("shks")),
+                    "ap": _f(avg_pos) if avg_pos is not None else None,
                 })
         return rows

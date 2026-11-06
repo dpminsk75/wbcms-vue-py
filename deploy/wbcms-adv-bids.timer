@@ -1,0 +1,9 @@
+[Unit]
+Description=Run wbcms adv bids sync every 30 min (:15 and :45)
+
+[Timer]
+OnCalendar=*:15,45
+Persistent=false
+
+[Install]
+WantedBy=timers.target
