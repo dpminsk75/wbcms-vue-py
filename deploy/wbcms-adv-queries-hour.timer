@@ -1,0 +1,9 @@
+[Unit]
+Description=Run wbcms adv queries hourly sync (every hour at :43)
+
+[Timer]
+OnCalendar=*:43
+Persistent=false
+
+[Install]
+WantedBy=timers.target

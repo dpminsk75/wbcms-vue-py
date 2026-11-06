@@ -40,6 +40,11 @@ ALLOWED: dict[str, dict] = {
         "default": "03:45",
         "group": "night",
     },
+    "wbcms-adv-queries-hour": {
+        "title": "Реклама WB (часовой снимок по фразам)",
+        "default": "*:43",
+        "group": "day",
+    },
     "wbcms-adv-index": {
         "title": "Реклама WB (index: count/details/stats)",
         "default": "00,04,08,12,16,20:10",

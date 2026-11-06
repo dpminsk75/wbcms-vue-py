@@ -30,6 +30,7 @@
   * ставка в get-bids приходит в двух единицах: `bid` (базовые) и `bidKopecks`.
 """
 import time
+from datetime import datetime
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -135,27 +136,26 @@ class AdvBidsSyncService:
         return [(int(r[0]), int(r[1])) for r in rows if r[0] and r[1]]
 
     async def _campaign_nms(self, campaign_id: int) -> list[int]:
-        """Карточки кампании, реально участвующие в рекламе.
+        """Карточки кампании, для которых WB вообще отдаёт минимальную ставку.
+
+        Источник — wb_campaign_item (nm_settings): это «свои» карточки
+        кампании. Артикулы, которые просто крутятся в рекламе (stats_nms),
+        bids/min отклоняет с 400 «invalid bid».
 
         Порядок — «кругом»: сначала карточки, у которых минимальная ставка
         ещё неизвестна (min_kopecks = 0), потом самые старые по updated_at.
-        Так за несколько прогонов обходим все карточки, а не топчемся
-        на первых.
         """
-        rows = (await self.db.execute(text(f"""
-            SELECT n.nm_id
-            FROM wb_campaign_stats s
-            JOIN wb_campaign_stats_nms n
-              ON n.parent_id = s.id AND n.company_id = s.company_id
+        rows = (await self.db.execute(text("""
+            SELECT i.nm_id
+            FROM wb_campaign_item i
             LEFT JOIN wb_adv_card_bid cb
-              ON cb.company_id = n.company_id
-             AND cb.campaign_id = s.campaign_id
-             AND cb.nm_id = n.nm_id
-            WHERE s.company_id = :cid AND s.campaign_id = :c AND n.nm_id > 0
-              AND s.date >= DATE_SUB(CURDATE(), INTERVAL {PAIRS_DAYS} DAY)
-            GROUP BY n.nm_id
+              ON cb.company_id = i.company_id
+             AND cb.campaign_id = i.campaign_id
+             AND cb.nm_id = i.nm_id
+            WHERE i.company_id = :cid AND i.campaign_id = :c AND i.nm_id > 0
+            GROUP BY i.nm_id
             ORDER BY (COALESCE(MIN(cb.min_kopecks), 0) = 0) DESC,
-                     MIN(cb.updated_at) ASC, n.nm_id"""),
+                     MIN(cb.updated_at) ASC, i.nm_id"""),
             {"cid": self.company_id, "c": campaign_id})).all()
         return [int(r[0]) for r in rows if r[0]]
 
@@ -239,11 +239,14 @@ class AdvBidsSyncService:
         в интерфейсе останутся фразы и ставки мёртвых карточек.
         """
         out = {}
-        for tbl in ("wb_adv_bid", "wb_adv_cluster", "wb_adv_minus_phrase",
-                    "wb_adv_card_bid"):
+        # у каждой таблицы своя колонка времени: у minus_phrase — added_at
+        for tbl, col in (("wb_adv_bid", "updated_at"),
+                         ("wb_adv_cluster", "updated_at"),
+                         ("wb_adv_minus_phrase", "added_at"),
+                         ("wb_adv_card_bid", "updated_at")):
             res = await self.db.execute(text(
                 f"DELETE FROM {tbl} WHERE company_id = :cid"
-                f" AND updated_at < DATE_SUB(NOW(), INTERVAL {CLEANUP_DAYS} DAY)"),
+                f" AND {col} < DATE_SUB(NOW(), INTERVAL {CLEANUP_DAYS} DAY)"),
                 {"cid": self.company_id})
             out[tbl] = res.rowcount or 0
         await self.db.commit()
@@ -259,14 +262,12 @@ class AdvBidsSyncService:
         value — минимальная ставка в копейках; кладём в wb_adv_card_bid.min_kopecks.
 
         ФАКТ (проба на staging 06.11): WB принимает **один артикул за запрос** —
-        с 1 nm ответ 200, с 5 nm — 400, хотя в спеке написано maxLength: 100.
-        Поэтому ходим по одному артикулу и ограничиваем число запросов на
-        прогон (MIN_BIDS_MAX_REQS), а порядок берём так, чтобы за круг обойти
-        все карточки: сначала те, у которых минимум ещё неизвестен
-        (min_kopecks = 0), потом самые старые по updated_at.
-
-        Фактические минимумы (стадия, копейки): search 35 000 · recommendation
-        12 000 · combined 9 000.
+        с 1 nm ответ 200, с 5 nm — 400, хотя в спеке maxLength: 100.
+        И принимает только СВОИ карточки кампании (из nm_settings): артикулы,
+        которые просто крутятся в рекламе, дают 400 «invalid bid».
+        Поэтому источник — wb_campaign_item, а не stats_nms.
+        Число запросов на прогон ограничено (MIN_BIDS_MAX_REQS), порядок —
+        «кругом»: сначала карточки с неизвестным минимумом, потом самые старые.
         """
         camps = (await self.db.execute(text(
             "SELECT campaign_id, payment_type, bid_type FROM wb_campaign"
@@ -287,6 +288,7 @@ class AdvBidsSyncService:
             # ручная ставка — поиск и рекомендации отдельно, единая — combined
             placements = (["search", "recommendation"] if (btype or "") == "manual"
                           else ["combined"])
+            err_run = 0
             for nm in nm_ids:
                 if reqs >= MIN_BIDS_MAX_REQS:
                     break
@@ -296,10 +298,14 @@ class AdvBidsSyncService:
                     data = post_json(MIN_BIDS_URL, body, token, timeout=TIMEOUT_S)
                 except RuntimeError as e:
                     errors += 1
-                    if progress:
+                    err_run += 1
+                    if err_run == 1 and progress:
                         progress("retry", reqs + 1, MIN_BIDS_MAX_REQS,
-                                 f"bids/min {cid}/{nm}: {e}")
-                    break  # кампания не прошла — по её карточкам дальше тоже нет смысла
+                                 f"bids/min {cid}: {e}")
+                    if err_run >= 3:
+                        break  # подряд не идёт — переходим к следующей кампании
+                    continue
+                err_run = 0
                 reqs += 1
                 for b in (_pick(data, "bids", default=[]) or []):
                     try:
@@ -561,13 +567,14 @@ class AdvBidsSyncService:
                 {"cid": self.company_id})).all()
             prev = {(int(r[0]), int(r[1]), str(r[2])[:190]): int(r[3] or 0) for r in old}
         hist = []
+        now = datetime.now()
         for r in rows:
             k = (r["c"], r["nm"], r["q"][:190])
             old_kop = prev.get(k)
             if old_kop is not None and old_kop != r["kop"]:
                 hist.append({"cid": self.company_id, "c": r["c"], "nm": r["nm"],
                              "q": r["q"][:255], "kop": r["kop"], "prev": old_kop,
-                             "by": "sync"})
+                             "by": "sync", "d": now.date().isoformat(), "h": now.hour})
         if not dry_run:
             await self.db.execute(text("""
                 INSERT INTO wb_adv_bid(company_id, campaign_id, nm_id, norm_query,
@@ -579,8 +586,9 @@ class AdvBidsSyncService:
             if hist:
                 await self.db.execute(text("""
                     INSERT INTO wb_adv_bid_history(company_id, campaign_id, nm_id,
-                        norm_query, bid_kopecks, prev_kopecks, changed_by)
-                    VALUES(:cid, :c, :nm, :q, :kop, :prev, :by)"""), hist)
+                        norm_query, bid_kopecks, prev_kopecks, changed_by,
+                        `date`, `hour`)
+                    VALUES(:cid, :c, :nm, :q, :kop, :prev, :by, :d, :h)"""), hist)
             await self.db.commit()
         if progress:
             progress("phase", len(chunks), len(chunks),

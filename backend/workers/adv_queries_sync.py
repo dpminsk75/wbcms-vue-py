@@ -9,8 +9,9 @@
   .venv/bin/python backend/workers/adv_queries_sync.py
   .venv/bin/python backend/workers/adv_queries_sync.py --date-from 2026-10-01 --date-to 2026-10-06  # бэкфилл
   .venv/bin/python backend/workers/adv_queries_sync.py --api-version v0
+  .venv/bin/python backend/workers/adv_queries_sync.py --hourly      # часовой снимок за сегодня
   DRY_RUN=1 .venv/bin/python backend/workers/adv_queries_sync.py  # опрос без записи
-  Таймер: wbcms-adv-queries (03:45, окно 3д по дефолту)
+  Таймеры: wbcms-adv-queries (03:45, суточные), wbcms-adv-queries-hour (каждый час)
 
 Цикл по активным компаниям с api_key. Гейт токена (promotion, протухание,
 правило 2ч для базовых) — backend/services/wb_sync_base.py.
@@ -44,11 +45,12 @@ async def run(args) -> int:
     from sqlalchemy import text
     from backend.database import get_session
     from backend.services.adv_queries_service import AdvQueriesService
-    if args.date_from is None and args.date_to is None:
-        args.date_to = (date.today() - timedelta(days=1)).isoformat()
-        args.date_from = (date.fromisoformat(args.date_to) - timedelta(days=2)).isoformat()
-    print("WB API: POST advert.../normquery/stats → wb_campaign_query",
-          flush=True)
+    if args.hourly:
+        print("WB API: POST advert.../v1/normquery/stats (сегодня) → wb_campaign_query_hour",
+              flush=True)
+    else:
+        print("WB API: POST advert.../normquery/stats → wb_campaign_query",
+              flush=True)
     async with get_session() as db:
         companies = (await db.execute(text(
             "SELECT id, name FROM companies WHERE is_active = 1"
@@ -59,24 +61,41 @@ async def run(args) -> int:
         ok, skipped, errors = 0, 0, 0
         for comp in companies:
             cid = int(comp["id"])
-            print(f"[{comp['name'] or cid}] старт...", flush=True)
+            name = comp["name"] or str(cid)
+            print(f"[{name}] старт...", flush=True)
             try:
-                st = await AdvQueriesService(db, company_id=cid).sync(
+                svc = AdvQueriesService(db, company_id=cid)
+                if args.hourly:
+                    st = await svc.sync_hourly(
+                        day=args.date_from, dry_run=args.dry_run,
+                        progress=_make_progress(name))
+                    if st.get("skipped"):
+                        print(f"[{name}] SKIP: {st['skipped']}")
+                        skipped += 1
+                        continue
+                    warn = f" WARNING: {st['warning']}" if st.get("warning") else ""
+                    print(f"[{name}] часовой снимок {st.get('date')} "
+                          f"{st.get('hour')}:00 пар={st.get('pairs')} "
+                          f"строк={st.get('rows')} запросов={st.get('requests')} "
+                          f"{st.get('token_type')}{warn}")
+                    ok += 1
+                    continue
+                st = await svc.sync(
                     date_from=args.date_from, date_to=args.date_to,
                     dry_run=args.dry_run,
                     api_version=args.api_version,
-                    progress=_make_progress(comp["name"] or str(cid)))
+                    progress=_make_progress(name))
                 if st.get("skipped"):
-                    print(f"[{comp['name'] or cid}] SKIP: {st['skipped']}")
+                    print(f"[{name}] SKIP: {st['skipped']}")
                     skipped += 1
                 else:
                     warn = f" WARNING: {st['warning']}" if st.get("warning") else ""
-                    print(f"[{comp['name'] or cid}] items={st['items']} days={st['days']} "
+                    print(f"[{name}] items={st['items']} days={st['days']} "
                           f"requests={st.get('requests')} api={st.get('api')} "
                           f"upserted={st['upserted']} {st.get('token_type')}{warn}")
                     ok += 1
             except Exception as e:
-                print(f"[{comp['name'] or cid}] ERROR: {e}")
+                print(f"[{name}] ERROR: {e}")
                 errors += 1
         print(f"TOTAL: ok={ok} skipped={skipped} errors={errors} dry_run={args.dry_run}")
         return 0 if errors == 0 else 1
@@ -89,6 +108,8 @@ def main() -> None:
     ap.add_argument("--date-to", default=None)
     ap.add_argument("--api-version", choices=("v1", "v0"), default="v1",
                     help="v1 — один запрос на период (по умолчанию); v0 — по запросу на день")
+    ap.add_argument("--hourly", action="store_true",
+                    help="часовой снимок за сегодня → wb_campaign_query_hour")
     ap.add_argument("--dry-run", action="store_true",
                     default=bool(os.environ.get("DRY_RUN")))
     args = ap.parse_args()

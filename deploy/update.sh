@@ -25,6 +25,7 @@ sudo cp "$DEPLOY"/wbcms-py.service "$DEPLOY"/wbcms-web.service \
   "$DEPLOY"/wbcms-funnel-sync.service "$DEPLOY"/wbcms-funnel-sync.timer \
   "$DEPLOY"/wbcms-funnel-missing.service "$DEPLOY"/wbcms-funnel-missing.timer \
   "$DEPLOY"/wbcms-adv-queries.service "$DEPLOY"/wbcms-adv-queries.timer \
+  "$DEPLOY"/wbcms-adv-queries-hour.service "$DEPLOY"/wbcms-adv-queries-hour.timer \
   "$DEPLOY"/wbcms-adv-index.service "$DEPLOY"/wbcms-adv-index.timer \
   "$DEPLOY"/wbcms-adv-bids.service "$DEPLOY"/wbcms-adv-bids.timer \
   "$DEPLOY"/wbcms-adv-hour.service "$DEPLOY"/wbcms-adv-hour.timer \
@@ -63,6 +64,7 @@ sudo systemctl enable --now \
   wbcms-py-healthcheck.timer wbcms-wb-tokens.timer \
   wbcms-commission-tariffs.timer wbcms-finance-balance.timer \
   wbcms-funnel-sync.timer wbcms-funnel-missing.timer wbcms-adv-queries.timer \
+  wbcms-adv-queries-hour.timer \
   wbcms-adv-index.timer wbcms-adv-bids.timer wbcms-adv-hour.timer \
   wbcms-adv-bid-rec.timer wbcms-adv-upd.timer wbcms-adv-catalog.timer \
   wbcms-news.timer wbcms-feedback-sync.timer wbcms-cards-sync.timer \

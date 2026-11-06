@@ -1,0 +1,16 @@
+[Unit]
+Description=wbcms adv queries hourly sync (hourly snapshot of search-cluster stats)
+After=network.target mysql.service
+
+[Service]
+# Память сервера 1 ГБ: держим потолок, иначе OOM-killer прижмёт mysqld.
+MemoryMax=300M
+# Мы — не критичный процесс: при нехватке памяти нас должны убить первыми.
+OOMScoreAdjust=1000
+Type=oneshot
+User=www-data
+WorkingDirectory=/var/www/wb/wbcms-py
+EnvironmentFile=/var/www/wb/wbcms-py/.env
+Environment=PYTHONUNBUFFERED=1
+# flock не даёт запускаться второму экземпляру, пока первый ещё идёт (900 с).
+ExecStart=/usr/bin/flock -w 900 -E 0 /tmp/wbcms-workers.lock /var/www/wb/wbcms-py/.venv/bin/python backend/workers/adv_queries_sync.py --hourly

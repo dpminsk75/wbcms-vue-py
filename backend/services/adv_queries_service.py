@@ -5,12 +5,22 @@
 есть `avgPos` — средняя позиция кластера, её пишем в `wb_campaign_query.avg_pos`.
 Если v1 не даёт ожидаемый формат — автоматический откат на v0 (по дням).
 
-Выборка пар campaign×nm — ОДИН SELECT до дневного цикла (в PHP — на каждый день).
+Два режима:
+  * sync()       — суточные данные (окно дат) → wb_campaign_query;
+  * sync_hourly() — часовой СНИМОК за сегодня → wb_campaign_query_hour
+                    (снимок, а не дельта: почасовой профиль = разности
+                    соседних строк; так не важно, отдаёт ли WB накопильные
+                    значения или итог за день).
+
+Выборка пар campaign×nm — ОДИН SELECT до цикла (в PHP — на каждый день).
+Пары берём из wb_campaign_stats_nms (карточки, реально крутившиеся в
+рекламе): в wb_campaign_item по одной карточке на кампанию, а в рекламе
+крутятся десятки.
 Токен — companies.api_key (категория promotion), гейт + паузы — wb_sync_base
 (personal/service 20с, basic 60мин, правило 2ч). Только stdlib.
 """
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,8 +31,10 @@ NORMQUERY_URL_V0 = "https://advert-api.wildberries.ru/adv/v0/normquery/stats"
 NORMQUERY_URL_V1 = "https://advert-api.wildberries.ru/adv/v1/normquery/stats"
 TIMEOUT_S = 15  # ответы быстрые; 15с — чтобы stall стоил 15с, а не 30
 CHUNK_ITEMS = 100
-PAIRS_DAYS = 30         # окно, за которое берём карточки из статистики
-PAUSE_FAST_S = 20
+PAIRS_DAYS = 30         # окно, за которое берём карточки из статистики (суточный режим)
+PAIRS_HOURLY_DAYS = 3   # часовой режим: хватает недавних активных пар
+PAUSE_FAST_S = 20       # пауза для суточного режима (v0/v1 по дням)
+PAUSE_HOURLY_S = 6      # v1 stats: лимит 10 запросов/мин, интервал 6 с
 PAUSE_SLOW_S = 3600
 
 
@@ -61,7 +73,7 @@ class AdvQueriesService:
         self.db = db
         self.company_id = company_id
 
-    async def _items(self) -> list[dict]:
+    async def _items(self, days: int = PAIRS_DAYS) -> list[dict]:
         """Пары campaign×nm — один запрос (не в цикле по дням).
 
         Источник пар — wb_campaign_stats_nms (карточки, РЕАЛЬНО участвующие
@@ -83,9 +95,9 @@ class AdvQueriesService:
               AND c.company_id = :cid
             WHERE s.company_id = :cid AND n.nm_id > 0
               AND c.status = 9 AND c.change_time > '2025-12-01'
-              AND s.date >= DATE_SUB(CURDATE(), INTERVAL {PAIRS_DAYS} DAY)
+              AND s.date >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)
             ORDER BY s.campaign_id, n.nm_id"""),
-            {"cid": self.company_id})).all()
+            {"cid": self.company_id})).mappings().all()
         return [{"advert_id": int(r["campaign_id"]), "nm_id": int(r["nm_id"])}
                 for r in rows if r["campaign_id"] and r["nm_id"]]
 
@@ -105,7 +117,9 @@ class AdvQueriesService:
         df = date_from or (date.today() - timedelta(days=1)).isoformat()
         dt = date_to or df
         days = self._days(df, dt)
-        items = await self._items()
+        # пары берём по окну запроса (минимум 3 дня) — иначе на бэкфилле за
+        # месяц тянем 900+ пар, а нужны только активные в этом окне
+        items = await self._items(days=max(3, len(days)))
         if not items:
             return {"company_id": self.company_id, "items": 0, "upserted": 0,
                     "dry_run": dry_run}
@@ -244,6 +258,111 @@ class AdvQueriesService:
                 if i + CHUNK_ITEMS < len(items):
                     time.sleep(pause)
         return rows, reqs
+
+    async def sync_hourly(self, day: str | None = None, dry_run: bool = False,
+                          progress=None) -> dict:
+        """Часовой снимок статистики по поисковым кластерам.
+
+        GET normquery/stats за СЕГОДНЯ одним запросом на батч пар и складываем
+        в wb_campaign_query_hour СНИМОК (значение на конец часа), а не дельту.
+        Тогда:
+          * почасовой профиль = разности соседних строк (считаются на чтении);
+          * суточные данные = последняя строка за день;
+          * результат не зависит от того, отдаёт WB накопительные значения
+            или итог за день: если итог — строки за день одинаковы и разности
+            нулевые (безвредно).
+        """
+        day = day or datetime.now().date().isoformat()
+        # для часового режима берём только недавние активные пары (окно 3 дня):
+        # за 30 дней набирается 900+ пар — лишние запросы к WB
+        items = await self._items(days=PAIRS_HOURLY_DAYS)
+        if not items:
+            return {"company_id": self.company_id, "pairs": 0, "rows": 0,
+                    "dry_run": dry_run}
+        plan = await company_sync_plan(
+            self.db, self.company_id, "promotion",
+            (len(items) + CHUNK_ITEMS - 1) // CHUNK_ITEMS,
+            pause_fast_s=PAUSE_HOURLY_S, pause_slow_s=PAUSE_SLOW_S)
+        if plan.get("skip"):
+            return {"company_id": self.company_id, "skipped": plan["skip"],
+                    "token_type": plan.get("token_type"), "dry_run": dry_run}
+        auth, pause = plan["token"], plan["pause_s"]
+        hour = datetime.now().hour
+        provisional = 1 if day == datetime.now().date().isoformat() else 0
+        rows: list[dict] = []
+        reqs = 0
+        chunks = [items[i:i + CHUNK_ITEMS] for i in range(0, len(items), CHUNK_ITEMS)]
+        for i, ch in enumerate(chunks, 1):
+            t0 = time.monotonic()
+
+            def _log(m, _r=reqs, _n=len(chunks)):
+                if progress:
+                    progress(_r + 1, _n, "retry" if m != "send" else "send", 0, 0.0, 0.0, 0, m)
+
+            try:
+                data = post_json(NORMQUERY_URL_V1, {
+                    "from": day, "to": day,
+                    "items": [{"advertId": it["advert_id"], "nmId": it["nm_id"]}
+                              for it in ch],
+                }, auth, timeout=TIMEOUT_S, log=_log if progress else None)
+            except RuntimeError as e:
+                if progress:
+                    progress(reqs + 1, len(chunks), "retry", 0, 0.0, 0.0, 0,
+                             f"normquery hourly: {e}")
+                continue
+            el = time.monotonic() - t0
+            rows += self._hour_rows(data, day, hour, provisional)
+            reqs += 1
+            if progress:
+                progress(reqs, len(chunks), "api", len(rows), el, 0.0, pause)
+            if i + 1 < len(chunks):
+                time.sleep(pause)
+        if rows and not dry_run:
+            await self.db.execute(text("""
+                INSERT INTO wb_campaign_query_hour(company_id, campaign_id, nm_id,
+                    date, hour, query, views, clicks, atbs, orders, shks,
+                    `sum`, avg_pos, is_provisional)
+                VALUES(:cid, :c, :nm, :d, :h, :q, :v, :cl, :a, :o, :sh,
+                       :s, :ap, :prov) AS new
+                ON DUPLICATE KEY UPDATE
+                    views = new.views, clicks = new.clicks, atbs = new.atbs,
+                    orders = new.orders, shks = new.shks, `sum` = new.`sum`,
+                    avg_pos = new.avg_pos, is_provisional = new.is_provisional"""),
+                rows)
+            await self.db.commit()
+        if progress:
+            progress(reqs, reqs, "api", len(rows), 0.0, 0.0, 0,
+                     f"часовой снимок {day} {hour:02d}:00: {len(rows)} строк")
+        return {"company_id": self.company_id, "pairs": len(items), "rows": len(rows),
+                "requests": reqs, "date": day, "hour": hour,
+                "token_type": plan.get("token_type"), "dry_run": dry_run}
+
+    def _hour_rows(self, data, day: str, hour: int, provisional: int) -> list[dict]:
+        """Разбор ответа v1 в строки часового снимка."""
+        rows = []
+        for it in (_pick(data, "items", default=[]) or []):
+            cid = _i(_pick(it, "advert_id", "advertId"))
+            nm = _i(_pick(it, "nm_id", "nmId"))
+            if not cid or not nm:
+                continue
+            for d in (_pick(it, "dailyStats", "daily_stats", default=[]) or []):
+                ddate = str(_pick(d, "date", default="") or "")[:10]
+                stat = _pick(d, "stat", "stats", default={}) or {}
+                q = str(_pick(stat, "norm_query", "normQuery", default="") or "").strip()
+                if not q or (ddate and ddate != day):
+                    continue
+                views = _i(_pick(stat, "views"))
+                clicks = _i(_pick(stat, "clicks"))
+                avg_pos = _pick(stat, "avg_pos", "avgPos")
+                rows.append({
+                    "cid": self.company_id, "c": cid, "nm": nm, "d": day, "h": hour,
+                    "q": q[:255], "v": views, "cl": clicks,
+                    "a": _i(_pick(stat, "atbs")), "o": _i(_pick(stat, "orders")),
+                    "sh": _i(_pick(stat, "shks")), "s": _f(_pick(stat, "spend")),
+                    "ap": _f(avg_pos) if avg_pos is not None else None,
+                    "prov": provisional,
+                })
+        return rows
 
     def _rows(self, stats: list, day: str) -> list[dict]:
         """Разбор ответа v0 (snake_case): norm_query, views, clicks, atbs,
