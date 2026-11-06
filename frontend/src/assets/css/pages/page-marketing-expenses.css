@@ -1,0 +1,25 @@
+/* Ручной маркетинг: площадки, документы, позиции (/wb-marketing-expenses). */
+
+.page-marketing-expenses__filter {
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: 10px 14px;
+}
+
+.page-marketing-expenses__row--archived { opacity: .55; }
+
+.page-marketing-expenses__excel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.page-marketing-expenses__file { cursor: pointer; }
+
+.page-marketing-expenses__amount {
+  width: 120px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
