@@ -23,7 +23,6 @@ export interface NdsCoverage {
   with_rate: number
   missing: number
   last_load_date: string | null
-  rates: { rate: number; cards: number }[]
 }
 
 export interface TaxPreviewDay {

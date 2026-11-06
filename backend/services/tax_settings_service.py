@@ -183,38 +183,41 @@ class TaxSettingsService:
     async def nds_coverage(self) -> dict:
         """Сколько карточек компании имеют ставку НДС, а сколько — нет.
 
-        Ставка карточки — последняя на nmID: тот же приём, что в
-        aggregate_sync_service (подзапрос по индексу), а не GROUP BY по всей
-        истории wbcards_nds: тяжёлый GROUP BY запрещён AGENTS.md §3.
+        Форма запросов — ровно как в nds_missing_cards (та отработала на проде):
+        полу-джойн через NOT EXISTS по индексу nmID. Без GROUP BY по всей
+        истории wbcards_nds (тяжёлый GROUP BY запрещён AGENTS.md §3) и без
+        коррелированного ORDER BY на каждую карточку — на проде это уходило
+        в таймаут и давало 500.
 
-        Карточки компании тянем списком nmID (один проход по wbcards), дальше
-        наличие ставки проверяем точечными подзапросами по индексу nmID.
+        Распределение ставок не считаем: полная история wbcards_nds — тяжёлый
+        GROUP BY, а справочной ценности у него нет. Если понадобится — отдельной
+        отложенной задачей по последнему срезу.
         """
         cid = self._need_company()
-        rows = (await self.db.execute(text("""
-            SELECT c.nmID,
-                   (SELECT n.nds FROM wbcards_nds n
-                     WHERE n.nmID = c.nmID
-                     ORDER BY n.load_date DESC, n.id DESC LIMIT 1) AS nds
-            FROM wbcards c
-            WHERE c.company_id = :cid AND c.is_active = 1"""),
-            {"cid": cid})).all()
-        total = len(rows)
-        missing = sum(1 for r in rows if r["nds"] is None)
-        rates_map: dict[float, int] = {}
-        for r in rows:
-            if r["nds"] is None:
-                continue
-            rate = float(r["nds"] or 0)
-            rates_map[rate] = rates_map.get(rate, 0) + 1
-        last = (await self.db.execute(text(
-            "SELECT MAX(load_date) FROM wbcards_nds"))).scalar()
+        try:
+            total = int((await self.db.execute(text(
+                "SELECT COUNT(*) FROM wbcards WHERE company_id = :cid AND is_active = 1"),
+                {"cid": cid})).scalar() or 0)
+            missing = int((await self.db.execute(text("""
+                SELECT COUNT(*) FROM wbcards c
+                WHERE c.company_id = :cid AND c.is_active = 1
+                  AND NOT EXISTS (SELECT 1 FROM wbcards_nds n WHERE n.nmID = c.nmID)"""),
+                {"cid": cid})).scalar() or 0)
+        except Exception as e:
+            log.exception("nds_coverage: счётчики покрытия НДС не прочитаны")
+            raise TaxSettingsError(f"не удалось посчитать покрытие НДС ({e})")
+        # Дата последнего среза — справочно: при ошибке не роняем весь ответ.
+        last = None
+        try:
+            last = (await self.db.execute(text(
+                "SELECT MAX(load_date) FROM wbcards_nds"))).scalar()
+        except Exception as e:
+            log.warning("nds_coverage: дата последнего среза НДС не прочитана: %s", e)
         return {
             "total": total,
             "with_rate": max(0, total - missing),
             "missing": missing,
             "last_load_date": str(last)[:10] if last else None,
-            "rates": [{"rate": rate, "cards": cnt} for rate, cnt in sorted(rates_map.items())],
         }
 
     async def nds_missing_cards(self, q: str = "", limit: int = 200) -> list[dict]:

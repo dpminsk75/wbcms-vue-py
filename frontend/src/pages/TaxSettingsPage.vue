@@ -155,13 +155,6 @@
         <KpiTile label="Последний срез" :value="coverage.last_load_date || '—'" variant="tile--1" foot="обновление wbcards_nds" />
       </div>
 
-      <div v-if="coverage.rates?.length" class="wb-panel mb-3">
-        <div class="card__hd">Распределение ставок</div>
-        <div class="wb-panel__bd d-flex flex-wrap gap-2">
-          <span v-for="r in coverage.rates" :key="r.rate" class="badge badge--info">{{ r.rate }}% — {{ r.cards }} шт</span>
-        </div>
-      </div>
-
       <div class="tbl-card">
         <div class="card__hd">
           Карточки без ставки НДС
@@ -327,7 +320,7 @@ const form = ref({
 
 const versions = ref<TaxVersion[]>([])
 const currentVersion = ref<TaxVersion | null>(null)
-const coverage = ref<NdsCoverage>({ total: 0, with_rate: 0, missing: 0, last_load_date: null, rates: [] })
+const coverage = ref<NdsCoverage>({ total: 0, with_rate: 0, missing: 0, last_load_date: null })
 const coverageErr = ref('')
 const missing = ref<{ nmID: number; vendorCode: string; title: string }[]>([])
 const saving = ref(false)

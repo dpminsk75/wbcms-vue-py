@@ -33,8 +33,16 @@ CHANNEL_TYPE_LABELS = {
     "other": "Другое",
 }
 
-DOC_TYPES = ("media", "article", "promo")
+DOC_TYPES = (
+    "blogger_post", "giveaway", "self_buyout", "review_cashback", "other",
+    "media", "article", "promo",
+)
 DOC_TYPE_LABELS = {
+    "blogger_post": "Пост у блогера",
+    "giveaway": "Раздача",
+    "self_buyout": "Самовыкуп",
+    "review_cashback": "Кешбек за отзыв",
+    "other": "Прочее",
     "media": "Медийная реклама",
     "article": "Статья",
     "promo": "Промокод",
