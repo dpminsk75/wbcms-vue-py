@@ -733,6 +733,10 @@ def get_icons():
         "bi bi-shield","bi bi-patch-check","bi bi-info-circle","bi bi-question-circle","bi bi-exclamation-triangle",
         "bi bi-graph-up","bi bi-bar-chart","bi bi-pie-chart","bi bi-clipboard","bi bi-clipboard-check","bi bi-file-text","bi bi-folder",
         "bi bi-gear","bi bi-tools","bi bi-wrench","bi bi-plug","bi bi-lightning","bi bi-person","bi bi-people",
+        # маркетинг: раздел «Маркетинг» и его пункты (иконки разделов и пикера)
+        "bi bi-broadcast","bi bi-megaphone","bi bi-megaphone-fill","bi bi-bullseye","bi bi-tags","bi bi-tag-fill",
+        "bi bi-percent","bi bi-wallet2","bi bi-cash-coin","bi bi-graph-up-arrow","bi bi-shop-window","bi bi-gift",
+        "bi bi-basket","bi bi-lightning-charge","bi bi-camera-reels","bi bi-rocket-takeoff","bi bi-award",
     ]
     fa = [
         "fas fa-book","fas fa-book-open","fas fa-bookmark","fas fa-newspaper","fas fa-scroll","fas fa-ruler-combined","fas fa-ruler","fas fa-pencil-ruler",
@@ -745,6 +749,9 @@ def get_icons():
         "fas fa-chart-line","fas fa-chart-bar","fas fa-chart-pie","fas fa-clipboard","fas fa-clipboard-check","fas fa-file-alt","fas fa-folder",
         "fas fa-cog","fas fa-tools","fas fa-wrench","fas fa-plug","fas fa-bolt","fas fa-user","fas fa-users","fas fa-mitten","fas fa-socks","fas fa-hat-wizard",
         "fas fa-tshirt","fas fa-vest","fas fa-sync-alt","fas fa-calendar-alt","fas fa-th-list","fas fa-border-all",
+        # маркетинг
+        "fas fa-bullhorn","fas fa-bullseye","fas fa-megaphone","fas fa-tags","fas fa-percent","fas fa-basket-shopping",
+        "fas fa-wallet","fas fa-coins","fas fa-store","fas fa-bolt","fas fa-rocket","fas fa-arrow-trend-up",
     ]
     return {"bi": bi, "fa": fa}
 

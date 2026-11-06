@@ -12,8 +12,6 @@
       {"label": "Заказы", "url": "/wb-order/feed-aggregated", "visibleIn": ["top", "side"]},
       {"label": "Тепловая карта", "url": "/wb-order/heatmap", "visibleIn": ["top", "side"]},
       {"divider": true, "visibleIn": ["top", "side"]},
-      {"label": "Реклама", "url": "/wb-adv-report/", "visibleIn": ["top", "side"]},
-      {"label": "Акции WB", "url": "/wb-promotions", "visibleIn": ["top", "side"]},
       {"label": "По ГЕО", "url": "/geo/sales-map", "visibleIn": ["top", "side"]},
       {"label": "Возвраты", "url": "/unclaimed-orders/", "visibleIn": ["top", "side"]},
       {"label": "Штрафы и потери", "url": "/wb-penalty/logistics", "visibleIn": ["top", "side"]},
@@ -26,6 +24,19 @@
       {"label": "Анализ остатков", "url": "/wb-stock", "visibleIn": ["top", "side"]},
       {"label": "Детализация", "url": "/wb-detail-by-period/weekly-report-nmid", "visibleIn": ["top", "side"]},
       {"label": "Новости WB", "url": "/news", "visibleIn": ["top"]}
+    ]
+  },
+  {
+    "label": "Маркетинг",
+    "icon": "marketing",
+    "iconClass": "bi bi-broadcast",
+    "url": "#",
+    "visibleIn": ["top", "side"],
+    "roles": ["viewReports", "admin"],
+    "items": [
+      {"label": "Реклама", "url": "/wb-adv-report/", "visibleIn": ["top", "side"]},
+      {"label": "Акции", "url": "/wb-promotions", "visibleIn": ["top", "side"]},
+      {"label": "Внешняя реклама", "url": "/wb-marketing-expenses", "visibleIn": ["top", "side"]}
     ]
   },
   {
@@ -149,6 +160,7 @@
     "items": [
       {"label": "Пользователи", "url": "/admin/users", "visibleIn": ["top", "side"], "roles": ["manageUsers", "manageCompanyUsers"]},
       {"label": "Компании", "url": "/companies", "visibleIn": ["top", "side"], "roles": ["manageCompanies", "manageCompanyUsers"]},
+      {"label": "Налоги", "url": "/wb-tax-settings", "visibleIn": ["top", "side"], "roles": ["manageUsers", "manageCompanyUsers", "manageCompanies", "admin"]},
       {"label": "Роли", "url": "/admin/roles", "visibleIn": ["top", "side"], "roles": ["admin"]},
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Быстрые кнопки", "url": "/admin/quick-buttons", "visibleIn": ["top", "side"], "roles": ["admin"]},

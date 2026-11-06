@@ -99,6 +99,7 @@ onMounted(() => {
 
 const iconClassMap: Record<string,string> = {
   reports: 'bi bi-bar-chart',
+  marketing: 'bi bi-broadcast',
   by_search: 'bi bi-search',
   tag: 'bi bi-tag',
   product: 'bi bi-box',
@@ -110,14 +111,15 @@ const iconClassMap: Record<string,string> = {
 }
 
 const fallbackMenu = [
-  { label:'Отчеты', icon:'reports', iconClass:'bi bi-bar-chart', items:[ {label:'ТОП продаж', url:'/wb-sales-analysis/'},{label:'Карточка WB', url:'/wb/detail/'},{label:'Заказы', url:'/wb-order/feed-aggregated'},{label:'Тепловая карта', url:'#'},{label:'', divider:true},{label:'Реклама', url:'/wb-adv-report/'},{label:'Акции WB', url:'/wb-promotions'},{label:'По ГЕО', url:'#'},{label:'Возвраты', url:'#'},{label:'Воронка продаж', url:'#'},{label:'', divider:true},{label:'ТОП товары', url:'/wb-profit/top-products'},{label:'Маржа', url:'/wb-profit'},{label:'Маржа по линейкам', url:'/wb-profit/products'},{label:'', divider:true},{label:'Анализ остатков', url:'/wb-stock'},{label:'Детализация', url:'/wb-detail-by-period/weekly-report-nmid'} ] },
+  { label:'Отчеты', icon:'reports', iconClass:'bi bi-bar-chart', items:[ {label:'ТОП продаж', url:'/wb-sales-analysis/'},{label:'Карточка WB', url:'/wb/detail/'},{label:'Заказы', url:'/wb-order/feed-aggregated'},{label:'Тепловая карта', url:'#'},{label:'', divider:true},{label:'По ГЕО', url:'#'},{label:'Возвраты', url:'#'},{label:'Воронка продаж', url:'#'},{label:'', divider:true},{label:'ТОП товары', url:'/wb-profit/top-products'},{label:'Маржа', url:'/wb-profit'},{label:'Маржа по линейкам', url:'/wb-profit/products'},{label:'', divider:true},{label:'Анализ остатков', url:'/wb-stock'},{label:'Детализация', url:'/wb-detail-by-period/weekly-report-nmid'} ] },
+  { label:'Маркетинг', icon:'marketing', iconClass:'bi bi-broadcast', items:[ {label:'Реклама', url:'/wb-adv-report/'},{label:'Акции', url:'/wb-promotions'},{label:'Внешняя реклама', url:'/wb-marketing-expenses'} ] },
   { label:'По фразам', icon:'by_search', iconClass:'bi bi-search', items:[ {label:'Карточка -> фразы', url:'/wb-search/card'},{label:'Фраза -> карточки', url:'/wb-search/phrase'},{label:'Анализ фраз', url:'/wb-search/trend'},{label:'', divider:true},{label:'SEO рекомендации', url:'/seo/index'},{label:'SEO просмотренные', url:'/seo/index'},{label:'', divider:true},{label:'Конкуренты (анализ)', url:'/competitor/index'},{label:'Конкуренты (новый товар)', url:'/competitor/new-cards'},{label:'Собранные карточки', url:'/competitor/captured'},{label:'Подбор конкурентов', url:'/competitor/pick'},{label:'Разбор фраз (фон)', url:'/competitor/phrase-miner'},{label:'Диагностика расширения', url:'/ext/diag'},{label:'Установка расширения', url:'/ext/install'},{label:'Фильтры расширения', url:'/ext/install?block=filters'} ] },
   { label:'По тегам', icon:'tag', iconClass:'bi bi-tag', items:[ {label:'Заказы', url:'/tag/view'},{label:'', divider:true},{label:'Список тегов', url:'/tag/index'} ] },
   { label:'По товарам', icon:'product', iconClass:'bi bi-box', items:[ {label:'Детализация', url:'/wb-detail-by-period/weekly-report'} ] },
   { label:'Данные', icon:'data', iconClass:'bi bi-pie-chart', items:[ {label:'Лента заказов', url:'/wb-order/feed'},{label:'', divider:true},{label:'Заказы', url:'/wb-order/index'},{label:'Продажи', url:'/wb-sales/index'},{label:'', divider:true},{label:'Себестоимость', url:'/cost-import/list'} ] },
   { label:'Склад', icon:'warehouse', iconClass:'bi bi-box-seam', items:[ {label:'FBS', url:'/fbs-report'},{label:'Отчёты', url:'/wb-stock-reports/balance'},{label:'Документы', url:'/wb-doc'},{label:'Производство', url:'/wb-production'} ] },
   { label:'Справочники', icon:'book', iconClass:'bi bi-book', items:[ {label:'Карточки WB', url:'/wb/cards'},{label:'', divider:true},{label:'Теги', url:'/tag/index'},{label:'Товары', url:'/product/index'},{label:'Составные товары', url:'/product-wb-card/index'} ] },
-  { label:'Админка', icon:'gear', iconClass:'bi bi-gear', items:[ {label:'Пользователи', url:'/admin/users'},{label:'Роли', url:'/admin/roles'},{label:'Компании', url:'/companies'},{label:'', divider:true},{label:'Быстрые кнопки', url:'/admin/quick-buttons'},{label:'SEO-модели', url:'/admin/seo-models'},{label:'Меню', url:'/admin/menu'},{label:'', divider:true},{label:'Стиль', url:'/settings/appearance'},{label:'Сменить пароль', url:'/settings/password'} ] },
+  { label:'Админка', icon:'gear', iconClass:'bi bi-gear', items:[ {label:'Пользователи', url:'/admin/users'},{label:'Роли', url:'/admin/roles'},{label:'Компании', url:'/companies'},{label:'Налоги', url:'/wb-tax-settings'},{label:'', divider:true},{label:'Быстрые кнопки', url:'/admin/quick-buttons'},{label:'SEO-модели', url:'/admin/seo-models'},{label:'Меню', url:'/admin/menu'},{label:'', divider:true},{label:'Стиль', url:'/settings/appearance'},{label:'Сменить пароль', url:'/settings/password'} ] },
 ]
 
 const { data: menuRaw, isError } = useQuery({ queryKey: ['menu','top', computed(() => auth.user?.username || 'guest')], queryFn: ()=> (dashboardApi as any).menu('top'), initialData: fallbackMenu as any })
