@@ -1,64 +1,34 @@
-/* Настройки налогов и НДС (/wb-tax-settings) — по аналогии с .tbl-card/.tbl (theme/table.css). */
+/* Налоги (/wb-tax-settings) — страница на классах темы.
+ * Токены темы, радиусы --radius-*, тени --shadow-1; своих цветов нет (theme.md §8.1).
+ * Каркас: .wb-panel / .card__hd / .wb-panel__bd, таблицы .tbl-card → .tbl-wrap → .tbl.
+ */
 
-.page-tax-settings__modes {
+/* Заголовок страницы — размер даёт тема (h1, §4.3), здесь только отступ. */
+.page-tax-settings__title { margin: 0 0 4px; }
+
+/* Поля формы — сетка в две колонки */
+.page-tax-settings__fields {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 8px;
-}
-.page-tax-settings__mode {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 9px 11px;
-  cursor: pointer;
-  background: #fff;
-}
-.page-tax-settings__mode input { margin: 0 0 2px; accent-color: var(--brand); }
-.page-tax-settings__mode b { font-size: 13px; color: var(--ink); }
-.page-tax-settings__mode span { font-size: 11.5px; color: var(--ink-soft); }
-.page-tax-settings__mode--on {
-  border-color: var(--brand);
-  background: var(--brand-tint);
-}
-
-.page-tax-settings__result {
-  margin-top: 14px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  overflow: hidden;
-}
-.page-tax-settings__result-row {
-  display: flex;
-  justify-content: space-between;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  padding: 6px 11px;
-  border-bottom: 1px solid var(--line);
-  font-size: 12.5px;
 }
-.page-tax-settings__result-row:last-child { border-bottom: 0; }
-.page-tax-settings__result-row span { color: var(--ink-soft); }
-.page-tax-settings__result-row b { text-align: right; }
-
-.page-tax-settings__kpi {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 9px 11px;
-  background: #fff;
+@media (max-width: 760px) {
+  .page-tax-settings__fields { grid-template-columns: 1fr; }
 }
-.page-tax-settings__kpi b { display: block; font-size: 19px; letter-spacing: -0.02em; }
-.page-tax-settings__kpi span { font-size: 11.5px; color: var(--ink-soft); }
-.page-tax-settings__kpi--ok { border-color: #bfe5d5; background: var(--good-tint); }
-.page-tax-settings__kpi--warn { border-color: #f0d79a; background: var(--warn-tint); }
-.page-tax-settings__kpi--info { border-color: #c9d8f7; background: var(--info-tint); }
+.page-tax-settings__field--wide { grid-column: 1 / -1; }
 
-.page-tax-settings__rates { display: flex; flex-wrap: wrap; gap: 6px; }
-
-.page-tax-settings__notes {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 9px 12px;
-  background: #fbfaff;
+/* Предупреждение о неполном расчёте — тон темы (warn) */
+.page-tax-settings__note {
+  padding: 10px 12px;
+  border: 1px solid var(--warn);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--warn-tint);
+  color: var(--warn-deep);
+  font-size: calc(12.5px * var(--fs));
 }
-.page-tax-settings__note { font-size: 12px; color: #4d475e; }
+.page-tax-settings__note b { color: var(--ink); }
+.page-tax-settings__note code { background: var(--surface); padding: 0 3px; border-radius: 3px; }
+
+/* Информационная панель (нет manageSettings / ошибка) */
+.page-tax-settings__alert .badge { margin-right: 6px; }

@@ -12,6 +12,7 @@
   {"name": "manageFbs",        "label": "Работа со складом FBS",   "kind": "manage", "requires": "viewFbs"},
   {"name": "manageTags",       "label": "Правка тегов и линеек",   "kind": "manage", "requires": "viewTags"},
   {"name": "manageAdv",        "label": "Управление рекламой",     "kind": "manage", "requires": "viewAdv"},
+  {"name": "manageSettings",   "label": "Настройки компании",      "kind": "manage", "requires": "viewFinance"},
   {"name": "manageAi",         "label": "ИИ: модель и промпты",    "kind": "manage", "requires": "viewSeo"},
   {"name": "manageUsers",      "label": "Пользователи (глобально)", "kind": "manage", "protected": true},
   {"name": "manageCompanies",  "label": "Компании (глобально)",    "kind": "manage", "protected": true},

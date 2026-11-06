@@ -71,7 +71,6 @@ export const taxSettingsApi = {
     return data as {
       modes: { value: string; label: string }[]
       vat_sources: { value: string; label: string }[]
-      main_rates: number[]
     }
   },
   async versions() {

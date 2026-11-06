@@ -1,20 +1,20 @@
-"""Р СѓС‡РЅРѕР№ РјР°СЂРєРµС‚РёРЅРі: РїР»РѕС‰Р°РґРєРё + РґРѕРєСѓРјРµРЅС‚С‹/СЃС‚СЂРѕРєРё СЂР°СЃС…РѕРґРѕРІ + Excel (РѕРґРёРЅ Р»РёСЃС‚).
+"""Ручной маркетинг: площадки + документы/строки расходов + Excel (один лист).
 
-РњР°СЂС€СЂСѓС‚С‹:
-  GET    /api/marketing/channels            вЂ” СЃРїРёСЃРѕРє РїР»РѕС‰Р°РґРѕРє.
-  POST   /api/marketing/channels            вЂ” СЃРѕР·РґР°С‚СЊ РїР»РѕС‰Р°РґРєСѓ.
-  PUT    /api/marketing/channels/{id}       вЂ” РёР·РјРµРЅРёС‚СЊ РїР»РѕС‰Р°РґРєСѓ.
-  DELETE /api/marketing/channels/{id}       вЂ” СѓРґР°Р»РёС‚СЊ/Р°СЂС…РёРІРёСЂРѕРІР°С‚СЊ РїР»РѕС‰Р°РґРєСѓ.
-  GET    /api/marketing/documents           вЂ” РґРѕРєСѓРјРµРЅС‚С‹ СЂР°СЃС…РѕРґРѕРІ.
-  GET    /api/marketing/documents/{id}      вЂ” РґРѕРєСѓРјРµРЅС‚ СЃ РїРѕР·РёС†РёСЏРјРё.
-  POST   /api/marketing/documents           вЂ” СЃРѕР·РґР°С‚СЊ РґРѕРєСѓРјРµРЅС‚ СЃРѕ СЃС‚СЂРѕРєР°РјРё.
-  PUT    /api/marketing/documents/{id}      вЂ” РёР·РјРµРЅРёС‚СЊ РґРѕРєСѓРјРµРЅС‚/РїРѕР·РёС†РёРё.
-  DELETE /api/marketing/documents/{id}      вЂ” СѓРґР°Р»РёС‚СЊ РґРѕРєСѓРјРµРЅС‚.
-  POST   /api/marketing/import/preview      вЂ” СЂР°Р·Р±РѕСЂ Excel (dry-run).
-  POST   /api/marketing/import/save         вЂ” СЃРѕС…СЂР°РЅРёС‚СЊ СЂР°Р·РѕР±СЂР°РЅРЅС‹Р№ С„Р°Р№Р».
-  GET    /api/marketing/export              вЂ” СЃС‚СЂРѕРєРё РґР»СЏ РІС‹РіСЂСѓР·РєРё РІ Excel.
+Маршруты:
+  GET    /api/marketing/channels            — список площадок.
+  POST   /api/marketing/channels            — создать площадку.
+  PUT    /api/marketing/channels/{id}       — изменить площадку.
+  DELETE /api/marketing/channels/{id}       — удалить/архивировать площадку.
+  GET    /api/marketing/documents           — документы расходов.
+  GET    /api/marketing/documents/{id}      — документ с позициями.
+  POST   /api/marketing/documents           — создать документ со строками.
+  PUT    /api/marketing/documents/{id}      — изменить документ/позиции.
+  DELETE /api/marketing/documents/{id}      — удалить документ.
+  POST   /api/marketing/import/preview      — разбор Excel (dry-run).
+  POST   /api/marketing/import/save         — сохранить разобранный файл.
+  GET    /api/marketing/export              — строки для выгрузки в Excel.
 
-РџСЂР°РІР°: С‡С‚РµРЅРёРµ вЂ” viewFinance, РёР·РјРµРЅРµРЅРёРµ вЂ” manageSettings.
+Права: чтение — viewFinance, изменение — manageSettings.
 """
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ async def marketing_meta(
     }
 
 
-# ------------------------------------------------------------- РїР»РѕС‰Р°РґРєРё
+# ------------------------------------------------------------- площадки
 @router.get("/channels")
 async def channels_list(
     q: str = Query(default=""),
@@ -117,7 +117,7 @@ async def channels_delete(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# ------------------------------------------------------------- РґРѕРєСѓРјРµРЅС‚С‹
+# ------------------------------------------------------------- документы
 @router.get("/cards/search")
 async def cards_search(
     q: str = Query(default=""),
@@ -127,7 +127,7 @@ async def cards_search(
     user: dict = Depends(get_current_user),
     _u: dict = Depends(require_perm("viewFinance")),
 ):
-    """РџРѕРёСЃРє РєР°СЂС‚РѕС‡РµРє РєРѕРјРїР°РЅРёРё вЂ” РІС‹Р±РѕСЂ SKU РІ РїРѕР·РёС†РёРё СЂР°СЃС…РѕРґР°."""
+    """Поиск карточек компании — выбор SKU в позиции расхода."""
     svc = _svc(db, company_id, user)
     try:
         return {"rows": await svc.search_cards(q, limit)}
@@ -224,7 +224,7 @@ async def import_preview(
     user: dict = Depends(get_current_user),
     _u: dict = Depends(require_perm("viewFinance")),
 ):
-    """Dry-run: СЂР°Р·Р±РѕСЂ Р»РёСЃС‚Р°, РЅРёС‡РµРіРѕ РЅРµ СЃРѕС…СЂР°РЅСЏРµРј."""
+    """Dry-run: разбор листа, ничего не сохраняем."""
     svc = _svc(db, company_id, user)
     try:
         return await svc.import_preview(payload.get("rows") or [])

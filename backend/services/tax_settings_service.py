@@ -145,9 +145,10 @@ class TaxSettingsService:
         main_rate = self._rate(data.get("main_rate"), "main_rate")
         profit_rate = None
         if mode == "osno":
-            profit_rate = self._rate(data.get("profit_rate"), "profit_rate")
+            # Ставка налога одна: для ОСНО это ставка налога на прибыль.
+            profit_rate = main_rate
             if profit_rate <= 0:
-                raise TaxSettingsError("profit_rate: для ОСНО нужна ставка налога на прибыль")
+                raise TaxSettingsError("main_rate: для ОСНО нужна ставка налога на прибыль")
         elif mode == "none":
             main_rate = 0.0
         reason = str(data.get("reason") or "").strip()
@@ -180,31 +181,40 @@ class TaxSettingsService:
 
     # -------------------------------------------------------- покрытие НДС
     async def nds_coverage(self) -> dict:
-        """Сколько карточек компании имеют ставку НДС, а сколько — нет."""
+        """Сколько карточек компании имеют ставку НДС, а сколько — нет.
+
+        Ставка карточки — последняя на nmID: тот же приём, что в
+        aggregate_sync_service (подзапрос по индексу), а не GROUP BY по всей
+        истории wbcards_nds: тяжёлый GROUP BY запрещён AGENTS.md §3.
+
+        Карточки компании тянем списком nmID (один проход по wbcards), дальше
+        наличие ставки проверяем точечными подзапросами по индексу nmID.
+        """
         cid = self._need_company()
-        row = (await self.db.execute(text("""
-            SELECT COUNT(*) AS total,
-                   SUM(CASE WHEN n.nmID IS NULL THEN 1 ELSE 0 END) AS missing
+        rows = (await self.db.execute(text("""
+            SELECT c.nmID,
+                   (SELECT n.nds FROM wbcards_nds n
+                     WHERE n.nmID = c.nmID
+                     ORDER BY n.load_date DESC, n.id DESC LIMIT 1) AS nds
             FROM wbcards c
-            LEFT JOIN (SELECT DISTINCT nmID FROM wbcards_nds) n ON n.nmID = c.nmID
             WHERE c.company_id = :cid AND c.is_active = 1"""),
-            {"cid": cid})).mappings().first()
-        total = int(row["total"] or 0)
-        missing = int(row["missing"] or 0)
+            {"cid": cid})).all()
+        total = len(rows)
+        missing = sum(1 for r in rows if r["nds"] is None)
+        rates_map: dict[float, int] = {}
+        for r in rows:
+            if r["nds"] is None:
+                continue
+            rate = float(r["nds"] or 0)
+            rates_map[rate] = rates_map.get(rate, 0) + 1
         last = (await self.db.execute(text(
             "SELECT MAX(load_date) FROM wbcards_nds"))).scalar()
-        rates = (await self.db.execute(text("""
-            SELECT n.nds, COUNT(DISTINCT n.nmID) AS cards
-            FROM wbcards_nds n
-            INNER JOIN wbcards c ON c.nmID = n.nmID AND c.company_id = :cid
-            GROUP BY n.nds ORDER BY n.nds"""),
-            {"cid": cid})).all()
         return {
             "total": total,
             "with_rate": max(0, total - missing),
             "missing": missing,
             "last_load_date": str(last)[:10] if last else None,
-            "rates": [{"rate": float(r["nds"]), "cards": int(r["cards"])} for r in rates],
+            "rates": [{"rate": rate, "cards": cnt} for rate, cnt in sorted(rates_map.items())],
         }
 
     async def nds_missing_cards(self, q: str = "", limit: int = 200) -> list[dict]:
@@ -219,8 +229,8 @@ class TaxSettingsService:
         rows = (await self.db.execute(text(f"""
             SELECT c.nmID, c.vendorCode, c.title
             FROM wbcards c
-            LEFT JOIN (SELECT DISTINCT nmID FROM wbcards_nds) n ON n.nmID = c.nmID
-            WHERE c.company_id = :cid AND c.is_active = 1 AND n.nmID IS NULL{where}
+            WHERE c.company_id = :cid AND c.is_active = 1
+              AND NOT EXISTS (SELECT 1 FROM wbcards_nds n WHERE n.nmID = c.nmID){where}
             ORDER BY c.nmID LIMIT :lim"""), params)).mappings().all()
         return [dict(r) for r in rows]
 
@@ -254,6 +264,7 @@ class TaxSettingsService:
         else:
             use_rate = self._rate(main_rate, "main_rate")
         if use_mode == "osno" and main_rate is None:
+            # ОСНО: ставка на прибыль хранится в profit_rate (заполняется из main_rate).
             use_rate = float(cur.get("profit_rate") or 0)
         use_vat = (vat_source or cur.get("vat_source") or "cards").strip().lower()
         if use_vat not in VAT_SOURCES:
@@ -356,10 +367,12 @@ class TaxSettingsService:
         for key in sorted(days_map):
             b = days_map[key]
             income_base = b["net"] - b["vat"]
+            # f_deduction уже содержит f_otziv и f_adv (это подмножества удержаний),
+            # поэтому отдельно их НЕ вычитаем — иначе двойной счёт.
             profit_base = (income_base
                            - b["cost"] - b["commission"] - b["acquiring"] - b["acceptance"]
                            - b["delivery"] - b["storage"] - b["penalty"] - b["deduction"]
-                           - b["otziv"] - b["adv"] - b["cashback"] - b["manual"])
+                           - b["cashback"] - b["manual"])
             if use_mode == "none":
                 tax = 0.0
             elif use_mode == "income":
@@ -386,8 +399,6 @@ class TaxSettingsService:
                              - sum(d["storage"] for d in out_days)
                              - sum(d["penalty"] for d in out_days)
                              - sum(d["deduction"] for d in out_days)
-                             - sum(d["otziv"] for d in out_days)
-                             - sum(d["adv"] for d in out_days)
                              - sum(d["cashback"] for d in out_days)
                              - totals["manual"])
         if use_mode == "none":
@@ -401,10 +412,13 @@ class TaxSettingsService:
 
         notes = [
             "Расчёт — управленческая оценка, не налоговая декларация.",
-            "Ставка НДС берётся из wbcards_nds по карточке на дату продажи.",
-            "Расходы взяты по company-уровню (f_adv, f_otziv, f_storage_fee — итоги акта). "
-            "В разбивке по конкретному товару используются ff_* (позиционные суммы) — "
-            "между уровнями бывают расхождения, они показываются явно.",
+            "Ставка НДС берётся из wbcards_nds по карточке на дату продажи (без НДС / 10% / 22%).",
+            "База НДС — оборот по цене продавца со скидкой за вычетом возвратов. Фактическая база "
+            "НДС WB — цена покупателя с учётом СПП, поэтому сумма НДС здесь оценочная; точную базу "
+            "нужно сверить с актами реализации.",
+            "Расходы взяты по уровню компании (f_*): это итоги акта реализации, как в месячных "
+            "отчётах. В разбивке по конкретному товару проект считает по ff_* (позиционные суммы) — "
+            "между уровнями есть расхождения, их нужно сверять при подключении к отчётам.",
         ]
         if use_vat == "cards" and totals["vat_missing_rows"]:
             notes.append(
@@ -416,8 +430,11 @@ class TaxSettingsService:
             notes.append("Входящий НДС к вычету не применяется: нет подтверждённого источника.")
         if use_mode in ("profit", "osno"):
             notes.append("В базе налога Д−Р/ОСНО: доход без НДС минус расходы (себес, комиссия, "
-                         "эквайринг, приёмка, доставка, хранение, штрафы, удержания, отзывы, "
-                         "реклама, cashback и ручной маркетинг).")
+                         "эквайринг, приёмка, доставка, хранение, штрафы, удержания, cashback "
+                         "и ручной маркетинг).")
+        notes.append("Реклама и отзывы (f_adv, f_otziv) — часть удержаний f_deduction, поэтому "
+                     "отдельно не вычитаются: иначе получился бы двойной счёт. В колонке "
+                     "«расходы» они показаны справочно.")
 
         return {
             "mode": use_mode,

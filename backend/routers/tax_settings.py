@@ -1,14 +1,14 @@
-"""РќР°СЃС‚СЂРѕР№РєРё РЅР°Р»РѕРіРѕРІ РєРѕРјРїР°РЅРёРё (СЃС‚СЂР°РЅРёС†Р° В«РќР°СЃС‚СЂРѕР№РєР° СЃРёСЃС‚РµРјС‹В» + РїРѕРєСЂС‹С‚РёРµ РќР”РЎ).
+"""Настройки налогов компании (страница «Настройка системы» + покрытие НДС).
 
-РњР°СЂС€СЂСѓС‚С‹:
-  GET  /api/tax-settings/versions      вЂ” РІСЃРµ РІРµСЂСЃРёРё РЅР°СЃС‚СЂРѕРµРє (РёСЃС‚РѕСЂРёСЏ).
-  GET  /api/tax-settings/current       вЂ” РґРµР№СЃС‚РІСѓСЋС‰Р°СЏ РІРµСЂСЃРёСЏ РЅР° РґР°С‚Сѓ.
-  POST /api/tax-settings/versions      вЂ” СЃРѕР·РґР°С‚СЊ РЅРѕРІСѓСЋ РІРµСЂСЃРёСЋ (СЃС‚Р°СЂР°СЏ Р·Р°РєСЂС‹РІР°РµС‚СЃСЏ).
-  GET  /api/tax-settings/nds-coverage  вЂ” РїРѕРєСЂС‹С‚РёРµ РќР”РЎ РїРѕ РєР°СЂС‚РѕС‡РєР°Рј (wbcards_nds).
-  GET  /api/tax-settings/nds-missing   вЂ” РєР°СЂС‚РѕС‡РєРё Р±РµР· СЃС‚Р°РІРєРё (РґР»СЏ Excel).
-  POST /api/tax-settings/preview       вЂ” В«Р¶РёРІРѕР№ РїСЂРёРјРµСЂВ» СЂР°СЃС‡С‘С‚Р°; РѕС‚С‡С‘С‚С‹ РЅРµ РјРµРЅСЏРµС‚.
+Маршруты:
+  GET  /api/tax-settings/versions      — все версии настроек (история).
+  GET  /api/tax-settings/current       — действующая версия на дату.
+  POST /api/tax-settings/versions      — создать новую версию (старая закрывается).
+  GET  /api/tax-settings/nds-coverage  — покрытие НДС по карточкам (wbcards_nds).
+  GET  /api/tax-settings/nds-missing   — карточки без ставки (для Excel).
+  POST /api/tax-settings/preview       — «живой пример» расчёта; отчёты не меняет.
 
-РџСЂР°РІР°: С‡С‚РµРЅРёРµ вЂ” viewFinance, РёР·РјРµРЅРµРЅРёРµ вЂ” manageSettings.
+Права: чтение — viewFinance, изменение — manageSettings.
 """
 from __future__ import annotations
 
@@ -39,12 +39,11 @@ async def tax_meta(
     user: dict = Depends(get_current_user),
     _u: dict = Depends(require_perm("viewFinance")),
 ):
-    """РЎРїСЂР°РІРѕС‡РЅРёРєРё РґР»СЏ С„РѕСЂРјС‹: СЂРµР¶РёРјС‹, РёСЃС‚РѕС‡РЅРёРєРё РќР”РЎ, СЃС‚Р°РІРєРё."""
+    """Справочники для формы: режимы и источник НДС."""
     return {
         "modes": [{"value": m, "label": MODE_LABELS[m]} for m in MODES],
-        "vat_sources": [{"value": "cards", "label": "РќР”РЎ Р·Р°Р»РѕР¶РµРЅ РІ С‚РѕРІР°СЂРµ (wbcards_nds)"},
-                        {"value": "none", "label": "РќР”РЎ РЅРµ РёСЃС‡РёСЃР»СЏРµС‚СЃСЏ"}],
-        "main_rates": [1, 3, 6, 7, 8, 12, 15, 20, 25, 30],
+        "vat_sources": [{"value": "cards", "label": "По ставке карточки (wbcards_nds)"},
+                        {"value": "none", "label": "НДС не выделять"}],
     }
 
 
@@ -130,7 +129,7 @@ async def tax_preview(
     user: dict = Depends(get_current_user),
     _u: dict = Depends(require_perm("viewFinance")),
 ):
-    """Р–РёРІРѕР№ РїСЂРёРјРµСЂ: РїСЂРѕРґР°Р¶Рё в†’ РќР”РЎ РїРѕ РєР°СЂС‚РѕС‡РєР°Рј в†’ РЅР°Р»РѕРі. РќРёС‡РµРіРѕ РЅРµ СЃРѕС…СЂР°РЅСЏРµС‚."""
+    """Живой пример: продажи → НДС по карточкам → налог. Ничего не сохраняет."""
     svc = _svc(db, company_id, user)
     try:
         return await svc.preview(

@@ -1,23 +1,142 @@
-/* Ручной маркетинг: площадки, документы, позиции (/wb-marketing-expenses). */
+/* Маркетинг (/wb-marketing-expenses) — страница на классах темы.
+ * Токены темы, радиусы --radius-*, тени --shadow-1; своих цветов нет (theme.md §8.1).
+ * Каркас: .wb-panel / .card__hd / .wb-panel__bd, таблицы .tbl-card → .tbl-wrap → .tbl.
+ */
 
-.page-marketing-expenses__filter {
-  margin: 0;
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  border-radius: 0;
-  padding: 10px 14px;
+/* Заголовок страницы — размер даёт тема (h1, §4.3), здесь только отступ. */
+.page-marketing-expenses__title { margin: 0 0 4px; }
+
+/* Модалка поверх содержимого страницы (у .wb-modal-backdrop z-index нет —
+   это легаси-каркас, см. page-feedback-analysis.css:42). */
+.page-marketing-expenses__backdrop { z-index: 1060; }
+
+/* Сетка «таблица + панель документа» */
+.page-marketing-expenses__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .page-marketing-expenses__grid { grid-template-columns: 1fr; }
 }
 
-.page-marketing-expenses__row--archived { opacity: .55; }
-
+/* ---------- дропдаун «Действия с Excel» ----------
+   Образец: CostListPage.vue / page-wb-promotions.css — свой компонент,
+   без JS-бандла bootstrap. */
 .page-marketing-expenses__excel {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
+  justify-content: flex-end;
+  margin-bottom: 8px;
 }
-.page-marketing-expenses__file { cursor: pointer; }
+.page-marketing-expenses__excel-wrap { position: relative; }
+.page-marketing-expenses__excel-btn {
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-1);
+}
+.page-marketing-expenses__excel-list {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  min-width: 240px;
+  z-index: 20;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-1);
+  padding: 4px;
+  text-align: left;
+}
+.page-marketing-expenses__excel-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  font-size: calc(12.5px * var(--fs));
+  color: var(--ink);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.page-marketing-expenses__excel-item:hover { background: var(--surface-3); }
+.page-marketing-expenses__excel-item:disabled { color: var(--ink-muted); cursor: default; }
 
+/* Документ в таблице: название + ключ */
+.page-marketing-expenses__doc { cursor: pointer; }
+.page-marketing-expenses__doc-name { font-weight: 700; font-size: calc(12.5px * var(--fs)); }
+.page-marketing-expenses__doc-key { color: var(--ink-muted); font-size: calc(11.5px * var(--fs)); }
+
+/* Позиции выбранного документа */
+.page-marketing-expenses__lines { margin: 0; padding: 0; list-style: none; }
+.page-marketing-expenses__lines li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: calc(12.5px * var(--fs));
+}
+.page-marketing-expenses__lines li:last-child { border-bottom: 0; }
+.page-marketing-expenses__lines span { color: var(--ink-soft); }
+.page-marketing-expenses__lines b { text-align: right; }
+
+/* Подписи и служебные подсказки */
+.page-marketing-expenses__hint { color: var(--ink-soft); font-size: calc(12.5px * var(--fs)); }
+.page-marketing-expenses__alert .badge { margin-right: 6px; }
+
+/* Строка площадки в архиве — приглушена */
+.page-marketing-expenses__row--archived td { opacity: .55; }
+
+/* Модалка документа: ширина и прокрутка (у .wb-modal-box только min-width) */
+.page-marketing-expenses__modal {
+  width: min(1100px, 94vw);
+  max-height: 92vh;
+  overflow: auto;
+}
+.page-marketing-expenses__modal-title {
+  font-size: calc(16px * var(--fs));
+  font-weight: 700;
+}
+
+/* Подсказки поиска карточки для позиции расхода */
+.page-marketing-expenses__cards {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.page-marketing-expenses__card {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: calc(12.5px * var(--fs));
+  color: var(--ink);
+}
+.page-marketing-expenses__card:hover { background: var(--brand-tint); color: var(--brand-deep); }
+.page-marketing-expenses__card-nm { font-weight: 700; font-variant-numeric: tabular-nums; flex: none; }
+.page-marketing-expenses__card-vendor { color: var(--ink-soft); flex: none; }
+.page-marketing-expenses__card-title {
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Сумма позиции — узкое поле с числами справа */
 .page-marketing-expenses__amount {
   width: 120px;
   text-align: right;

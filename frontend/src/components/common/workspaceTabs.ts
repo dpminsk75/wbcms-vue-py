@@ -116,3 +116,4 @@ export const STOCK_PRODUCTION_TABS: WorkspaceTab[] = [
   { id: 'plan', label: 'Производственный план', to: '/wb-production', title: 'Производственный план' },
   { id: 'smolensk', label: 'Смоленск', to: '/wb-production/smolensk', title: 'Смоленск — остатки и движения' },
 ]
+

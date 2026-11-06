@@ -33,13 +33,11 @@ CHANNEL_TYPE_LABELS = {
     "other": "Другое",
 }
 
-DOC_TYPES = ("blogger_post", "giveaway", "self_buyout", "review_cashback", "other")
+DOC_TYPES = ("media", "article", "promo")
 DOC_TYPE_LABELS = {
-    "blogger_post": "Пост у блогера",
-    "giveaway": "Раздача",
-    "self_buyout": "Самовыкуп",
-    "review_cashback": "Кешбек за отзыв",
-    "other": "Прочее",
+    "media": "Медийная реклама",
+    "article": "Статья",
+    "promo": "Промокод",
 }
 
 # Колонки Excel-шаблона (один лист).
@@ -289,21 +287,6 @@ class MarketingService:
                 by_vc[str(d["vendorCode"])] = d
         return by_nm, by_vc
 
-    async def _cards_map(self) -> tuple[dict, dict]:
-        """Все карточки компании (для небольших кабинетов)."""
-        cid = self._need_company()
-        rows = (await self.db.execute(text("""
-            SELECT nmID, vendorCode, title FROM wbcards
-            WHERE company_id = :cid AND is_active = 1"""), {"cid": cid})).mappings().all()
-        by_nm: dict = {}
-        by_vc: dict = {}
-        for r in rows:
-            d = dict(r)
-            by_nm[int(r["nmID"])] = d
-            if d.get("vendorCode"):
-                by_vc[str(d["vendorCode"])] = d
-        return by_nm, by_vc
-
     async def create_document(self, data: dict) -> dict:
         """Создать документ с позициями. Позиции всегда привязаны к SKU."""
         cid = self._need_company()
@@ -333,12 +316,23 @@ class MarketingService:
                 raise MarketingError("площадка не найдена")
 
         if not dkey:
-            dkey = f"D-{ddate}-{date.today().strftime('%y%m%d%H%M%S')}"
-        dup = (await self.db.execute(text(
-            "SELECT id FROM marketing_expense_documents WHERE company_id=:cid AND document_key=:k LIMIT 1"),
-            {"cid": cid, "k": dkey})).scalar()
-        if dup:
-            raise MarketingError(f"document_key '{dkey}' уже занят")
+            base_key = f"D-{ddate}-{date.today().strftime('%y%m%d%H%M%S')}"
+            dkey = base_key
+            for i in range(2, 50):
+                dup = (await self.db.execute(text(
+                    "SELECT id FROM marketing_expense_documents WHERE company_id=:cid AND document_key=:k LIMIT 1"),
+                    {"cid": cid, "k": dkey})).scalar()
+                if not dup:
+                    break
+                dkey = f"{base_key}-{i}"
+            else:
+                raise MarketingError("не удалось сгенерировать document_key — укажите его вручную")
+        else:
+            dup = (await self.db.execute(text(
+                "SELECT id FROM marketing_expense_documents WHERE company_id=:cid AND document_key=:k LIMIT 1"),
+                {"cid": cid, "k": dkey})).scalar()
+            if dup:
+                raise MarketingError(f"document_key '{dkey}' уже занят")
 
         prepared = []
         seen = set()
