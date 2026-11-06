@@ -1,5 +1,9 @@
 <template>
   <div class="wb-universal-filter">
+    <!-- поля страницы — своей строкой НАД пресетами (слот #top) -->
+    <div v-if="$slots.top" class="wb-universal-filter__top">
+      <slot name="top" />
+    </div>
     <div class="wb-universal-filter__presets">
       <div class="wb-universal-filter__presets-group">
         <button v-for="p in presets" :key="p.id" class="btn" :class="activePreset === p.id ? 'btn--brand' : 'btn--outline'" @click="applyPreset(p.id)">{{ p.label }}</button>
@@ -240,6 +244,20 @@ function rangeOf(id: string): [string, string] | null {
   if (id === 'today') return [fmtD(t), fmtD(t)]
   if (id === 'yesterday') { const y = new Date(t); y.setDate(y.getDate() - (props.presetEnd === 'yesterday' ? 0 : 1)); return [fmtD(y), fmtD(y)] }
   if (id === 'ytd') return [fmtD(new Date(t.getFullYear(), 0, 1)), fmtD(t)]
+  // Окно с запасом в будущее: «+60» — только предстоящие дни, «30+60» —
+  // последние 30 дней + 60 дней вперёд. Нужно там, где события анонсируются
+  // заранее (акции WB) и окно «последние N дней» ничего не покажет.
+  const fw = /^\+(\d+)$/.exec(id)
+  if (fw) {
+    const e = new Date(t); e.setDate(e.getDate() + Number(fw[1]))
+    return [fmtD(t), fmtD(e)]
+  }
+  const both = /^(\d+)\+(\d+)$/.exec(id)
+  if (both) {
+    const f = new Date(t); f.setDate(f.getDate() - (Number(both[1]) - 1))
+    const e = new Date(t); e.setDate(e.getDate() + Number(both[2]))
+    return [fmtD(f), fmtD(e)]
+  }
   const n = Number(id)
   if (!Number.isFinite(n)) return null
   const f = new Date(t); f.setDate(f.getDate() - (n - 1)); return [fmtD(f), fmtD(t)]
@@ -310,6 +328,11 @@ onBeforeUnmount(() => { if (searchTimer) clearTimeout(searchTimer); reqSeq++ })
   grid-template-columns: repeat(auto-fit, minmax(140px, 190px));
   gap: 10px;
   align-items: start;
+}
+
+/* Слот #top — блок над пресетами (выбор акции на странице подбора). */
+.wb-universal-filter__top {
+  margin-bottom: 12px;
 }
 
 /* Поля фильтра — на токенах темы: кегль, цвета и фокус задаёт theme/forms.css

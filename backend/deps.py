@@ -29,6 +29,13 @@ PATH_PERMS_V3: tuple[tuple[str, frozenset[str], str], ...] = (
     # финансы
     ("/api/profit", frozenset({"GET"}), "viewFinance"),
     ("/api/wb-profit", frozenset({"GET"}), "viewFinance"),
+    # акции WB: календарь, подбор товаров по марже, отправка в акцию
+    ("/api/promotions", frozenset({"GET", "POST"}), "viewFinance"),
+    # Настройки налогов и ручной маркетинг: чтение — viewFinance, правка — manageSettings.
+    ("/api/tax-settings", frozenset({"GET"}), "viewFinance"),
+    ("/api/tax-settings", frozenset({"POST", "PUT", "PATCH", "DELETE"}), "manageSettings"),
+    ("/api/marketing", frozenset({"GET"}), "viewFinance"),
+    ("/api/marketing", frozenset({"POST", "PUT", "PATCH", "DELETE"}), "manageSettings"),
     ("/api/dashboard/monthly-finance", frozenset({"GET"}), "viewFinance"),
     ("/api/dashboard/finance-detail", frozenset({"GET"}), "viewFinance"),
     ("/api/dashboard/finance-storage", frozenset({"GET"}), "viewFinance"),
@@ -155,6 +162,35 @@ def require_perm(perm: str):
 async def get_current_user(request: Request, user: dict | None = Depends(get_optional_user)) -> dict:
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Требуется вход")
+    return user
+
+
+async def require_manage_settings(
+    request: Request,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Право на изменение настроек компании (налоги, ручной маркетинг).
+
+    v3 (AUTH_V3=1): нужен перм manageSettings (выдаётся в роли; owner/admin компании
+    получают его автоматически через COMPANY_ROLE_PERMS_V3).
+    legacy (AUTH_V3=0): перма нет — пускаем владельцев/админов компании.
+    """
+    allowed = set(user.get("perms") or []) | set(user.get("roles") or [])
+    if "admin" in allowed or "global_admin" in allowed:
+        return user
+    company_id = await _resolve_company_id(request)
+    if company_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="company_id is required for changing settings")
+    # owner/admin именно этой компании — даже если перм получен за другую роль.
+    if not await auth_service.can_manage_company(db, user["id"], company_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="company admin access denied")
+    if auth_service.AUTH_V3:
+        if "manageSettings" in allowed:
+            return user
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="manageSettings required")
     return user
 
 

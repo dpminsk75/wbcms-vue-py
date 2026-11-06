@@ -40,6 +40,7 @@ sudo cp "$DEPLOY"/wbcms-py.service "$DEPLOY"/wbcms-web.service \
   "$DEPLOY"/wbcms-fbs-supplies.service "$DEPLOY"/wbcms-fbs-supplies.timer \
   "$DEPLOY"/wbcms-finance-detail.service "$DEPLOY"/wbcms-finance-detail.timer \
   "$DEPLOY"/wbcms-price-sync.service "$DEPLOY"/wbcms-price-sync.timer \
+  "$DEPLOY"/wbcms-promotions.service "$DEPLOY"/wbcms-promotions.timer \
   "$DEPLOY"/wbcms-aggregate.service "$DEPLOY"/wbcms-aggregate.timer \
   "$DEPLOY"/wbcms-questions-sync.service "$DEPLOY"/wbcms-questions-sync.timer \
   /etc/systemd/system/
@@ -63,6 +64,7 @@ sudo systemctl enable --now \
   wbcms-fbs-all.timer wbcms-orders-sync.timer wbcms-sales-fetch.timer \
   wbcms-search-report.timer wbcms-fbs-supplies.timer \
   wbcms-finance-detail.timer wbcms-price-sync.timer wbcms-aggregate.timer \
+  wbcms-promotions.timer \
   wbcms-questions-sync.timer
 systemctl list-timers 'wbcms-*' --no-pager
 

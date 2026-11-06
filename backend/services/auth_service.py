@@ -295,8 +295,8 @@ COMPANY_ROLE_PERMS: dict[str, tuple[str, ...]] = {
 
 # v3: те же роли компании, но доменные пермы (viewReports/viewDashboard больше нет).
 COMPANY_ROLE_PERMS_V3: dict[str, tuple[str, ...]] = {
-    "owner": ("viewOrders", "viewFinance", "viewTags", "manageCompanyUsers"),
-    "admin": ("viewOrders", "viewFinance", "viewTags", "manageCompanyUsers"),
+    "owner": ("viewOrders", "viewFinance", "viewTags", "manageCompanyUsers", "manageSettings"),
+    "admin": ("viewOrders", "viewFinance", "viewTags", "manageCompanyUsers", "manageSettings"),
     "member": ("viewOrders",),
     "viewer": ("viewOrders",),
 }

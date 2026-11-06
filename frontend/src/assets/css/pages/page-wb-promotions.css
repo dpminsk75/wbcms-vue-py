@@ -1,0 +1,651 @@
+/* ============================================================
+   Страница «Акции WB» — /wb-promotions, /wb-promotions/selection
+   Токены темы (theme.md §3). Свои правила — только там, где
+   Bootstrap-утилит нет: сетка календаря с полосами через даты.
+   ============================================================ */
+
+.page-wb-promotions__tl {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+/* Горизонтальная прокрутка полос — Bootstrap .table-responsive умеет только
+   таблицы, а здесь сетка календаря на CSS Grid. */
+.page-wb-promotions__tl-scroll {
+  overflow-x: auto;
+}
+
+/* min-width задаётся инлайном (по числу дней: 250 + дни*26), чтобы колонки
+   не схлопывались в нечитаемые 9px на длинных периодах. */
+.page-wb-promotions__tl-inner {
+  min-width: 1100px;
+}
+
+.page-wb-promotions__tl-head {
+  display: grid;
+  grid-template-columns: 250px 1fr;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.page-wb-promotions__tl-head-lbl {
+  padding: 6px 10px;
+  font-size: calc(10.5px * var(--fs));
+  font-weight: 700;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  border-right: 1px solid var(--line);
+}
+
+.page-wb-promotions__tl-days {
+  display: grid;
+}
+
+.page-wb-promotions__tl-day {
+  font-size: calc(10px * var(--fs));
+  color: var(--ink-muted);
+  text-align: center;
+  padding: 4px 0 5px;
+  border-left: 1px solid var(--line);
+  line-height: 1.2;
+}
+
+.page-wb-promotions__tl-day b {
+  display: block;
+  font-size: calc(11px * var(--fs));
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+.page-wb-promotions__tl-day--wknd {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+
+/* Сегодня — вертикальная отметка на оси */
+.page-wb-promotions__tl-day--today {
+  background: var(--brand-tint);
+  color: var(--brand-deep);
+}
+
+.page-wb-promotions__tl-row {
+  display: grid;
+  grid-template-columns: 250px 1fr;
+  border-bottom: 1px solid var(--line);
+}
+
+.page-wb-promotions__tl-row:last-child {
+  border-bottom: none;
+}
+
+.page-wb-promotions__tl-name {
+  padding: 7px 10px;
+  font-size: calc(11.5px * var(--fs));
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink);
+  border-right: 1px solid var(--line);
+}
+
+.page-wb-promotions__tl-name i {
+  display: block;
+  font-style: normal;
+  font-size: calc(10.5px * var(--fs));
+  font-weight: 400;
+  color: var(--ink-muted);
+  margin-top: 2px;
+}
+
+/* Название акции и её полоса — ссылки на подбор товаров. */
+.page-wb-promotions__tl-name--link {
+  cursor: pointer;
+  user-select: none;
+}
+
+.page-wb-promotions__tl-name--link:hover {
+  color: var(--brand);
+  background: var(--brand-tint);
+}
+
+.page-wb-promotions__tl-lane {
+  display: grid;
+  align-items: center;
+}
+
+.page-wb-promotions__tl-bar {
+  grid-row: 1;
+  align-self: center;
+  margin: 4px 0;
+  padding: 6px 9px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.page-wb-promotions__tl-bar--auto {
+  border-left: 3px solid var(--brand-2);
+}
+
+/* Полоса акции — ссылка на подбор товаров. */
+.page-wb-promotions__tl-bar--link {
+  cursor: pointer;
+  transition: border-color .14s ease, box-shadow .14s ease;
+}
+
+.page-wb-promotions__tl-bar--link:hover {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 2px var(--brand-tint);
+}
+
+.page-wb-promotions__tl-bar--reg {
+  border-left: 3px solid var(--brand);
+}
+
+.page-wb-promotions__tl-bar--ann {
+  border-left: 3px solid var(--line-strong);
+  background: var(--surface-2);
+}
+
+/* Завершившаяся акция — приглушённая (видно, что она в прошлом) */
+.page-wb-promotions__tl-bar--fin {
+  border-left: 3px solid var(--line-strong);
+  background: var(--surface-2);
+  opacity: .75;
+}
+
+.page-wb-promotions__tl-bar-t {
+  font-size: calc(11.5px * var(--fs));
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.page-wb-promotions__tl-bar-m {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.page-wb-promotions__tl-bar-f {
+  margin-top: 3px;
+  font-size: calc(10.5px * var(--fs));
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.page-wb-promotions__tl-st {
+  font-size: calc(10.5px * var(--fs));
+  font-weight: 600;
+  border-radius: 5px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.page-wb-promotions__tl-st--auto {
+  background: var(--brand-tint);
+  color: var(--brand-deep);
+}
+
+.page-wb-promotions__tl-st--reg {
+  background: var(--good-tint);
+  color: var(--good-deep);
+}
+
+.page-wb-promotions__tl-st--ann {
+  background: var(--surface-3);
+  color: var(--ink-soft);
+}
+
+/* Идёт — зелёный; завершилась — серый */
+.page-wb-promotions__tl-st--act {
+  background: var(--good-tint);
+  color: var(--good-deep);
+}
+
+.page-wb-promotions__tl-st--fin {
+  background: var(--surface-3);
+  color: var(--ink-muted);
+}
+
+.page-wb-promotions__tl-disc {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: calc(10.5px * var(--fs));
+  font-weight: 700;
+  background: var(--surface-3);
+  color: var(--ink-soft);
+  border-radius: 5px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+/* ---------- таблица подбора: ровно по ширине контейнера ----------
+
+   table-layout:auto отдаёт всю лишнюю ширину самой широкой колонке —
+   «Товар» разъезжалась и уводила числа за край. Фиксированная раскладка
+   даёт таблицу ровно по ширине контейнера: первые две колонки заданы
+   явно, остальные делят остаток поровну. min-width не задаём — таблица
+   никогда не шире и не уже контейнера. */
+.page-wb-promotions__table {
+  table-layout: fixed;
+  width: 100%;
+  max-width: 100%;
+}
+
+.page-wb-promotions__table th,
+.page-wb-promotions__table td {
+  overflow: hidden;
+  padding: 3px 4px;
+}
+
+.page-wb-promotions__table td.num {
+  text-overflow: ellipsis;
+}
+
+.page-wb-promotions__table th:nth-child(1),
+.page-wb-promotions__table td:nth-child(1) {
+  width: 58px;
+}
+
+/* Товар: фото + название + артикул + «WB: id». Название обрезается многоточием
+   (clip у .prod-cell__title), поэтому колонка не разъезжается. */
+.page-wb-promotions__table th:nth-child(2),
+.page-wb-promotions__table td:nth-child(2) {
+  width: 210px;
+}
+
+/* Цена план.: цена в акции, ниже — минимальная цена WB (три строки). */
+.page-wb-promotions__price span {
+  display: block;
+}
+
+.page-wb-promotions__minlbl {
+  font-size: calc(9.5px * var(--fs));
+  color: var(--ink-muted);
+}
+
+/* Маржа: ₽ / % / Δ — три значения одной колонкой, в три строки. */
+.page-wb-promotions__margin {
+  line-height: 1.35;
+}
+
+.page-wb-promotions__margin span {
+  display: block;
+}
+
+/* Положительная маржа в сумме — жирная. */
+.page-wb-promotions__margin .is-bold {
+  font-weight: 700;
+}
+
+/* Кнопка блока таблицы — переопределяем только высоту прокручиваемой области
+   темы (250px), чтобы горизонтальный скроллбар был под шапкой, а не внизу
+   длинной таблицы. */
+.page-wb-promotions__card .tbl-wrap {
+  max-height: calc(100vh - 230px);
+}
+
+/* ---------- список акций ---------- */
+
+.page-wb-promotions__name {
+  font-weight: 600;
+}
+
+/* Преимущества акции — бейджами под названием (не отдельной колонкой) */
+.page-wb-promotions__adv {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.page-wb-promotions__adv span {
+  font-size: calc(10.5px * var(--fs));
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--surface-3);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+/* строка списка акций кликабельна (открывает подбор товаров) */
+.page-wb-promotions__row {
+  cursor: pointer;
+}
+
+.page-wb-promotions__sub {
+  font-size: calc(11px * var(--fs));
+  color: var(--ink-muted);
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- пагинация таблицы ---------- */
+
+.page-wb-promotions__range {
+  font-size: calc(11.5px * var(--fs));
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.page-wb-promotions__pagesize {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: calc(11.5px * var(--fs));
+  color: var(--ink-muted);
+}
+
+.page-wb-promotions__pagesize-sel {
+  width: auto;
+  height: 26px;
+  padding: 0 22px 0 8px;
+  font-size: calc(11.5px * var(--fs));
+}
+
+.page-wb-promotions__pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.page-wb-promotions__pg {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  font-size: calc(11.5px * var(--fs));
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.page-wb-promotions__pg:hover { border-color: var(--brand); color: var(--brand); }
+
+.page-wb-promotions__pg.is-on {
+  border-color: var(--brand);
+  background: var(--brand-tint);
+  color: var(--brand-deep);
+  font-weight: 700;
+}
+
+.page-wb-promotions__pg:disabled { opacity: .45; cursor: default; }
+
+/* ---------- дропдаун «Действия с Excel» (образец: CostListPage) ---------- */
+
+.page-wb-promotions__excel {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.page-wb-promotions__excel-wrap { position: relative; }
+
+.page-wb-promotions__excel-btn {
+  background: var(--surface);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+}
+
+.page-wb-promotions__excel-list {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  min-width: 230px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  z-index: 20;
+  box-shadow: var(--shadow-1);
+  padding: 4px;
+  text-align: left;
+}
+
+.page-wb-promotions__excel-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  font-size: calc(12.5px * var(--fs));
+  color: var(--ink);
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.page-wb-promotions__excel-item:hover { background: var(--surface-3); }
+.page-wb-promotions__excel-item:disabled { color: var(--ink-muted); cursor: default; }
+
+/* ---------- таблица подбора ---------- */
+
+.page-wb-promotions__pick {
+  width: 58px;
+  text-align: center !important;
+}
+
+.page-wb-promotions__pick input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--brand);
+  cursor: pointer;
+}
+
+/* товар «в акции»: под птичкой в первой колонке */
+.page-wb-promotions__inact {
+  display: block;
+  margin-top: 2px;
+  font-size: calc(9.5px * var(--fs));
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.page-wb-promotions__grp td {
+  background: var(--surface-3) !important;
+  color: var(--ink-soft);
+  font-weight: 700;
+  font-size: calc(11.5px * var(--fs));
+  text-align: left !important;
+  padding: 6px 10px;
+  border-top: 1px solid var(--line-strong);
+}
+
+.page-wb-promotions__grp--ok td {
+  background: var(--good-tint) !important;
+  color: var(--good-deep);
+}
+
+.page-wb-promotions__reason {
+  font-size: calc(11px * var(--fs));
+  color: var(--ink-soft);
+  text-align: left !important;
+  /* причина бывает длинной (статус WB) — переносим, а не режем */
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* разделитель групп колонок (цены → экономика → итог) */
+.page-wb-promotions__sep {
+  border-left: 1px solid var(--line-strong);
+}
+
+.page-wb-promotions__manual {
+  font-size: calc(10px * var(--fs));
+  color: var(--ink-muted);
+  font-style: italic;
+  margin-left: 6px;
+}
+
+.page-wb-promotions__warn {
+  font-style: normal;
+  font-weight: 700;
+  color: var(--warn);
+  cursor: help;
+}
+
+/* ---------- общее ---------- */
+
+/* Подпись под фильтром: что означает выбранный период (пересечение). */
+.page-wb-promotions__hint {
+  margin: -4px 0 12px;
+  font-size: calc(11.5px * var(--fs));
+  color: var(--ink-muted);
+  line-height: 1.45;
+}
+
+.page-wb-promotions__hint b {
+  color: var(--ink-soft);
+}
+
+/* Кликабельный заголовок сортировки (по датам) */
+.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.sortable:hover {
+  color: var(--brand);
+}
+
+.sortable.is-on {
+  color: var(--brand);
+  font-weight: 700;
+}
+
+.sortable .bi {
+  font-size: .9em;
+  opacity: .45;
+}
+
+.sortable.is-on .bi {
+  opacity: 1;
+}
+
+.page-wb-promotions__loading,
+.page-wb-promotions__empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 14px;
+  color: var(--ink-soft);
+  font-size: calc(12.5px * var(--fs));
+}
+
+.page-wb-promotions__alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 13px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--bad);
+  background: var(--bad-tint);
+  color: var(--bad-deep);
+  font-size: calc(12.5px * var(--fs));
+}
+
+.page-wb-promotions__alert--info {
+  border-color: var(--info);
+  background: var(--info-tint);
+  color: var(--info-deep);
+}
+
+/* пометки и причина — под карточкой товара в первой колонке */
+.page-wb-promotions__marks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+}
+
+.page-wb-promotions__mark {
+  font-size: calc(10px * var(--fs));
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+.page-wb-promotions__reason {
+  font-size: calc(10.5px * var(--fs));
+  color: var(--ink-soft);
+}
+
+/* пороги расчёта — блок внутри слота #fields фильтра.
+   Слот #fields — сетка с колонками 140–190px, поэтому наш блок занимает
+   строку целиком, а поля внутри него — своей сеткой. */
+.page-wb-promotions__params {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.page-wb-promotions__params-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 180px));
+  gap: 12px;
+  width: 100%;
+}
+
+/* выбор акции — своей строкой над датами (слот #top) */
+.page-wb-promotions__promo-field {
+  min-width: 320px;
+  max-width: 660px;
+  max-width: 520px;
+}
+
+.page-wb-promotions__chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.page-wb-promotions__more {
+  padding: 8px 14px;
+  font-size: calc(11.5px * var(--fs));
+  color: var(--ink-muted);
+  background: var(--surface-2);
+  border-top: 1px solid var(--line);
+}
+
+/* плашка актуальности кэша */
+.page-wb-promotions__fresh {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: calc(11.5px * var(--fs));
+  color: var(--ink-soft);
+}
+
+.page-wb-promotions__fresh-hint {
+  color: var(--ink-muted);
+}
+
+.page-wb-promotions__kpi {
+  margin: 12px 0;
+}
+
+.page-wb-promotions__promo-select {
+  min-width: 320px;
+  max-width: 520px;
+}

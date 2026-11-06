@@ -44,13 +44,24 @@ class ProductionService:
 
     # --- план -----------------------------------------------------------
     async def plan(self) -> list[dict]:
+        # Карточка — из wbcards. JOIN только со строкой своей компании:
+        # в wbcards один nmID встречается несколько раз (легаси-строка без
+        # company_id + строка компании), без фильтра джойн размножает строки
+        # плана и берёт произвольную карточку (theme.md §5.7.9).
         rows = (await self.db.execute(text("""
             SELECT p.id, p.nm_id, p.production_days, p.logistics_smolensk_days,
                    p.logistics_wb_days, p.buffer_days, p.target_coverage_days,
                    p.sort_order,
-                   c.vendorCode, c.title, c.company_id
+                   c.vendorCode, c.title, c.photos, c.brand, c.subjectName
             FROM production_plan_item p
-            LEFT JOIN wbcards c ON c.nmID = p.nm_id
+            LEFT JOIN (
+                SELECT c.nmID, c.company_id,
+                       MAX(c.vendorCode) AS vendorCode, MAX(c.title) AS title,
+                       MAX(c.photos) AS photos, MAX(c.brand) AS brand,
+                       MAX(c.subjectName) AS subjectName
+                FROM wbcards c
+                GROUP BY c.nmID, c.company_id
+            ) c ON c.nmID = p.nm_id
             WHERE (:cid IS NULL OR c.company_id = :cid)
             ORDER BY p.sort_order ASC, p.id ASC"""),
             {"cid": self.company_id})).mappings().all()
@@ -266,6 +277,9 @@ class ProductionService:
                 "nm_id": nm,
                 "vendor_code": p.get("vendorCode") or "",
                 "title": p.get("title") or "",
+                "photos": p.get("photos"),
+                "brand": p.get("brand") or "",
+                "subject_name": p.get("subjectName") or "",
                 "wb_start": round(wb_start.get(key, 0.0), 2),
                 "wb_now": round(stock, 2),
                 "smolensk_start": sml_start.get(nm, 0),

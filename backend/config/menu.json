@@ -13,6 +13,7 @@
       {"label": "Тепловая карта", "url": "/wb-order/heatmap", "visibleIn": ["top", "side"]},
       {"divider": true, "visibleIn": ["top", "side"]},
       {"label": "Реклама", "url": "/wb-adv-report/", "visibleIn": ["top", "side"]},
+      {"label": "Акции WB", "url": "/wb-promotions", "visibleIn": ["top", "side"]},
       {"label": "По ГЕО", "url": "/geo/sales-map", "visibleIn": ["top", "side"]},
       {"label": "Возвраты", "url": "/unclaimed-orders/", "visibleIn": ["top", "side"]},
       {"label": "Штрафы и потери", "url": "/wb-penalty/logistics", "visibleIn": ["top", "side"]},

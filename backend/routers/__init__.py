@@ -51,3 +51,6 @@ from .phrase_miner import router as phrase_miner_router
 from .cms import router as cms_router
 from .ext import router as ext_router, admin_router as ext_tokens_admin_router, diag_admin_router as ext_diag_admin_router, dl_router as ext_download_router, cat_router as ext_filters_router
 from .images import router as images_router
+from .promotions import router as promotions_router
+from .tax_settings import router as tax_settings_router
+from .marketing import router as marketing_router

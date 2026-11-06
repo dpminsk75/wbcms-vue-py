@@ -56,6 +56,11 @@ const router = createRouter({
     { path: '/fbs-commission', name: 'fbs-commission', component: () => import('../pages/FbsCommissionPage.vue'), meta: { title: 'FBS Комиссия' } },
     { path: '/fbs-pvz', name: 'fbs-pvz', component: () => import('../pages/FbsPvzPage.vue'), meta: { title: 'FBS Путь до ПВЗ' } },
     { path: '/wb-adv-report', name: 'adv-report', component: () => import('../pages/AdvReportPage.vue'), alias: ['/wb-adv-report/'], meta: { title: 'Аналитика рекламы WB' } },
+    { path: '/wb-promotions', name: 'wb-promotions', component: () => import('../pages/WbPromotionsPage.vue'), alias: ['/wb-promotions/'], meta: { title: 'Акции WB', needPerm: 'viewFinance' } },
+    // Черновик: налоговые настройки и ручной маркетинг. В меню пока НЕ добавлены — доступ по прямой ссылке.
+    { path: '/wb-tax-settings', name: 'wb-tax-settings', component: () => import('../pages/TaxSettingsPage.vue'), meta: { title: 'Настройки налогов и НДС', needPerm: 'viewFinance' } },
+    { path: '/wb-marketing-expenses', name: 'wb-marketing-expenses', component: () => import('../pages/MarketingExpensesPage.vue'), meta: { title: 'Ручной маркетинг: площадки и расходы', needPerm: 'viewFinance' } },
+    { path: '/wb-promotions/selection', name: 'wb-promotions-selection', component: () => import('../pages/WbPromotionsSelectionPage.vue'), meta: { title: 'Акции WB — подбор товаров', needPerm: 'viewFinance' } },
     { path: '/wb-profit/top-products', name: 'top-products', component: () => import('../pages/TopProductsPage.vue'), meta: { title: 'ТОП товаров за период' } },
     { path: '/wb-profit/products', name: 'profit-products', component: () => import('../pages/ProfitProductsPage.vue'), meta: { title: 'Маржа по продуктам' } },
     { path: '/wb-warehouses', name: 'warehouses', component: () => import('../pages/WarehousesPage.vue'), meta: { title: 'Склады' } },

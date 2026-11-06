@@ -12,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.services.assembly_grid import (
+    bounds as grid_bounds,
     bucket_index,
     discount_pp,
     labels as grid_labels,
@@ -120,10 +121,12 @@ class FbsCommissionService:
             hs = sorted(x["h"] for x in items)
             n = len(hs)
             total_w = len(all_items)
-            zones = [0] * 7
+            # Число зон = корзины сетки + «без сдачи» (INCLUDING undelivered).
+            nb = len(grid_bounds())
+            zones = [0] * (nb + 1)
             for h in hs:
                 zones[bucket_index(h)] += 1
-            zones[6] = total_w - n
+            zones[nb] = total_w - n
             e = sum(discount_pp(x["h"], x["odate"]) / 100 * x["price"]
                       for x in items)
             l = sum(penalty_pct(x["h"], x["odate"]) / 100 * x["price"]

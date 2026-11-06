@@ -89,6 +89,11 @@ ALLOWED: dict[str, dict] = {
         "default": "00,06,12,18:30",
         "group": "day",
     },
+    "wbcms-promotions": {
+        "title": "Акции WB (календарь + номенклатура)",
+        "default": "*:10",
+        "group": "day",
+    },
     "wbcms-aggregate": {
         "title": "Агрегаты OLAP (кубы + ff_otziv/ff_adv)",
         "default": "01:30",

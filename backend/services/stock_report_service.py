@@ -55,9 +55,10 @@ class StockReportService:
             INNER JOIN wbcards c ON c.nmID = s.nmID
             WHERE 1=1{where}"""), params)).scalar() or 0
         rows = (await self.db.execute(text(f"""
-            SELECT s.sku, s.nmID, s.chrtID, c.vendorCode, c.title
+            SELECT s.sku, s.nmID, s.chrtID, c.vendorCode, c.title,
+                   c.photos, c.brand, c.subjectName
             FROM wbcards_sizes s
-            INNER JOIN wbcards c ON c.nmID = s.nmID
+            INNER JOIN wbcards c ON c.nmID = s.nmID AND c.company_id = :cid
             WHERE 1=1{where}
             ORDER BY c.vendorCode ASC, s.sku ASC
             LIMIT :lim OFFSET :off"""),
@@ -263,12 +264,13 @@ class StockReportService:
         stmt = text(f"""
             SELECT l.id, l.created_at, l.doc_type, l.doc_id, l.warehouseId,
                    w.name AS warehouse_name, l.sku, c.vendorCode, c.title,
+                   c.photos, c.brand, c.subjectName,
                    l.qty_delta, l.qty_before, l.qty_after, u.username
             FROM wb_stock_ledger l
             LEFT JOIN our_warehouse w ON w.id = l.warehouseId
             LEFT JOIN `user` u ON u.id = l.user_id
             LEFT JOIN wbcards_sizes s ON s.sku = l.sku
-            LEFT JOIN wbcards c ON c.nmID = s.nmID
+            LEFT JOIN wbcards c ON c.nmID = s.nmID AND c.company_id = l.company_id
             WHERE 1=1{where}
             ORDER BY l.created_at ASC, l.id ASC
             LIMIT :lim""").bindparams(bindparam("skus", expanding=True))
@@ -309,10 +311,11 @@ class StockReportService:
         wh_bal = " AND b.warehouseId = :wid" if wh else ""
         bal = (await self.db.execute(text(f"""
             SELECT s.sku, s.nmID, s.chrtID, c.vendorCode, c.title,
+                   c.photos, c.brand, c.subjectName,
                    b.warehouseId AS wid, b.quantity
             FROM wb_stock_balance b
             INNER JOIN wbcards_sizes s ON s.sku = b.sku
-            INNER JOIN wbcards c ON c.nmID = s.nmID
+            INNER JOIN wbcards c ON c.nmID = s.nmID AND c.company_id = :cid
             WHERE b.company_id = :cid{wh_bal} AND b.quantity > 0"""), params)).mappings().all()
 
         rows = []

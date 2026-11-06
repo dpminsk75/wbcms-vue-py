@@ -1,0 +1,20 @@
+[Unit]
+Description=wbcms WB promotions sync (dp-calendar-api -> wb_promotions, hourly at :10)
+After=network.target mysql.service
+
+[Service]
+# Память сервера: ядро 1 ГБ, занято до ~765 МБ (mysqld, vite, legacy
+# PHP). Ядро не успевает освободить RAM, и OOM-killer убивает mysqld -
+# это ~40 минут даунтайма (crash recovery + последствия).
+MemoryMax=300M
+# Дать воркеру пережить OOM-killer'а: 1000 = минимальный приоритет (вытесняется
+# первым), чтобы спаслась БД, а не воркер.
+OOMScoreAdjust=1000
+Type=oneshot
+User=www-data
+WorkingDirectory=/var/www/wb/wbcms-py
+EnvironmentFile=/var/www/wb/wbcms-py/.env
+Environment=PYTHONUNBUFFERED=1
+# Через общий flock: не запускаемся, если воркер уже работает. Ждём 15 минут (900 с),
+# если не дождались — выходим (exit 0) - без остановки таймера.
+ExecStart=/usr/bin/flock -w 900 -E 0 /tmp/wbcms-workers.lock /var/www/wb/wbcms-py/.venv/bin/python backend/workers/promotions_sync.py

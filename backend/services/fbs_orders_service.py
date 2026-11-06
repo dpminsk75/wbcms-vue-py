@@ -180,13 +180,12 @@ class FbsOrdersService:
             ) fh ON fh.wb_order_id = f.wb_order_id
             WHERE {base}
             GROUP BY d ORDER BY d ASC"""), params)).mappings().all()
+        n = len(lo)
         return {"bucket_labels": grid_labels(),
                 "days": [{"d": str(r["d"]), "orders_cnt": int(r["cnt"]),
                           "revenue_gross": float(r["revenue_gross"] or 0),
                           "un_cnt": int(r["un_cnt"] or 0),
-                          "b0": int(r["b0"] or 0), "b1": int(r["b1"] or 0),
-                          "b2": int(r["b2"] or 0), "b3": int(r["b3"] or 0),
-                          "b4": int(r["b4"] or 0), "b5": int(r["b5"] or 0)}
+                          **{f"b{i}": int(r.get(f"b{i}") or 0) for i in range(n)}}
                          for r in rows]}
 
     # --- очередь и скорость сборки ---
