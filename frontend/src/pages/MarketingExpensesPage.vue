@@ -82,11 +82,59 @@
           </div>
           <input ref="fileRef" type="file" accept=".xlsx,.csv" class="d-none" @change="onUpload">
 
+          <!-- ===== Сводка по окну фильтра ===== -->
+          <div class="grid-4 mb-3">
+            <KpiTile label="Документов" :value="summary?.documents ?? 0" variant="tile--1" foot="по дате документа в окне фильтра" />
+            <KpiTile label="Площадок" :value="summary?.channels ?? 0" variant="tile--1" foot="в окне фильтра" />
+            <KpiTile label="Сумма за период" :value="money(summary?.total ?? 0)" variant="tile--1" foot="по документам в окне фильтра" />
+            <KpiTile label="Попадёт в отчёт" :value="money(summary?.in_report ?? 0)" variant="tile--12" foot="растянуто по периодам размещения" />
+          </div>
+
+          <div v-if="summary?.by_type?.length" class="tbl-card mb-3">
+            <div class="card__hd">
+              Сводка по типам расхода
+              <span class="hd-badge">окно {{ docFrom }} — {{ docTo }}</span>
+              <span class="spacer"></span>
+              <span class="page-marketing-expenses__hint">«В отчёт» — часть суммы, попадающая в окно отчёта</span>
+            </div>
+            <div class="tbl-wrap">
+              <table class="tbl">
+                <thead>
+                  <tr>
+                    <th class="t-left">Тип расхода</th>
+                    <th>Документов</th>
+                    <th>Сумма</th>
+                    <th>В отчёт</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="t in summary.by_type" :key="t.doc_type">
+                    <td class="t-left">{{ t.label }}</td>
+                    <td class="num">{{ t.documents }}</td>
+                    <td class="num">{{ money(t.total) }}</td>
+                    <td class="num">{{ money(t.in_report) }}</td>
+                  </tr>
+                </tbody>
+                <tfoot>
+                  <tr class="tbl__total">
+                    <td class="t-left">Итого</td>
+                    <td class="num">{{ summary.documents }}</td>
+                    <td class="num">{{ money(summary.total) }}</td>
+                    <td class="num">{{ money(summary.in_report) }}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
           <div class="tbl-card">
             <div class="card__hd">
               Документы расходов
               <span class="hd-badge">{{ documents.length }} документов</span>
               <span class="spacer"></span>
+              <button class="hd-btn" type="button" :disabled="!canManage || !documents.length" @click="copyDocument()">
+                <i class="bi bi-files me-1"></i>По образцу
+              </button>
               <button class="hd-btn" type="button" :disabled="!canManage" @click="openDocument()">
                 <i class="bi bi-plus-lg me-1"></i>Новый документ
               </button>
@@ -99,6 +147,7 @@
                     <th class="t-left">Документ</th>
                     <th class="t-left">Площадка</th>
                     <th class="t-left">Тип</th>
+                    <th class="t-left">Размещение</th>
                     <th>Позиций</th>
                     <th>Итог</th>
                   </tr>
@@ -117,17 +166,21 @@
                     </td>
                     <td class="t-left">{{ d.channel_name || '—' }}</td>
                     <td class="t-left">{{ d.doc_type_label }}</td>
+                    <td class="t-left page-marketing-expenses__period">
+                      {{ periodLabel(d) }}
+                      <div class="page-marketing-expenses__period-days">{{ periodDaysLabel(d) }}</div>
+                    </td>
                     <td class="num">{{ d.lines_cnt }}</td>
                     <td class="num">{{ money(d.total_amount) }}</td>
                   </tr>
                   <tr v-if="!documents.length">
-                    <td colspan="6" class="text-center text-muted py-3">Документов за период нет</td>
+                    <td colspan="7" class="text-center text-muted py-3">Документов за период нет</td>
                   </tr>
                 </tbody>
                 <tfoot v-if="documents.length">
                   <tr class="tbl__total">
                     <td class="t-left">Итого</td>
-                    <td colspan="3">{{ documents.length }} документов · {{ totalLines }} позиций</td>
+                    <td colspan="4">{{ documents.length }} документов · {{ totalLines }} позиций</td>
                     <td class="num">{{ totalLines }}</td>
                     <td class="num">{{ money(totalAmount) }}</td>
                   </tr>
@@ -408,8 +461,20 @@
         <div class="row g-3">
           <div class="col-4">
             <div class="wb-field">
-              <label class="wb-field__label">Дата *</label>
-              <WbDateInput v-model="docForm.document_date" />
+              <label class="wb-field__label">Дата документа *</label>
+              <WbDateInput v-model="docForm.document_date" @update:model-value="onDocDateChange" />
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="wb-field">
+              <label class="wb-field__label">Размещение с *</label>
+              <WbDateInput v-model="docForm.period_start" />
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="wb-field">
+              <label class="wb-field__label">Размещение по *</label>
+              <WbDateInput v-model="docForm.period_end" />
             </div>
           </div>
           <div class="col-4">
@@ -448,6 +513,11 @@
             </div>
           </div>
         </div>
+
+        <p class="page-marketing-expenses__hint mb-0">
+          Период размещения — до 366 дней. По умолчанию равен дате документа (разовое размещение).
+          Расход растягивается по дням периода: в отчёт по товару попадает только часть, попавшая в окно отчёта.
+        </p>
 
         <div class="d-flex justify-content-between align-items-center">
           <b>Позиции (всегда с SKU)</b>
@@ -532,7 +602,8 @@
 import '@/assets/css/pages/page-marketing-expenses.css'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { marketingApi, type MarketingDocument, type MarketingImportPreview } from '@/api/marketing'
+import { marketingApi, type MarketingDocument, type MarketingImportPreview, type MarketingSummary } from '@/api/marketing'
+import KpiTile from '@/components/common/KpiTile.vue'
 import WbDateRangeFilter from '@/components/common/WbDateRangeFilter.vue'
 import WbDateInput from '@/components/common/WbDateInput.vue'
 import WbSectionTabs from '@/components/common/WbSectionTabs.vue'
@@ -578,20 +649,56 @@ const chForm = ref<any>({ id: null, name: '', channel_type: 'blogger', website_o
 const chMsg = ref('')
 
 const docModal = ref(false)
-const docForm = ref<any>({ id: null, document_key: '', document_date: new Date().toISOString().slice(0, 10), channel_id: null, doc_type: 'blogger_post', title: '', comment: '', lines: [] as any[] })
+const docForm = ref<any>({
+  id: null, document_key: '', document_date: new Date().toISOString().slice(0, 10),
+  period_start: new Date().toISOString().slice(0, 10), period_end: new Date().toISOString().slice(0, 10),
+  channel_id: null, doc_type: 'blogger_post', title: '', comment: '', lines: [] as any[],
+})
 const docMsg = ref('')
+/** Период правили руками — тогда смена даты документа его не перетирает. */
+const periodTouched = ref(false)
 
 const fileRef = ref<HTMLInputElement | null>(null)
 const imp = ref<MarketingImportPreview | null>(null)
 const importMsg = ref('')
 const saving = ref(false)
+const summary = ref<MarketingSummary | null>(null)
 
 const docTotal = computed(() => (docForm.value.lines || []).reduce((s: number, l: any) => s + Number(l.amount || 0), 0))
 const totalLines = computed(() => documents.value.reduce((s, d) => s + (d.lines_cnt || 0), 0))
 const totalAmount = computed(() => documents.value.reduce((s, d) => s + Number(d.total_amount || 0), 0))
 
 function money(v: number) {
-  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(Number(v || 0)) + ' ₽'
+  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(v || 0)) + ' ₽'
+}
+
+/** Период размещения в виде «01.11 — 30.11». */
+function periodLabel(d: MarketingDocument) {
+  const fmt = (s: string) => {
+    const [, m, dd] = s.split('-')
+    return dd && m ? `${dd}.${m}` : s
+  }
+  return `${fmt(d.period_start)} — ${fmt(d.period_end)}`
+}
+
+/** Подпись под периодом: «30 дней» или «разовое». */
+function periodDaysLabel(d: MarketingDocument) {
+  const days = d.period_days
+    ?? (d.period_start && d.period_end
+      ? Math.round((new Date(d.period_end).getTime() - new Date(d.period_start).getTime()) / 864e5) + 1
+      : 1)
+  if (days <= 1) return 'разовое'
+  const last = days % 10
+  const tens = days % 100
+  const word = tens === 1 && last !== 1 ? 'день' : tens >= 2 && tens <= 4 && (last < 2 || last > 4) ? 'дня' : 'дней'
+  return `${days} ${word}`
+}
+
+/** Смена даты документа тянет за собой период, пока тот не правили руками. */
+function onDocDateChange(v: string) {
+  if (periodTouched.value) return
+  docForm.value.period_start = v
+  docForm.value.period_end = v
 }
 
 /* Смена периода в блоке дат — запоминаем; запрос идёт по кнопке «Применить». */
@@ -611,6 +718,9 @@ async function loadDocuments() {
     date_from: docFrom.value, date_to: docTo.value,
     channel_id: docChannel.value, q: docQuery.value,
   }).catch(() => [])
+  summary.value = await marketingApi.summary({
+    date_from: docFrom.value, date_to: docTo.value, channel_id: docChannel.value, q: docQuery.value,
+  }).catch(() => null)
   if (selectedDoc.value) {
     const again = documents.value.find((d) => d.id === selectedDoc.value!.id)
     selectedDoc.value = again || null
@@ -671,19 +781,37 @@ function openDocument(d?: any) {
     marketingApi.document(d.id).then((full) => {
       docForm.value = {
         id: full.id, document_key: full.document_key, document_date: full.document_date,
+        period_start: full.period_start || full.document_date,
+        period_end: full.period_end || full.period_start || full.document_date,
         channel_id: full.channel_id, doc_type: full.doc_type, title: full.title,
         comment: full.comment || '', lines: (full.lines || []).map((l: any) => ({ ...l })),
       }
+      periodTouched.value = true
       docModal.value = true
     })
     return
   }
+  const today = new Date().toISOString().slice(0, 10)
   docForm.value = {
-    id: null, document_key: '', document_date: new Date().toISOString().slice(0, 10),
+    id: null, document_key: '', document_date: today,
+    period_start: today, period_end: today,
     channel_id: null, doc_type: 'blogger_post', title: '', comment: '',
     lines: [{ vendor_code: '', nm_id: null, product_title: '', amount: 0, comment: '' }],
   }
+  periodTouched.value = false
   docModal.value = true
+}
+
+/** «По образцу»: копия документа — новая запись с теми же позициями. */
+async function copyDocument() {
+  const src = selectedDoc.value || documents.value[0]
+  if (!src) return
+  try {
+    await marketingApi.copyDocument(src.id)
+    await loadDocuments()
+  } catch (e: any) {
+    importMsg.value = e?.response?.data?.detail || e?.message || String(e)
+  }
 }
 function addLine() {
   docForm.value.lines.push({ vendor_code: '', nm_id: null, product_title: '', amount: 0, comment: '' })
@@ -744,10 +872,12 @@ async function removeDocument(d: any) {
 /* ------------------------------------------------------------ Excel */
 async function downloadTemplate() {
   const cols = meta.value.xlsx_columns.length ? meta.value.xlsx_columns
-    : ['document_key', 'document_date', 'channel', 'doc_type', 'title', 'vendor_code', 'nm_id', 'amount', 'comment']
+    : ['document_key', 'document_date', 'channel', 'doc_type', 'title', 'vendor_code', 'nm_id', 'amount', 'comment',
+       'period_start', 'period_end']
   const rows = [Object.fromEntries(cols.map((c: string) => [c, ''])), {
     document_key: 'M-001', document_date: '2026-11-01', channel: 'CoffeeBlog', doc_type: 'blogger_post',
     title: 'Telegram-подборка', vendor_code: 'WBC-1001', nm_id: '214000001', amount: '5000.00', comment: 'пример',
+    period_start: '2026-11-01', period_end: '2026-11-30',
   }]
   await exportXlsx({ rows, filename: 'шаблон-маркетинговых-расходов.xlsx', sheetName: 'Расходы' })
 }
@@ -758,6 +888,7 @@ async function exportRows() {
       document_key: r.document_key, document_date: r.document_date, channel: r.channel,
       doc_type: r.doc_type, title: r.title, vendor_code: r.vendor_code, nm_id: r.nm_id,
       amount: r.amount, comment: r.comment || '',
+      period_start: r.period_start || '', period_end: r.period_end || '',
     })),
     filename: 'маркетинговые-расходы.xlsx', sheetName: 'Расходы',
   })

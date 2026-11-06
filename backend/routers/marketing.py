@@ -215,6 +215,41 @@ async def documents_delete(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/documents/{document_id}/copy")
+async def documents_copy(
+    document_id: int,
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+    user: dict = Depends(get_current_user),
+    _u: dict = Depends(require_manage_settings),
+):
+    """Копия документа («по образцу») — новая запись с теми же позициями."""
+    svc = _svc(db, company_id, user)
+    try:
+        return await svc.copy_document(document_id)
+    except MarketingError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/summary")
+async def marketing_summary(
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    channel_id: int | None = Query(default=None),
+    q: str = Query(default=""),
+    db: AsyncSession = Depends(get_db),
+    company_id: int | None = Depends(get_current_company),
+    user: dict = Depends(get_current_user),
+    _u: dict = Depends(require_perm("viewFinance")),
+):
+    """Сводка по окну фильтра: документы, площадки, суммы, «в отчёт» (растянуто по периодам)."""
+    svc = _svc(db, company_id, user)
+    try:
+        return await svc.summary(date_from, date_to, channel_id, q)
+    except MarketingError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 # ----------------------------------------------------------------- Excel
 @router.post("/import/preview")
 async def import_preview(

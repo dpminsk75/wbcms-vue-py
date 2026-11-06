@@ -30,6 +30,12 @@ export interface MarketingDocument {
   id: number
   document_key: string
   document_date: string
+  /** Начало периода размещения (расход «работает» с этой даты). */
+  period_start: string
+  /** Окончание периода размещения. */
+  period_end: string
+  /** Дней в периоде размещения. */
+  period_days?: number
   channel_id: number | null
   channel_name: string | null
   doc_type: string
@@ -40,6 +46,25 @@ export interface MarketingDocument {
   lines_cnt: number
   created_at: string
   lines?: MarketingLine[]
+}
+
+export interface MarketingSummaryRow {
+  doc_type?: string
+  label?: string
+  channel?: string
+  documents: number
+  total: number
+  in_report: number
+}
+
+export interface MarketingSummary {
+  documents: number
+  channels: number
+  total: number
+  /** Часть суммы, растянутая по периодам размещения и попавшая в окно отчёта. */
+  in_report: number
+  by_type: MarketingSummaryRow[]
+  by_channel: MarketingSummaryRow[]
 }
 
 export interface MarketingImportPreview {
@@ -110,6 +135,16 @@ export const marketingApi = {
   async deleteDocument(id: number) {
     const { data } = await api.delete(`/api/marketing/documents/${id}`)
     return data as { ok: boolean }
+  },
+  /** Копия документа («по образцу») — новая запись с теми же позициями. */
+  async copyDocument(id: number) {
+    const { data } = await api.post(`/api/marketing/documents/${id}/copy`)
+    return data as { ok: boolean; id: number; document_key: string; total_amount: number }
+  },
+  /** Сводка по окну фильтра: документы, площадки, суммы, «в отчёт» (растянуто по периодам). */
+  async summary(params: { date_from?: string; date_to?: string; channel_id?: number | null; q?: string }) {
+    const { data } = await api.get('/api/marketing/summary', { params })
+    return data as MarketingSummary
   },
   async importPreview(rows: any[][]) {
     const { data } = await api.post('/api/marketing/import/preview', { rows })

@@ -9,12 +9,16 @@
 Расход ВСЕГДА привязан к SKU: строки без nmID не принимаются. Итог документа
 считается из строк (total_amount), а не вводится отдельно.
 
+Период размещения (period_start/period_end): расход «растягивается» по дням
+периода. В окно отчёта попадает только часть суммы позиции, приходящаяся на
+дни пересечения периода размещения с окном отчёта (allocate_days).
+
 Excel: один лист, строки документа и строки SKU связаны document_key.
 """
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,15 +52,36 @@ DOC_TYPE_LABELS = {
     "promo": "Промокод",
 }
 
-# Колонки Excel-шаблона (один лист).
+# Колонки Excel-шаблона (один лист). period_start/period_end необязательны:
+# если их нет в файле, период = document_date (старые файлы не падают).
 XLSX_COLUMNS = [
     "document_key", "document_date", "channel", "doc_type", "title",
     "vendor_code", "nm_id", "amount", "comment",
+    "period_start", "period_end",
 ]
+
+# Максимальная длина периода размещения, дней (решение владельца 2026-11-06).
+MAX_PERIOD_DAYS = 366
 
 
 class MarketingError(Exception):
     """Ошибка валидации маркетинговых данных."""
+
+
+def allocate_days(amount: float, p_start: date, p_end: date) -> list[tuple[date, int]]:
+    """Разложить сумму позиции по дням периода — целочисленно, в копейках.
+
+    Сумма частей ТОЧНО равна исходной сумме: остаток от деления на дни
+    раздаётся по одной копейке на первые дни периода. Порядок дней
+    фиксирован, поэтому результат детерминирован.
+    """
+    days = (p_end - p_start).days + 1
+    if days < 1:
+        raise MarketingError("период размещения: конец раньше начала")
+    total_kop = int(round(amount * 100))
+    base, rem = divmod(total_kop, days)
+    return [(p_start + timedelta(days=i), base + (1 if i < rem else 0))
+            for i in range(days)]
 
 
 def _num(value, field: str) -> float:
@@ -82,6 +107,21 @@ def _date(value, field: str) -> str:
         except ValueError:
             continue
     raise MarketingError(f"{field}: '{value}' — не дата (YYYY-MM-DD)")
+
+
+def _period(data: dict, doc_date: str) -> tuple[str, str]:
+    """Период размещения из payload. Пустые даты = разовое размещение в дату документа."""
+    p_start = str(data.get("period_start") or "").strip() or doc_date
+    p_end = str(data.get("period_end") or "").strip() or p_start
+    p_start = _date(p_start, "period_start")
+    p_end = _date(p_end, "period_end")
+    d1 = date.fromisoformat(p_start)
+    d2 = date.fromisoformat(p_end)
+    if d2 < d1:
+        raise MarketingError("period_end: окончание размещения раньше начала")
+    if (d2 - d1).days + 1 > MAX_PERIOD_DAYS:
+        raise MarketingError(f"период размещения длиннее {MAX_PERIOD_DAYS} дней")
+    return p_start, p_end
 
 
 class MarketingService:
@@ -227,7 +267,8 @@ class MarketingService:
             where += (" AND (d.title LIKE :q OR d.document_key LIKE :q OR c.name LIKE :q)")
             params["q"] = f"%{escape_like(q.strip())}%"
         rows = (await self.db.execute(text(f"""
-            SELECT d.id, d.document_key, d.document_date, d.channel_id, d.doc_type, d.title,
+            SELECT d.id, d.document_key, d.document_date, d.period_start, d.period_end,
+                   d.channel_id, d.doc_type, d.title,
                    d.comment, d.total_amount, d.created_at, d.updated_at,
                    c.name AS channel_name,
                    (SELECT COUNT(*) FROM marketing_expense_lines l
@@ -244,13 +285,18 @@ class MarketingService:
             d["total_amount"] = float(d.get("total_amount") or 0)
             d["lines_cnt"] = int(d.get("lines_cnt") or 0)
             d["document_date"] = str(d.get("document_date") or "")[:10]
+            d["period_start"] = str(d.get("period_start") or d["document_date"])[:10]
+            d["period_end"] = str(d.get("period_end") or d["period_start"])[:10]
+            d["period_days"] = (date.fromisoformat(d["period_end"])
+                                - date.fromisoformat(d["period_start"])).days + 1
             out.append(d)
         return out
 
     async def get_document(self, document_id: int) -> dict:
         cid = self._need_company()
         row = (await self.db.execute(text("""
-            SELECT d.id, d.document_key, d.document_date, d.channel_id, d.doc_type, d.title,
+            SELECT d.id, d.document_key, d.document_date, d.period_start, d.period_end,
+                   d.channel_id, d.doc_type, d.title,
                    d.comment, d.total_amount, d.created_at,
                    c.name AS channel_name
             FROM marketing_expense_documents d
@@ -262,6 +308,8 @@ class MarketingService:
         doc = dict(row)
         doc["doc_type_label"] = DOC_TYPE_LABELS.get(doc.get("doc_type") or "", doc.get("doc_type"))
         doc["document_date"] = str(doc.get("document_date") or "")[:10]
+        doc["period_start"] = str(doc.get("period_start") or doc["document_date"])[:10]
+        doc["period_end"] = str(doc.get("period_end") or doc["period_start"])[:10]
         lines = (await self.db.execute(text("""
             SELECT l.id, l.nm_id, l.vendor_code, l.product_title, l.amount, l.comment
             FROM marketing_expense_lines l
@@ -300,6 +348,7 @@ class MarketingService:
         cid = self._need_company()
         dkey = str(data.get("document_key") or "").strip()
         ddate = _date(data.get("document_date"), "document_date")
+        p_start, p_end = _period(data, ddate)
         dtype = str(data.get("doc_type") or "other").strip().lower()
         if dtype not in DOC_TYPES:
             raise MarketingError(f"doc_type: допустимо {', '.join(DOC_TYPES)}")
@@ -380,10 +429,11 @@ class MarketingService:
 
         doc_id = (await self.db.execute(text("""
             INSERT INTO marketing_expense_documents
-              (company_id, document_key, document_date, channel_id, doc_type, title,
-               comment, total_amount, created_by, updated_by)
-            VALUES (:cid, :k, :d, :ch, :t, :title, :cmt, :total, :uid, :uid)"""),
-            {"cid": cid, "k": dkey, "d": ddate, "ch": channel_id, "t": dtype,
+              (company_id, document_key, document_date, period_start, period_end,
+               channel_id, doc_type, title, comment, total_amount, created_by, updated_by)
+            VALUES (:cid, :k, :d, :ps, :pe, :ch, :t, :title, :cmt, :total, :uid, :uid)"""),
+            {"cid": cid, "k": dkey, "d": ddate, "ps": p_start, "pe": p_end,
+             "ch": channel_id, "t": dtype,
              "title": title, "cmt": (data.get("comment") or "").strip() or None,
              "total": round(total, 2), "uid": self.user_id})).lastrowid
         for card, amount, comment in prepared:
@@ -412,6 +462,7 @@ class MarketingService:
         if dtype not in DOC_TYPES:
             raise MarketingError(f"doc_type: допустимо {', '.join(DOC_TYPES)}")
         ddate = _date(data.get("document_date") or doc.get("document_date"), "document_date")
+        p_start, p_end = _period(data, ddate)
         channel_id = data.get("channel_id", doc.get("channel_id"))
         channel_id = int(channel_id) if channel_id not in (None, "", 0) else None
 
@@ -457,10 +508,12 @@ class MarketingService:
 
         await self.db.execute(text("""
             UPDATE marketing_expense_documents
-            SET document_date=:d, channel_id=:ch, doc_type=:t, title=:title,
+            SET document_date=:d, period_start=:ps, period_end=:pe,
+                channel_id=:ch, doc_type=:t, title=:title,
                 comment=:cmt, total_amount=:total, updated_by=:uid
             WHERE id=:id AND company_id=:cid"""),
-            {"id": document_id, "cid": cid, "d": ddate, "ch": channel_id, "t": dtype,
+            {"id": document_id, "cid": cid, "d": ddate, "ps": p_start, "pe": p_end,
+             "ch": channel_id, "t": dtype,
              "title": title, "cmt": (data.get("comment") or "").strip() or None,
              "total": round(total, 2), "uid": self.user_id})
         if isinstance(raw_lines, list):
@@ -544,6 +597,10 @@ class MarketingService:
             dkey = cell("document_key")
             try:
                 ddate = _date(cell("document_date"), "document_date")
+                # Период размещения: необязательные колонки; без них — разовое
+                # размещение в дату документа (старые файлы не падают).
+                p_start, p_end = _period({"period_start": cell("period_start"),
+                                          "period_end": cell("period_end")}, ddate)
                 ch_name = cell("channel")
                 dtype = cell("doc_type").lower() or "other"
                 if dtype not in DOC_TYPES:
@@ -566,6 +623,7 @@ class MarketingService:
                 errors.append({"row": n, "reason": str(e), "raw": raw})
                 continue
             parsed.append({"row": n, "raw": raw, "dkey": dkey, "ddate": ddate,
+                           "p_start": p_start, "p_end": p_end,
                            "ch_name": ch_name, "dtype": dtype, "title": title,
                            "amount": amount, "raw_nm": raw_nm, "raw_vc": raw_vc,
                            "comment": cell("comment")})
@@ -600,6 +658,8 @@ class MarketingService:
             doc = docs.setdefault(dkey or f"{ddate}-{ch_name}-{n}", {
                 "document_key": dkey or f"{ddate}-{ch_name}-{n}",
                 "document_date": ddate,
+                "period_start": p["p_start"],
+                "period_end": p["p_end"],
                 "channel": ch_name,
                 "doc_type": dtype,
                 "title": title,
@@ -658,7 +718,8 @@ class MarketingService:
             where += " AND d.channel_id = :ch"
             params["ch"] = channel_id
         rows = (await self.db.execute(text(f"""
-            SELECT d.document_key, d.document_date, c.name AS channel, d.doc_type, d.title,
+            SELECT d.document_key, d.document_date, d.period_start, d.period_end,
+                   c.name AS channel, d.doc_type, d.title,
                    l.vendor_code, l.nm_id, l.amount, l.comment
             FROM marketing_expense_lines l
             INNER JOIN marketing_expense_documents d ON d.id = l.document_id
@@ -670,6 +731,100 @@ class MarketingService:
         for r in rows:
             d = dict(r)
             d["document_date"] = str(d.get("document_date") or "")[:10]
+            d["period_start"] = str(d.get("period_start") or d["document_date"])[:10]
+            d["period_end"] = str(d.get("period_end") or d["period_start"])[:10]
             d["amount"] = float(d.get("amount") or 0)
             out.append(d)
         return out
+
+    # ------------------------------------------------- копия и сводка
+    async def copy_document(self, document_id: int) -> dict:
+        """Копия документа («по образцу»): шапка и позиции, но новая запись.
+
+        Дата документа и период — сегодня (разовое размещение), document_key —
+        новый. Исходный документ не меняется.
+        """
+        cid = self._need_company()
+        src = await self.get_document(document_id)
+        today = date.today().isoformat()
+        payload = {
+            "document_key": "",
+            "document_date": today,
+            "period_start": today,
+            "period_end": today,
+            "channel_id": src.get("channel_id"),
+            "doc_type": src.get("doc_type"),
+            "title": src.get("title"),
+            "comment": src.get("comment"),
+            "lines": [{"nm_id": l["nm_id"], "vendor_code": l.get("vendor_code"),
+                       "amount": float(l.get("amount") or 0), "comment": l.get("comment")}
+                      for l in (src.get("lines") or [])],
+        }
+        return await self.create_document(payload)
+
+    async def summary(self, date_from: str | None = None, date_to: str | None = None,
+                      channel_id: int | None = None, q: str = "") -> dict:
+        """Сводка по окну фильтра: документы, площадки, суммы и «в отчёт».
+
+        «В отчёт» — часть суммы позиций, растянутая по дням периода размещения
+        и попавшая в окно отчёта (allocate_days). Период в будущем сюда не
+        попадает: пересечения с окном нет.
+        """
+        cid = self._need_company()
+        docs = await self.list_documents(date_from, date_to, channel_id, q, limit=1000)
+        if not docs:
+            return {"documents": 0, "channels": 0, "total": 0.0, "in_report": 0.0,
+                    "by_type": [], "by_channel": []}
+
+        d1 = date.fromisoformat(str(date_from)[:10]) if date_from else None
+        d2 = date.fromisoformat(str(date_to)[:10]) if date_to else None
+        ids = [d["id"] for d in docs]
+        stmt = text("""
+            SELECT l.document_id, l.amount
+            FROM marketing_expense_lines l
+            WHERE l.company_id = :cid AND l.document_id IN :ids""").bindparams(
+            bindparam("ids", expanding=True))
+        lines = (await self.db.execute(stmt, {"cid": cid, "ids": ids})).mappings().all()
+        by_doc: dict[int, float] = {}
+        for r in lines:
+            by_doc[int(r["document_id"])] = by_doc.get(int(r["document_id"]), 0.0) + float(r["amount"] or 0)
+
+        total = 0.0
+        in_report = 0.0
+        by_type: dict[str, dict] = {}
+        by_channel: dict[str, dict] = {}
+        for d in docs:
+            amount = by_doc.get(d["id"], 0.0)
+            total += amount
+            p_start = date.fromisoformat(d["period_start"])
+            p_end = date.fromisoformat(d["period_end"])
+            doc_in_report = 0
+            for day, kop in allocate_days(amount, p_start, p_end):
+                if d1 and day < d1:
+                    continue
+                if d2 and day > d2:
+                    continue
+                doc_in_report += kop
+            in_report += doc_in_report / 100.0
+            t_key = d.get("doc_type") or "other"
+            t = by_type.setdefault(t_key, {"doc_type": t_key,
+                                          "label": DOC_TYPE_LABELS.get(t_key, t_key),
+                                          "documents": 0, "total": 0.0, "in_report": 0.0})
+            t["documents"] += 1
+            t["total"] = round(t["total"] + amount, 2)
+            t["in_report"] = round(t["in_report"] + doc_in_report / 100.0, 2)
+            c_key = d.get("channel_name") or "—"
+            c = by_channel.setdefault(c_key, {"channel": c_key, "documents": 0,
+                                               "total": 0.0, "in_report": 0.0})
+            c["documents"] += 1
+            c["total"] = round(c["total"] + amount, 2)
+            c["in_report"] = round(c["in_report"] + doc_in_report / 100.0, 2)
+
+        return {
+            "documents": len(docs),
+            "channels": len({d.get("channel_id") for d in docs if d.get("channel_id")}),
+            "total": round(total, 2),
+            "in_report": round(in_report, 2),
+            "by_type": sorted(by_type.values(), key=lambda x: -x["total"]),
+            "by_channel": sorted(by_channel.values(), key=lambda x: -x["total"]),
+        }

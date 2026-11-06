@@ -84,6 +84,10 @@
 
 /* Подписи и служебные подсказки */
 .page-marketing-expenses__hint { color: var(--ink-soft); font-size: calc(12.5px * var(--fs)); }
+
+/* Период размещения в строке документа */
+.page-marketing-expenses__period { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.page-marketing-expenses__period-days { color: var(--ink-muted); font-size: calc(11.5px * var(--fs)); }
 .page-marketing-expenses__alert .badge { margin-right: 6px; }
 
 /* Строка площадки в архиве — приглушена */

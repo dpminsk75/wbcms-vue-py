@@ -21,6 +21,8 @@ from datetime import date, timedelta
 from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.services.marketing_service import allocate_days
+
 log = logging.getLogger("wbcms.tax_settings")
 
 MODES = ("none", "income", "profit", "osno")
@@ -326,25 +328,42 @@ class TaxSettingsService:
                     break
             return found
 
+        # Ручной маркетинг — по периоду размещения: сумма позиции растягивается
+        # на дни периода, в расчёт попадает только часть, попавшая в окно.
         manual_rows = (await self.db.execute(text("""
-            SELECT d.document_date AS d, SUM(l.amount) AS amount
+            SELECT d.document_date AS d, d.period_start AS ps, d.period_end AS pe,
+                   SUM(l.amount) AS amount
             FROM marketing_expense_lines l
             INNER JOIN marketing_expense_documents d ON d.id = l.document_id
             WHERE l.company_id = :cid AND d.document_date BETWEEN :d1 AND :d2
-            GROUP BY d.document_date"""),
+            GROUP BY d.id, d.document_date, d.period_start, d.period_end"""),
             {"cid": cid, "d1": d1, "d2": d2})).all()
-        manual = {str(r["d"])[:10]: float(r["amount"] or 0) for r in manual_rows}
+        manual: dict[str, float] = {}
+        for r in manual_rows:
+            p_start = date.fromisoformat(str(r["ps"] or r["d"])[:10])
+            p_end = date.fromisoformat(str(r["pe"] or r["ps"] or r["d"])[:10])
+            for day, kop in allocate_days(float(r["amount"] or 0), p_start, p_end):
+                key = day.isoformat()
+                manual[key] = manual.get(key, 0.0) + kop / 100.0
 
         days_map: dict[str, dict] = {}
+
+        def day_bucket(key: str) -> dict:
+            b = days_map.get(key)
+            if b is None:
+                b = {
+                    "date": key, "sales": 0.0, "returns": 0.0, "net": 0.0,
+                    "vat": 0.0, "vat_missing_rows": 0, "vat_missing_amount": 0.0,
+                    "cost": 0.0, "commission": 0.0, "acquiring": 0.0, "acceptance": 0.0,
+                    "delivery": 0.0, "storage": 0.0, "penalty": 0.0, "deduction": 0.0,
+                    "otziv": 0.0, "adv": 0.0, "cashback": 0.0, "manual": manual.get(key, 0.0),
+                }
+                days_map[key] = b
+            return b
+
         for r in rows:
             key = str(r["sdate"])[:10]
-            b = days_map.setdefault(key, {
-                "date": key, "sales": 0.0, "returns": 0.0, "net": 0.0,
-                "vat": 0.0, "vat_missing_rows": 0, "vat_missing_amount": 0.0,
-                "cost": 0.0, "commission": 0.0, "acquiring": 0.0, "acceptance": 0.0,
-                "delivery": 0.0, "storage": 0.0, "penalty": 0.0, "deduction": 0.0,
-                "otziv": 0.0, "adv": 0.0, "cashback": 0.0, "manual": manual.get(key, 0.0),
-            })
+            b = day_bucket(key)
             sales = float(r["sales"] or 0)
             ret = float(r["ret_sum"] or 0)
             net = sales - ret
@@ -363,6 +382,18 @@ class TaxSettingsService:
                 b["vat_missing_amount"] += net
             else:
                 b["vat"] += net * nds / (100.0 + nds) if use_vat == "cards" else 0.0
+
+        # Дни, в которые были только ручные расходы (продаж нет) — тоже в расчёт:
+        # иначе «растянутый» расход потерялся бы.
+        for key in manual:
+            if key not in days_map:
+                days_map[key] = {
+                    "date": key, "sales": 0.0, "returns": 0.0, "net": 0.0,
+                    "vat": 0.0, "vat_missing_rows": 0, "vat_missing_amount": 0.0,
+                    "cost": 0.0, "commission": 0.0, "acquiring": 0.0, "acceptance": 0.0,
+                    "delivery": 0.0, "storage": 0.0, "penalty": 0.0, "deduction": 0.0,
+                    "otziv": 0.0, "adv": 0.0, "cashback": 0.0, "manual": manual[key],
+                }
 
         out_days = []
         totals = {"sales": 0.0, "returns": 0.0, "net": 0.0, "vat": 0.0,
