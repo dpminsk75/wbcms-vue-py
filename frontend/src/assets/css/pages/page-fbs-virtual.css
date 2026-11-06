@@ -1,0 +1,69 @@
+/* FBS Остатки: центр + виртуальные (/wb-fbs-virtual) — страничные стили.
+   Оформление — блоки темы (.wb-filter-panel, .wb-panel, .tbl-card, .tbl, .wb-pager).
+   Фоны колонок «Остаток» и «Количество» — классами, не инлайном (theme.md §8.1.2). */
+
+.page-fbs-virtual__note { margin-bottom: 12px; }
+.page-fbs-virtual__note .wb-panel__bd {
+  color: var(--ink-soft);
+  font-size: calc(12.5px * var(--fs));
+  line-height: 1.5;
+}
+
+.page-fbs-virtual__count {
+  margin-left: auto;
+  color: var(--ink-muted);
+  font-size: calc(12.5px * var(--fs));
+  align-self: flex-end;
+  padding-bottom: 4px;
+}
+
+/* Сообщение об импорте/выгрузке — тонированная плашка (ok / bad). */
+.page-fbs-virtual__msg { margin-bottom: 12px; }
+.page-fbs-virtual__msg--ok { background: var(--good-tint); border-color: var(--good); }
+.page-fbs-virtual__msg--bad { background: var(--bad-tint); border-color: var(--bad); }
+.page-fbs-virtual__pre {
+  font-family: inherit;
+  font-size: calc(12px * var(--fs));
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
+.page-fbs-virtual__loading {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 32px 16px; color: var(--ink-soft);
+  font-size: calc(13px * var(--fs));
+}
+.page-fbs-virtual__empty {
+  color: var(--ink-muted);
+  padding: 14px 0;
+}
+
+/* Товар в первой колонке. */
+.page-fbs-virtual__vendor {
+  font-weight: 700;
+  font-size: calc(12.5px * var(--fs));
+}
+.page-fbs-virtual__sub {
+  color: var(--ink-muted);
+  font-size: calc(11.5px * var(--fs));
+}
+
+/* Колонки таблицы. */
+.page-fbs-virtual__col-sku { width: 170px; }
+.page-fbs-virtual__col-qty { width: 130px; }
+.page-fbs-virtual__col-act { width: 120px; }
+
+/* Фон колонок «Остаток» (центральный) и «Количество» (виртуальный) — тонирован. */
+.page-fbs-virtual__cell-central { background: var(--info-tint); }
+.page-fbs-virtual__cell-vint { background: var(--warn-tint); }
+
+/* Число в поле — по правому краю. */
+.page-fbs-virtual__cell-vint .wb-input { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Строка склада, который сейчас обрабатывается (не в сети) — приглушена. */
+.page-fbs-virtual__row--processing { opacity: .65; }
+
+/* Таблицы в модалках — плотнее. */
+.page-fbs-virtual__table--compact { font-size: calc(12px * var(--fs)); }
+.page-fbs-virtual__table--compact td,
+.page-fbs-virtual__table--compact th { padding: 5px 8px; }

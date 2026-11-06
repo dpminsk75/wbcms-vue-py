@@ -1,90 +1,121 @@
 <template>
-  <div class="container-xxl">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-      <h1 class="page-title mb-0">Производственный план — остатки и потребность</h1>
-      <div class="d-flex gap-2 align-items-center">
-        <input v-model="period" type="month" class="form-control form-control-sm" style="width:170px">
-        <button class="btn btn-sm btn-light" @click="showPlan = true">
-          <i class="bi bi-list-ul me-1"></i>Список товаров
-        </button>
-        <button class="btn btn-sm btn-primary" @click="reload()">
+  <div class="container-xxl page-production">
+    <!-- Шапка блока «Производство»: заголовок + правое меню (пилюли темы) -->
+    <WbWorkspaceHead
+      title="Производственный план"
+      :workspace-tabs="STOCK_PRODUCTION_TABS"
+      workspace-active="plan"
+    />
+
+    <!-- Фильтр — панель темы -->
+    <div class="wb-filter-panel">
+      <div class="row g-2">
+        <div class="col-auto">
+          <label class="wb-field__label">Период</label>
+          <input v-model="period" type="month" class="wb-input">
+        </div>
+      </div>
+      <div class="wb-filter-panel__btns">
+        <button class="btn btn--brand wb-filter-panel__apply" @click="reload()">
           <i class="bi bi-search me-1"></i>Показать
+        </button>
+        <button class="btn btn--outline" @click="showPlan = true">
+          <i class="bi bi-list-ul me-1"></i>Список товаров
         </button>
       </div>
     </div>
 
-    <div class="alert alert-info py-2 small">
-      Остаток на WB — срез по компании на последнее доступное число
-      <template v-if="data?.wb_now_date">(<code>{{ data.wb_now_date }}</code>)</template>;
-      срез начала периода <template v-if="data?.wb_start_date"><code>{{ data.wb_start_date }}</code>.</template>
-      Карточки, которых нет в срезе, считаются остатком 0. Скорость — заказы за 30 дней.
-      «К производству» = скорость × целевое покрытие − остаток.
+    <!-- Пояснение — тонированная панель темы -->
+    <div class="wb-panel page-production__note">
+      <div class="wb-panel__bd">
+        Остаток на WB — срез по компании на последнее доступное число
+        <template v-if="data?.wb_now_date">(<code>{{ data.wb_now_date }}</code>)</template>;
+        срез начала периода <template v-if="data?.wb_start_date"><code>{{ data.wb_start_date }}</code></template>.
+        Карточки, которых нет в срезе, считаются остатком 0. Скорость — заказы за 30 дней.
+        «К производству» = скорость × целевое покрытие − остаток.
+      </div>
     </div>
 
-    <div class="card shadow-sm">
-      <div class="card-body p-0">
-        <div v-if="loading" class="text-center p-5">
-          <div class="spinner-border text-primary" role="status"></div>
-        </div>
-        <div v-else-if="!rows.length" class="p-4 text-center text-muted">
-          В плане пока нет товаров — добавьте их через «Список товаров».
-        </div>
-        <div v-else class="table-responsive">
-          <table class="table table-bordered table-striped table-hover align-middle mb-0">
-            <thead>
-              <tr>
-                <th>Товар</th>
-                <th class="text-end">WB на нач. периода</th>
-                <th class="text-end">WB сейчас</th>
-                <th class="text-end" title="Расчётный остаток Смоленска: последний снапшот + движения">СМЛ сейчас</th>
-                <th class="text-end" title="Движения Смоленска за выбранный период (приход − списания)">СМЛ за период</th>
-                <th class="text-end" title="Сколько дней покроет остаток Смоленска при текущей скорости">Покрытие СМЛ, дн.</th>
-                <th class="text-end">Заказы с нач. периода</th>
-                <th class="text-end">Заказы за 30 дн.</th>
-                <th class="text-end">Среднее/день</th>
-                <th class="text-end">Дней до конца</th>
-                <th>Закончится</th>
-                <th class="text-end">Точка заказа, дн.</th>
-                <th class="text-end">К производству</th>
-                <th>Статус</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="r in rows" :key="r.nm_id">
-                <td>
-                  <div class="fw-bold">{{ r.vendor_code }}</div>
-                  <div class="small text-muted">{{ r.nm_id }} — {{ r.title }}</div>
-                </td>
-                <td class="text-end">{{ r.wb_start }}</td>
-                <td class="text-end fw-bold">{{ r.wb_now }}</td>
-                <td class="text-end">{{ r.smolensk_now }}</td>
-                <td class="text-end">{{ r.smolensk_movements }}</td>
-                <td class="text-end">{{ r.smolensk_coverage_days ?? '—' }}</td>
-                <td class="text-end">{{ r.orders_since_period }}</td>
-                <td class="text-end">{{ r.orders_last_30 }}</td>
-                <td class="text-end">{{ r.avg_daily }}</td>
-                <td class="text-end">{{ r.days_left ?? '—' }}</td>
-                <td class="small">{{ r.eta_date || '—' }}</td>
-                <td class="text-end" :title="'Произв. + логистика Смоленск + логистика WB + буфер'">
-                  {{ r.reorder_point_days }}
-                </td>
-                <td class="text-end fw-bold" :class="r.recommended_qty > 0 ? 'text-danger' : ''">
-                  {{ r.recommended_qty > 0 ? r.recommended_qty : '—' }}
-                </td>
-                <td>
-                  <span class="badge" :class="statusClass(r.status)">{{ statusLabel(r.status) }}</span>
-                </td>
-              </tr>
-            </tbody>
-            <tfoot v-if="rows.length">
-              <tr class="fw-bold">
-                <td colspan="12">Итого к производству</td>
-                <td class="text-end">{{ totals.recommended_qty }}</td>
-                <td></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+    <!-- План — широкая таблица темы .tbl-card (плотная) -->
+    <div class="tbl-card">
+      <div class="card__hd">
+        <span>Производственный план</span>
+        <span class="hd-badge">{{ rows.length }} поз.</span>
+      </div>
+
+      <div v-if="loading" class="page-production__loading">
+        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        <span>Загрузка данных…</span>
+      </div>
+      <div v-else-if="!rows.length" class="page-production__empty">
+        В плане пока нет товаров — добавьте их через «Список товаров».
+      </div>
+      <div v-else class="tbl-wrap">
+        <table class="tbl page-production__table">
+          <thead>
+            <tr>
+              <th class="t-left">Товар</th>
+              <th class="t-right num">WB на нач. периода</th>
+              <th class="t-right num">WB сейчас</th>
+              <th class="t-right num" title="Расчётный остаток Смоленска: последний снапшот + движения">СМЛ сейчас</th>
+              <th class="t-right num" title="Движения Смоленска за выбранный период (приход − списания)">СМЛ за период</th>
+              <th class="t-right num" title="Сколько дней покроет остаток Смоленска при текущей скорости">Покрытие СМЛ, дн.</th>
+              <th class="t-right num">Заказы с нач. периода</th>
+              <th class="t-right num">Заказы за 30 дн.</th>
+              <th class="t-right num">Среднее/день</th>
+              <th class="t-right num">Дней до конца</th>
+              <th class="t-left">Закончится</th>
+              <th class="t-right num">Точка заказа, дн.</th>
+              <th class="t-right num">К производству</th>
+              <th class="t-left">Статус</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="r in rows" :key="r.nm_id">
+              <td class="t-left">
+                <ProductCell
+                  compact
+                  :photo="r.photos"
+                  :title="r.title || ''"
+                  :vendor="r.vendor_code || ''"
+                  :brand="r.brand || ''"
+                  :subject="r.subject_name || ''"
+                  :nm-id="r.nm_id"
+                  :link="'/wb/detail?nm_id=' + r.nm_id"
+                  :link-label="'WB: ' + r.nm_id"
+                  copy-nm
+                  copy-link
+                />
+              </td>
+              <td class="t-right num">{{ r.wb_start }}</td>
+              <td class="t-right num page-production__strong">{{ r.wb_now }}</td>
+              <td class="t-right num">{{ r.smolensk_now }}</td>
+              <td class="t-right num">{{ r.smolensk_movements }}</td>
+              <td class="t-right num">{{ r.smolensk_coverage_days ?? '—' }}</td>
+              <td class="t-right num">{{ r.orders_since_period }}</td>
+              <td class="t-right num">{{ r.orders_last_30 }}</td>
+              <td class="t-right num">{{ r.avg_daily }}</td>
+              <td class="t-right num">{{ r.days_left ?? '—' }}</td>
+              <td class="t-left">{{ r.eta_date || '—' }}</td>
+              <td class="t-right num" :title="'Произв. + логистика Смоленск + логистика WB + буфер'">
+                {{ r.reorder_point_days }}
+              </td>
+              <td class="t-right num page-production__strong" :class="r.recommended_qty > 0 ? 't-neg' : ''">
+                {{ r.recommended_qty > 0 ? r.recommended_qty : '—' }}
+              </td>
+              <td class="t-left">
+                <span class="badge" :class="statusClass(r.status)">{{ statusLabel(r.status) }}</span>
+              </td>
+            </tr>
+          </tbody>
+          <tfoot v-if="rows.length">
+            <tr class="tbl__total">
+              <td class="t-left" colspan="12">Итого к производству</td>
+              <td class="t-right num">{{ totals.recommended_qty }}</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
     </div>
 
@@ -98,47 +129,47 @@
           </div>
           <div class="modal-body">
             <div class="d-flex gap-2 mb-2">
-              <input v-model="availQ" class="form-control form-control-sm" style="width:280px"
+              <input v-model="availQ" class="wb-input page-production__avail-search"
                      placeholder="поиск карточки (артикул/название)" @keyup.enter="loadAvailable">
-              <button class="btn btn-sm btn-outline-primary" @click="loadAvailable">Найти</button>
+              <button class="btn btn--outline btn-sm" @click="loadAvailable">Найти</button>
             </div>
-            <table class="table table-sm table-bordered table-striped align-middle mb-2">
+            <table class="tbl page-production__plan-table">
               <thead>
                 <tr>
-                  <th style="width:120px">Арт WB</th><th>Название</th>
-                  <th style="width:110px">Срок, дн.</th>
-                  <th style="width:110px">-&gt; СМЛ</th>
-                  <th style="width:110px">-&gt; WB</th>
-                  <th style="width:110px">Буфер</th>
-                  <th style="width:110px">Покрытие</th>
-                  <th style="width:60px"></th>
+                  <th class="t-left page-production__col-nm">Арт WB</th><th class="t-left">Название</th>
+                  <th class="t-right page-production__col-num">Срок, дн.</th>
+                  <th class="t-right page-production__col-num">-&gt; СМЛ</th>
+                  <th class="t-right page-production__col-num">-&gt; WB</th>
+                  <th class="t-right page-production__col-num">Буфер</th>
+                  <th class="t-right page-production__col-num">Покрытие</th>
+                  <th class="t-right page-production__col-act"></th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="it in planRows" :key="it.nm_id">
-                  <td>{{ it.nm_id }}</td>
-                  <td class="small">{{ it.vendorCode }} — {{ it.title }}</td>
-                  <td><input v-model.number="it.production_days" type="number" class="form-control form-control-sm"></td>
-                  <td><input v-model.number="it.logistics_smolensk_days" type="number" class="form-control form-control-sm"></td>
-                  <td><input v-model.number="it.logistics_wb_days" type="number" class="form-control form-control-sm"></td>
-                  <td><input v-model.number="it.buffer_days" type="number" class="form-control form-control-sm"></td>
-                  <td><input v-model.number="it.target_coverage_days" type="number" class="form-control form-control-sm"></td>
-                  <td class="text-end">
-                    <button class="btn btn-sm btn-outline-danger" @click="removeItem(it)">
+                  <td class="t-left num">{{ it.nm_id }}</td>
+                  <td class="t-left">{{ it.vendorCode }} — {{ it.title }}</td>
+                  <td class="t-right"><input v-model.number="it.production_days" type="number" class="wb-input wb-input--num"></td>
+                  <td class="t-right"><input v-model.number="it.logistics_smolensk_days" type="number" class="wb-input wb-input--num"></td>
+                  <td class="t-right"><input v-model.number="it.logistics_wb_days" type="number" class="wb-input wb-input--num"></td>
+                  <td class="t-right"><input v-model.number="it.buffer_days" type="number" class="wb-input wb-input--num"></td>
+                  <td class="t-right"><input v-model.number="it.target_coverage_days" type="number" class="wb-input wb-input--num"></td>
+                  <td class="t-right">
+                    <button class="btn btn--danger btn-sm" title="Убрать из плана" @click="removeItem(it)">
                       <i class="bi bi-trash"></i>
                     </button>
                   </td>
                 </tr>
                 <tr v-if="!planRows.length">
-                  <td colspan="8" class="text-center text-muted py-2">В плане пока нет товаров</td>
+                  <td colspan="8" class="t-center page-production__empty">В плане пока нет товаров</td>
                 </tr>
               </tbody>
             </table>
 
-            <div class="border-top pt-2">
-              <div class="fw-bold small mb-1">Доступные карточки</div>
+            <div class="border-top pt-2 mt-3">
+              <div class="fw-bold page-production__avail-title mb-1">Доступные карточки</div>
               <div class="d-flex flex-wrap gap-1">
-                <button v-for="a in available" :key="a.nmID" class="btn btn-sm btn-outline-secondary"
+                <button v-for="a in available" :key="a.nmID" class="btn btn--outline btn-sm"
                         @click="addItem(a)">
                   {{ a.vendorCode || a.nmID }}
                 </button>
@@ -146,8 +177,8 @@
             </div>
           </div>
           <div class="modal-footer">
-            <button class="btn btn-sm btn-light" @click="showPlan = false">Закрыть</button>
-            <button class="btn btn-sm btn-primary" @click="savePlan" :disabled="saving">
+            <button class="btn btn--outline btn-sm" @click="showPlan = false">Закрыть</button>
+            <button class="btn btn--brand btn-sm" @click="savePlan" :disabled="saving">
               {{ saving ? 'Сохранение...' : 'Сохранить список' }}
             </button>
           </div>
@@ -159,9 +190,13 @@
 </template>
 
 <script setup lang="ts">
+import '@/assets/css/pages/page-production.css'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { api } from '@/api/client'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import ProductCell from '@/components/common/ProductCell.vue'
+import { STOCK_PRODUCTION_TABS } from '@/components/common/workspaceTabs'
 
 const qc = useQueryClient()
 
@@ -182,11 +217,11 @@ const rows = computed<any[]>(() => (data.value?.rows as any[]) || [])
 const totals = computed(() => (data.value?.totals as any) || { recommended_qty: 0 })
 
 const statusClass = (s: string) => ({
-  danger: 'bg-danger',
-  warn: 'bg-warning text-dark',
-  ok: 'bg-success',
-  unknown: 'bg-secondary',
-}[s] || 'bg-secondary')
+  danger: 'badge--bad',
+  warn: 'badge--warn',
+  ok: 'badge--ok',
+  unknown: 'badge--neutral',
+}[s] || 'badge--neutral')
 
 const statusLabel = (s: string) => ({
   danger: 'В печать',

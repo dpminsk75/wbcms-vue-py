@@ -1,147 +1,154 @@
 <template>
-  <div class="container-xxl">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-      <h1 class="page-title mb-0">
-        {{ isEdit ? `Документ №${docId} — правка` : 'Новый документ' }}
-        <span v-if="typeLabel" class="badge bg-primary ms-2">{{ typeLabel }}</span>
-      </h1>
-      <div class="d-flex gap-2">
-        <button class="btn btn-sm btn-light" @click="goBack">
-          <i class="bi bi-arrow-left me-1"></i>К списку
-        </button>
-        <button class="btn btn-sm btn-primary" :disabled="saving || !canSave" @click="save">
-          <i class="bi bi-save me-1"></i>{{ saving ? 'Сохранение...' : 'Сохранить' }}
-        </button>
-      </div>
+  <div class="container-xxl page-stock-docs">
+    <!-- Шапка блока «Документы»: заголовок + правое меню (пилюли темы) -->
+    <WbWorkspaceHead
+      :title="isEdit ? `Документ №${docId} — правка` : 'Новый документ'"
+      :workspace-tabs="STOCK_DOCS_TABS"
+      workspace-active="docs"
+    />
+
+    <div class="page-stock-docs__head">
+      <span v-if="typeLabel" class="badge badge--brand">{{ typeLabel }}</span>
+      <span class="spacer"></span>
+      <button class="btn btn--outline btn-sm" @click="goBack">
+        <i class="bi bi-arrow-left me-1"></i>К списку
+      </button>
+      <button class="btn btn--brand btn-sm" :disabled="saving || !canSave" @click="save">
+        <i class="bi bi-save me-1"></i>{{ saving ? 'Сохранение...' : 'Сохранить' }}
+      </button>
     </div>
 
-    <div class="card shadow-sm mb-3">
-      <div class="card-body row g-3">
-        <div class="col-md-3">
-          <label class="form-label small mb-1">Тип</label>
-          <input class="form-control form-control-sm" :value="typeLabel" disabled>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label small mb-1">
-            {{ type === 'TRANSFER' ? 'Склад (откуда)' : 'Склад' }} *
-          </label>
-          <select v-model.number="form.warehouse_id" class="form-select form-select-sm">
-            <option :value="0">— выберите —</option>
-            <option v-for="w in warehouses" :key="w.id" :value="w.id">
-              {{ w.name }}{{ w.is_central ? ' (центральный)' : '' }}{{ w.is_fbs ? ' (FBS)' : '' }}
-            </option>
-          </select>
-        </div>
-        <div v-if="type === 'TRANSFER'" class="col-md-3">
-          <label class="form-label small mb-1">Склад (куда) *</label>
-          <select v-model.number="form.to_warehouse_id" class="form-select form-select-sm">
-            <option :value="0">— выберите —</option>
-            <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.name }}</option>
-          </select>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label small mb-1">Дата</label>
-          <input v-model="form.date" type="datetime-local" class="form-control form-control-sm">
-        </div>
-        <div class="col-12">
-          <label class="form-label small mb-1">
-            Комментарий<span v-if="type === 'ADJUSTMENT'" class="text-danger"> *</span>
-          </label>
-          <input v-model="form.comment" type="text" class="form-control form-control-sm"
-                 placeholder="для корректировки — обязательно (причина)">
-        </div>
-      </div>
-    </div>
-
-    <div class="card shadow-sm">
-      <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <span class="fw-bold">Позиции</span>
-        <div class="d-flex gap-2 align-items-center">
-          <button class="btn btn-sm btn-outline-success" @click="fileRef?.click()">
-            <i class="bi bi-file-earmark-excel me-1"></i>Импорт из Excel
-          </button>
-          <input ref="fileRef" type="file" class="d-none" accept=".xlsx,.xls" @change="onFile">
-          <button class="btn btn-sm btn-outline-primary" @click="addRow">
-            <i class="bi bi-plus-lg me-1"></i>Добавить позицию
-          </button>
-        </div>
-      </div>
-      <div class="card-body p-0">
-        <div v-if="importInfo" class="alert alert-info py-2 px-3 small mb-0 rounded-0">
-          Импорт: найдено {{ importInfo.matched }}, не найдено {{ importInfo.skipped.length }}
-          <div v-if="importInfo.skipped.length" class="mt-1 small text-muted"
-               style="max-height:120px; overflow:auto; white-space:pre-wrap">
-            {{ importInfo.skipped.join('\n') }}
+    <!-- Реквизиты — панель темы -->
+    <div class="wb-panel mb-3">
+      <div class="wb-panel__bd">
+        <div class="row g-3">
+          <div class="col-md-3">
+            <label class="wb-field__label">Тип</label>
+            <input class="wb-input" :value="typeLabel" disabled>
+          </div>
+          <div class="col-md-3">
+            <label class="wb-field__label">
+              {{ type === 'TRANSFER' ? 'Склад (откуда)' : 'Склад' }} *
+            </label>
+            <select v-model.number="form.warehouse_id" class="wb-select">
+              <option :value="0">— выберите —</option>
+              <option v-for="w in warehouses" :key="w.id" :value="w.id">
+                {{ w.name }}{{ w.is_central ? ' (центральный)' : '' }}{{ w.is_fbs ? ' (FBS)' : '' }}
+              </option>
+            </select>
+          </div>
+          <div v-if="type === 'TRANSFER'" class="col-md-3">
+            <label class="wb-field__label">Склад (куда) *</label>
+            <select v-model.number="form.to_warehouse_id" class="wb-select">
+              <option :value="0">— выберите —</option>
+              <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.name }}</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="wb-field__label">Дата</label>
+            <input v-model="form.date" type="datetime-local" class="wb-input">
+          </div>
+          <div class="col-12">
+            <label class="wb-field__label">
+              Комментарий<span v-if="type === 'ADJUSTMENT'" class="page-stock-docs__req"> *</span>
+            </label>
+            <input v-model="form.comment" type="text" class="wb-input"
+                   placeholder="для корректировки — обязательно (причина)">
           </div>
         </div>
-        <div class="table-responsive">
-          <table class="table table-bordered table-striped table-hover align-middle mb-0">
-            <thead>
-              <tr>
-                <th style="width:150px">Баркод</th>
-                <th>Товар</th>
-                <th v-if="type === 'INVENTORY'" style="width:110px">По учету</th>
-                <th v-if="type === 'INVENTORY'" style="width:110px">Факт</th>
-                <th v-else style="width:110px">
-                  {{ type === 'ADJUSTMENT' ? 'Корректировка' : 'Количество' }}
-                </th>
-                <th v-if="type === 'INVENTORY'" style="width:110px">Разница</th>
-                <th style="width:60px"></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(it, i) in items" :key="i">
-                <td>
-                  <input v-model="it.sku" class="form-control form-control-sm" type="text"
-                         list="sku-options" @change="resolveRow(it)">
-                  <datalist id="sku-options">
-                    <option v-for="o in searchOptions" :key="o.sku" :value="o.sku">
-                      {{ o.label }}
-                    </option>
-                  </datalist>
-                </td>
-                <td class="small">
-                  <div>{{ it.title || '' }}</div>
-                  <div class="text-muted">{{ it.vendorCode || '' }}</div>
-                </td>
-                <td v-if="type === 'INVENTORY'">
-                  <input v-model.number="it.qty_before" class="form-control form-control-sm text-end"
-                         type="number" @change="it.qty_fact = it.qty_fact ?? null">
-                </td>
-                <td v-if="type === 'INVENTORY'">
-                  <input v-model.number="it.qty_fact" class="form-control form-control-sm text-end" type="number">
-                </td>
-                <td v-else>
-                  <input v-model.number="it.qty" class="form-control form-control-sm text-end" type="number">
-                </td>
-                <td v-if="type === 'INVENTORY'" class="text-end fw-bold"
-                    :class="deltaClass(it)">
-                  {{ delta(it) > 0 ? '+' : '' }}{{ delta(it) }}
-                </td>
-                <td class="text-end">
-                  <button class="btn btn-sm btn-outline-danger" @click="items.splice(i, 1)">
-                    <i class="bi bi-trash"></i>
-                  </button>
-                </td>
-              </tr>
-              <tr v-if="!items.length">
-                <td :colspan="type === 'INVENTORY' ? 6 : 4" class="text-center text-muted py-3">
-                  Позиций нет — добавьте вручную или импортируйте из Excel
-                </td>
-              </tr>
-            </tbody>
-          </table>
+      </div>
+    </div>
+
+    <!-- Позиции — таблица темы .tbl-card -->
+    <div class="tbl-card">
+      <div class="card__hd">
+        <span>Позиции</span>
+        <span class="spacer"></span>
+        <button class="hd-btn" @click="fileRef?.click()">
+          <i class="bi bi-file-earmark-excel me-1"></i>Импорт из Excel
+        </button>
+        <input ref="fileRef" type="file" class="d-none" accept=".xlsx,.xls" @change="onFile">
+        <button class="hd-btn" @click="addRow">
+          <i class="bi bi-plus-lg me-1"></i>Добавить позицию
+        </button>
+      </div>
+
+      <div v-if="importInfo" class="page-stock-docs__import">
+        Импорт: найдено {{ importInfo.matched }}, не найдено {{ importInfo.skipped.length }}
+        <div v-if="importInfo.skipped.length" class="page-stock-docs__import-list">
+          {{ importInfo.skipped.join('\n') }}
         </div>
+      </div>
+
+      <div class="tbl-wrap">
+        <table class="tbl page-stock-docs__table">
+          <thead>
+            <tr>
+              <th class="t-left page-stock-docs__col-sku">Баркод</th>
+              <th class="t-left">Товар</th>
+              <th v-if="type === 'INVENTORY'" class="t-right page-stock-docs__col-num">По учету</th>
+              <th v-if="type === 'INVENTORY'" class="t-right page-stock-docs__col-num">Факт</th>
+              <th v-else class="t-right page-stock-docs__col-num">
+                {{ type === 'ADJUSTMENT' ? 'Корректировка' : 'Количество' }}
+              </th>
+              <th v-if="type === 'INVENTORY'" class="t-right page-stock-docs__col-num">Разница</th>
+              <th class="t-right page-stock-docs__col-act"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(it, i) in items" :key="i">
+              <td class="t-left">
+                <input v-model="it.sku" class="wb-input" type="text"
+                       list="sku-options" @change="resolveRow(it)">
+                <datalist id="sku-options">
+                  <option v-for="o in searchOptions" :key="o.sku" :value="o.sku">
+                    {{ o.label }}
+                  </option>
+                </datalist>
+              </td>
+              <td class="t-left page-stock-docs__product">
+                <div>{{ it.title || '' }}</div>
+                <div class="page-stock-docs__product-sub">{{ it.vendorCode || '' }}</div>
+              </td>
+              <td v-if="type === 'INVENTORY'" class="t-right">
+                <input v-model.number="it.qty_before" class="wb-input wb-input--num" type="number"
+                       @change="it.qty_fact = it.qty_fact ?? null">
+              </td>
+              <td v-if="type === 'INVENTORY'" class="t-right">
+                <input v-model.number="it.qty_fact" class="wb-input wb-input--num" type="number">
+              </td>
+              <td v-else class="t-right">
+                <input v-model.number="it.qty" class="wb-input wb-input--num" type="number">
+              </td>
+              <td v-if="type === 'INVENTORY'" class="t-right num" :class="deltaClass(it)">
+                {{ delta(it) > 0 ? '+' : '' }}{{ delta(it) }}
+              </td>
+              <td class="t-right">
+                <button class="btn btn--danger btn-sm" title="Убрать позицию" @click="items.splice(i, 1)">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </td>
+            </tr>
+            <tr v-if="!items.length">
+              <td :colspan="type === 'INVENTORY' ? 6 : 4" class="t-center page-stock-docs__empty">
+                Позиций нет — добавьте вручную или импортируйте из Excel
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import '@/assets/css/pages/page-stock-docs.css'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import { DOC_TYPES, type DocItem, type DocMeta, type DocType } from '@/api/stockDocs'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import { STOCK_DOCS_TABS } from '@/components/common/workspaceTabs'
 
 const route = useRoute()
 const router = useRouter()
@@ -180,7 +187,7 @@ const delta = (it: DocItem) => {
 }
 const deltaClass = (it: DocItem) => {
   const d = delta(it)
-  return d > 0 ? 'text-success' : (d < 0 ? 'text-danger' : '')
+  return d > 0 ? 't-pos' : (d < 0 ? 't-neg' : '')
 }
 
 const goBack = () => router.push('/wb-doc')
@@ -193,7 +200,7 @@ onMounted(async () => {
     type.value = doc.type
     form.value = {
       warehouse_id: doc.warehouseId,
-      to_warehouse_id: doc.to_warehouseId || 0,
+      to_warehouse_id: doc.toWarehouseId || 0,
       date: String(doc.date || '').slice(0, 16),
       comment: doc.comment || '',
     }

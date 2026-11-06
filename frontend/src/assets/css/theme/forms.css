@@ -55,6 +55,14 @@
 }
 .form-label { font-size: calc(12.5px * var(--fs)); }
 
+/* Подпись чекбокса в фильтре — та же ступень, что подпись поля. */
+.wb-check-label {
+  font-size: calc(12.5px * var(--fs));
+  line-height: 1.45;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
 /* ---------- кнопки (модификаторы к .btn Bootstrap) ---------- */
 .btn--brand {
   --bs-btn-bg: var(--brand);

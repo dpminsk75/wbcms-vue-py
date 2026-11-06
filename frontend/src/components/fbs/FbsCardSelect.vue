@@ -1,20 +1,21 @@
 <template>
-  <div class="page-fbs-report__card-wrap" ref="cardWrapRef">
-    <input :value="cardQuery" @input="onInput($event)" placeholder="nm_id, артикул или название..." class="form-control"
+  <div class="fbs-select__wrap" ref="cardWrapRef">
+    <input :value="cardQuery" @input="onInput($event)" placeholder="nm_id, артикул или название..." class="wb-input"
       @focus="showList = true" @keydown.esc="showList = false" />
-    <div v-if="showList && (filtered.length || searching)" class="page-fbs-report__card-list">
-      <div v-if="searching && !filtered.length" class="page-fbs-report__card-item text-muted">Поиск...</div>
-      <div v-for="c in filtered.slice(0, 20)" :key="c.nmID" @mousedown.prevent="select(c)" class="page-fbs-report__card-item">
+    <div v-if="showList && (filtered.length || searching)" class="fbs-select__list">
+      <div v-if="searching && !filtered.length" class="fbs-select__item text-muted">Поиск...</div>
+      <div v-for="c in filtered.slice(0, 20)" :key="c.nmID" @mousedown.prevent="select(c)" class="fbs-select__item">
         {{ c.nmID }} | {{ c.title }} | {{ c.vendorCode }}
       </div>
     </div>
-    <div v-if="nmId || cardQuery" class="page-fbs-report__card-clear">
-      <span v-if="nmId" class="page-fbs-report__card-chosen">Выбрано: {{ nmId }}</span>
-      <button class="btn btn-sm btn-light page-fbs-report__card-clear-btn" @click="clear">× Сбросить</button>
+    <div v-if="nmId || cardQuery" class="fbs-select__clear">
+      <span v-if="nmId" class="fbs-select__chosen">Выбрано: {{ nmId }}</span>
+      <button class="btn btn--outline btn-sm fbs-select__clear-btn" @click="clear">× Сбросить</button>
     </div>
   </div>
 </template>
 <script setup lang="ts">
+import '@/assets/css/components/fbs.css'
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { api } from '@/api/client'
 
@@ -121,11 +122,3 @@ onBeforeUnmount(() => {
   reqSeq++
 })
 </script>
-<style scoped>
-.page-fbs-report__card-wrap { position: relative; }
-.page-fbs-report__card-list { position: absolute; top: 100%; left: 0; right: 0; max-height: 220px; overflow: auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; z-index: 10; box-shadow: 0 4px 12px rgba(0,0,0,.1); }
-.page-fbs-report__card-item { padding: 6px 10px; cursor: pointer; font-size: 12px; border-bottom: 1px solid #f1f5f9; }
-.page-fbs-report__card-clear { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
-.page-fbs-report__card-chosen { font-size: 11px; color: #7c1af8; }
-.page-fbs-report__card-clear-btn { font-size: 11px; padding: 2px 8px; }
-</style>

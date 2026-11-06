@@ -1,0 +1,60 @@
+/* Производственный план (/wb-production) — страничные стили.
+   Оформление — блоки темы (.wb-filter-panel, .wb-panel, .tbl-card, .tbl).
+   Таблица широкая (14 колонок) — плотная плотность (theme.md §5.6). */
+
+.page-production__note { margin-bottom: 12px; }
+.page-production__note .wb-panel__bd {
+  color: var(--ink-soft);
+  font-size: calc(12.5px * var(--fs));
+  line-height: 1.5;
+}
+
+.page-production__loading {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 32px 16px; color: var(--ink-soft);
+  font-size: calc(13px * var(--fs));
+}
+.page-production__empty {
+  padding: 24px 16px; text-align: center; color: var(--ink-muted);
+  font-size: calc(13px * var(--fs));
+}
+
+/* Первая колонка — карточка товара: не сжимать. */
+.page-production__table th:first-child,
+.page-production__table td:first-child { min-width: 240px; }
+
+/* Заголовки числовых колонок переносятся по словам.
+   Общее правило темы `.tbl td.num, .tbl th.num { white-space: nowrap }` нужно для
+   ЗНАЧЕНИЙ (число «28 664,13 ₽» не должно ломаться на две строки), но оно же
+   запрещало перенос заголовков — и таблица на 14 колонок не влезала в экран
+   (1594px при контейнере 953px). Отступы числовых колонок — 2px, как в
+   margin-table.css для таблицы на 23 колонки: −4px и −2px на каждую колонку. */
+.page-production__table thead th.num { white-space: normal; }
+.page-production__table th.num,
+.page-production__table td.num { padding-left: 2px; padding-right: 2px; }
+
+/* Ключевые числа плана — посильнее. */
+.page-production__strong { font-weight: 700; }
+
+/* Таблица плана в модалке. */
+.page-production__plan-table { font-size: calc(12px * var(--fs)); }
+.page-production__plan-table td,
+.page-production__plan-table th { padding: 5px 8px; }
+.page-production__col-nm { width: 120px; }
+.page-production__col-num { width: 110px; }
+.page-production__col-act { width: 56px; }
+
+/* Число в поле — по правому краю, цифры табличными. */
+.page-production__plan-table .wb-input--num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Поиск карточки в модалке. */
+.page-production__avail-search { max-width: 280px; }
+
+/* Заголовок блока «Доступные карточки» в модалке — кегль масштабируется от --fs
+   (Bootstrap .small = 0.875em от неизменного body, поэтому свой класс). */
+.page-production__avail-title {
+  font-size: calc(12.5px * var(--fs));
+}

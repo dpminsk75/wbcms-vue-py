@@ -1,0 +1,93 @@
+/* Документы склада (/wb-doc*) — страничные стили.
+   Оформление — блоки темы (.wb-filter-panel, .tbl-card, .tbl, .wb-pager,
+   .badge--*, .btn--*). Здесь только раскладка, которой нет в теме. */
+
+.page-stock-docs__filter {
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: 12px 14px;
+}
+
+.page-stock-docs__loading {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 32px 16px; color: var(--ink-soft);
+  font-size: calc(13px * var(--fs));
+}
+.page-stock-docs__empty {
+  padding: 24px 16px; text-align: center; color: var(--ink-muted);
+  font-size: calc(13px * var(--fs));
+}
+
+/* Отменённый документ — приглушён (смысл не только цветом: в статусе стоит бейдж). */
+.page-stock-docs__row--inactive { opacity: .6; }
+
+.page-stock-docs__comment {
+  color: var(--ink-soft);
+  font-size: calc(12.5px * var(--fs));
+}
+
+/* Число в поле — по правому краю, цифры табличными (как в .tbl). */
+.page-stock-docs__table .wb-input--num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Реквизиты документа: бейдж типа + кнопки — ряд под шапкой блока. */
+.page-stock-docs__head {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 12px; flex-wrap: wrap;
+}
+.page-stock-docs__head .spacer { margin-left: auto; }
+
+/* Подпись и значение в реквизитах документа. */
+.page-stock-docs__label {
+  color: var(--ink-muted);
+  font-size: calc(11.5px * var(--fs));
+  margin-bottom: 2px;
+}
+.page-stock-docs__value {
+  font-weight: 700;
+  font-size: calc(13.5px * var(--fs));
+  color: var(--ink);
+}
+
+/* Обязательное поле — звёздочка. */
+.page-stock-docs__req { color: var(--bad-deep); }
+
+/* Отчёт об импорте из Excel — тонированная плашка. */
+.page-stock-docs__import {
+  padding: 10px 14px;
+  background: var(--info-tint);
+  color: var(--info-deep);
+  font-size: calc(12.5px * var(--fs));
+}
+.page-stock-docs__import-list {
+  margin-top: 6px;
+  max-height: 120px; overflow: auto; white-space: pre-wrap;
+  font-size: calc(11.5px * var(--fs));
+  color: var(--ink-soft);
+}
+
+/* Колонки таблицы позиций. */
+.page-stock-docs__col-sku { width: 160px; }
+.page-stock-docs__col-num { width: 110px; }
+.page-stock-docs__col-act { width: 56px; }
+.page-stock-docs__product {
+  font-size: calc(12.5px * var(--fs));
+}
+.page-stock-docs__product-sub {
+  color: var(--ink-muted);
+  font-size: calc(11.5px * var(--fs));
+}
+.page-stock-docs__empty {
+  color: var(--ink-muted);
+  padding: 14px 0;
+}
+
+/* Печать: белый фон страницы (тема печатает светлым) — токен, не hex. */
+@media print {
+  .no-print { display: none !important; }
+  body { background: var(--surface); }
+}

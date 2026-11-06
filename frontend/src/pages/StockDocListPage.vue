@@ -1,105 +1,127 @@
 <template>
-  <div class="container-xxl">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-      <h1 class="page-title mb-0">{{ $route.meta.title || 'Документы склада' }}</h1>
-      <div class="d-flex gap-2 flex-wrap">
+  <div class="container-xxl page-stock-docs">
+    <!-- Шапка блока «Документы»: заголовок + правое меню (пилюли темы) -->
+    <WbWorkspaceHead
+      :title="$route.meta.title || 'Документы склада'"
+      :workspace-tabs="STOCK_DOCS_TABS"
+      workspace-active="docs"
+    />
+
+    <!-- Действия — в шапке блока (theme.md §5.7.9: кнопки действий в шапке таблицы) -->
+    <div class="tbl-card">
+      <div class="card__hd">
+        <span>Документы склада</span>
+        <span class="hd-badge">{{ total }}</span>
+        <span class="spacer"></span>
         <button
           v-for="t in DOC_TYPES"
           :key="t.value"
-          class="btn btn-sm btn-outline-primary"
+          type="button"
+          class="hd-btn"
+          :disabled="!canManage"
+          :title="canManage ? '' : 'Нужно право «Работа со складом FBS» (manageFbs)'"
           @click="create(t.value)"
         >
           <i class="bi bi-plus-lg me-1"></i>{{ t.label }}
         </button>
       </div>
-    </div>
 
-    <div class="card shadow-sm mb-3">
-      <div class="card-body py-2 d-flex align-items-center gap-2 flex-wrap">
-        <select v-model="typeFilter" class="form-select form-select-sm" style="width:220px" @change="reload">
-          <option value="">Все типы</option>
-          <option v-for="t in DOC_TYPES" :key="t.value" :value="t.value">{{ t.label }}</option>
-        </select>
-        <span class="text-muted small">Записей: {{ total }}</span>
-        <div class="ms-auto d-flex align-items-center gap-2">
-          <button class="btn btn-sm btn-light" :disabled="page <= 1" @click="page--; reload()">
-            <i class="bi bi-chevron-left"></i>
-          </button>
-          <span class="small">{{ page }} / {{ pages }}</span>
-          <button class="btn btn-sm btn-light" :disabled="page >= pages" @click="page++; reload()">
-            <i class="bi bi-chevron-right"></i>
-          </button>
+      <!-- Фильтр по типу — панель темы -->
+      <div class="wb-filter-panel page-stock-docs__filter">
+        <div class="row g-2">
+          <div class="col-auto">
+            <label class="wb-field__label">Тип</label>
+            <select v-model="typeFilter" class="wb-select" @change="reload">
+              <option value="">Все типы</option>
+              <option v-for="t in DOC_TYPES" :key="t.value" :value="t.value">{{ t.label }}</option>
+            </select>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="card shadow-sm">
-      <div class="card-body p-0">
-        <div v-if="loading" class="text-center p-5">
-          <div class="spinner-border text-primary" role="status"></div>
-        </div>
-        <div v-else-if="!rows.length" class="p-4 text-center text-muted">Документов пока нет</div>
-        <div v-else class="table-responsive">
-          <table class="table table-bordered table-striped table-hover align-middle mb-0">
-            <thead>
-              <tr>
-                <th style="width:70px">ID</th>
-                <th style="width:150px">Дата</th>
-                <th style="width:150px">Тип</th>
-                <th style="width:120px">Статус</th>
-                <th>Склад</th>
-                <th style="width:90px">Позиций</th>
-                <th>Комментарий</th>
-                <th style="width:230px"></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="d in rows" :key="d.id">
-                <td>{{ d.id }}</td>
-                <td class="small">{{ formatDate(d.date) }}</td>
-                <td>{{ d.type_label }}</td>
-                <td>
-                  <span class="badge" :class="statusClass(d.status)">{{ d.status_label }}</span>
-                </td>
-                <td class="small">
-                  {{ d.warehouse_name || d.warehouseId }}
-                  <span v-if="d.type === 'TRANSFER'">
-                    <i class="bi bi-arrow-right"></i> {{ d.to_warehouse_name || d.to_warehouseId }}
-                  </span>
-                </td>
-                <td class="text-center">{{ d.items_count }}</td>
-                <td class="small text-muted">{{ d.comment || '' }}</td>
-                <td class="text-end text-nowrap">
-                  <router-link class="btn btn-sm btn-outline-secondary" :to="`/wb-doc/${d.id}`">
-                    <i class="bi bi-eye"></i>
-                  </router-link>
-                  <button v-if="d.status !== 'posted'" class="btn btn-sm btn-outline-secondary ms-1"
-                          @click="edit(d)"><i class="bi bi-pencil"></i></button>
-                  <button v-if="d.status === 'draft'" class="btn btn-sm btn-outline-success ms-1"
-                          @click="post(d)"><i class="bi bi-check2-circle"></i></button>
-                  <button v-if="d.status === 'posted'" class="btn btn-sm btn-outline-warning ms-1"
-                          @click="cancel(d)"><i class="bi bi-arrow-counterclockwise"></i></button>
-                  <button v-if="d.status !== 'posted'" class="btn btn-sm btn-outline-danger ms-1"
-                          @click="remove(d)"><i class="bi bi-trash"></i></button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+      <div v-if="loading" class="page-stock-docs__loading">
+        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        <span>Загрузка данных…</span>
+      </div>
+      <div v-else-if="!rows.length" class="page-stock-docs__empty">Документов пока нет</div>
+      <div v-else class="tbl-wrap">
+        <table class="tbl page-stock-docs__table">
+          <thead>
+            <tr>
+              <th class="t-center">ID</th>
+              <th class="t-left">Дата</th>
+              <th class="t-left">Тип</th>
+              <th class="t-left">Статус</th>
+              <th class="t-left">Склад</th>
+              <th class="t-center">Позиций</th>
+              <th class="t-left">Комментарий</th>
+              <th class="t-right"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="d in rows" :key="d.id" :class="{ 'page-stock-docs__row--inactive': d.status === 'canceled' }">
+              <td class="t-center num">{{ d.id }}</td>
+              <td class="t-left">{{ formatDate(d.date) }}</td>
+              <td class="t-left">{{ d.type_label }}</td>
+              <td class="t-left">
+                <span class="badge" :class="statusClass(d.status)">{{ d.status_label }}</span>
+              </td>
+              <td class="t-left">
+                {{ d.warehouse_name || d.warehouseId }}
+                <span v-if="d.type === 'TRANSFER'">
+                  <i class="bi bi-arrow-right"></i> {{ d.to_warehouse_name || d.to_warehouseId }}
+                </span>
+              </td>
+              <td class="t-center num">{{ d.items_count }}</td>
+              <td class="t-left page-stock-docs__comment">{{ d.comment || '' }}</td>
+              <td class="t-right text-nowrap">
+                <router-link class="btn btn--outline btn-sm" :to="`/wb-doc/${d.id}`" title="Открыть">
+                  <i class="bi bi-eye"></i>
+                </router-link>
+                <button v-if="d.status !== 'posted' && canManage" class="btn btn--outline btn-sm ms-1" title="Править" @click="edit(d)">
+                  <i class="bi bi-pencil"></i>
+                </button>
+                <button v-if="d.status === 'draft' && canManage" class="btn btn--outline-ok btn-sm ms-1" title="Провести" @click="post(d)">
+                  <i class="bi bi-check2-circle"></i>
+                </button>
+                <button v-if="d.status === 'posted' && canManage" class="btn btn--outline-bad btn-sm ms-1" title="Отменить" @click="cancel(d)">
+                  <i class="bi bi-arrow-counterclockwise"></i>
+                </button>
+                <button v-if="d.status !== 'posted' && canManage" class="btn btn--danger btn-sm ms-1" title="Удалить" @click="remove(d)">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="wb-pager">
+        <button class="btn btn--outline btn-sm" :disabled="page <= 1" @click="page--; reload()">‹ Назад</button>
+        <span class="wb-pager__label">Стр. {{ page }} / {{ pages }} · всего {{ total }}</span>
+        <button class="btn btn--outline btn-sm" :disabled="page >= pages" @click="page++; reload()">Вперёд ›</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import '@/assets/css/pages/page-stock-docs.css'
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { api } from '@/api/client'
 import { DOC_TYPES, type DocStatus, type DocType, type StockDoc } from '@/api/stockDocs'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import { STOCK_DOCS_TABS } from '@/components/common/workspaceTabs'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const qc = useQueryClient()
+const auth = useAuthStore()
+
+// Просмотр документов — по viewFbs, правка (создание/проведение/отмена/удаление) — по manageFbs.
+const canManage = computed(() => auth.canDomain('manageFbs'))
 
 const typeFilter = ref('')
 const page = ref(1)
@@ -121,10 +143,10 @@ const reload = () => qc.invalidateQueries({ queryKey: ['stock-docs'] })
 const formatDate = (s: string) => (s ? String(s).slice(0, 16).replace('T', ' ') : '—')
 
 const statusClass = (s: DocStatus) => ({
-  draft: 'bg-secondary',
-  posted: 'bg-success',
-  canceled: 'bg-dark',
-}[s] || 'bg-secondary')
+  draft: 'badge--neutral',
+  posted: 'badge--ok',
+  canceled: 'badge--bad',
+}[s] || 'badge--neutral')
 
 const create = (t: DocType) => router.push({ path: '/wb-doc/create', query: { type: t } })
 const edit = (d: StockDoc) => router.push({ path: `/wb-doc/${d.id}/edit` })

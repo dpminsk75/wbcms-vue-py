@@ -1,7 +1,11 @@
 /* Анализ остатков WB (/wb-stock) — только то, чего нет в Bootstrap и в теме.
-   Каркас (.wsp, .wsp__head, .wsp__title, .wsp__menu), таблицы (.tbl-card,
-   .card__hd, .tbl-wrap, .tbl, .tbl__total), плитки (.tile--N), чипы (.opt),
-   кнопки (.btn--brand/.btn--outline) и поля (.wb-input) — из темы. */
+   Каркас (.wsp__title), таблицы (.tbl-card, .card__hd, .tbl-wrap, .tbl, .tbl__total),
+   плитки (.tile--N), чипы (.opt), кнопки (.btn--brand/.btn--outline) и поля (.wb-input)
+   — из темы. Общего меню рабочих мест нет: вкладки страницы свои. */
+
+.page-stock-wb__title {
+  margin: 0 0 8px;
+}
 
 .page-stock-wb__note {
   font-size: calc(11.5px * var(--fs));
@@ -33,7 +37,7 @@
 }
 
 .page-stock-wb__empty-icon {
-  font-size: 26px;
+  font-size: calc(26px * var(--fs));
   color: var(--ink-muted);
   margin-bottom: 8px;
 }

@@ -1,0 +1,46 @@
+/* Свои склады (/wb-warehouses) — страничные стили.
+   Оформление — блоки темы (.wb-panel, .tbl-card, .tbl, .btn--*).
+   Своя зелёная шапка ушла: шапка блока — .card__hd (theme.md §5.5). */
+
+.page-stock-warehouses__head {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 12px; flex-wrap: wrap;
+}
+.page-stock-warehouses__head .spacer { margin-left: auto; }
+
+/* Предупреждения о складах — тонированные панели темы. */
+.page-stock-warehouses__note { margin-bottom: 12px; }
+.page-stock-warehouses__note--bad { background: var(--bad-tint); border-color: var(--bad); }
+.page-stock-warehouses__note--warn { background: var(--warn-tint); border-color: var(--warn); }
+.page-stock-warehouses__note .wb-panel__bd {
+  color: var(--ink);
+  font-size: calc(12.5px * var(--fs));
+  line-height: 1.5;
+}
+
+.page-stock-warehouses__loading {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 32px 16px; color: var(--ink-soft);
+  font-size: calc(13px * var(--fs));
+}
+.page-stock-warehouses__empty {
+  padding: 24px 16px; text-align: center; color: var(--ink-muted);
+  font-size: calc(13px * var(--fs));
+}
+
+/* Неактивный склад — приглушён (состояние видно и по переключателю «Активен»). */
+.page-stock-warehouses__row--off { opacity: .6; }
+
+.page-stock-warehouses__sub {
+  color: var(--ink-muted);
+  font-size: calc(12px * var(--fs));
+}
+
+/* Колонки таблицы. */
+.page-stock-warehouses__col-id { width: 60px; }
+.page-stock-warehouses__col-act { width: 100px; }
+
+/* Переключатели «Да/Нет» — компактные, одинаковой ширины. */
+.page-stock-warehouses__toggle {
+  min-width: 56px;
+}

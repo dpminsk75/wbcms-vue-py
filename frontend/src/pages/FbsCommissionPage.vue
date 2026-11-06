@@ -1,62 +1,67 @@
 <template>
   <div class="container-xxl page-fbs-commission">
-    <div class="page-fbs__head">
-      <h1 class="page-title">FBS Комиссия</h1>
-      <FbsTabs active="commission" />
-    </div>
+    <!-- Шапка блока «FBS»: заголовок + правое меню блока (пилюли темы) -->
+    <WbWorkspaceHead
+      title="FBS Комиссия"
+      :workspace-tabs="STOCK_FBS_TABS"
+      workspace-active="commission"
+    />
 
-    <!-- Фильтр как в дашборде (без склада — склады строкой ниже) -->
-    <div class="page-fbs-commission__filter-card mb-3">
-      <div class="page-fbs-commission__presets page-fbs-commission__presets--top">
-        <button v-for="p in presets" :key="p.id" class="btn btn-sm" :class="activePreset === p.id ? 'btn-primary' : 'btn-outline-secondary'" @click="applyPreset(p.id)">{{ p.label }}</button>
+    <!-- Фильтр: панель темы (.wb-filter-panel). Складов нет — склады строкой ниже. -->
+    <div class="wb-filter-panel mb-3">
+      <div class="fbs-filter__presets">
+        <button v-for="p in presets" :key="p.id" class="btn" :class="activePreset === p.id ? 'btn--brand' : 'btn--outline'" @click="applyPreset(p.id)">{{ p.label }}</button>
       </div>
       <div class="row g-2 align-items-start">
         <div class="col-md-2">
-          <label class="form-label mb-1 page-fbs-commission__filter-label">Дата с</label>
+          <label class="wb-field__label">Дата с</label>
           <WbDateInput v-model="filters.date_from" />
         </div>
         <div class="col-md-2">
-          <label class="form-label mb-1 page-fbs-commission__filter-label">Дата по</label>
+          <label class="wb-field__label">Дата по</label>
           <WbDateInput v-model="filters.date_to" />
         </div>
         <div class="col-md-4">
-          <label class="form-label mb-1 page-fbs-commission__filter-label">Товар</label>
+          <label class="wb-field__label">Товар</label>
           <FbsCardSelect v-model:nm-id="filters.nm_id" />
         </div>
         <div class="col-md-2">
-          <label class="form-label mb-1 page-fbs-commission__filter-label">Бренд</label>
-          <select v-model="filters.brand" class="form-control" @change="fetchData()">
+          <label class="wb-field__label">Бренд</label>
+          <select v-model="filters.brand" class="wb-select" @change="fetchData()">
             <option value="">Все</option>
             <option v-for="b in brands" :key="b" :value="b">{{ b }}</option>
           </select>
         </div>
         <div class="col-md-2">
-          <label class="form-label mb-1 page-fbs-commission__filter-label">Категория</label>
-          <select v-model="filters.category" class="form-control" @change="fetchData()">
+          <label class="wb-field__label">Категория</label>
+          <select v-model="filters.category" class="wb-select" @change="fetchData()">
             <option value="">Все</option>
             <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
           </select>
         </div>
       </div>
-      <div class="page-fbs-commission__filter-btns">
-        <button class="btn btn-primary" style="width:120px" @click="fetchData()">Применить</button>
-        <button class="btn btn-light" style="width:120px" @click="reset()">Сбросить</button>
+      <div class="wb-filter-panel__btns">
+        <button class="btn btn--brand wb-filter-panel__apply" @click="fetchData()">Применить</button>
+        <button class="btn btn--outline" @click="reset()">Сбросить</button>
       </div>
     </div>
 
-    <div v-if="isLoading" class="p-4 text-center text-muted">Загрузка...</div>
-    <div v-else-if="error" class="alert alert-danger">{{ error }}</div>
+    <div v-if="isLoading" class="fbs-loading">Загрузка данных…</div>
+    <div v-else-if="error" class="wb-panel">
+      <div class="wb-panel__bd page-fbs-commission__error">{{ error }}</div>
+    </div>
     <template v-else-if="data">
-      <div class="page-fbs-commission__section-line">Скорость сборки в деньгах</div>
+      <div class="fbs-section-line">Скорость сборки в деньгах</div>
       <FbsCommissionKpi :s="data" />
       <FbsCommissionWarehouses :items="data.warehouses || []" :labels="data.bucket_labels || []" />
     </template>
   </div>
 </template>
 <script setup lang="ts">
-import '../assets/css/pages/page-fbs-commission.css'
+import '@/assets/css/components/fbs.css'
 import { ref, onMounted } from 'vue'
-import FbsTabs from '../components/fbs/FbsTabs.vue'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import { STOCK_FBS_TABS } from '@/components/common/workspaceTabs'
 import FbsCardSelect from '../components/fbs/FbsCardSelect.vue'
 import FbsCommissionKpi from '../components/fbs_commission/FbsCommissionKpi.vue'
 import FbsCommissionWarehouses from '../components/fbs_commission/FbsCommissionWarehouses.vue'

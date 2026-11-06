@@ -1,0 +1,44 @@
+/* Отчёты по складу (/wb-stock-reports/*) — страничные стили.
+   Всё оформление — блоки темы (.wb-filter-panel, .tbl-card, .tbl, .wb-pager).
+   Здесь только раскладка и то, чего нет в теме. */
+
+.page-stock-reports__loading {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 32px 16px; color: var(--ink-soft);
+  font-size: calc(13px * var(--fs));
+}
+/* Сообщения вместо таблицы (ошибка загрузки / нет данных) — панель темы. */
+.page-stock-reports__msg {
+  padding: 16px;
+  font-size: calc(13px * var(--fs));
+}
+
+/* Фильтр: стандартный WbDateRangeFilter (пресеты + «Период с/по») и поля
+   страницы — рядом, как в SalesAnalysisPage: блок дат слева (пресеты сверху,
+   даты под ними), поля страницы справа. При нехватке места поля переносятся
+   внутрь своей колонки, блок дат остаётся целым.
+   Ширину полей переопределяем: в wb-ui.css .wb-field — width:100% (для модалок). */
+.page-stock-reports__filter-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+.page-stock-reports__filter-top > .wb-range-filter { flex: 0 1 auto; min-width: 0; }
+.page-stock-reports__fields {
+  flex: 1 1 320px;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+.page-stock-reports__fields > .wb-field { width: auto; flex: 0 0 auto; }
+
+/* Первая колонка — карточка товара (полный ProductCell: фото 50×66, название
+   до 2 строк): не сжимать, имя переносится по словам. */
+.page-stock-reports__table th:first-child,
+.page-stock-reports__table td:first-child { min-width: 300px; }
+
+/* «Оборотная ведомость» — 11 колонок: плотная плотность. */
+.page-stock-reports__table { font-size: calc(12.5px * var(--fs)); }

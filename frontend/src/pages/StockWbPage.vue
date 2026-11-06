@@ -1,17 +1,9 @@
 <template>
   <div class="container-xxl page-stock-wb">
-    <!-- шапка рабочего места + вкладки раздела (новый вид: .stab--line) -->
-    <div class="wsp">
-      <div class="wsp__head">
-        <h1 class="wsp__title">Анализ остатков</h1>
-        <nav class="wsp__menu">
-          <a class="mn mn--on" href="/wb-sales-analysis">Отчёты</a>
-          <a class="mn" href="/wb-order/feed-aggregated">Заказы</a>
-          <a class="mn" href="/wb-stock-reports/balance">Склад</a>
-        </nav>
-      </div>
-      <WbSectionTabs v-model="tab" :tabs="TABS" />
-    </div>
+    <!-- Заголовок страницы. Общего меню рабочих мест у раздела «Склад» нет
+         (theme.md §5.7.10): вкладки — только свои, «Оборачиваемость / По складам». -->
+    <h1 class="wsp__title page-stock-wb__title">Анализ остатков</h1>
+    <WbSectionTabs v-model="tab" :tabs="TABS" />
 
     <!-- фильтр отчёта: WbUniversalFilter (даты, товар, бренд, категория) + поля страницы -->
     <div class="mt-3">

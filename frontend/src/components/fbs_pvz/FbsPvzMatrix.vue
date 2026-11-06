@@ -1,8 +1,10 @@
 <template>
-  <div class="card wb-grid-card page-fbs-pvz__table-card">
-    <div class="page-fbs-pvz__table-head">Путь заказа до пункта выдачи — по складам и направлениям
-      <label class="page-fbs-pvz__dirs-label">Направлений:
-        <select :value="dirsCount" @change="emit('update:dirsCount', Number(($event.target as HTMLSelectElement).value))" class="form-select form-select-sm page-fbs-pvz__dirs-select">
+  <div class="tbl-card fbs-tbl__card">
+    <div class="card__hd">
+      <span>Путь заказа до пункта выдачи — по складам и направлениям</span>
+      <span class="spacer"></span>
+      <label class="fbs-tbl__dirs-label">Направлений:
+        <select :value="dirsCount" @change="emit('update:dirsCount', Number(($event.target as HTMLSelectElement).value))" class="wb-select fbs-tbl__dirs-select">
           <option :value="7">7</option>
           <option :value="10">10</option>
           <option :value="15">15</option>
@@ -10,55 +12,63 @@
         </select>
       </label>
     </div>
-    <div class="wb-table-wrap">
-      <table class="table table-bordered table-striped table-hover kv-grid-table mb-0">
+    <div class="tbl-wrap">
+      <table class="tbl fbs-tbl">
         <thead>
           <tr>
-            <th class="page-fbs-pvz__first">Склад отгрузки</th>
-            <th v-for="d in dirs" :key="d" class="page-fbs-pvz__dir"><span v-for="(line, i) in dirLines(d)" :key="i" class="page-fbs-pvz__dir-line">{{ line }}</span></th>
+            <th class="t-left fbs-tbl__first">Склад отгрузки</th>
+            <th v-for="d in dirs" :key="d" class="fbs-tbl__dir"><span v-for="(line, i) in dirLines(d)" :key="i" class="fbs-tbl__dir-line">{{ line }}</span></th>
           </tr>
         </thead>
         <tbody>
-          <tr v-if="!matrix.length"><td :colspan="dirs.length + 1" class="text-center text-muted">Нет данных</td></tr>
+          <tr v-if="!matrix.length"><td :colspan="dirs.length + 1" class="fbs-tbl__empty">Нет данных</td></tr>
           <tr v-for="w in matrix" :key="String(w.warehouse_id)">
-            <td>{{ w.warehouse_name }}{{ w.warehouse_id ? ' ' + w.warehouse_id : '' }} <span class="text-muted">· {{ w.cnt }}</span></td>
-            <td v-for="d in dirs" :key="d" class="page-fbs-pvz__num">{{ fmtDur(w.cells[d]) }}</td>
+            <td class="t-left">{{ w.warehouse_name }}{{ w.warehouse_id ? ' ' + w.warehouse_id : '' }} <span class="text-muted">· {{ w.cnt }}</span></td>
+            <td v-for="d in dirs" :key="d" class="t-right num">{{ fmtDur(w.cells[d]) }}</td>
           </tr>
         </tbody>
       </table>
     </div>
   </div>
-  <div class="card wb-grid-card page-fbs-pvz__table-card">
-    <div class="page-fbs-pvz__table-head">По товарам ({{ products.length }}) <span class="text-muted" style="font-weight:400">— склад отвечающий, где мы медленные; товар — что именно едет долго</span></div>
-    <div class="wb-table-wrap">
-      <table class="table table-bordered table-striped table-hover kv-grid-table mb-0">
+  <div class="tbl-card fbs-tbl__card">
+    <div class="card__hd">
+      <span>По товарам ({{ products.length }})</span>
+      <span class="spacer"></span>
+      <span class="fbs-note mb-0">— склад отвечающий, где мы медленные; товар — что именно едет долго</span>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl fbs-tbl">
         <thead>
           <tr>
-            <th class="page-fbs-pvz__first">Товар</th>
-            <th @click="sortBy('avg_total_h')" class="page-fbs-pvz__sort">Заказ → ПВЗ {{ mark('avg_total_h') }}</th>
-            <th @click="sortBy('avg_leg1_h')" class="page-fbs-pvz__sort">Заказ → СЦ {{ mark('avg_leg1_h') }}</th>
-            <th @click="sortBy('avg_leg2_h')" class="page-fbs-pvz__sort">СЦ → ПВЗ {{ mark('avg_leg2_h') }}</th>
-            <th @click="sortBy('cnt')" class="page-fbs-pvz__sort">Заказов {{ mark('cnt') }}</th>
+            <th class="t-left fbs-tbl__first">Товар</th>
+            <th class="t-right fbs-tbl__sort" @click="sortBy('avg_total_h')">Заказ → ПВЗ {{ mark('avg_total_h') }}</th>
+            <th class="t-right fbs-tbl__sort" @click="sortBy('avg_leg1_h')">Заказ → СЦ {{ mark('avg_leg1_h') }}</th>
+            <th class="t-right fbs-tbl__sort" @click="sortBy('avg_leg2_h')">СЦ → ПВЗ {{ mark('avg_leg2_h') }}</th>
+            <th class="t-right fbs-tbl__sort" @click="sortBy('cnt')">Заказов {{ mark('cnt') }}</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-if="!sorted.length"><td colspan="5" class="text-center text-muted">Нет данных</td></tr>
-          <tr v-for="p in sorted" :key="String(p.nm_id)">
-            <td>
-              <div class="fbs-product">
-                <img :src="photo(p)" class="fbs-product__photo" @error="(e:any)=>e.target.src='/images/no-photo.png'" />
-                <div>
-                  <div class="fbs-product__title">{{ p.title || '(нет карточки)' }}</div>
-                  <div class="fbs-product__sub">{{ p.subject_name || '' }}{{ p.card_brand ? ' • ' + p.card_brand : '' }}</div>
-                  <div class="fbs-product__sub">{{ p.vendor_code || '' }}</div>
-                  <div class="fbs-product__sub"><a :href="'/wb/detail?nm_id=' + p.nm_id" target="_blank" class="fbs-product__link">WB: {{ p.nm_id }}</a></div>
-                </div>
-              </div>
+          <tr v-if="!sorted.length"><td colspan="5" class="fbs-tbl__empty">Нет данных</td></tr>
+          <tr v-for="p in sorted" :key="p.nm_id">
+            <td class="t-left">
+              <ProductCell
+                compact
+                :photo="p.photos"
+                :title="p.title || ''"
+                :vendor="p.vendor_code || ''"
+                :brand="p.card_brand || ''"
+                :subject="p.subject_name || ''"
+                :nm-id="p.nm_id"
+                :link="'/wb/detail?nm_id=' + p.nm_id"
+                :link-label="'WB: ' + p.nm_id"
+                copy-nm
+                copy-link
+              />
             </td>
-            <td class="page-fbs-pvz__num">{{ fmtDur(p.avg_total_h) }}</td>
-            <td class="page-fbs-pvz__num">{{ fmtDur(p.avg_leg1_h) }}</td>
-            <td class="page-fbs-pvz__num">{{ fmtDur(p.avg_leg2_h) }}</td>
-            <td class="page-fbs-pvz__num"><a :href="'/wb-order/index?nm_id=' + p.nm_id + '&date_from=' + props.dateFrom + '&date_to=' + props.dateTo" target="_blank" class="page-fbs-pvz__wb-link" :title="'Заказы товара ' + p.nm_id">{{ fmt0(p.cnt) }}</a></td>
+            <td class="t-right num">{{ fmtDur(p.avg_total_h) }}</td>
+            <td class="t-right num">{{ fmtDur(p.avg_leg1_h) }}</td>
+            <td class="t-right num">{{ fmtDur(p.avg_leg2_h) }}</td>
+            <td class="t-right num"><a :href="'/wb-order/index?nm_id=' + p.nm_id + '&date_from=' + props.dateFrom + '&date_to=' + props.dateTo" target="_blank" class="fbs-tbl__wb-link" :title="'Заказы товара ' + p.nm_id">{{ fmt0(p.cnt) }}</a></td>
           </tr>
         </tbody>
       </table>
@@ -66,7 +76,9 @@
   </div>
 </template>
 <script setup lang="ts">
+import '@/assets/css/components/fbs.css'
 import { ref, computed } from 'vue'
+import ProductCell from '@/components/common/ProductCell.vue'
 const props = defineProps<{ matrix: any[], dirs: string[], products: any[], dirsCount: number, dateFrom: string, dateTo: string }>()
 const emit = defineEmits<{ (e: 'update:dirsCount', v: number): void }>()
 const dirLabel = (d: string) => d === 'all' ? 'Все направления' : d === 'rest' ? 'Остальные' : d
@@ -94,15 +106,6 @@ const sorted = computed(() => {
   arr.sort((a: any, b: any) => ((Number(a[k]) || 0) - (Number(b[k]) || 0)) * d)
   return arr
 })
-const photo = (r: any) => {
-  try {
-    let p = r.photos
-    if (typeof p === 'string') p = JSON.parse(p)
-    if (typeof p === 'string') p = JSON.parse(p)
-    if (Array.isArray(p) && p[0]) return p[0]
-  } catch { /* noop */ }
-  return '/images/no-photo.png'
-}
 const fmt0 = (v: any) => new Intl.NumberFormat('ru-RU').format(Math.round(Number(v) || 0))
 const fmtDur = (v: any) => {
   if (v == null) return '—'
@@ -112,17 +115,3 @@ const fmtDur = (v: any) => {
   return (d > 0 ? d + ' дн ' : '') + hh + ' ч'
 }
 </script>
-<style scoped>
-.page-fbs-pvz__table-card { margin-bottom: 16px; border-color: #d5dae1; box-shadow: 0 1px 3px rgba(16,24,40,.08); }
-.page-fbs-pvz__table-head { font-size: 13px; font-weight: 700; color: #111827; padding: 12px 18px; background: #fff; border-bottom: 1px solid #e5e7eb; border-radius: 10px 10px 0 0; }
-.page-fbs-pvz__first { text-align: center; min-width: 220px; }
-.page-fbs-pvz__dir { text-align: center; font-size: 11px; min-width: 110px; }
-.page-fbs-pvz__dir-line { display: block; line-height: 1.3; }
-.page-fbs-pvz__sort { text-align: center; cursor: pointer; white-space: nowrap; }
-.page-fbs-pvz__num { text-align: right; white-space: nowrap; }
-.page-fbs-pvz__table-card table tbody td { font-size: 14px; }
-.page-fbs-pvz__dirs-label { margin-left: auto; font-size: 12px; font-weight: 400; color: #6b7280; display: flex; align-items: center; gap: 6px; }
-.page-fbs-pvz__dirs-select { width: auto; display: inline-block; }
-.page-fbs-pvz__table-head { display: flex; align-items: center; }
-
-</style>

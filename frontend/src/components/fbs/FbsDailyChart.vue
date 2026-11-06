@@ -1,24 +1,26 @@
 <template>
-  <div class="page-fbs-report__chart-card">
-    <div class="page-fbs-report__section-title">Заказы по дням и их исход</div>
-    <div class="page-fbs-report__chart" ref="chartEl">
-      <VChart v-if="daily.length" :option="chartOption" autoresize class="page-fbs-report__chart-inner" />
-      <div v-else class="d-flex align-items-center justify-content-center h-100 text-muted page-fbs-report__empty">Нет данных</div>
+  <div class="fbs-chart-card">
+    <div class="fbs-chart-card__title">Заказы по дням и их исход</div>
+    <div class="fbs-chart" ref="chartEl">
+      <VChart v-if="daily.length" :option="chartOption" autoresize class="fbs-chart__inner" />
+      <div v-else class="d-flex align-items-center justify-content-center h-100 fbs-empty">Нет данных</div>
     </div>
-    <div v-if="daily.length" class="page-fbs-report__legend">
-      <span v-for="s in SERIES" :key="s.name" class="page-fbs-report__legend-item">
-        <span class="page-fbs-report__legend-dot" :style="{ background: s.color }"></span>{{ s.name }}
+    <div v-if="daily.length" class="fbs-legend">
+      <span v-for="s in SERIES" :key="s.name" class="fbs-legend__item">
+        <span class="fbs-legend__dot" :style="{ background: s.color }"></span>{{ s.name }}
       </span>
     </div>
   </div>
 </template>
 <script setup lang="ts">
+import '@/assets/css/components/fbs.css'
 import { computed } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { BarChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, DatasetComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import { resolveTokenColor } from '@/utils/chartTheme'
 
 use([BarChart, GridComponent, TooltipComponent, DatasetComponent, CanvasRenderer])
 
@@ -27,16 +29,17 @@ const props = defineProps<{ daily: any[] }>()
 const daily = computed(() => props.daily || [])
 
 // Порядок снизу вверх в стеке; скруглён только верх стека (как TopMetrics.vue).
+// Цвета серий — токены темы (--fbs-1…9), значения те же, что были зашиты в страницу.
 const SERIES = [
-  { name: 'Выкуплено', key: 'sold', color: '#16a34a' },
-  { name: 'Новый', key: 'new', color: '#c4b5fd' },
-  { name: 'В сборке', key: 'assembling', color: '#a78bfa' },
-  { name: 'Передан WB', key: 'handed', color: '#7c3aed' },
-  { name: 'В пути', key: 'transit', color: '#22c55e' },
-  { name: 'Ждёт в ПВЗ', key: 'pickup', color: '#4ade80' },
-  { name: 'Отказ на выдаче', key: 'declined', color: '#fb7185' },
-  { name: 'Отмена покупателя', key: 'buyer_cancel', color: '#ef4444' },
-  { name: 'Отмена продавца', key: 'seller_cancel', color: '#991b1b' },
+  { name: 'Выкуплено', key: 'sold', color: resolveTokenColor('--fbs-6') },
+  { name: 'Новый', key: 'new', color: resolveTokenColor('--fbs-1') },
+  { name: 'В сборке', key: 'assembling', color: resolveTokenColor('--fbs-2') },
+  { name: 'Передан WB', key: 'handed', color: resolveTokenColor('--fbs-3') },
+  { name: 'В пути', key: 'transit', color: resolveTokenColor('--fbs-4') },
+  { name: 'Ждёт в ПВЗ', key: 'pickup', color: resolveTokenColor('--fbs-5') },
+  { name: 'Отказ на выдаче', key: 'declined', color: resolveTokenColor('--fbs-7') },
+  { name: 'Отмена покупателя', key: 'buyer_cancel', color: resolveTokenColor('--fbs-8') },
+  { name: 'Отмена продавца', key: 'seller_cancel', color: resolveTokenColor('--fbs-9') },
 ]
 
 const chartOption = computed(() => {
@@ -75,13 +78,3 @@ const chartOption = computed(() => {
   }
 })
 </script>
-<style scoped>
-.page-fbs-report__chart-card { background:#fff; border:1px solid #d5dae1; border-radius:10px; box-shadow:0 1px 3px rgba(16,24,40,.08); padding:16px 18px; margin-bottom:16px; height:100%; }
-.page-fbs-report__section-title { font-size:13px; font-weight:600; color:#111827; margin-bottom:10px; }
-.page-fbs-report__chart { height:320px; }
-.page-fbs-report__chart-inner { height:100%; }
-.page-fbs-report__empty { font-size:12px; }
-.page-fbs-report__legend { display:grid; grid-template-columns:repeat(5, 1fr); justify-items:center; gap:6px 12px; max-width:820px; margin:10px auto 0; }
-.page-fbs-report__legend-item { display:flex; align-items:center; gap:6px; font-size:11px; color:#374151; white-space:nowrap; overflow:hidden; }
-.page-fbs-report__legend-dot { display:inline-block; width:12px; height:12px; border-radius:4px; flex-shrink:0; }
-</style>

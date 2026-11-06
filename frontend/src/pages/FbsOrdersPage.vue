@@ -1,68 +1,73 @@
 <template>
   <div class="container-xxl page-fbs-orders">
-    <div class="page-fbs__head">
-      <h1 class="page-title">FBS Заказы</h1>
-      <FbsTabs active="orders" />
-    </div>
+    <!-- Шапка блока «FBS»: заголовок + правое меню блока (пилюли темы) -->
+    <WbWorkspaceHead
+      title="FBS Заказы"
+      :workspace-tabs="STOCK_FBS_TABS"
+      workspace-active="orders"
+    />
 
-    <!-- Фильтр как в дашборде: пресеты + даты слева, склад/бренд/категория правее -->
-    <div class="page-fbs-orders__filter-card mb-3">
-      <div class="page-fbs-orders__presets page-fbs-orders__presets--top">
-        <button v-for="p in presets" :key="p.id" class="btn btn-sm" :class="activePreset === p.id ? 'btn-primary' : 'btn-outline-secondary'" @click="applyPreset(p.id)">{{ p.label }}</button>
+    <!-- Фильтр: панель темы (.wb-filter-panel) -->
+    <div class="wb-filter-panel mb-3">
+      <div class="fbs-filter__presets">
+        <button v-for="p in presets" :key="p.id" class="btn" :class="activePreset === p.id ? 'btn--brand' : 'btn--outline'" @click="applyPreset(p.id)">{{ p.label }}</button>
       </div>
       <div class="row g-2 align-items-start">
         <div class="col-md-2">
-          <label class="form-label mb-1 page-fbs-orders__filter-label">Дата с</label>
+          <label class="wb-field__label">Дата с</label>
           <WbDateInput v-model="filters.date_from" />
         </div>
         <div class="col-md-2">
-          <label class="form-label mb-1 page-fbs-orders__filter-label">Дата по</label>
+          <label class="wb-field__label">Дата по</label>
           <WbDateInput v-model="filters.date_to" />
         </div>
         <div class="col-md-4">
-          <label class="form-label mb-1 page-fbs-orders__filter-label">Склад</label>
-          <select v-model="filters.warehouse_id" class="form-control" @change="fetchData()">
+          <label class="wb-field__label">Склад</label>
+          <select v-model="filters.warehouse_id" class="wb-select" @change="fetchData()">
             <option value="">Все склады</option>
             <option v-for="w in warehouses" :key="String(w.warehouse_id)" :value="String(w.warehouse_id)">{{ w.name }}</option>
           </select>
         </div>
         <div class="col-md-2">
-          <label class="form-label mb-1 page-fbs-orders__filter-label">Бренд</label>
-          <select v-model="filters.brand" class="form-control" @change="fetchData()">
+          <label class="wb-field__label">Бренд</label>
+          <select v-model="filters.brand" class="wb-select" @change="fetchData()">
             <option value="">Все</option>
             <option v-for="b in brands" :key="b" :value="b">{{ b }}</option>
           </select>
         </div>
         <div class="col-md-2">
-          <label class="form-label mb-1 page-fbs-orders__filter-label">Категория</label>
-          <select v-model="filters.category" class="form-control" @change="fetchData()">
+          <label class="wb-field__label">Категория</label>
+          <select v-model="filters.category" class="wb-select" @change="fetchData()">
             <option value="">Все</option>
             <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
           </select>
         </div>
       </div>
-      <div class="page-fbs-orders__filter-btns">
-        <button class="btn btn-primary" style="width:120px" @click="fetchData()">Применить</button>
-        <button class="btn btn-light" style="width:120px" @click="reset()">Сбросить</button>
+      <div class="wb-filter-panel__btns">
+        <button class="btn btn--brand wb-filter-panel__apply" @click="fetchData()">Применить</button>
+        <button class="btn btn--outline" @click="reset()">Сбросить</button>
       </div>
-      <div v-if="dataUpdated" class="page-fbs-orders__updated">Данные на {{ dataUpdated }}</div>
+      <div v-if="dataUpdated" class="fbs-note">Данные на {{ dataUpdated }}</div>
     </div>
 
-    <div v-if="isLoading" class="p-4 text-center text-muted">Загрузка...</div>
-    <div v-else-if="error" class="alert alert-danger">{{ error }}</div>
+    <div v-if="isLoading" class="fbs-loading">Загрузка данных…</div>
+    <div v-else-if="error" class="wb-panel">
+      <div class="wb-panel__bd page-fbs-orders__error">{{ error }}</div>
+    </div>
     <template v-else-if="economy">
-      <div class="page-fbs-orders__section-line">Экономика периода{{ warehouseName ? ' · ' + warehouseName : '' }}</div>
+      <div class="fbs-section-line">Экономика периода{{ warehouseName ? ' · ' + warehouseName : '' }}</div>
       <FbsEconomyCards :e="economy" />
-      <div class="page-fbs-orders__section-line">Динамика по дням{{ warehouseName ? ' · ' + warehouseName : '' }}</div>
+      <div class="fbs-section-line">Динамика по дням{{ warehouseName ? ' · ' + warehouseName : '' }}</div>
       <FbsDynamicsCharts :days="dynamics" :labels="dynamicsLabels" />
       <FbsAssemblyQueue :q="assemblyQuota" :risk="assemblyRisk" :warehouses="assemblyWh" />
     </template>
   </div>
 </template>
 <script setup lang="ts">
-import '../assets/css/pages/page-fbs-orders.css'
+import '@/assets/css/components/fbs.css'
 import { ref, computed, onMounted } from 'vue'
-import FbsTabs from '../components/fbs/FbsTabs.vue'
+import WbWorkspaceHead from '@/components/common/WbWorkspaceHead.vue'
+import { STOCK_FBS_TABS } from '@/components/common/workspaceTabs'
 import FbsEconomyCards from '../components/fbs_orders/FbsEconomyCards.vue'
 import FbsDynamicsCharts from '../components/fbs_orders/FbsDynamicsCharts.vue'
 import FbsAssemblyQueue from '../components/fbs_orders/FbsAssemblyQueue.vue'
