@@ -4,7 +4,12 @@ export interface TaxVersion {
   id: number
   company_id: number
   valid_from: string
+  /** Фактический конец периода (если не задан — считается по следующей версии). */
   valid_to: string | null
+  /** Что задано пользователем вручную (null = считается автоматически). */
+  valid_to_set?: string | null
+  /** Конец, посчитанный по следующей версии (null = бессрочно). */
+  auto_to?: string | null
   mode: 'none' | 'income' | 'profit' | 'osno'
   mode_label: string
   main_rate: number
@@ -16,6 +21,7 @@ export interface TaxVersion {
   created_at: string
   updated_at: string
   is_current: boolean
+  is_open_ended?: boolean
 }
 
 export interface NdsCoverage {
@@ -86,10 +92,12 @@ export const taxSettingsApi = {
     vat_source: string
     profit_rate?: number | null
     valid_from: string
+    /** Дата окончания периода; пусто — бессрочно. */
+    valid_to?: string | null
     reason: string
   }) {
     const { data } = await api.post('/api/tax-settings/versions', payload)
-    return data as { ok: boolean; valid_from: string; closed_previous_to: string }
+    return data as { ok: boolean; valid_from: string; valid_to: string | null }
   },
   /** Изменить версию настроек. */
   async updateVersion(id: number, payload: {

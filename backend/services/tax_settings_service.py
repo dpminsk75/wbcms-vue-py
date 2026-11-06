@@ -16,7 +16,7 @@ agg_daily_summary (дневные деньги по nm), marketing_expense_lines
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -98,57 +98,65 @@ class TaxSettingsService:
         s = str(value)[:10]
         return s or None
 
-    async def _rechain(self, cid: int) -> None:
-        """Пересобрать границы версий: периоды не пересекаются и не имеют gaps.
+    @staticmethod
+    def _eff_chain(rows: list[dict]) -> list[dict]:
+        """Версии по возрастанию + вычисленный конец периода (eff_to).
 
-        Правило: версия действует до кануна следующей (valid_to = next.valid_from − 1).
-        Последняя версия — бессрочная (valid_to = NULL), если пользователь не закрыл
-        её явно. Поэтому «бессрочно» может быть только у одной версии.
+        Правило:
+          * valid_to в базе — конец периода, заданный пользователем. NULL = не задан.
+          * Если конец не задан, он считается сам: канун следующей версии.
+            У последней версии следующей нет — значит «бессрочно».
+          * Поэтому «бессрочно» бывает только у последней версии, а у остальных
+            «по» проставляется автоматически.
+          * Если заданный конец противоречит цепочке (наезжает на следующую
+            версию или раньше своей «с») — он игнорируется, показывается цепочка.
         """
-        rows = (await self.db.execute(text("""
-            SELECT id, valid_from, valid_to FROM company_tax_settings
-            WHERE company_id = :cid
-            ORDER BY valid_from ASC, id ASC"""), {"cid": cid})).mappings().all()
+        n = len(rows)
+        out: list[dict] = []
         for i, r in enumerate(rows):
-            cur_to = self._d10(r["valid_to"])
-            if i + 1 < len(rows):
-                nxt_from = self._d10(rows[i + 1]["valid_from"])
-                end = (date.fromisoformat(nxt_from) - timedelta(days=1)).isoformat()
-            else:
-                end = cur_to  # последняя: как задал пользователь (None = бессрочно)
-            if cur_to != end:
-                await self.db.execute(text("""
-                    UPDATE company_tax_settings
-                    SET valid_to = :end, updated_at = NOW()
-                    WHERE id = :id"""), {"id": r["id"], "end": end})
+            nxt = rows[i + 1]["valid_from"] if i + 1 < n else None
+            auto = (date.fromisoformat(nxt) - timedelta(days=1)).isoformat() if nxt else None
+            stored = r.get("valid_to")
+            ok = bool(stored) and stored >= r["valid_from"] and (nxt is None or stored < nxt)
+            out.append({**r, "eff_to": stored if ok else auto, "auto_to": auto,
+                        "valid_to_set": stored if ok else None})
+        return out
 
-    async def _check_no_overlap(self, cid: int, v_from: str, v_to: str | None,
-                                 exclude_id: int | None = None) -> None:
-        """Проверить, что период не наезжает на другие версии."""
-        params: dict = {"cid": cid, "d": v_from}
-        excl = ""
-        if exclude_id is not None:
-            excl = " AND id <> :ex"
-            params["ex"] = exclude_id
-        rows = (await self.db.execute(text(f"""
-            SELECT id, valid_from, valid_to FROM company_tax_settings
-            WHERE company_id = :cid{excl}"""), params)).mappings().all()
-        d_from = date.fromisoformat(v_from)
-        d_to = date.fromisoformat(v_to) if v_to else None
-        for r in rows:
-            s = date.fromisoformat(self._d10(r["valid_from"]))
-            e = self._d10(r["valid_to"])
-            e = date.fromisoformat(e) if e else None
-            # пересечение: [d_from, d_to] ∩ [s, e]
-            if d_to is not None and s > d_to:
-                continue
-            if e is not None and d_from > e:
-                continue
-            raise TaxSettingsError(
-                f"период пересекается с версией от {self._d10(r['valid_from'])}")
+    @staticmethod
+    def _validate_periods(rows: list[dict], check_id: int) -> None:
+        """Проверить период редактируемой версии.
 
-    async def list_versions(self) -> list[dict]:
-        cid = self._need_company()
+        Проверяем только то, что задаёт пользователь:
+          * «Дата окончания» не раньше своей «Даты начала».
+          * «Дата окончания» раньше начала следующей версии.
+          * Начало версии — позже конца предыдущей версии, если у неё «по»
+            задано явно.
+        """
+        chain = TaxSettingsService._eff_chain(rows)
+        for i, r in enumerate(chain):
+            if r["id"] != check_id:
+                continue
+            stored = r.get("valid_to")
+            nxt = chain[i + 1]["valid_from"] if i + 1 < len(chain) else None
+            prev = chain[i - 1] if i > 0 else None
+            if stored and stored < r["valid_from"]:
+                raise TaxSettingsError(
+                    f"«Дата окончания» раньше «Действует с» (версия от {r['valid_from']})")
+            if stored and nxt and stored >= nxt:
+                raise TaxSettingsError(
+                    f"«Дата окончания» ({stored}) позже начала следующей версии ({nxt})")
+            if prev:
+                # Конец предыдущей версии: если «по» задано явно и согласован —
+                # берём его (иначе новая версия начнётся внутри чужого периода),
+                # если нет — считаем кануном её начала.
+                prev_end = prev.get("valid_to_set") or prev["eff_to"]
+                if prev_end and r["valid_from"] <= prev_end:
+                    raise TaxSettingsError(
+                        f"период пересекается с версией от {prev['valid_from']} "
+                        f"(она действует по {prev_end})")
+
+    async def _rows(self, cid: int) -> list[dict]:
+        """Все версии компании по возрастанию valid_from (с именем автора)."""
         rows = (await self.db.execute(text("""
             SELECT s.id, s.company_id, s.valid_from, s.valid_to, s.mode, s.main_rate,
                    s.vat_source, s.profit_rate, s.reason,
@@ -157,54 +165,64 @@ class TaxSettingsService:
             FROM company_tax_settings s
             LEFT JOIN `user` u ON u.id = s.created_by
             WHERE s.company_id = :cid
-            ORDER BY s.valid_from DESC, s.id DESC"""),
+            ORDER BY s.valid_from ASC, s.id ASC"""),
             {"cid": cid})).mappings().all()
         out = []
-        today = date.today().isoformat()
         for r in rows:
             d = dict(r)
+            d["valid_from"] = self._d10(d["valid_from"])
+            d["valid_to"] = self._d10(d["valid_to"])
+            out.append(d)
+        return out
+
+    async def list_versions(self) -> list[dict]:
+        cid = self._need_company()
+        chain = self._eff_chain(await self._rows(cid))
+        today = date.today().isoformat()
+        # «Действует» — одна версия: последняя, чей период накрывает сегодня.
+        current_id = None
+        for r in chain:
+            if r["valid_from"] <= today and (r["eff_to"] is None or r["eff_to"] >= today):
+                current_id = r["id"]
+        out = []
+        for r in reversed(chain):
+            d = dict(r)
             d["mode_label"] = MODE_LABELS.get(d.get("mode") or "", d.get("mode"))
-            d["valid_from"] = str(d.get("valid_from") or "")[:10]
-            d["valid_to"] = str(d.get("valid_to") or "")[:10] or None
             d["main_rate"] = float(d.get("main_rate") or 0)
             d["profit_rate"] = float(d["profit_rate"]) if d.get("profit_rate") is not None else None
-            d["is_current"] = (d["valid_from"] <= today
-                               and (not d["valid_to"] or d["valid_to"] >= today))
-            d["is_open_ended"] = d["valid_to"] is None
+            d["valid_to"] = r["eff_to"]             # «по» — фактический конец периода
+            d["valid_to_set"] = r.get("valid_to_set")  # что задано руками
+            d["auto_to"] = r.get("auto_to")           # конец по следующей версии
+            d["is_open_ended"] = r["eff_to"] is None
+            d["is_current"] = (r["id"] == current_id)
             out.append(d)
         return out
 
     async def current(self, on_date: str | None = None) -> dict | None:
         cid = self._need_company()
         d = self._d(on_date or date.today().isoformat(), "дата")
-        row = (await self.db.execute(text("""
-            SELECT s.id, s.valid_from, s.valid_to, s.mode, s.main_rate, s.vat_source,
-                   s.profit_rate, s.reason, s.created_at
-            FROM company_tax_settings s
-            WHERE s.company_id = :cid AND s.valid_from <= :d
-              AND (s.valid_to IS NULL OR s.valid_to >= :d)
-            ORDER BY s.valid_from DESC LIMIT 1"""),
-            {"cid": cid, "d": d})).mappings().first()
-        if not row:
+        chain = self._eff_chain(await self._rows(cid))
+        found = None
+        for r in chain:
+            if r["valid_from"] <= d and (r["eff_to"] is None or r["eff_to"] >= d):
+                found = r
+        if not found:
             return None
-        out = dict(row)
+        out = dict(found)
         out["mode_label"] = MODE_LABELS.get(out.get("mode") or "", out.get("mode"))
         out["main_rate"] = float(out.get("main_rate") or 0)
         out["profit_rate"] = float(out["profit_rate"]) if out.get("profit_rate") is not None else None
-        out["valid_from"] = str(out.get("valid_from") or "")[:10]
-        out["valid_to"] = str(out.get("valid_to") or "")[:10] or None
+        out["valid_to"] = out["eff_to"]
         return out
 
-    async def create_version(self, data: dict) -> dict:
-        """Новая версия настроек. Старая закрывается, история не переписывается."""
-        cid = self._need_company()
+    def _version_fields(self, data: dict, row: dict | None = None) -> dict:
+        """Поля версии из payload + валидация. row — текущая версия (для правки)."""
         mode = str(data.get("mode") or "").strip().lower()
         if mode not in MODES:
             raise TaxSettingsError(f"mode: допустимо {', '.join(MODES)}")
         vat_source = str(data.get("vat_source") or "cards").strip().lower()
         if vat_source not in VAT_SOURCES:
             raise TaxSettingsError(f"vat_source: допустимо {', '.join(VAT_SOURCES)}")
-        valid_from = self._d(data.get("valid_from"), "valid_from")
         main_rate = self._rate(data.get("main_rate"), "main_rate")
         profit_rate = None
         if mode == "osno":
@@ -214,33 +232,53 @@ class TaxSettingsService:
                 raise TaxSettingsError("main_rate: для ОСНО нужна ставка налога на прибыль")
         elif mode == "none":
             main_rate = 0.0
+        valid_from = self._d(
+            data.get("valid_from") or (self._d10(row["valid_from"]) if row else ""),
+            "valid_from")
+        valid_to = data.get("valid_to")
+        valid_to = self._d10(valid_to) if valid_to else None
+        if valid_to and valid_to < valid_from:
+            raise TaxSettingsError("«Дата окончания» не может быть раньше «Действует с»")
         reason = str(data.get("reason") or "").strip()
-        if not reason:
+        return {
+            "mode": mode, "vat_source": vat_source, "main_rate": main_rate,
+            "profit_rate": profit_rate, "valid_from": valid_from, "valid_to": valid_to,
+            "reason": reason,
+        }
+
+    async def create_version(self, data: dict) -> dict:
+        """Новая версия настроек. История не перезаписывается."""
+        cid = self._need_company()
+        f = self._version_fields(data)
+        if not f["reason"]:
             raise TaxSettingsError("reason: укажите причину изменения (попадёт в историю)")
 
         # такой же valid_from уже есть — конфликт версий
         dup = (await self.db.execute(text(
             "SELECT id FROM company_tax_settings WHERE company_id=:cid AND valid_from=:d LIMIT 1"),
-            {"cid": cid, "d": valid_from})).scalar()
+            {"cid": cid, "d": f["valid_from"]})).scalar()
         if dup:
             raise TaxSettingsError("на эту дату версия уже создана — выберите другую дату")
+
+        # Периоды не должны наезжать друг на друга (с учётом цепочки).
+        rows = await self._rows(cid)
+        rows.append({"id": 0, "valid_from": f["valid_from"], "valid_to": f["valid_to"]})
+        rows.sort(key=lambda r: (r["valid_from"], r["id"]))
+        self._validate_periods(rows, 0)
 
         await self.db.execute(text("""
             INSERT INTO company_tax_settings
               (company_id, valid_from, valid_to, mode, main_rate, vat_source,
                profit_rate, reason, created_by, updated_by)
-            VALUES (:cid, :d, NULL, :mode, :rate, :vat, :profit, :reason, :uid, :uid)"""),
-            {"cid": cid, "d": valid_from, "mode": mode, "rate": main_rate,
-             "vat": vat_source, "profit": profit_rate, "reason": reason,
-             "uid": self.user_id})
-        # Границы пересобираются: каждая версия закрывается кануном следующей,
-        # бессрочной остаётся только последняя.
-        await self._rechain(cid)
+            VALUES (:cid, :d, :to, :mode, :rate, :vat, :profit, :reason, :uid, :uid)"""),
+            {"cid": cid, "d": f["valid_from"], "to": f["valid_to"], "mode": f["mode"],
+             "rate": f["main_rate"], "vat": f["vat_source"], "profit": f["profit_rate"],
+             "reason": f["reason"], "uid": self.user_id})
         await self.db.commit()
         versions = await self.list_versions()
-        prev = next((v for v in versions if v["valid_from"] < valid_from), None)
-        return {"ok": True, "valid_from": valid_from,
-                "closed_previous_to": prev["valid_to"] if prev else None}
+        cur = next((v for v in versions if v["valid_from"] == f["valid_from"]), None)
+        return {"ok": True, "valid_from": f["valid_from"],
+                "valid_to": cur["valid_to"] if cur else f["valid_to"]}
 
     async def update_version(self, version_id: int, data: dict) -> dict:
         """Изменить версию настроек (ставка/режим/НДС/причина/даты)."""
@@ -251,50 +289,45 @@ class TaxSettingsService:
             {"id": version_id, "cid": cid})).mappings().first()
         if not row:
             raise TaxSettingsError("версия не найдена")
-        mode = str(data.get("mode") or "").strip().lower()
-        if mode not in MODES:
-            raise TaxSettingsError(f"mode: допустимо {', '.join(MODES)}")
-        vat_source = str(data.get("vat_source") or "cards").strip().lower()
-        if vat_source not in VAT_SOURCES:
-            raise TaxSettingsError(f"vat_source: допустимо {', '.join(VAT_SOURCES)}")
-        main_rate = self._rate(data.get("main_rate"), "main_rate")
-        profit_rate = main_rate if mode == "osno" else None
-        if mode == "none":
-            main_rate = 0.0
-        valid_from = self._d(data.get("valid_from") or self._d10(row["valid_from"]), "valid_from")
-        valid_to = data.get("valid_to")
-        valid_to = self._d10(valid_to) if valid_to else None
-        reason = str(data.get("reason") or "").strip() or None
+        f = self._version_fields(data, dict(row))
 
         dup = (await self.db.execute(text("""
             SELECT id FROM company_tax_settings
             WHERE company_id = :cid AND valid_from = :d AND id <> :id LIMIT 1"""),
-            {"cid": cid, "d": valid_from, "id": version_id})).scalar()
+            {"cid": cid, "d": f["valid_from"], "id": version_id})).scalar()
         if dup:
             raise TaxSettingsError("на эту дату версия уже создана — выберите другую дату")
-        await self._check_no_overlap(cid, valid_from, valid_to, exclude_id=version_id)
+
+        # Периоды не должны наезжать друг на друга (с учётом цепочки).
+        rows = [r for r in await self._rows(cid) if r["id"] != version_id]
+        rows.append({"id": version_id, "valid_from": f["valid_from"], "valid_to": f["valid_to"]})
+        rows.sort(key=lambda r: (r["valid_from"], r["id"]))
+        self._validate_periods(rows, version_id)
+
         await self.db.execute(text("""
             UPDATE company_tax_settings
             SET valid_from = :d, valid_to = :to, mode = :mode, main_rate = :rate,
                 vat_source = :vat, profit_rate = :profit, reason = :reason, updated_by = :uid
             WHERE id = :id AND company_id = :cid"""),
-            {"cid": cid, "id": version_id, "d": valid_from, "to": valid_to,
-             "mode": mode, "rate": main_rate, "vat": vat_source, "profit": profit_rate,
-             "reason": reason, "uid": self.user_id})
-        await self._rechain(cid)
+            {"cid": cid, "id": version_id, "d": f["valid_from"], "to": f["valid_to"],
+             "mode": f["mode"], "rate": f["main_rate"], "vat": f["vat_source"],
+             "profit": f["profit_rate"], "reason": f["reason"] or None,
+             "uid": self.user_id})
         await self.db.commit()
-        return {"ok": True, "id": version_id, "valid_from": valid_from, "valid_to": valid_to}
+        versions = await self.list_versions()
+        cur = next((v for v in versions if v["id"] == version_id), None)
+        return {"ok": True, "id": version_id, "valid_from": f["valid_from"],
+                "valid_to": cur["valid_to"] if cur else f["valid_to"]}
 
     async def delete_version(self, version_id: int) -> dict:
-        """Удалить версию настроек. Границы оставшихся пересобираются."""
+        """Удалить версию настроек."""
         cid = self._need_company()
-        row = (await self.db.execute(text("""
-            SELECT id FROM company_tax_settings WHERE id = :id AND company_id = :cid"""),
+        row = (await self.db.execute(text(
+            "SELECT id FROM company_tax_settings WHERE id = :id AND company_id = :cid"),
             {"id": version_id, "cid": cid})).scalar()
         if not row:
             raise TaxSettingsError("версия не найдена")
         await self.db.execute(text("DELETE FROM company_tax_settings WHERE id = :id"), {"id": version_id})
-        await self._rechain(cid)
         await self.db.commit()
         return {"ok": True, "id": version_id}
 

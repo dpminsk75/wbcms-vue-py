@@ -127,6 +127,11 @@
               <label class="wb-field__label">Действует с</label>
               <WbDateInput v-model="form.valid_from" />
             </div>
+            <div class="wb-field">
+              <label class="wb-field__label">Дата окончания</label>
+              <WbDateInput v-model="form.valid_to" />
+              <span class="page-tax-settings__hint">пусто — бессрочно</span>
+            </div>
             <div class="wb-field page-tax-settings__field--wide">
               <label class="wb-field__label">Причина изменения</label>
               <input v-model="form.reason" class="wb-input" placeholder="попадёт в историю">
@@ -165,9 +170,9 @@
           </div>
           <div class="col-4">
             <div class="wb-field">
-              <label class="wb-field__label">по</label>
+              <label class="wb-field__label">Дата окончания</label>
               <WbDateInput v-model="editForm.valid_to" />
-              <span class="page-tax-settings__hint">пусто — бессрочно</span>
+              <span class="page-tax-settings__hint">{{ endHint }}</span>
             </div>
           </div>
           <div class="col-4">
@@ -200,7 +205,7 @@
           </div>
         </div>
         <p class="page-tax-settings__hint mb-0">
-          Даты не должны наезжать на другие версии. Если «по» пусто — версия бессрочная.
+          «Дата окончания» пустая — версия бессрочная. Периоды версий не должны наезжать друг на друга.
         </p>
         <div v-if="editMsg" class="page-tax-settings__hint">
           <span class="badge badge--bad">Ошибка</span> {{ editMsg }}
@@ -387,6 +392,7 @@ const form = ref({
   rate: 7 as number | null,
   vat_source: 'cards',
   valid_from: today,
+  valid_to: '',
   reason: '',
 })
 
@@ -425,6 +431,7 @@ function fillFormFromCurrent(v: TaxVersion | null) {
 function resetForm() {
   fillFormFromCurrent(currentVersion.value)
   form.value.valid_from = today
+  form.value.valid_to = ''
   form.value.reason = ''
   saveMsg.value = ''
 }
@@ -458,10 +465,17 @@ async function loadAll() {
 /* ------------------------------------------------- правка версии */
 const editModal = ref(false)
 const editMsg = ref('')
+/** Что будет, если оставить «Дата окончания» пустой. */
+const endHint = computed(() => {
+  const auto = editForm.value.auto_to
+  if (editForm.value.valid_to) return 'дата окончания периода'
+  return auto ? `пусто — до ${auto} (до следующей версии)` : 'пусто — бессрочно'
+})
 const editForm = ref({
   id: 0,
   valid_from: '',
   valid_to: '',
+  auto_to: '',
   mode: 'income',
   main_rate: 7 as number | null,
   vat_source: 'cards',
@@ -473,7 +487,10 @@ function openVersion(v: TaxVersion) {
   editForm.value = {
     id: v.id,
     valid_from: v.valid_from,
-    valid_to: v.valid_to || '',
+    // В поле — только то, что задано руками. Если пусто, конец периода
+    // считается сам (канун следующей версии) — показываем это в подсказке.
+    valid_to: v.valid_to_set || '',
+    auto_to: v.auto_to || '',
     mode: v.mode,
     main_rate: v.main_rate,
     vat_source: v.vat_source,
@@ -530,6 +547,7 @@ async function save() {
       vat_source: form.value.vat_source,
       profit_rate: null,
       valid_from: form.value.valid_from,
+      valid_to: form.value.valid_to || null,
       reason: form.value.reason.trim(),
     })
     saveOk.value = true
