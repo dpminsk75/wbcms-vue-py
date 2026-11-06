@@ -3,6 +3,22 @@
     <div class="card__hd">
       <span>{{ title }}</span>
       <span class="hd-badge">{{ filteredCount }}</span>
+      <span class="page-wb-promotions__selbtns">
+        <button
+          class="hd-btn page-wb-promotions__selbtn"
+          :class="{ 'is-on': sel === 'sel' }"
+          :aria-pressed="sel === 'sel'"
+          :title="sel === 'sel' ? 'Показываем только отмеченные. Нажмите ещё раз — показывать все строки' : 'Показывать только отмеченные товары'"
+          @click="toggleSel('sel')"
+        >Только выбранные</button>
+        <button
+          class="hd-btn page-wb-promotions__selbtn"
+          :class="{ 'is-on': sel === 'unsel' }"
+          :aria-pressed="sel === 'unsel'"
+          :title="sel === 'unsel' ? 'Показываем только неотмеченные. Нажмите ещё раз — показывать все строки' : 'Показывать только неотмеченные товары'"
+          @click="toggleSel('unsel')"
+        >Только не выбранные</button>
+      </span>
       <span class="spacer"></span>
       <span class="hd-badge" :title="basisTitle">{{ basis }}</span>
       <span v-if="pages > 1" class="page-wb-promotions__range">{{ rangeText }}</span>
@@ -43,8 +59,9 @@
             <th class="t-right">Ост. WB</th>
             <th class="t-right">Ост. прод.</th>
             <th class="t-right" title="Оборачиваемость, дней">Обор-сть</th>
-            <th class="t-right">Цена тек.</th>
+            <th class="t-right" title="Сверху — цена карточки, снизу — цена продажи из куба (по ней считается «Маржа тек.»)">Цена тек.</th>
             <th class="t-right">Скидка тек.</th>
+            <th class="t-right" title="Текущая маржа в ₽ — по цене продажи из куба">Маржа тек.</th>
             <th class="t-right" title="Цена в акции и минимальная цена WB">Цена план.</th>
             <th class="t-right">Скидка план.</th>
 
@@ -100,16 +117,25 @@
               <div v-if="r.manual && r.selected && !r.recommend" class="page-wb-promotions__marks">
                 <span class="page-wb-promotions__mark">добавлено вами</span>
               </div>
+              <div v-if="r.est_analog" class="page-wb-promotions__marks">
+                <span class="page-wb-promotions__mark">оценка по аналогам</span>
+              </div>
               <div v-if="r.reason" class="page-wb-promotions__marks">
                 <span class="page-wb-promotions__reason">{{ r.reason }}</span>
               </div>
             </td>
-            <td class="t-right num">{{ r.sold_qty }}</td>
+            <td class="t-right num">{{ r.sold_qty > 0 ? r.sold_qty : '—' }}</td>
             <td class="t-right num">{{ r.stock_wb }}</td>
             <td class="t-right num">{{ r.stock_fbs }}</td>
             <td class="t-right num" :title="r.turnover_days != null ? r.turnover_days + ' дн.' : ''">{{ r.turnover_days != null ? r.turnover_days : '—' }}</td>
-            <td class="t-right num">{{ money(r.price_now) }}</td>
+            <!-- цена в три строки: розничная WB · цена со скидкой · наша средняя (серая) -->
+            <td class="t-right num page-wb-promotions__price">
+              <span>{{ money(r.wb_price ?? r.price) }}</span>
+              <span v-if="r.wb_price_discounted != null">{{ money(r.wb_price_discounted) }}</span>
+              <span v-if="r.price_cube != null && !r.est_analog" class="page-wb-promotions__cube" title="Наша средняя цена продажи из куба (amount / продажи) — на ней «Маржа тек.»">{{ money(r.price_cube) }}</span>
+            </td>
             <td class="t-right num">{{ r.discount }} %</td>
+            <td class="t-right num" :class="cls(r.margin_now_rub)">{{ money(r.margin_now_rub) }}</td>
             <!-- цена в акции; ниже — минимальная цена WB -->
             <td class="t-right num page-wb-promotions__price">
               <span>
@@ -138,40 +164,14 @@
             <td class="t-right num t-neg">{{ money(r.unit.cost) }}</td>
             <td class="t-right num" :class="cls(r.unit.profit_before_tax)">{{ money(r.unit.profit_before_tax) }}</td>
             <td class="t-right num t-neg">{{ money(r.unit.tax) }}</td>
-            <!-- маржа: три значения одной колонкой; сумма — жирная, если положительна -->
+            <!-- маржа: новая в ₽ · изменение в % · изменение в ₽ — одной колонкой -->
             <td class="t-right num page-wb-promotions__margin">
               <span :class="[cls(r.unit.margin_rub), { 'is-bold': (r.unit.margin_rub ?? 0) > 0 }]">{{ money(r.unit.margin_rub) }}</span>
-              <span :class="cls(r.unit.margin_pct)">{{ pct(r.unit.margin_pct) }}</span>
-              <span :class="dropClass(r)">{{ drop(r) }}</span>
+              <span :class="changeCls(r.margin_change_pct)">{{ changePct(r.margin_change_pct) }}</span>
+              <span :class="changeCls(r.margin_change_rub)">{{ money(r.margin_change_rub) }}</span>
             </td>
           </tr>
         </tbody>
-
-        <tfoot v-if="rows.length" class="tbl__total">
-          <tr>
-            <td :colspan="FOOTER_LABEL_COLS" class="t-left">Итого по отмеченным ({{ selectedCount }} шт.)</td>
-            <td class="t-right">{{ money(avg('revenue')) }}</td>
-            <td class="t-right">{{ money(avg('commission')) }}</td>
-            <td class="t-right">{{ money(avg('acquiring')) }}</td>
-            <td class="t-right">{{ money(avg('acceptance')) }}</td>
-            <td class="t-right">{{ money(avg('delivery')) }}</td>
-            <td class="t-right">{{ money(avg('storage')) }}</td>
-            <td v-if="show('include_penalties')" class="t-right">{{ money(avg('penalty')) }}</td>
-            <td v-if="show('include_reviews')" class="t-right">{{ money(avg('reviews')) }}</td>
-            <td v-if="show('include_adv')" class="t-right">{{ money(avg('adv')) }}</td>
-            <td v-if="show('include_cashback')" class="t-right">{{ money(avg('cashback')) }}</td>
-            <td class="t-right">{{ money(avg('net_profit')) }}</td>
-            <td class="t-right">{{ money(avg('nds')) }}</td>
-            <td class="t-right">{{ money(avg('cost')) }}</td>
-            <td class="t-right">{{ money(avg('profit_before_tax')) }}</td>
-            <td class="t-right">{{ money(avg('tax')) }}</td>
-            <td class="t-right page-wb-promotions__margin">
-              <span>{{ money(avg('margin_rub')) }}</span>
-              <span>{{ pct(avg('margin_pct')) }}</span>
-              <span>{{ avgDrop != null ? avgDrop.toFixed(1) : '—' }}</span>
-            </td>
-          </tr>
-        </tfoot>
       </table>
     </div>
   </div>
@@ -180,13 +180,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import ProductCell from '@/components/common/ProductCell.vue'
-import type { PromoAnalysisRow, PromoCalcParams, PromoUnit } from '@/api/promotions'
+import type { PromoAnalysisRow, PromoCalcParams } from '@/api/promotions'
 
 /** Варианты размера страницы. */
 const PAGE_SIZES = [50, 100, 200, 500, 1000]
-
-/** Подпись итога занимает первые 10 колонок, дальше идут числовые. */
-const FOOTER_LABEL_COLS = 10
 
 /** Статьи, колонка которых показывается только при включённом тумблере. */
 const OPT_KEYS = ['include_penalties', 'include_reviews', 'include_adv', 'include_cashback']
@@ -205,14 +202,19 @@ const props = withDefaults(defineProps<{
   order?: string
   /** Фильтр «В акции»: all | yes | no. */
   inAction?: string
+  /** Фильтр «Наличие»: all | in (есть на складах WB или у продавца). */
+  stock?: string
+  /** Отбор по отметке: all | sel (только отмеченные) | unsel (только неотмеченные). */
+  sel?: string
   /** Строк на страницу. */
   pageSize?: number
-}>(), { params: () => ({}), sort: 'sales', order: 'desc', inAction: 'no', pageSize: 100 })
+}>(), { params: () => ({}), sort: 'sales', order: 'desc', inAction: 'no', stock: 'all', sel: 'all', pageSize: 100 })
 
 const emit = defineEmits<{
   (e: 'toggle', r: PromoAnalysisRow): void
   (e: 'export', rows: PromoAnalysisRow[]): void
   (e: 'update:page-size', n: number): void
+  (e: 'update:sel', v: string): void
 }>()
 
 /** Текущая страница. */
@@ -238,15 +240,32 @@ const basisTitle = computed(() => {
 /** Фильтр «В акции»: all | yes | no. */
 const inAction = computed(() => props.inAction || 'no')
 
-/** Строки: сначала фильтр «В акции», потом сортировка и порядок. */
+/** Фильтр «Наличие»: all | in (есть на складах WB или у продавца). */
+const stock = computed(() => props.stock || 'all')
+
+/** Отбор по отметке: all | sel | unsel. */
+const sel = computed(() => props.sel || 'all')
+
+/** Кнопки отбора в шапке: нажатая снимает другую, повторное нажатие — сброс. */
+function toggleSel(v: 'sel' | 'unsel') {
+  emit('update:sel', sel.value === v ? 'all' : v)
+  page.value = 1
+}
+
+/** Строки: фильтры «В акции», «Наличие» и отбор по отметке, потом сортировка. */
 const filtered = computed(() => {
   let rows = props.rows
   if (inAction.value === 'yes') rows = rows.filter(r => r.in_action)
   else if (inAction.value === 'no') rows = rows.filter(r => !r.in_action)
+  if (stock.value === 'in') rows = rows.filter(r => (r.stock_wb ?? 0) > 0 || (r.stock_fbs ?? 0) > 0)
+  if (sel.value === 'sel') rows = rows.filter(r => r.selected)
+  else if (sel.value === 'unsel') rows = rows.filter(r => !r.selected)
 
   const dir = props.order === 'asc' ? 1 : -1
-  const key = props.sort || 'margin'
+  const key = props.sort || 'sales'
   const val = (r: PromoAnalysisRow): number | string => {
+    // Продано: у товаров без продаж оценка экономики идёт по аналогам,
+    // но «продано» остаётся нулевым — в колонке будет «—» и строка уйдёт вниз
     if (key === 'sales') return Number(r.sold_qty || 0)
     if (key === 'name') return String(r.title || '').toLowerCase()
     return Number(r.margin_new_rub ?? -Infinity)
@@ -298,12 +317,8 @@ const onPageSize = (e: Event) => {
 watch([filtered, () => props.pageSize], () => { page.value = 1 })
 watch(pages, (n) => { if (page.value > n) page.value = n })
 
-const selectedCount = computed(() => props.rows.filter(r => r.selected).length)
-
-/**
- * Птичка. Товар «в акции» не трогаем. Товар ниже порога маржи включаем
- * только после подтверждения пользователя.
- */
+/** Птичка. Товар «в акции» не трогаем. Товар ниже порога маржи включаем
+ *  только после подтверждения пользователя. */
 const onCheck = (r: PromoAnalysisRow, ev: Event) => {
   const el = ev.target as HTMLInputElement
   const want = el.checked
@@ -318,39 +333,21 @@ const onCheck = (r: PromoAnalysisRow, ev: Event) => {
   emit('toggle', r)
 }
 
-/** Минимальная цена WB. Если она совпадает с текущей ценой — показывать нечего. */
+/** Минимальная цена WB. Если она совпадает с розничной — показывать нечего. */
 const minOf = (r: PromoAnalysisRow): number | null => {
   if (r.min_price == null) return null
-  if (r.price_now != null && Math.round(r.min_price) === Math.round(r.price_now)) return null
+  if (r.price != null && Math.round(r.min_price) === Math.round(r.price)) return null
   return r.min_price
 }
-
-/** Среднее по отмеченным товарам (на штуку). */
-function avgOf(get: (r: PromoAnalysisRow) => number | null | undefined): number | null {
-  const vals = props.rows.filter(r => r.selected).map(get).filter((v): v is number => typeof v === 'number')
-  if (!vals.length) return null
-  return vals.reduce((a, b) => a + b, 0) / vals.length
-}
-const avg = (key: keyof PromoUnit) => avgOf(r => r.unit[key])
-
-const avgDrop = computed(() => {
-  const now = props.rows.filter(r => r.selected).map(r => r.margin_now_pct).filter((v): v is number => v != null)
-  const nw = props.rows.filter(r => r.selected).map(r => r.margin_new_pct).filter((v): v is number => v != null)
-  if (!now.length || !nw.length) return null
-  const a = now.reduce((x, y) => x + y, 0) / now.length
-  const b = nw.reduce((x, y) => x + y, 0) / nw.length
-  return a - b
-})
 
 const money = (v: number | null | undefined) => {
   if (v == null) return '—'
   return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(v)
 }
-const pct = (v: number | null | undefined) => (v == null ? '—' : v.toFixed(1) + ' %')
-const drop = (r: PromoAnalysisRow) => (r.margin_drop_pp == null ? '—' : r.margin_drop_pp.toFixed(1))
-const cls = (v: number | null | undefined) => (v == null ? '' : (v < 0 ? 't-neg' : 't-pos'))
-const dropClass = (r: PromoAnalysisRow) => {
-  if (r.margin_drop_pp == null) return ''
-  return r.margin_drop_pp > 0 ? 't-neg' : 't-pos'
+const changePct = (v: number | null | undefined) => {
+  if (v == null) return '—'
+  return (v > 0 ? '+' : '') + v.toFixed(1) + ' %'
 }
+const cls = (v: number | null | undefined) => (v == null ? '' : (v < 0 ? 't-neg' : 't-pos'))
+const changeCls = (v: number | null | undefined) => (v == null ? '' : (v < 0 ? 't-neg' : 't-pos'))
 </script>

@@ -78,12 +78,27 @@
           <button class="opt" :aria-pressed="inAction === 'yes'" @click="$emit('update:in-action', 'yes')">В акции</button>
           <button class="opt" :aria-pressed="inAction === 'no'" @click="$emit('update:in-action', 'no')">Не в акции</button>
         </div>
+
+        <div class="promo-card__side-lbl">Наличие</div>
+        <div class="promo-card__side-row">
+          <button class="opt" :aria-pressed="stock === 'all'" @click="$emit('update:stock', 'all')">Все</button>
+          <button class="opt" :aria-pressed="stock === 'in'" @click="$emit('update:stock', 'in')">Только в наличии</button>
+        </div>
       </div>
     </div>
 
     <div class="promo-card__ft">
-      <button class="btn btn--brand" :disabled="isAuto || !selectedCount" title="Добавить отмеченные товары в акцию (WB promotions/upload)" @click="$emit('upload')">
-        <i class="bi bi-cloud-arrow-up me-1"></i>Передать на WB
+      <!-- Автоакция: передаём цены и скидки (upload/task), а не номенклатуру в акцию -->
+      <button class="btn btn--brand" :disabled="!selectedCount" :title="isAuto
+          ? 'Отправить цены и скидки отмеченных товаров в WB (upload/task). Перед отправкой товаров с риском карантина будет запрос на подтверждение'
+          : 'Добавить отмеченные товары в акцию (WB promotions/upload)'"
+        @click="$emit('upload')">
+        <i class="bi me-1" :class="isAuto ? 'bi-tags-fill' : 'bi-cloud-arrow-up'"></i>{{ isAuto ? 'Передать цены и скидки на WB' : 'Передать на WB' }}
+      </button>
+      <button v-if="isAuto" class="btn btn-light" :disabled="!selectedCount"
+        title="Список товаров с риском карантина (цена со скидкой меньше трети текущей)"
+        @click="$emit('quarantine-check')">
+        <i class="bi bi-shield-exclamation me-1"></i>Проверить карантин
       </button>
       <span class="spacer"></span>
       <span class="promo-card__fresh" v-if="report && report.count">
@@ -120,21 +135,26 @@ const props = withDefaults(defineProps<{
   order?: string
   /** Фильтр «В акции»: all | yes | no. */
   inAction?: string
+  /** Фильтр «Наличие»: all | in (есть на складах WB или у продавца). */
+  stock?: string
 }>(), {
   report: () => null,
   params: () => ({}),
   sort: 'sales',
   order: 'desc',
   inAction: 'no',
+  stock: 'all',
 })
 
 const emit = defineEmits<{
   (e: 'reload'): void
   (e: 'upload'): void
+  (e: 'quarantine-check'): void
   (e: 'update:params', p: Partial<PromoCalcParams>): void
   (e: 'update:sort', v: string): void
   (e: 'update:order', v: string): void
   (e: 'update:in-action', v: string): void
+  (e: 'update:stock', v: string): void
 }>()
 
 /** Тумблер «учитывать …» — меняет набор статей расчёта. */

@@ -76,10 +76,18 @@ export interface PromoCalcParams {
   /** Окно истории: даты (если заданы) либо последние N дней. */
   date_from: string
   date_to: string
+  /** Длина окна в днях: по датам или фолбэк 30 — в панели не задаётся. */
   days: number
-  min_margin_pct: number
+  /** «Мин. маржа, ₽»: маржа на цене акции должна быть строго больше порога.
+   *  Может быть отрицательной (например −10 ₽). */
   min_margin_rub: number
-  max_drop_pp: number | null
+  /** «Падение маржи, %»: маржа на цене акции может стать хуже текущей не более чем на столько %. */
+  max_drop_pct: number
+  /** «Падение маржи, ₽»: на сколько ₽/шт маржа может стать хуже текущей. */
+  max_drop_rub: number
+  /** «Учитывать: только Мин маржа» — в вердикте проверяется только порог
+   *  «Мин. маржа, ₽», остальные не применяются. */
+  only_min_margin: boolean
   min_stock_wb: number
   include_reviews: boolean
   include_adv: boolean
@@ -130,24 +138,37 @@ export interface PromoAnalysisRow {
   sold_qty: number
   speed: number
   turnover_days: number | null
+  /** Розничная цена (карточка WB). */
   price: number | null
   discount: number
   price_now: number | null
+  /** Розничная цена из кэша цен WB (wb_price_history.price). */
+  wb_price: number | null
+  /** Цена со скидкой из кэша цен WB (wb_price_history.discounted_price). */
+  wb_price_discounted: number | null
+  /** Текущая скидка WB из кэша цен. */
+  wb_discount: number | null
+  /** Цена продажи из куба (amount / количество продаж) — на ней «Маржа тек.». */
+  price_cube: number | null
   plan_price: number | null
   plan_discount: number
   price_new: number | null
   price_mismatch: boolean
+  /** Юнит-экономика собрана по аналогам (товар без продаж в окне). */
+  est_analog: boolean
   /** Минимальная цена, при которой маржа держится порога (шаблон WB). */
   min_price: number | null
   /** Экономика на единицу при цене акции. */
   unit: PromoUnit
   /** Экономика на единицу при текущей цене. */
   unit_now: PromoUnit
-  margin_now_pct: number | null
   margin_now_rub: number | null
+  margin_now_pct: number | null
   margin_new_pct: number | null
   margin_new_rub: number | null
-  margin_drop_pp: number | null
+  /** Изменение маржи: % (по формуле (новое − старое) ÷ старое) и ₽. */
+  margin_change_pct: number | null
+  margin_change_rub: number | null
   recommend: boolean
   reason: string
   selected: boolean
@@ -164,9 +185,10 @@ export const DEFAULT_CALC_PARAMS: PromoCalcParams = {
   date_from: '',
   date_to: '',
   days: 30,
-  min_margin_pct: 10,
   min_margin_rub: 0,
-  max_drop_pp: 5,
+  max_drop_pct: 10,
+  max_drop_rub: 5,
+  only_min_margin: false,
   min_stock_wb: 0,
   include_reviews: false,
   include_adv: false,
@@ -239,6 +261,46 @@ export async function exportPromoWbPrices(rows: PromoAnalysisRow[], filename: st
       { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
       { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 14 }],
   })
+}
+
+/** Список для исключения — файл в форме отчёта WB («Отчёт по скидкам»):
+ * загружается в ЛК, чтобы исключить товары из автоакции. */
+export async function exportPromoExclude(rows: PromoAnalysisRow[], filename: string) {
+  if (!rows.length) return
+  const XLSX = await import('xlsx')
+  const data = rows.map(r => [
+    r.in_action ? 'Да' : 'Нет',
+    r.brand || '',
+    r.subject || '',
+    r.title || '',
+    r.vendor_code || '',
+    r.nm_id,
+    (r.barcodes || '').split(',')[0].trim(),
+    '',
+    r.turnover_days ?? '',
+    r.stock_wb ?? '',
+    r.stock_fbs ?? '',
+    r.price_new ?? '',
+    r.price ?? '',
+    'RUB',
+    r.min_price ?? '',
+    '',
+    '',
+    '',
+    r.discount ?? '',
+    r.plan_discount ?? '',
+    r.reason || '',
+  ])
+  const ws = XLSX.utils.aoa_to_sheet([WB_REPORT_HEADERS, ...data])
+  ws['!cols'] = [
+    { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 34 }, { wch: 20 }, { wch: 12 },
+    { wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 12 },
+    { wch: 12 }, { wch: 8 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 12 },
+    { wch: 10 }, { wch: 12 }, { wch: 24 },
+  ]
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Отчёт по скидкам')
+  XLSX.writeFile(wb, filename)
 }
 
 export const promotionsApi = {
@@ -328,6 +390,35 @@ export const promotionsApi = {
       wb: Record<string, any>
     })
   },
+
+  /** Подготовка загрузки цен и скидок (автоакции): позиции + риски карантина. */
+  preparePrices(promoId: number, rows: PromoAnalysisRow[]) {
+    return api.post(`/api/promotions/${promoId}/prices/prepare`, { rows }).then(r => r.data as {
+      items: { nm_id: number; title: string; vendor_code: string; price: number; discount: number; new_discounted: number; old_discounted: number | null; risky: boolean; blocked?: boolean }[]
+      risky: { nm_id: number; title: string; new_discounted: number; old_discounted: number | null; risky: boolean; blocked?: boolean }[]
+      prices_source: string
+    })
+  },
+
+  /** Загрузить цены и скидки в WB (автоакции; загрузка асинхронная). */
+  uploadPrices(promoId: number, rows: PromoAnalysisRow[], withRisky: boolean) {
+    return api.post(`/api/promotions/${promoId}/prices/upload`, {
+      rows, with_risky: withRisky,
+    }).then(r => r.data as {
+      promo_id: number
+      sent: number
+      tasks: { id: number | null; count: number; already_exists: boolean }[]
+      skipped_risky: number
+    })
+  },
+
+  /** Товары в карантине цен WB. */
+  quarantine() {
+    return api.get('/api/promotions/quarantine').then(r => r.data as {
+      rows: { nm_id: number; old_price: number; new_price: number; old_discount: number; new_discount: number; price_diff: number }[]
+      count: number
+    })
+  },
 }
 
 const money = (v: number | null | undefined) =>
@@ -345,10 +436,14 @@ export async function exportPromoRows(rows: PromoAnalysisRow[], filename: string
     'Остаток WB': r.stock_wb,
     'Остаток продавца': r.stock_fbs,
     'Оборачиваемость, дн': r.turnover_days ?? '',
-    'Цена тек., ₽': money(r.price_now),
+    'Цена тек. (розничная WB), ₽': money(r.wb_price ?? r.price),
+    'Цена тек. со скидкой, ₽': money(r.wb_price_discounted),
+    'Цена продажи из куба, ₽': money(r.price_cube),
     'Скидка тек., %': r.discount,
+    'Маржа тек., ₽': money(r.margin_now_rub),
     'Цена план., ₽': money(r.price_new),
     'Скидка план., %': r.plan_discount,
+    'Мин. цена, ₽': r.min_price ?? '',
     'Выручка/шт, ₽': money(r.unit.revenue),
     'Комиссия WB/шт, ₽': money(r.unit.commission),
     'Эквайринг/шт, ₽': money(r.unit.acquiring),
@@ -364,10 +459,11 @@ export async function exportPromoRows(rows: PromoAnalysisRow[], filename: string
     'Себестоимость/шт, ₽': money(r.unit.cost),
     'Прибыль/шт, ₽': money(r.unit.profit_before_tax),
     'Налог 7%/шт, ₽': money(r.unit.tax),
-    'Маржа/шт, ₽': money(r.unit.margin_rub),
     'Маржа, %': r.unit.margin_pct ?? '',
-    'Δ маржи, п.п.': r.margin_drop_pp ?? '',
-    'Мин. цена, ₽': r.min_price ?? '',
+    'Маржа на цене акции, ₽': money(r.unit.margin_rub),
+    'Изменение маржи, %': r.margin_change_pct ?? '',
+    'Изменение маржи, ₽': money(r.margin_change_rub),
+    'Оценка по аналогам': r.est_analog ? 'да' : '',
     'Рекомендация': r.recommend ? 'в акцию' : 'не в акцию',
     'Причина': r.reason || '',
   }))
@@ -376,10 +472,12 @@ export async function exportPromoRows(rows: PromoAnalysisRow[], filename: string
     filename,
     sheetName: 'Подбор товаров',
     cols: [{ wch: 34 }, { wch: 12 }, { wch: 16 }, { wch: 18 }, { wch: 12 }, { wch: 12 },
-      { wch: 16 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 },
+      { wch: 16 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
+      { wch: 14 }, { wch: 14 }, { wch: 12 },
       { wch: 15 }, { wch: 18 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 13 },
       { wch: 14 }, { wch: 13 }, { wch: 13 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 12 },
-      { wch: 14 }, { wch: 14 }, { wch: 16 },
+      { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 16 },
+      { wch: 16 }, { wch: 12 }, { wch: 40 },
     ],
   })
 }

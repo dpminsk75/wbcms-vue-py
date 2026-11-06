@@ -6,13 +6,20 @@
  * должны смешиваться.
  */
 
-const KEY = 'promo-params:company:'
+/** v2: раньше в prefs хранилось окно «дней» и порог в % (min_margin_pct),
+ *  а сортировка могла остаться не «по продажам» — сбросили одним махом. */
+const KEY = 'promo-params:v2:company:'
 
 /** Настройки, которые помним. */
 export interface PromoPrefs {
-  days: number
-  min_margin_pct: number
-  max_drop_pp: number
+  /** «Падение маржи, %».
+   *  Раньше в prefs хранились days и min_margin_pct (v1) — больше не храним. */
+  max_drop_pct: number
+  /** «Падение маржи, ₽». */
+  max_drop_rub: number
+  /** «Учитывать»: true = в вердикте только «Мин. маржа, ₽». */
+  only_min_margin: boolean
+  /** «Мин. маржа, ₽» (может быть отрицательной). */
   min_margin_rub: number
   min_stock_wb: number
   auto_discount: number
@@ -23,6 +30,8 @@ export interface PromoPrefs {
   sort: string
   order: string
   in_action: string
+  /** Наличие: all | in (только в наличии). */
+  stock: string
   rows: number
 }
 

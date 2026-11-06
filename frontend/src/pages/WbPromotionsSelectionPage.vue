@@ -37,19 +37,22 @@
       class="mb-3"
       :promo="promo"
       :rows="rows"
-      :selected-count="selectedCount"
+      :selected-count="uploadCount"
       :updated-at="updatedAt"
       :report="reportMeta"
       :params="params"
       :sort="appliedFilters.sort"
       :order="appliedFilters.order"
       :in-action="appliedFilters.in_action"
+      :stock="appliedFilters.stock"
       @update:params="onParamsUpdate"
       @update:sort="onSortUpdate('sort', $event)"
       @update:order="onSortUpdate('order', $event)"
       @update:in-action="onSortUpdate('in_action', $event)"
+      @update:stock="onSortUpdate('stock', $event)"
       @reload="reloadProducts"
-      @upload="onUpload(selectedIds)"
+      @upload="onUpload"
+      @quarantine-check="onQuarantineCheck"
     />
 
     <div v-else-if="!loading" class="page-wb-promotions__empty">
@@ -57,17 +60,19 @@
     </div>
 
     <template v-if="appliedFilters.promo">
-      <!-- KPI -->
+      <!-- KPI: в обычной акции отметка = «включить в акцию», в автоакции —
+           наоборот: прошедшие пороги попадают в акцию автоматом, а помеченные
+           мы исключаем. Поэтому подписи и значения разные. -->
       <div class="grid-4 page-wb-promotions__kpi">
         <div class="tile tile--8">
-          <div class="tile__label">В акции</div>
-          <div class="tile__value">{{ inActionCount }}</div>
-          <div class="tile__foot">уже участвуют, птичка заблокирована</div>
+          <div class="tile__label">{{ kpiMain.label }}</div>
+          <div class="tile__value">{{ kpiMain.value }}</div>
+          <div class="tile__foot">{{ kpiMain.foot }}</div>
         </div>
         <div class="tile tile--10">
-          <div class="tile__label">Отмечено</div>
-          <div class="tile__value">{{ selectedCount }}</div>
-          <div class="tile__foot">из {{ rows.length - inActionCount }} не в акции</div>
+          <div class="tile__label">{{ kpiMark.label }}</div>
+          <div class="tile__value">{{ kpiMark.value }}</div>
+          <div class="tile__foot">{{ kpiMark.foot }}</div>
         </div>
         <div class="tile tile--1">
           <div class="tile__label">Окно истории</div>
@@ -94,8 +99,11 @@
             <button class="page-wb-promotions__excel-item" @click="excelOpen = false; pickTemplate()">
               <i class="bi bi-upload me-2"></i>Загрузить из шаблона
             </button>
-            <button class="page-wb-promotions__excel-item" @click="excelOpen = false; doExportWbPrices()">
-              <i class="bi bi-download me-2"></i>Скачать файл для WB
+            <button class="page-wb-promotions__excel-item" title="Форма отчёта WB — загрузить в ЛК, чтобы исключить товары из акции" @click="excelOpen = false; doExportExclude()">
+              <i class="bi bi-file-earmark-excel me-2"></i>Список для исключения
+            </button>
+            <button class="page-wb-promotions__excel-item" title="Цены и скидки отмеченных товаров — форма 00_DAY" @click="excelOpen = false; doExportWbPrices()">
+              <i class="bi bi-file-earmark-spreadsheet me-2"></i>Список цен для каталога
             </button>
           </div>
         </div>
@@ -111,10 +119,13 @@
         :sort="appliedFilters.sort"
         :order="appliedFilters.order"
         :in-action="appliedFilters.in_action"
+        :stock="appliedFilters.stock"
+        :sel="selFilter"
         :page-size="pageSize"
         @toggle="onToggle"
         @export="doExport"
         @update:page-size="onPageSize"
+        @update:sel="selFilter = $event"
       />
 
       <!-- Превью загрузки отчёта: что распознано и что изменится -->
@@ -127,6 +138,36 @@
         @confirm="onPreviewConfirm"
         @cancel="onPreviewCancel"
       />
+
+      <!-- Загрузка цен и скидок: риски карантина перед отправкой в WB -->
+      <div v-if="pricesDialog" class="wb-modal-backdrop" @click.self="pricesDialog = false">
+        <div class="wb-modal-box wb-confirm__box">
+          <div class="wb-confirm__text">
+            Загрузить цены и скидки в WB: {{ sendItems.length }} товаров
+          </div>
+          <div v-if="riskyItems.length" class="wb-confirm__hint">
+            <b>Риск карантина:</b> цена со скидкой ниже трети текущей — WB отправит
+            их в карантин и продолжит продавать по старой цене
+            <template v-if="pricesPrep?.items.length"> · проверка по текущим ценам WB</template>
+            <ul class="wb-confirm__list">
+              <li v-for="x in riskyItems" :key="x.nm_id">
+                {{ x.title || 'Арт. ' + x.nm_id }} ({{ x.nm_id }}): было
+                {{ fmtRub(x.old_discounted) }} → станет {{ fmtRub(x.new_discounted) }}
+              </li>
+            </ul>
+          </div>
+          <div class="wb-modal-actions">
+            <button class="btn btn-sm btn-primary" :disabled="uploading" @click="sendPrices(true)">
+              <span v-if="uploading" class="spinner-border spinner-border-sm"></span>
+              Отправить всё
+            </button>
+            <button v-if="riskyItems.length" class="btn btn-sm btn-secondary" :disabled="uploading" @click="sendPrices(false)">
+              Отправить без рискованных
+            </button>
+            <button class="btn btn-sm btn-secondary" :disabled="uploading" @click="pricesDialog = false">Отмена</button>
+          </div>
+        </div>
+      </div>
     </template>
   </div>
 </template>
@@ -147,6 +188,7 @@ import { PROMOTIONS_TABS } from '@/components/common/workspaceTabs'
 import { clearPromoPrefs, loadPromoPrefs, savePromoPrefs } from '@/composables/usePromoParams'
 import {
   DEFAULT_CALC_PARAMS,
+  exportPromoExclude,
   exportPromoRows,
   exportPromoTemplate,
   exportPromoWbPrices,
@@ -179,10 +221,54 @@ const summary = reactive({ total: 0, recommend: 0, reject: 0, selected: 0 })
 const isAuto = computed(() => (promo.value?.promo_type || '') === 'auto')
 const selectedCount = computed(() => rows.value.filter(r => r.selected).length)
 const selectedIds = computed(() => rows.value.filter(r => r.selected).map(r => r.nm_id))
+/** Отправлять в WB имеет смысл только отмеченные товары, не «уже в акции». */
+const selectedRows = computed(() => rows.value.filter(r => r.selected && !r.in_action))
 const manualCount = computed(() => rows.value.filter(r => r.manual).length)
 
-/** Товаров, которые уже в акции (у них птичка стоит и не снимается). */
+/** Товаров, которые уже в акции по данным WB (отчёт): у них птичка стоит
+ *  и не снимается. Без загруженного отчёта их нет. */
 const inActionCount = computed(() => rows.value.filter(r => r.in_action).length)
+
+/** Помечено нами для исключения из акции: отмеченные и НЕ «уже в акции»
+ *  (товары, которые WB сама поставила в акцию, исключением не считаем). */
+const excludedCount = computed(() => rows.value.filter(r => r.selected && !r.in_action).length)
+
+/** Наша оценка: сколько товаров попадёт в акцию — все строки минус исключённые.
+ *  Числа самого WB (сколько он насчитал участников) — в карточке акции. */
+const willJoinCount = computed(() => Math.max(0, rows.value.length - excludedCount.value))
+
+/** Плитки KPI. В обычной акции отметка = «включить в акцию» (в неё добавляем
+ *  выбранные), в автоакции наоборот: прошедшие пороги WB включает сам, а
+ *  помеченные мы исключаем. */
+const kpiMain = computed(() => isAuto.value
+  ? {
+      label: 'Попадут в акцию',
+      value: willJoinCount.value,
+      foot: inActionCount.value
+        ? `наша оценка, из них ${inActionCount.value} уже в акции по отчёту WB`
+        : 'наша оценка: подходящих минус исключённые',
+    }
+  : {
+      label: 'В акции',
+      value: inActionCount.value,
+      foot: 'уже участвуют, птичка заблокирована',
+    })
+
+const kpiMark = computed(() => isAuto.value
+  ? {
+      label: 'Помечено для исключения',
+      value: excludedCount.value,
+      foot: 'не прошли пороги — исключаем из акции',
+    }
+  : {
+      label: 'Отмечено',
+      value: selectedCount.value,
+      foot: `из ${Math.max(0, rows.value.length - inActionCount.value)} не в акции`,
+    })
+
+/** Сколько строк реально уйдёт в WB (отмеченные, кроме «уже в акции»). */
+const uploadCount = computed(() => selectedRows.value.length)
+
 const basisText = computed(() => `на единицу · окно ${windowInfo.value.days} дн (${windowInfo.value.date_from} — ${windowInfo.value.date_to})`)
 
 /** Актуальность данных — из кэша (его наполняет воркер promotions_sync). */
@@ -212,26 +298,41 @@ const prefs = loadPromoPrefs()
 /** Строк на страницу — настройка пользователя (по умолчанию 100). */
 const pageSize = ref<number>(Number(prefs.rows) > 0 ? Number(prefs.rows) : 100)
 
+/** Отбор строк по отметке (кнопки в шапке таблицы): all | sel | unsel.
+ *  Живёт только в памяти страницы — при перезагрузке сбрасывается. */
+const selFilter = ref('all')
+
 /** Фильтры (акция + окно истории + пороги) живут в URL. */
 const fromRoute = (q: any) => {
   const d = defaultRange(30)
   const num = (v: any, def: number) => (v === undefined || v === null || v === '' ? def : Number(v))
   const b = (v: any, def: boolean) => (v === undefined || v === null || v === '' ? def : v === '1' || v === 'true')
-  const maxDrop = q.max_drop_pp === undefined || q.max_drop_pp === null || q.max_drop_pp === ''
-    ? (prefs.max_drop_pp ?? DEFAULT_CALC_PARAMS.max_drop_pp)
-    : Number(q.max_drop_pp)
+  // «Падение маржи, %»; старый URL-параметр max_drop_pp — тот же смысл
+  const maxDrop = q.max_drop_pct === undefined || q.max_drop_pct === null || q.max_drop_pct === ''
+    ? (q.max_drop_pp !== undefined && q.max_drop_pp !== '' ? Number(q.max_drop_pp)
+        : (prefs.max_drop_pct ?? DEFAULT_CALC_PARAMS.max_drop_pct))
+    : Number(q.max_drop_pct)
   const sort = String(q.sort || prefs.sort || 'sales')
   const order = String(q.order || prefs.order || 'desc')
   const inAction = String(q.in_action || prefs.in_action || 'no')
+  const stock = String(q.stock || prefs.stock || 'all')
+  // «Учитывать»: только Мин маржу (1) или все параметры (0)
+  const onlyMin = q.only_min !== undefined && q.only_min !== null && q.only_min !== ''
+    ? (q.only_min === '1' || q.only_min === 'true')
+    : Boolean(prefs.only_min_margin)
+  const dateFrom = String(q.date_from || d.date_from)
+  const dateTo = String(q.date_to || d.date_to)
   return {
     promo: String(q.promo || ''),
-    date_from: String(q.date_from || d.date_from),
-    date_to: String(q.date_to || d.date_to),
+    date_from: dateFrom,
+    date_to: dateTo,
+    // окно в днях — всегда по датам (в URL его нет)
+    days: windowDays({ date_from: dateFrom, date_to: dateTo }),
     product: String(q.nm_id || ''),
-    days: num(q.days, prefs.days ?? DEFAULT_CALC_PARAMS.days),
-    min_margin_pct: num(q.min_margin_pct, prefs.min_margin_pct ?? DEFAULT_CALC_PARAMS.min_margin_pct),
     min_margin_rub: num(q.min_margin_rub, prefs.min_margin_rub ?? DEFAULT_CALC_PARAMS.min_margin_rub),
-    max_drop_pp: maxDrop,
+    max_drop_pct: maxDrop,
+    max_drop_rub: num(q.max_drop_rub, prefs.max_drop_rub ?? DEFAULT_CALC_PARAMS.max_drop_rub),
+    only_min_margin: onlyMin,
     min_stock_wb: num(q.min_stock_wb, prefs.min_stock_wb ?? DEFAULT_CALC_PARAMS.min_stock_wb),
     auto_discount: num(q.auto_discount, prefs.auto_discount ?? DEFAULT_CALC_PARAMS.auto_discount),
     include_reviews: b(q.reviews, prefs.include_reviews ?? DEFAULT_CALC_PARAMS.include_reviews),
@@ -243,10 +344,35 @@ const fromRoute = (q: any) => {
     sort: SORTS.includes(sort) ? sort : 'sales',
     order: ORDERS.includes(order) ? order : 'desc',
     in_action: IN_ACTIONS.includes(inAction) ? inAction : 'no',
+    stock: ['all', 'in'].includes(stock) ? stock : 'all',
   }
 }
 
 type Filters = ReturnType<typeof fromRoute>
+
+/** Окно истории в днях: считаем по выбранным датам (они всегда видны в фильтре),
+ *  отдельного поля «дней» больше нет; фолбэк — 30 дней. */
+function windowDays(a: { date_from: string; date_to: string }): number {
+  const from = new Date(a.date_from + 'T00:00:00')
+  const to = new Date(a.date_to + 'T00:00:00')
+  const diff = Math.round((to.getTime() - from.getTime()) / 86400000) + 1
+  return Number.isFinite(diff) && diff > 0 ? Math.min(diff, 365) : 30
+}
+
+/** Поля панели порогов — живут в params; даты, акция и сортировка — в filters.
+ *  Сливаем только их: иначе правки панели затирают даты, а «Применить» сбрасывает
+ *  правки панели на значения из URL. */
+const PARAM_KEYS = [
+  'min_margin_rub', 'max_drop_pct', 'max_drop_rub', 'only_min_margin',
+  'min_stock_wb', 'auto_discount', 'include_reviews', 'include_adv',
+  'include_cashback', 'include_penalties',
+] as const
+
+function withParams(base: Filters, p: PromoCalcParams): Filters {
+  const out: any = { ...base }
+  for (const k of PARAM_KEYS) out[k] = (p as any)[k]
+  return out as Filters
+}
 
 const filters = ref<Filters>(fromRoute(route.query))
 const appliedFilters = ref<Filters>({ ...filters.value })
@@ -259,28 +385,29 @@ function syncRoute() {
     promo: a.promo,
     date_from: a.date_from,
     date_to: a.date_to,
-    days: String(a.days),
-    min_margin_pct: String(a.min_margin_pct),
-    max_drop_pp: String(a.max_drop_pp),
+    max_drop_pct: String(a.max_drop_pct),
+    max_drop_rub: String(a.max_drop_rub),
     min_margin_rub: String(a.min_margin_rub),
     min_stock_wb: String(a.min_stock_wb),
     auto_discount: String(a.auto_discount),
   }
+  if (a.only_min_margin) q.only_min = '1'
   if (a.product) q.nm_id = a.product
   if (a.include_reviews) q.reviews = '1'
   if (a.include_adv) q.adv = '1'
   if (a.include_cashback) q.cashback = '1'
   if (a.include_penalties) q.penalties = '1'
-  if (a.sort && a.sort !== 'margin') q.sort = a.sort
+  if (a.sort) q.sort = a.sort  // «по продажам» тоже пишем — чтобы URL был однозначным
   if (a.order && a.order !== 'desc') q.order = a.order
   if (a.in_action && a.in_action !== 'no') q.in_action = a.in_action
+  if (a.stock && a.stock !== 'all') q.stock = a.stock
   syncing = true
   router.replace({ path: '/wb-promotions/selection', query: q })
     .finally(() => setTimeout(() => (syncing = false), 50))
 }
 
-/** Сортировка / порядок / фильтр «В акции» — сразу применяются и пишутся в URL. */
-const onSortUpdate = (key: 'sort' | 'order' | 'in_action', value: string) => {
+/** Сортировка / порядок / фильтры «В акции» и «Наличие» — сразу применяются и пишутся в URL. */
+const onSortUpdate = (key: 'sort' | 'order' | 'in_action' | 'stock', value: string) => {
   appliedFilters.value = { ...appliedFilters.value, [key]: value } as Filters
   syncRoute()
 }
@@ -294,9 +421,9 @@ const onParamsUpdate = (p: Partial<PromoCalcParams>) => {
 function persistPrefs() {
   const a = appliedFilters.value
   savePromoPrefs({
-    days: a.days,
-    min_margin_pct: a.min_margin_pct,
-    max_drop_pp: a.max_drop_pp ?? 0,
+    max_drop_pct: a.max_drop_pct ?? 10,
+    max_drop_rub: a.max_drop_rub ?? 5,
+    only_min_margin: a.only_min_margin,
     min_margin_rub: a.min_margin_rub,
     min_stock_wb: a.min_stock_wb,
     auto_discount: a.auto_discount,
@@ -307,6 +434,7 @@ function persistPrefs() {
     sort: a.sort,
     order: a.order,
     in_action: a.in_action,
+    stock: a.stock,
     rows: pageSize.value,
   })
 }
@@ -337,9 +465,15 @@ const doExportTemplate = async () => {
   await exportPromoTemplate(`wb_шаблон_${stamp()}.xlsx`)
 }
 
-/** Файл для WB — цены и скидки по отмеченным товарам. */
+/** Список для исключения — форма отчёта WB с нашими товарами. */
+const doExportExclude = async () => {
+  const list = rows.value.filter(r => r.selected && !r.in_action)
+  await exportPromoExclude(list.length ? list : rows.value, `wb_exclude_${stamp()}.xlsx`)
+}
+
+/** Список цен для каталога (00_DAY) — цены и скидки отмеченных товаров. */
 const doExportWbPrices = async () => {
-  const list = rows.value.filter(r => r.selected)
+  const list = rows.value.filter(r => r.selected && !r.in_action)
   await exportPromoWbPrices(list.length ? list : rows.value, `wb_prices_${stamp()}.xlsx`)
 }
 
@@ -428,11 +562,12 @@ const analyze = async () => {
       params: {
         date_from: appliedFilters.value.date_from,
         date_to: appliedFilters.value.date_to,
-        days: appliedFilters.value.days,
+        days: windowDays(appliedFilters.value),
         q: appliedFilters.value.product,
-        min_margin_pct: appliedFilters.value.min_margin_pct,
         min_margin_rub: appliedFilters.value.min_margin_rub,
-        max_drop_pp: appliedFilters.value.max_drop_pp,
+        max_drop_pct: appliedFilters.value.max_drop_pct,
+        max_drop_rub: appliedFilters.value.max_drop_rub,
+        only_min_margin: appliedFilters.value.only_min_margin,
         min_stock_wb: appliedFilters.value.min_stock_wb,
         auto_discount: appliedFilters.value.auto_discount,
         include_reviews: appliedFilters.value.include_reviews,
@@ -493,8 +628,8 @@ const reloadProducts = async () => {
 
 /** Применение формы: поля → запрос + запись в URL + запоминание настроек. */
 const onApply = () => {
-  appliedFilters.value = { ...filters.value }
-  params.value = { ...appliedFilters.value }
+  // даты/акция/сортировка — из filters, пороги и тумблеры — из панели (params)
+  appliedFilters.value = withParams({ ...filters.value }, params.value)
   syncRoute()
   persistPrefs()
   loadPromo(appliedFilters.value.promo)
@@ -526,18 +661,94 @@ const onToggle = async (r: PromoAnalysisRow) => {
   }
 }
 
-/** Передать отмеченные товары в акцию (WB promotions/upload). */
-const onUpload = async (nmIds: number[]) => {
-  if (!appliedFilters.value.promo || !nmIds.length) return
+/** Передать отмеченные товары в акцию (регулярные — init upload; автоакции —
+    цены и скидки через upload/task с проверкой карантина). */
+const onUpload = async () => {
+  if (!appliedFilters.value.promo) return
+  const list = selectedRows.value
+  if (!list.length) {
+    error.value = 'Не отмечено ни одного товара'
+    return
+  }
+  if (isAuto.value) {
+    await preparePricesSend(list)
+    return
+  }
   error.value = ''
   try {
-    const res = await api.post(`/api/promotions/${appliedFilters.value.promo}/upload`, { nm_ids: nmIds })
+    const res = await promotionsApi.upload(Number(appliedFilters.value.promo), list.map(r => r.nm_id))
     await analyze()
-    window.alert(`Передано в акцию: ${res.uploaded ?? nmIds.length}`)
+    window.alert(`Передано в акцию: ${res.uploaded}`)
   } catch (e: any) {
     error.value = e?.response?.data?.detail || e?.message || 'Не удалось отправить в WB'
   }
 }
+
+/* ------------- загрузка цен и скидок (автоакции) ------------- */
+
+const pricesDialog = ref(false)
+const pricesPrep = ref<any>(null)
+const sendItems = ref<PromoAnalysisRow[]>([])
+const uploading = ref(false)
+
+/** Приём: подготовка отправки — если есть риски карантина, спрашиваем. */
+const preparePricesSend = async (list: PromoAnalysisRow[]) => {
+  error.value = ''
+  try {
+    pricesPrep.value = await promotionsApi.preparePrices(Number(appliedFilters.value.promo), list)
+    sendItems.value = list
+    pricesDialog.value = true
+  } catch (e: any) {
+    error.value = 'Подготовка цен: ' + (e?.response?.data?.detail || e?.message || 'не удалось проверить текущие цены')
+  }
+}
+
+const riskyItems = computed(() => {
+  const prep = pricesPrep.value as any
+  return (prep?.risky || []) as any[]
+})
+
+const sendPrices = async (withRisky: boolean) => {
+  if (!appliedFilters.value.promo) return
+  uploading.value = true
+  error.value = ''
+  try {
+    const res = await promotionsApi.uploadPrices(
+      Number(appliedFilters.value.promo), sendItems.value, withRisky)
+    pricesDialog.value = false
+    let msg = `Отправлено в WB: ${res.sent}`
+    if (res.skipped_risky) msg += ` (без рискованных: ${res.skipped_risky} — они останутся по старой цене)`
+    if (res.tasks.length) msg += `. Задача WB: ${res.tasks.map(t => t.id ?? '—').join(', ')}`
+    msg += ' — статус загрузки и карантин проверьте кнопкой «Проверить карантин»'
+    window.alert(msg)
+  } catch (e: any) {
+    error.value = 'Загрузка цен в WB: ' + (e?.response?.data?.detail || e?.message || 'не удалось отправить')
+    pricesDialog.value = false
+  } finally {
+    uploading.value = false
+  }
+}
+
+/** Кто реально в карантине (после загрузки — WB /quarantine/goods). */
+const onQuarantineCheck = async () => {
+  error.value = ''
+  try {
+    const res = await promotionsApi.quarantine()
+    const rows = res.rows || []
+    if (!rows.length) {
+      window.alert('Карантин цен WB: пусто — ни один товар не в карантине')
+      return
+    }
+    window.alert(`В карантине WB: ${rows.length}\n\n` + rows.slice(0, 20).map(
+      (x: any) => `${x.nm_id}: было ${fmtRub(x.old_price * (1 - x.old_discount / 100))} → стало ${fmtRub(x.new_price * (1 - x.new_discount / 100))}`
+    ).join('\n') + (rows.length > 20 ? `\n… и ещё ${rows.length - 20}` : ''))
+  } catch (e: any) {
+    error.value = 'Карантин WB: ' + (e?.response?.data?.detail || e?.message || 'не удалось получить список')
+  }
+}
+
+const fmtRub = (v: number | null | undefined) =>
+  v == null ? '—' : new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(v)
 
 const stamp = () => new Date().toISOString().slice(0, 10)
 
@@ -553,7 +764,8 @@ watch(params, () => {
   if (!appliedFilters.value.promo) return
   clearTimeout(timer)
   timer = setTimeout(() => {
-    appliedFilters.value = { ...appliedFilters.value, ...params.value }
+    // пороги из панели — в appliedFilters; даты и прочее не трогаем
+    appliedFilters.value = withParams({ ...appliedFilters.value }, params.value)
     syncRoute()
     persistPrefs()
     analyze()

@@ -129,8 +129,13 @@ class PromotionsService:
         массив из кэша цен.
 
         Уровень скидки акции через API недоступен — задаётся вручную (параметр
-        расчёта). Товар считаем участвующим, если его текущая скидка уже не ниже
-        этого уровня: WB поднимает скидку до уровня акции.
+        расчёта). Он же задаёт плановую цену акции.
+
+        in_action НЕ проставляем: по кэшу цен нельзя понять, участвует товар
+        в этой автоакции или нет (эвристика «скидка ≥ уровня акции» считала
+        всех наших товаров с большой скидкой и давала одинаковое число для всех
+        автоакций). Источник правды по участию — загруженный отчёт WB
+        («Товар уже участвует в акции»), см. report_products.
         """
         level = max(0, min(99, int(discount_level or 0)))
         rows = (await self.db.execute(text("""
@@ -148,7 +153,7 @@ class PromotionsService:
                 continue
             out.append({
                 "nm_id": int(r["nm_id"]),
-                "in_action": 1 if (discount or 0) >= level else 0,
+                "in_action": 0,
                 "price": price,
                 # плановая цена автоакции = цена со скидкой уровня акции
                 "plan_price": round(price * (1 - level / 100.0), 2),
@@ -156,7 +161,7 @@ class PromotionsService:
                 "discount": discount or 0,
                 "plan_discount": level,
             })
-        out.sort(key=lambda x: (not x["in_action"], x["nm_id"]))
+        out.sort(key=lambda x: x["nm_id"])
         return out
 
     # ------------------------------------------------- отчёт WB (ЛК)

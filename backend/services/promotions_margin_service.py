@@ -41,9 +41,19 @@ def _i(v) -> int | None:
 
 DEFAULT_PARAMS = {
     "days": 30,
-    "min_margin_pct": 10.0,
+    # «Мин. маржа, ₽»: маржа на цене акции должна быть строго больше порога;
+    # порог может быть отрицательным (например −10 ₽ — доходность хуже нуля
+    # допустима, минус десять рублей — нет)
     "min_margin_rub": 0.0,
-    "max_drop_pp": None,
+    # «Падение маржи, %»: на сколько процентов (в рублях) маржа на цене акции
+    # может стать хуже текущей; 10 = не хуже −10 %
+    "max_drop_pct": 10.0,
+    # «Падение маржи, ₽»: на сколько рублей на штуку маржа может стать хуже
+    # текущей; 5 = не хуже −5 ₽/шт
+    "max_drop_rub": 5.0,
+    # «Учитывать: только Мин маржа» — в вердикте проверяется только порог
+    # «Мин. маржа, ₽»; падение маржи и минимальный остаток не проверяются
+    "only_min_margin": False,
     "min_stock_wb": 0,
     # по умолчанию ВЫКЛЮЧЕНЫ: в отчёте «Маржа» отзывы и реклама вычитаются
     # всегда, но здесь считаем «чистую» маржу — статьи включаются по желанию
@@ -69,9 +79,12 @@ def normalize_params(raw: dict | None) -> dict:
     for k, v in (raw or {}).items():
         if k in p:
             p[k] = v
+    # старый ключ в URL/сохранённых настройках — тот же смысл, теперь в %
+    if (raw or {}).get("max_drop_pct") is None and (raw or {}).get("max_drop_pp") is not None:
+        p["max_drop_pct"] = raw.get("max_drop_pp")
     p["days"] = max(1, min(int(p["days"] or 30), 365))
-    p["min_margin_pct"] = max(-100.0, min(float(p["min_margin_pct"] or 0), 100.0))
-    p["min_margin_rub"] = max(0.0, float(p["min_margin_rub"] or 0))
+    # «Мин. маржа, ₽» может быть отрицательной — не зажимаем снизу
+    p["min_margin_rub"] = float(p["min_margin_rub"] or 0)
     p["min_stock_wb"] = max(0, int(p["min_stock_wb"] or 0))
     p["auto_discount"] = max(0, min(99, int(p["auto_discount"] or 0)))
     for k in ("date_from", "date_to", "nm_id", "q"):
@@ -80,10 +93,15 @@ def normalize_params(raw: dict | None) -> dict:
     if p["date_from"] and not p["date_to"]:
         p["date_to"] = None
     p["tax_rate"] = max(0.0, min(float(p["tax_rate"] or 0.07), 0.5))
-    if p.get("max_drop_pp") is not None:
-        p["max_drop_pp"] = max(0.0, float(p["max_drop_pp"]))
+    if p.get("max_drop_pct") is not None:
+        p["max_drop_pct"] = max(0.0, float(p["max_drop_pct"]))
     else:
-        p["max_drop_pp"] = None
+        p["max_drop_pct"] = None
+    if p.get("max_drop_rub") is not None:
+        p["max_drop_rub"] = max(0.0, float(p["max_drop_rub"]))
+    else:
+        p["max_drop_rub"] = None
+    p["only_min_margin"] = bool(p.get("only_min_margin"))
     for k in ("include_reviews", "include_adv", "include_cashback", "include_penalties"):
         p[k] = bool(p[k])
     return p
@@ -230,30 +248,19 @@ def min_price_for_margin(u: dict, p: dict) -> float | None:
 
     Нужна для автоакций: WB не даёт плановой цены, а продавец может защитить
     товар «минимальной ценой» (только через Excel-шаблон ЛК). Считаем цену,
-    при которой маржа в процентах и в рублях на штуку не ниже порогов.
-    Маржа в процентах ВОСРАСТИТ с ростом цены: постоянные затраты на единицу
-    (приёмка, логистика, хранение, себестоимость) размывают процент, поэтому
-    при низкой цене маржа в процентах падает. Значит ищем нижнюю границу —
-    наименьшую цену, при которой оба порога (в % и в ₽) выполнены.
+    при которой маржа в рублях на штуку выше порога («Мин. маржа, ₽»).
+    Маржа в ₽ ВОЗРАСТАЕТ с ростом цены: постоянные затраты на единицу
+    (приёмка, логистика, хранение, себестоимость) не зависят от цены.
+    Значит ищем нижнюю границу — наименьшую цену, при которой маржа строго
+    больше порога (тот же знак, что и в verdict: «строго больше»).
     """
     if not u or u["amount"] <= 0:
         return None
-    limit_pct = p["min_margin_pct"]
-    limit_rub = p["min_margin_rub"]
-    if limit_pct <= 0 and limit_rub <= 0:
-        return None
+    limit_rub = float(p["min_margin_rub"])
 
     def ok(price: float) -> bool:
-        m = calc_at_price(u, price, p)
-        pct = m.get("margin_pct")
-        rub = m.get("margin_rub")
-        if pct is None or rub is None:
-            return False
-        if pct < limit_pct:
-            return False
-        if limit_rub > 0 and rub < limit_rub:
-            return False
-        return True
+        rub = calc_at_price(u, price, p).get("margin_rub")
+        return rub is not None and rub > limit_rub
 
     lo, hi = 0.01, u["amount"]
     if not ok(hi):
@@ -280,28 +287,82 @@ def margin_at_price(u: dict, price: float, p: dict) -> dict:
     }
 
 
+def margin_change(new_rub: float, old_rub: float) -> tuple[float | None, float | None]:
+    """Изменение маржи: в процентах и в рублях.
+
+    Формула процента — (новое − старое) ÷ старое × 100, «старое» со знаком:
+    было 100 ₽, стало −20 ₽ → −120 %. Если старое 0 — процента не существует.
+    """
+    if new_rub is None or old_rub is None:
+        return None, None
+    rub = round(new_rub - old_rub, 2)
+    pct = round((new_rub - old_rub) / old_rub * 100.0, 1) if old_rub else None
+    return pct, rub
+
+
+def _median(vals: list) -> float | None:
+    xs = sorted(float(v) for v in vals if v is not None)
+    if not xs:
+        return None
+    n = len(xs)
+    mid = n // 2
+    return xs[mid] if n % 2 else (xs[mid - 1] + xs[mid]) / 2.0
+
+
+def median_unit_economics(units: list[dict]) -> dict:
+    """Медианная юнит-экономика по аналогам: по каждой статье отдельно."""
+    if not units:
+        return {}
+    return {k: _median([u.get(k) for u in units]) or 0.0 for k in units[0]}
+
+
 def verdict(margin_now: dict, margin_new: dict, p: dict,
-            stock_wb: float, has_history: bool) -> tuple[bool, str]:
+            stock_wb: float) -> tuple[bool, str]:
     """Рекомендовать ли товар в акцию + причина отказа.
 
+    Пороги:
+      min_margin_rub — «Мин. маржа, ₽»: маржа на цене акции должна быть
+                       строго больше порога; 0 = маржа обязана быть
+                       положительной, порог может быть отрицательным;
+      max_drop_pct   — «Падение маржи, %»: маржа на цене акции (в рублях)
+                       может быть хуже текущей не более чем на столько
+                       процентов; 10 = не хуже −10 %;
+      max_drop_rub   — «Падение маржи, ₽»: на сколько рублей на штуку маржа
+                       может стать хуже текущей; 5 = не хуже −5 ₽/шт.
+    Режим «Учитывать: только Мин маржа» (only_min_margin) — проверяется
+    только порог «Мин. маржа, ₽», остальные не применяются.
     Пустая причина = товар проходит пороги (в таблице ничего не пишем).
     """
-    if not has_history:
-        return False, ""
-    if margin_new.get("margin_pct") is None:
+    rub = (margin_new or {}).get("margin_rub")
+    old_rub = (margin_now or {}).get("margin_rub")
+    if rub is None:
         return False, "Нет цены акции — маржа не считается"
-    pct = margin_new["margin_pct"]
-    rub = margin_new["margin_rub"]
     reasons = []
-    if pct < p["min_margin_pct"]:
-        reasons.append(f"Маржа {pct:.1f} % ниже порога {p['min_margin_pct']:.1f} %")
-    if p["min_margin_rub"] > 0 and rub < p["min_margin_rub"]:
-        reasons.append(f"Маржа {rub:.0f} ₽/шт ниже порога {p['min_margin_rub']:.0f} ₽")
-    if p["max_drop_pp"] is not None and margin_now.get("margin_pct") is not None:
-        drop = margin_now["margin_pct"] - pct
-        if drop > p["max_drop_pp"]:
-            reasons.append(f"Маржа упала на {drop:.1f} п.п. — больше порога {p['max_drop_pp']:.1f} п.п.")
-    if p["min_stock_wb"] > 0 and stock_wb < p["min_stock_wb"]:
+    only_min = bool(p.get("only_min_margin"))
+    # «Мин. маржа, ₽»: маржа должна быть строго больше порога, знак порога
+    # не важен (0 = строго положительная, −10 = минус десять рублей — нельзя)
+    if rub <= p["min_margin_rub"]:
+        if p["min_margin_rub"] == 0:
+            reasons.append(f"Маржа {rub:.2f} ₽/шт — не больше нуля")
+        else:
+            reasons.append(f"Маржа {rub:.2f} ₽/шт ниже порога {p['min_margin_rub']:.0f} ₽")
+    if not only_min and p["max_drop_pct"] is not None and old_rub is not None and old_rub > 0:
+        # «Падение маржи, %» считается по формуле (новое − старое) ÷ старое × 100
+        # со знаком старой маржи. Если старая маржа отрицательна или нулевая,
+        # формула переворачивает знак (улучшение выглядит падением), поэтому
+        # порог не применяем: товар с отрицательной маржей уже не проходит
+        # проверку «не больше нуля», а выйти в плюс он не должен блокироваться.
+        ch, _ = margin_change(rub, old_rub)
+        if ch is not None and ch < -p["max_drop_pct"]:
+            reasons.append(
+                f"Падение маржи {abs(ch):.1f} % при допустимых {p['max_drop_pct']:.1f} %")
+    if not only_min and p.get("max_drop_rub") is not None and old_rub is not None and old_rub > 0:
+        # «Падение маржи, ₽» — на сколько маржа (в ₽/шт) стала хуже текущей
+        drop_rub = old_rub - rub
+        if drop_rub > p["max_drop_rub"]:
+            reasons.append(
+                f"Падение маржи {drop_rub:.2f} ₽/шт при допустимых {p['max_drop_rub']:.0f} ₽")
+    if not only_min and p["min_stock_wb"] > 0 and stock_wb < p["min_stock_wb"]:
         reasons.append(f"Остаток на складах WB {stock_wb:.0f} шт. — меньше минимума {p['min_stock_wb']}")
     if reasons:
         return False, "; ".join(reasons)
@@ -427,6 +488,45 @@ class PromotionsMarginService:
                 out[int(r["nmID"])] = dict(r)
         return out
 
+    async def _current_prices(self, nm_ids: list[int]) -> dict[int, dict]:
+        """Текущие цены WB из кэша цен (wb_price_history, is_latest=1).
+
+        В колонке «Цена тек.» показываем розничную цену и цену со скидкой
+        именно из кэша цен (синк каждые 6 ч). Размеров у нас нет, но если
+        строка всё же есть — берём пару «цена + цена со скидкой» из одной
+        записи (ту, где розничная цена максимальна), чтобы строки были
+        согласованными.
+        """
+        out: dict[int, dict] = {}
+        if not nm_ids:
+            return out
+        for i in range(0, len(nm_ids), ID_CHUNK):
+            chunk = nm_ids[i:i + ID_CHUNK]
+            ids = ", ".join(f":n{j}" for j in range(len(chunk)))
+            params = {"cid": self.company_id}
+            params.update({f"n{j}": v for j, v in enumerate(chunk)})
+            try:
+                rows = (await self.db.execute(text(
+                    "SELECT nm_id, price, discounted_price, discount FROM wb_price_history"
+                    " WHERE company_id = :cid AND is_latest = 1"
+                    f" AND nm_id IN ({ids})"), params)).mappings().all()
+            except Exception:  # таблицы цен может не быть — не роняем расчёт
+                await self.db.rollback()
+                return out
+            for r in rows:
+                nm = _i(r.get("nm_id"))
+                if nm is None:
+                    continue
+                item = {
+                    "price": _f(r.get("price")),
+                    "discounted_price": _f(r.get("discounted_price")),
+                    "discount": _i(r.get("discount")),
+                }
+                prev = out.get(nm)
+                if prev is None or item["price"] > prev["price"]:
+                    out[nm] = item
+        return out
+
     async def _barcodes(self, nm_ids: list[int]) -> dict[int, str]:
         out: dict[int, str] = {}
         for i in range(0, len(nm_ids), ID_CHUNK):
@@ -475,7 +575,14 @@ class PromotionsMarginService:
         return out
 
     async def analyze(self, rows: list[dict], params: dict | None = None) -> dict:
-        """Обогатить строки номенклатуры и посчитать маржу на новой цене."""
+        """Обогатить строки номенклатуры и посчитать маржу на новой цене.
+
+        Текущая маржа («Маржа тек.») считается по цене продажи из куба
+        (amount / sales_qnt за окно), новая — по цене акции. У товаров без
+        продаж юнит-экономика берётся как медиана по аналогам: товары того же
+        бренда в нашей выборке с ценой со скидкой в пределах ±20 % (строка
+        помечается «оценка по аналогам»).
+        """
         p = normalize_params(params)
         items = []
         for r in rows or []:
@@ -495,52 +602,49 @@ class PromotionsMarginService:
         barcodes = await self._barcodes(nm_ids) if nm_ids else {}
         stocks = await self._stocks()
         fbs = await self._fbs_stock(nm_ids) if nm_ids else {}
+        # текущие цены WB из кэша цен (розничная и со скидкой) — для колонки
+        # «Цена тек.»; если товара в кэше нет — покажем цену из отчёта/API
+        wb_prices = await self._current_prices(nm_ids) if nm_ids else {}
 
-        out_rows = []
-        for nm, src in items:
-            prices = resolve_prices(src)
-            c = cube.get(nm) or {}
-            u = unit_economics(c)
-            has_history = bool(u)
-            stock_wb = stocks.get(nm, 0.0)
-            stock_fbs = fbs.get(nm, 0.0)
-            sold = _f(c.get("sales_qnt"))
-            card = cards.get(nm) or {}
-            # Свои данные приоритетнее, отчёт WB — запасной источник.
+        # Свои данные приоритетнее, отчёт WB — запасной источник (остатки).
+        def stock_of(nm: int, src: dict) -> tuple[float, float]:
+            sw = stocks.get(nm, 0.0)
+            sf = fbs.get(nm, 0.0)
             if nm not in stocks and src.get("stock_wb") is not None:
-                stock_wb = _f(src.get("stock_wb")) or 0.0
+                sw = _f(src.get("stock_wb")) or 0.0
             if nm not in fbs and src.get("stock_fbs") is not None:
-                stock_fbs = _f(src.get("stock_fbs")) or 0.0
-            speed = sold / p["days"] if p["days"] > 0 else 0.0
-            days_left = (stock_wb / speed) if speed > 0 else None
-            m_now = calc_at_price(u, prices.get("price_now") or 0.0, p) if has_history else {}
-            m_new = calc_at_price(u, prices.get("price_new") or 0.0, p) if has_history else {}
-            ok, reason = verdict(m_now, m_new, p, stock_wb, has_history)
-            floor_price = min_price_for_margin(u, p) if has_history else None
-            # Минимальная цена: если загружен отчёт WB — берём её (цену из карточки),
-            # иначе считаем порог по марже.
+                sf = _f(src.get("stock_fbs")) or 0.0
+            return sw, sf
+
+        def wb_min_price(src: dict, floor_price) -> float | None:
+            """Минимальная цена: из отчёта WB (цена из карточки), иначе порог."""
             wb_min = _f(src.get("min_price"))
-            if wb_min is not None and wb_min > 0:
-                min_price = float(wb_min)
-            else:
-                min_price = floor_price
-            # Статус и блокировка из отчёта WB — это вердикт WB, он важнее порогов.
-            wb_notes = []
+            return float(wb_min) if wb_min is not None and wb_min > 0 else floor_price
+
+        def wb_notes_reason(src: dict, ok: bool, reason: str) -> tuple[bool, str]:
+            """Статус и блокировки из отчёта WB — вердикт WB важнее порогов."""
+            notes = []
             if src.get("blocked"):
-                wb_notes.append("WB: стоит блокировка применения скидки")
-            wb_status = str(src.get("status") or "").strip()
-            if wb_status:
-                wb_notes.append(wb_status)
-            if wb_notes:
-                if wb_status.lower().startswith("не участвует"):
+                notes.append("WB: стоит блокировка применения скидки")
+            status = str(src.get("status") or "").strip()
+            if status:
+                notes.append(status)
+            if notes:
+                if status.lower().startswith("не участвует"):
                     ok = False
-                reason = "; ".join(wb_notes) + (("; " + reason) if reason else "")
-            turnover = round(days_left, 1) if days_left is not None else _f(src.get("turnover_days"))
-            barcode = barcodes.get(nm, "") or str(src.get("barcode") or "")
-            drop = None
-            if m_now.get("margin_pct") is not None and m_new.get("margin_pct") is not None:
-                drop = round(m_now["margin_pct"] - m_new["margin_pct"], 2)
-            out_rows.append({
+                reason = "; ".join(notes) + (("; " + reason) if reason else "")
+            return ok, reason
+
+        def out_row(nm, src, prices, card, stock_wb, stock_fbs, sold, days_left,
+                    econ_now, breakdown, cube_price, est_analog) -> dict:
+            c = breakdown or {}
+            margin_now_rub = (econ_now or {}).get("margin_rub")
+            ok, reason = verdict(
+                {"margin_rub": margin_now_rub}, c, p, stock_wb)
+            ok, reason = wb_notes_reason(src, ok, reason)
+            change_pct, change_rub = margin_change(
+                c.get("margin_rub"), margin_now_rub)
+            return {
                 "nm_id": nm,
                 "in_action": bool(src.get("in_action")),
                 "title": card.get("title") or src.get("title"),
@@ -548,32 +652,110 @@ class PromotionsMarginService:
                 "brand": card.get("brand") or src.get("brand"),
                 "subject": card.get("subjectName") or src.get("subject"),
                 "photos": card.get("photos"),
-                "barcodes": barcode,
+                "barcodes": barcodes.get(nm, "") or str(src.get("barcode") or ""),
                 "stock_wb": round(stock_wb, 0),
                 "stock_fbs": round(stock_fbs, 0),
                 "sold_qty": round(sold, 0),
-                "speed": round(speed, 3),
-                "turnover_days": turnover,
+                "speed": round(sold / p["days"] if p["days"] > 0 else 0.0, 3),
+                "turnover_days": round(days_left, 1) if days_left is not None
+                                 else _f(src.get("turnover_days")),
                 "price": prices["price"],
                 "discount": prices["discount"],
                 "price_now": prices["price_now"],
+                # текущие цены WB из кэша цен (wb_price_history):
+                # розничная и цена со скидкой — их показываем в «Цена тек.»
+                "wb_price": wb_prices.get(nm, {}).get("price") or None,
+                "wb_price_discounted": wb_prices.get(nm, {}).get("discounted_price") or None,
+                "wb_discount": wb_prices.get(nm, {}).get("discount"),
+                # цена продажи из куба: по ней считается «Маржа тек.»
+                "price_cube": round(cube_price, 2) if cube_price else None,
                 "plan_price": prices["plan_price"],
                 "plan_discount": prices["plan_discount"],
                 "price_new": prices["price_new"],
                 "price_mismatch": prices["price_mismatch"],
-                # минимальная цена для шаблона WB («Мин. цена и блокировки в автоакциях»)
-                "min_price": min_price,
-                # структура экономики на единицу: при текущей цене и при цене акции
-                "unit_now": m_now,
-                "unit": m_new,
-                "margin_now_pct": m_now.get("margin_pct"),
-                "margin_now_rub": m_now.get("margin_rub"),
-                "margin_new_pct": m_new.get("margin_pct"),
-                "margin_new_rub": m_new.get("margin_rub"),
-                "margin_drop_pp": drop,
+                "est_analog": est_analog,
+                # «Мин. цена и блокировки» автоакций: из отчёта WB или порог по марже
+                "min_price": wb_min_price(src, floor_price),
+                "unit_now": econ_now,
+                "unit": c,
+                "margin_now_rub": margin_now_rub,
+                "margin_now_pct": econ_now.get("margin_pct"),
+                "margin_new_pct": c.get("margin_pct"),
+                "margin_new_rub": c.get("margin_rub"),
+                "margin_change_pct": change_pct,
+                "margin_change_rub": change_rub,
                 "recommend": ok,
                 "reason": reason,
+            }
+
+        pool: list[dict] = []     # пул аналогов: товары с продажами
+        skipped: list[tuple] = [] # товары без продаж в окне
+        out_rows: list[dict] = []
+
+        # ---------- проход 1: товары с продажами ----------
+        for nm, src in items:
+            prices = resolve_prices(src)
+            c = cube.get(nm) or {}
+            u = unit_economics(c)
+            if not u:
+                skipped.append((nm, src, prices))
+                continue
+            card = cards.get(nm) or {}
+            stock_wb, stock_fbs = stock_of(nm, src)
+            speed = u["sold"] / p["days"] if p["days"] > 0 else 0.0
+            days_left = (stock_wb / speed) if speed > 0 else None
+            # текущая цена продажи = из куба (amount / sales_qnt)
+            econ_now = calc_at_price(u, u["amount"], p)
+            margin_now_rub = econ_now.get("margin_rub")
+            m_new = calc_at_price(u, prices.get("price_new") or 0.0, p)
+            floor_price = min_price_for_margin(u, p)
+            pool.append({
+                "brand": str(card.get("brand") or src.get("brand") or ""),
+                "sale_price": prices.get("price_now"),
+                "cube_price": u["amount"],
+                "unit": u,
+                "margin_now_rub": margin_now_rub,
             })
+            out_rows.append(out_row(
+                nm, src, prices, card, stock_wb, stock_fbs, u["sold"],
+                days_left, econ_now, m_new, u["amount"], False))
+
+        # ---------- проход 2: товары без продаж — аналоги ----------
+        for nm, src, prices in skipped:
+            card = cards.get(nm) or {}
+            stock_wb, stock_fbs = stock_of(nm, src)
+            sale_price = prices.get("price_now")
+            brand = str(card.get("brand") or src.get("brand") or "").strip().lower()
+            cands = []
+            if sale_price and sale_price > 0:
+                band = float(sale_price) * 0.2
+                for cand in pool:
+                    sp = cand.get("sale_price")
+                    if not sp or abs(sp - sale_price) > band:
+                        continue
+                    if brand and cand["brand"].strip().lower() != brand:
+                        continue
+                    cands.append(cand)
+            if cands:
+                u_med = median_unit_economics([x["unit"] for x in cands])
+                cube_price_med = _median([x["cube_price"] for x in cands])
+                # текущая экономика — по медианной цене продажи аналогов
+                econ_now = calc_at_price(u_med, cube_price_med or 0.0, p)
+                m_new = calc_at_price(u_med, prices.get("price_new") or 0.0, p)
+                floor_price = min_price_for_margin(u_med, p)
+                # У самого товара продаж в окне нет: в колонки Продано /
+                # Обор-сть / цена из куба идёт «—», а не медианы аналогов.
+                # Медианы остаются только в «Маржа тек.» и в оценке экономики.
+                out_rows.append(out_row(
+                    nm, src, prices, card, stock_wb, stock_fbs, 0,
+                    None, econ_now, m_new, None, True))
+            else:
+                out_rows.append(out_row(
+                    nm, src, prices, card, stock_wb, stock_fbs, 0,
+                    None, {}, {}, None, False))
+                out_rows[-1]["reason"] = (
+                    (out_rows[-1]["reason"] + "; " if out_rows[-1]["reason"] else "")
+                    + "Без продаж в окне — аналогов не нашлось, маржа не посчитана")
         return {
             "rows": out_rows,
             "params": p,

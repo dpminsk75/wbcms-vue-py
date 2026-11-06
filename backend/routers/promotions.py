@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
 from backend.deps import get_current_company, get_current_user
+from backend.services.prices_upload_service import PricesUploadService
 from backend.services.promotions_margin_service import PromotionsMarginService
 from backend.services.promotions_service import PromotionsService
 from backend.services.promotions_sync_service import (
@@ -86,6 +87,24 @@ async def promotions_calendar(
         "fetched_at": await svc.fetched_at(),
         "sync": sync or {},
     }
+
+
+@router.get("/quarantine")
+async def promotions_quarantine(
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Товары в карантине цен WB — проверка после загрузки скидок.
+
+    Если новая цена со скидкой была меньше трети текущей, товар попал
+    в карантин и продаётся по старой цене.
+    """
+    cid = _need_company(company_id)
+    try:
+        return await PricesUploadService(db, cid).quarantine()
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=f"WB: {e}")
 
 
 @router.get("/{promo_id}")
@@ -254,16 +273,22 @@ async def promotions_analyze(
     result = await svc_margin.analyze(list(rows), params)
     decisions = await svc.decisions(promo_id)
     for r in result["rows"]:
+        if r.get("in_action"):
+            # Товар «уже в акции» — птичка стоит и не снимается.
+            r["selected"] = True
+            r["manual"] = False
+            continue
         dec = decisions.get(int(r["nm_id"]))
         if dec:
             r["selected"] = bool(dec["selected"])
             r["manual"] = bool(dec["manual"])
+        elif is_auto:
+            # В автоакции помечаем только непроходящие пороги: прошедшие
+            # попадают в акцию автоматически, помечать их не нужно.
+            r["selected"] = not bool(r["recommend"])
+            r["manual"] = False
         else:
             r["selected"] = bool(r["recommend"])
-            r["manual"] = False
-        # Товар «уже в акции» — птичка стоит и не снимается.
-        if r.get("in_action"):
-            r["selected"] = True
             r["manual"] = False
     result["summary"]["selected"] = sum(1 for r in result["rows"] if r["selected"])
     return result
@@ -297,6 +322,65 @@ async def promotions_save_decisions(
     n = await PromotionsService(db, cid).save_decisions(
         promo_id, list(payload.get("items") or []), user_id=user.get("id"))
     return {"promo_id": promo_id, "saved": n}
+
+
+@router.post("/{promo_id}/prices/prepare")
+async def promotions_prices_prepare(
+    promo_id: int,
+    payload: dict = Body(default_factory=dict),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Подготовка загрузки цен и скидок (автоакции) — без отправки.
+
+    Считает по отмеченным строкам таблицы: цена (не ниже мин. цены WB) +
+    скидка, и сверяет с текущими ценами. Текущие цены из кэша wb_price_history;
+    если записи старее 12 ч — догоняем живым запросом к WB (тратит токен).
+    Возвращает позиции и список рисков карантина (новая цена со скидкой
+    меньше трети текущей).
+    """
+    cid = _need_company(company_id)
+    rows = list(payload.get("rows") or [])
+    if not rows:
+        raise HTTPException(status_code=400, detail="rows is required")
+    try:
+        return await PricesUploadService(db, cid).prepare(rows)
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{promo_id}/prices/upload")
+async def promotions_prices_upload(
+    promo_id: int,
+    payload: dict = Body(default_factory=dict),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+    company_id: int | None = Depends(get_current_company),
+):
+    """Загрузить цены и скидки в WB (автоакции) — discounts-prices /upload/task.
+
+    По умолчанию отмеченные с риском карантина НЕ отправляем; with_risky=1
+    (подтверждение пользователя после диалога) — отправляем всё.
+    Загрузка в WB асинхронная: возвращаем id задач, итог — отдельной
+    проверкой GET /api/promotions/quarantine.
+    """
+    cid = _need_company(company_id)
+    rows = list(payload.get("rows") or [])
+    if not rows:
+        raise HTTPException(status_code=400, detail="rows is required")
+    with_risky = bool(payload.get("with_risky"))
+    try:
+        res = await PricesUploadService(db, cid).upload(rows, with_risky=with_risky)
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=f"WB: {e}")
+    if res.get("errors"):
+        raise HTTPException(
+            status_code=502,
+            detail="WB не принял часть задач: " + "; ".join(res["errors"])[:300])
+    return {"promo_id": promo_id, "sent": res.get("sent", 0),
+            "tasks": res.get("tasks", []),
+            "skipped_risky": res.get("skipped_risky", 0)}
 
 
 @router.post("/{promo_id}/upload")

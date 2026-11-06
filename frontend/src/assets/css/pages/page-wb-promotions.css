@@ -267,7 +267,7 @@
   width: 210px;
 }
 
-/* Цена план.: цена в акции, ниже — минимальная цена WB (три строки). */
+/* Цена тек.: розничная WB · цена со скидкой · наша средняя (третья — серая). */
 .page-wb-promotions__price span {
   display: block;
 }
@@ -275,6 +275,37 @@
 .page-wb-promotions__minlbl {
   font-size: calc(9.5px * var(--fs));
   color: var(--ink-muted);
+}
+
+/* Наша средняя цена продажи (третья строка «Цена тек.»): серая, но тем же
+   кеглем, что и остальные цены. */
+.page-wb-promotions__cube {
+  color: var(--ink-muted);
+}
+
+/* Отбор строк по отметке — кнопки в шапке блока таблицы.
+   Не нажата — просто рамка (цвет — как у .hd-btn, через currentColor:
+   так читается и на тёмной шапке); нажата — светлая заливка (нажмите ещё
+   раз, чтобы вернуть показ всех строк). */
+.page-wb-promotions__selbtns {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.card__hd .page-wb-promotions__selbtn {
+  background: transparent;
+  border-color: color-mix(in srgb, currentColor 40%, transparent);
+}
+
+.card__hd .page-wb-promotions__selbtn:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.card__hd .page-wb-promotions__selbtn.is-on {
+  background: var(--brand-tint);
+  border-color: var(--brand);
+  color: var(--brand-deep);
+  font-weight: 600;
 }
 
 /* Маржа: ₽ / % / Δ — три значения одной колонкой, в три строки. */
