@@ -45,6 +45,43 @@
   --chart-grey:   #C9CCD4;  /* без оценки */
   --chart-purple: #7C3AED;  /* средняя оценка */
 
+  /* Дашборд (/dashboard-preview): код данных — цвет статьи расходов.
+     Это НЕ украшение: по цвету читается полоса в плитке и точка у строки.
+     Значения те же, что были зашиты в dashboard/TopMetrics.vue (theme.md §8.1.1 —
+     hex только в токенах). */
+  --d-sales:    #3aa876;  /* Выкупы            */
+  --d-return:   #e0525c;  /* Возвраты          */
+  --d-comm:     #f5a623;  /* Комиссия          */
+  --d-acq:      #3b82f6;  /* Эквайринг         */
+  --d-log:      #5bc0de;  /* Логистика         */
+  --d-adv:      #8a2be0;  /* Реклама           */
+  --d-rev:      #16a085;  /* Отзывы            */
+  --d-storage:  #e3c766;  /* Хранение          */
+  --d-cashback: #e0525c;  /* Кешбэк            */
+  --d-other:    #9aa0a8;  /* Остальные         */
+  --d-cost:     #f0b429;  /* Себестоимость     */
+  --d-nds:      #f57f17;  /* НДС               */
+  --d-tax:      #e0525c;  /* Налог на прибыль  */
+  --d-margin:   #1e9e7c;  /* Маржа             */
+
+  /* Дашборд: градиент hero-карточки «Маржа» — как в gridv.css (было в разметке). */
+  --d-hero-grad: linear-gradient(135deg, #8A2BE0, #5A1C9C);
+
+  /* Шапка блока «Сумма заказов» — синяя (как в боевом блоке). Ось data-head="wb".
+     Значения — те же, что были зашиты в разметку (theme.md §8.1.1 — hex только здесь). */
+  --head-wb-grad: linear-gradient(97.26deg, #002fa7 .49%, #0046c7 14.88%, #005ce6 29.27%, #0072ff 43.14%, #008cff 57.02%, #00a4ff 70.89%, #00bcff 84.76%, #00d2ff 99.15%);
+
+  /* Дашборд: палитра серий графиков — фиксированная, от темы не зависит
+     (theme.md §5.9). Обычный hex: canvas не рисует color(srgb …). */
+  --chart-dash-exp:    #b2c0d2;  /* стек 30 дней: Расходы         */
+  --chart-dash-nds:    #dcdcdc;  /* стек 30 дней: НДС             */
+  --chart-dash-cost:   #FF9E1B;  /* стек 30 дней: Себестоимость   */
+  --chart-dash-tax:    #ff6b6b;  /* стек 30 дней: Налог на прибыль */
+  --chart-dash-margin: #2ec4b6;  /* стек 30 дней: Маржа           */
+  --chart-today-1:     #4B61EC;  /* «Сегодня»                     */
+  --chart-today-2:     #F042B7;  /* «Вчера»                       */
+  --chart-today-3:     #3AC1C7;  /* «Неделю назад»                */
+
   /* Палитра статусов FBS-заданий (/fbs-*) — фиксированная, от темы не
      зависит: значения те же, что были зашиты в страницу (theme.md §5.7.9 —
      «цвета серий не меняем», §8.1.1 — hex только здесь, не в .vue).
@@ -260,6 +297,9 @@
 [data-head="dark"]   { --hd-bg: var(--brand-deep); --hd-grad: linear-gradient(100deg, var(--brand-deep) 0%, var(--brand) 100%); --hd-fg: #fff; --hd-bd: transparent; }
 [data-head="light"]  { --hd-bg: var(--brand-tint); --hd-grad: linear-gradient(100deg, var(--brand-tint) 0%, color-mix(in srgb, var(--brand) 22%, #fff) 100%); --hd-fg: var(--brand-deep); --hd-bd: var(--brand); }
 [data-head="pair"]   { --hd-bg: var(--brand-2);    --hd-grad: linear-gradient(100deg, var(--brand-2) 0%, color-mix(in srgb, var(--brand-2) 65%, #fff) 100%); --hd-fg: #fff; --hd-bd: transparent; }
+/* Вариант для блока «Сумма заказов» дашборда — синяя шапка (значения те же,
+   что были в боевой разметке). Ставится на сам блок: data-head="wb". */
+[data-head="wb"]     { --hd-bg: #0046c7;          --hd-grad: var(--head-wb-grad); --hd-fg: #fff; --hd-bd: transparent; }
 
 /* ---------- ось: фон KPI-карточки по умолчанию ---------- */
 [data-tile="k1"]  { --tile-bg: var(--surface);    --tile-fg: var(--ink);       --tile-bd: var(--line);        --tile-sh: var(--shadow-1); }

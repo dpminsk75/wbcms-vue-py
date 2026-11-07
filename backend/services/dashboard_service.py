@@ -22,10 +22,12 @@ class DashboardService:
     # --- buildPeriodStats dispatcher ---
     async def build_period_stats(self, period: str, table: str, sum_field: str, trim_past: bool = True):
         if period == "yesterday":
+            # Третья серия — неделя назад (7 дней), а не «8 дней назад»: подпись
+            # «Неделю назад» понятна в легенде, и сравнение с «За сегодня» одно и то же.
             return await self.build_hourly_comparison(table, sum_field, [
                 {"key":"a","label":"Вчера","daysAgo":1},
                 {"key":"b","label":"Позавчера","daysAgo":2},
-                {"key":"c","label":"8 дней назад","daysAgo":8},
+                {"key":"c","label":"Неделю назад","daysAgo":7},
             ])
         if period == "week_to_date":
             return await self.build_daily_week_comparison(table, sum_field, 0)
@@ -241,7 +243,7 @@ class DashboardService:
         totals_row = (await self.db.execute(totals_sql, {"d1":f"{date_from} 00:00:00","d2":f"{date_to} 23:59:59", **cp})).mappings().first()
         totals = {"cnt": int(totals_row["cnt"] or 0), "pwd": float(totals_row["pwd"] or 0), "fp": float(totals_row["fp"] or 0)}
         sql = text(f"""
-            SELECT c.title, c.nmID as nm_id, c.vendorCode,
+            SELECT c.title, c.nmID as nm_id, c.vendorCode, MAX(c.photos) AS photos,
                     COUNT(o.nm_id) as cnt,
                      SUM(CASE WHEN DATE(o.date)=CURDATE() THEN 1 ELSE 0 END) as cnt_0,
                      SUM(CASE WHEN DATE(o.date)=DATE_SUB(CURDATE(),INTERVAL 1 DAY) THEN 1 ELSE 0 END) as cnt_1,
@@ -265,7 +267,7 @@ class DashboardService:
         totals_row = (await self.db.execute(totals_sql, {"d1":f"{date_from} 00:00:00","d2":f"{date_to} 23:59:59", **cp})).mappings().first()
         totals = {"cnt": int(totals_row["cnt"] or 0), "pwd": float(totals_row["pwd"] or 0), "fp": float(totals_row["fp"] or 0), "forpay": float(totals_row["forpay"] or 0)}
         sql = text(f"""
-            SELECT c.title, c.nmID as nm_id, c.vendorCode,
+            SELECT c.title, c.nmID as nm_id, c.vendorCode, MAX(c.photos) AS photos,
                     COUNT(o.nmId) as cnt,
                      SUM(CASE WHEN DATE(o.date)=CURDATE() THEN 1 ELSE 0 END) as cnt_0,
                      SUM(CASE WHEN DATE(o.date)=DATE_SUB(CURDATE(),INTERVAL 1 DAY) THEN 1 ELSE 0 END) as cnt_1,

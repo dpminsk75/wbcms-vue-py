@@ -387,6 +387,23 @@
 .opt__sw { width: 14px; height: 14px; border-radius: 4px; flex: none; border: 1px solid rgba(0,0,0,.12); }
 .opt__sub { color: var(--ink-muted); font-size: calc(11px * var(--fs)); }
 
+/* Чипы в ТЁМНОЙ шапке блока (.card__hd) — как .ch-seg: светлая рамка,
+   нажатый чип белый. Чипы на светлом фоне остаются как выше. */
+.card__hd .opt {
+  background: color-mix(in srgb, #fff 12%, transparent);
+  border-color: color-mix(in srgb, #fff 32%, transparent);
+  color: #fff;
+  padding: calc(3px * var(--fs)) calc(10px * var(--fs));
+  font-size: calc(12px * var(--fs));
+}
+.card__hd .opt:hover { border-color: color-mix(in srgb, #fff 60%, transparent); }
+.card__hd .opt[aria-pressed="true"] {
+  background: #fff;
+  border-color: #fff;
+  color: var(--brand-deep);
+  box-shadow: none;
+}
+
 /* ---------- фокус ---------- */
 .btn:focus-visible,
 .opt:focus-visible,

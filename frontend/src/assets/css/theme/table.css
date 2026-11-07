@@ -59,7 +59,9 @@
   align-items: center;
   gap: 5px;
 }
-.hd-btn:hover { background: color-mix(in srgb, currentColor 20%, transparent); }
+/* color: inherit — чтобы глобальное `a:hover { color: var(--brand-hover) }`
+   (theme/base.css) не перекрашивало кнопку-ссылку в тёмный на тёмной шапке. */
+.hd-btn:hover { background: color-mix(in srgb, currentColor 20%, transparent); color: inherit; }
 .hd-btn:disabled { opacity: .5; cursor: not-allowed; }
 
 /* ---------- группа кнопок в шапке блока (.hd-grp) ----------

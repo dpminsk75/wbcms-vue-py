@@ -138,14 +138,6 @@
 .custom-compact-grid .table { table-layout: fixed; width: 100%; overflow-x: auto; overflow-y: hidden; display: block; }
 
 */
-.dash_div .card.shadow-sm  {
-  border: 1px solid var(--line) !important;
-  border-radius: var(--radius-card) !important;
-  box-shadow: var(--shadow-card);
-  overflow: hidden;
-}
-
-
 .custom-compact-grid .card, .grid_wbstat .card {
   border: 1px solid var(--line) !important;
   border-radius: var(--radius-card) !important;
@@ -195,87 +187,6 @@
 .bg-wb-green-vibrant-header {
   background: linear-gradient(97deg, #0E5C50 0%, #167A69 35%, #229E89 70%, #35BFA8 100%),
               linear-gradient(#0000000d, #0000000d) !important;
-}
-
-
-
-/* карточки на главной */
-/* ============================================================
-   KPI-КАРТОЧКИ ВЕРХНЕГО БЛОКА (_dashboard_top_metrics.php)
-   Разметка: .dash_div .row.g-3 > .col-md-3 .card.bg-light
-   ============================================================ */
-
-.dash_div .card.bg-light {
-  background: #FFFFFF !important;
-  border: 1px solid #E6E4EE !important;
-  border-radius: 12px !important;
-  box-shadow: 0 4px 6px rgba(0,0,0,.05), 0 1px 3px rgba(0,0,0,.1) !important;
-}
-
-.dash_div .text-muted.small.font-weight-bold {
-  color: #6E6A80 !important;
-  font-size: 12.5px !important;
-  letter-spacing: .02em;
-}
-
-.dash_div .h3.font-weight-bold {
-  font-family: 'Manrope', sans-serif;
-  font-size: 26px !important;
-}
-
-/* убираем разнобой цветов чисел — три обычные карточки нейтральные,
-   акцент оставляем только у "Маржи" (hero-карточка ниже) */
-.dash_div .card.bg-light .text-primary,
-.dash_div .card.bg-light .text-info {
-  color: #1D1B2A !important;
-}
-
-.dash_div .card.bg-light .small.mt-1 {
-  color: #6E6A80;
-  font-size: 12.5px;
-}
-
-/* строки НДС/Себестоимость у "Итого к оплате" */
-.dash_div .card.bg-light .text-danger {
-  color: #E0525C !important;
-}
-
-/* если карточка "Итого к оплате" ушла в минус (PHP переключает на
-   bg-danger text-white) — мягкий красный фон вместо кислотного сплошного */
-.dash_div .card.bg-danger.text-white {
-  background: #FBEBEC !important;
-  border: 1px solid #F3C9CC !important;
-  color: #1D1B2A !important;
-}
-.dash_div .card.bg-danger.text-white .text-info {
-  color: #E0525C !important;
-}
-.dash_div .card.bg-danger.text-white .text-muted,
-.dash_div .card.bg-danger.text-white .small {
-  color: #6E6A80 !important;
-}
-
-/* ---------- HERO-КАРТОЧКА: "Маржа" — 4-я карточка в ряду ---------- */
-/* Только page-dashboard__margin-card: белый "Баланс" под ней (page-dashboard__balance) не красим */
-.dash_div .row.g-3 > .col-md-3:nth-child(4) .card.page-dashboard__margin-card {
-  background: linear-gradient(135deg, #8A2BE0, #5A1C9C) !important;
-  border: none !important;
-}
-.dash_div .row.g-3 > .col-md-3:nth-child(4) .card.page-dashboard__balance {
-  background: #fff !important;
-}
-.dash_div .row.g-3 > .col-md-3:nth-child(4) .text-muted,
-.dash_div .row.g-3 > .col-md-3:nth-child(4) .small {
-  color: rgba(255,255,255,.78) !important;
-}
-.dash_div .row.g-3 > .col-md-3:nth-child(4) .h3.text-success {
-  color: #fff !important;
-}
-
-.dash_div .card.bg-light,
-.dash_div .card.bg-danger.text-white,
-.dash_div .row.g-3 > .col-md-3:nth-child(4) .card {
-  text-align: left !important;
 }
 
 

@@ -1,14 +1,11 @@
 <template>
   <div v-if="busy || allRows.length || isError">
-    <!-- Выбор годов (общий с «Год к году», в URL) — слева, ДО таблицы -->
-    <div class="d-flex justify-content-start mb-2">
-      <YearPicker :available="availableYears" :model-value="appliedYears" @apply="onApply" />
-    </div>
-
     <div class="tbl-card tbl-card--compact page-wb-profit__block">
       <div class="card__hd">
         <span>Финансовая аналитика (с 2025 года)</span>
         <span class="spacer"></span>
+        <!-- Выбор годов (общий с «Год к году», в URL) — в шапке блока -->
+        <YearPicker :available="availableYears" :model-value="appliedYears" @apply="onApply" />
         <span class="hd-badge">{{ rows.length }} мес.</span>
       </div>
       <div v-if="isLoading" class="text-center p-4 text-muted">
@@ -153,9 +150,21 @@ const availableYears = computed(() => {
   }
   return [...s].sort((a, b) => a - b)
 })
+/**
+ * Текущий учётный год — начинается в сентябре: до 1 сентября мы ещё в
+ * прошлом учётном году. От него и считается выбор по умолчанию.
+ */
+const currentFyYear = computed(() => {
+  const now = new Date()
+  return now.getMonth() + 1 >= 9 ? now.getFullYear() : now.getFullYear() - 1
+})
 const appliedYears = computed<number[]>(() => {
   const avail = availableYears.value
-  if (!hasParam.value) return avail
+  if (!hasParam.value) {
+    // По умолчанию — только текущий учётный год и новее: в ноябре 2026 активен
+    // один 2026 (2025 выключен), после августа 2027 выключается и 2026 — остаётся 2027.
+    return avail.filter(y => y >= currentFyYear.value)
+  }
   return avail.filter(y => selectedYears.value.includes(y))
 })
 const onApply = (list: number[]) => setYears(list)

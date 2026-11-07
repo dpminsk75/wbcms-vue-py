@@ -1,23 +1,35 @@
 <template>
-  <div v-if="rows.length" class="page-news-min">
-    <div class="page-news-min__head">
-      <router-link to="/news" class="page-news-min__title">Новости ({{ rows.length }})</router-link>
+  <section v-if="rows.length" class="dsp-news">
+    <div class="dsp-news__head">
+      <router-link to="/news" class="dsp-news__title">Новости ({{ rows.length }})</router-link>
     </div>
-    <div ref="trackRef" class="page-news-min__track"
-      @pointerdown="dragStart" @pointermove="dragMove" @pointerup="dragEnd" @pointercancel="dragEnd" @pointerleave="dragEnd">
-      <div v-for="r in rows" :key="r.id" class="page-news-min__item" :class="{ 'page-news-min__item--read': r.is_read }" @click="open(r)" title="Нажмите, чтобы открыть новость">
-        <div class="page-news-min__date">{{ newsDate(r.date) }}</div>
-        <div class="page-news-min__name" :title="r.header">{{ r.header }}</div>
-        <div class="mt-1">
-          <span v-for="t in r.types.slice(0, 2)" :key="t.id" class="badge me-1" :class="newsBadgeClass(t.name)"><i v-if="newsBadgeIcon(t.name)" :class="newsBadgeIcon(t.name) + ' me-1'"></i>{{ t.name }}</span>
+    <div
+      ref="trackRef" class="dsp-news__track"
+      @pointerdown="dragStart" @pointermove="dragMove" @pointerup="dragEnd" @pointercancel="dragEnd" @pointerleave="dragEnd"
+    >
+      <div
+        v-for="r in rows" :key="r.id" class="dsp-news__item"
+        :style="r.is_read ? 'opacity:.62' : ''" @click="open(r)" title="Нажмите, чтобы открыть новость"
+      >
+        <div class="dsp-news__date">{{ newsDate(r.date) }}</div>
+        <div class="dsp-news__name" :title="r.header">{{ r.header }}</div>
+        <div style="margin-top: 7px">
+          <span v-for="t in r.types.slice(0, 2)" :key="t.id" class="badge me-1" :class="newsBadgeClass(t.name)">
+            <i v-if="newsBadgeIcon(t.name)" :class="newsBadgeIcon(t.name) + ' me-1'"></i>{{ t.name }}
+          </span>
         </div>
       </div>
     </div>
     <NewsPopup :news="selected" @close="close()" />
-  </div>
+  </section>
 </template>
 
 <script setup lang="ts">
+/**
+ * Новости (черновик) — блок темы вместо dashboard/NewsBlock.vue.
+ * Дизайн блока сохранён боевой (заголовок-ссылка + рельс карточек, без панели
+ * с тёмной шапкой) — переведены только цвета/радиусы/тени на токены темы.
+ */
 import { ref, inject, onMounted } from 'vue'
 import NewsPopup from '../news/NewsPopup.vue'
 import { newsBadgeClass, newsBadgeIcon } from '../news/newsBadges'
@@ -28,7 +40,7 @@ const selected = ref<NewsRow | null>(null)
 const trackRef = ref<HTMLElement | null>(null)
 const report = inject<(n: string, h: boolean) => void>('dashReport', () => {})
 
-const MONTHS = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря']
+const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
 function newsDate(iso: string | null): string {
   const m = iso ? /^(\d{4})-(\d{2})-(\d{2})/.exec(iso) : null
   if (!m) return iso || '—'
@@ -56,9 +68,6 @@ function dragStart(e: PointerEvent) {
   dragged.value = false
   dragX = e.clientX
   dragScroll = el.scrollLeft
-  // БЕЗ setPointerCapture здесь: захват указателя ретретачит click на трек,
-  // и клик по карточке (open) не срабатывает. Захват ставим в dragMove,
-  // когда жест точно стал перетаскиванием.
 }
 function dragMove(e: PointerEvent) {
   const el = trackRef.value
@@ -82,17 +91,3 @@ onMounted(async () => {
   report('news', rows.value.length > 0)
 })
 </script>
-
-<style scoped>
-/* Виджет новостей на дашборде — на токенах темы (цвета, радиусы, тени, кегли). */
-.page-news-min__head { margin-bottom: 8px; }
-.page-news-min__title { font-size: calc(20px * var(--fs)); font-weight: 700; color: var(--ink); text-decoration: none; }
-.page-news-min__title:hover { color: var(--brand); }
-.page-news-min__track { display: flex; gap: 24px; overflow-x: auto; scrollbar-width: none; cursor: grab; padding-bottom: 4px; user-select: none; }
-.page-news-min__track::-webkit-scrollbar { display: none; }
-.page-news-min__item { flex: 0 0 300px; cursor: pointer; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-md); padding: 12px 14px; box-shadow: var(--shadow-1); }
-.page-news-min__item:hover { border-color: var(--brand); }
-.page-news-min__item--read { opacity: .62; }
-.page-news-min__date { font-size: calc(12px * var(--fs)); color: var(--ink-muted); margin-bottom: 4px; }
-.page-news-min__name { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: calc(15px * var(--fs)); font-weight: 600; color: var(--ink); }
-</style>

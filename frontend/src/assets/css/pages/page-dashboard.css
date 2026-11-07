@@ -1,16 +1,296 @@
-/* page-dashboard.css — чанк Dashboard (/).
- * Title: 'Управление товарами и карточками'. Виджеты TopMetrics/MonthlyProfitTable/
- * LastSales/LastOrders (echarts внутри) — не терять. SideMenu — как есть.
+/* page-dashboard.css — страница-черновик дашборда (/dashboard-preview).
+ *
+ * Назначение: перевод блоков дашборда на блоки темы (theme.md §5.1–§5.9) —
+ * отдельной страницей, чтобы не трогать боевой `/` и не пугать пользователей.
+ * Пункт в меню не добавлен: страница открывается только по URL.
+ *
+ * Правила: цвета — только var(--*) (theme.md §8.1.1), кегли — calc(Npx * var(--fs)).
+ * Легаси-правила gridv.css завязаны на .dash_div — здесь своего класса, поэтому
+ * старые стили в страницу не попадают.
  */
-.page-dashboard { /* паддинги из wb-ui.css */ }
-/* WB-токен: баннер протухания */
-.page-dashboard__wb-alert { border-radius: 12px; margin-bottom: 16px; }
-.page-dashboard__wb-alert-head { display: flex; gap: 8px; align-items: center; font-weight: 600; margin-bottom: 6px; }
-.page-dashboard__wb-alert-list { margin: 0; padding-left: 20px; }
-.page-dashboard__wb-alert-list li { margin-bottom: 4px; }
-.page-dashboard__wb-alert-btn { margin-left: 8px; }
-/* Кликабельные ячейки затрат (попапы детализации shf/udr/отзывы/хранение/приёмка):
- * подчёркнутая ссылка в цвете ячейки, как в Yii2 (trigger-detail-popup). */
-.page-dashboard__exp-link { appearance: none; -webkit-appearance: none; background: none; background-color: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 0; margin: 0; color: inherit; font: inherit; line-height: inherit; text-align: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
-.page-dashboard__exp-link:hover { opacity: .75; }
-.page-dashboard__exp-link:focus-visible { outline: 1px dotted currentColor; outline-offset: 1px; }
+
+/* ---------- каркас ---------- */
+.page-dashboard { padding-top: 14px; padding-bottom: 32px; }
+.page-dashboard .nav_div { position: sticky; top: 12px; }
+
+.dsp__head {
+  display: flex; align-items: center; gap: 12px; flex-wrap: nowrap;
+  margin-bottom: 16px;
+}
+.dsp__head .spacer { margin-left: auto; }
+.dsp__head-note {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
+.dsp__dates { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+.dsp__dates-note { color: var(--ink-muted); font-size: calc(12px * var(--fs)); white-space: nowrap; }
+
+.dsp__stack > * + * { margin-top: 16px; }
+
+/* «Финансовая аналитика» — на всю ширину блока, под вертикальным меню */
+.dsp__wide { margin-top: 16px; }
+
+/* заголовок блока (как «Показатели») */
+.dsp-h2 {
+  margin: 0 0 10px; font-size: calc(19px * var(--fs)); font-weight: 700;
+  color: var(--ink); letter-spacing: -.01em;
+}
+
+/* 4-я колонка показателей: hero «Маржа» + «Баланс» друг под другом.
+   «Маржа» растягивается на всю свободную высоту, содержимое — по центру
+   (как в боевом виджете: .page-dashboard__margin-card { flex: 1 1 auto; justify-content: center }). */
+.dsp-col4 { display: flex; flex-direction: column; gap: 12px; }
+.dsp-col4 .dsp-metric--hero {
+  flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center;
+}
+.dsp-col4 .tile:last-child { flex: none; }
+
+/* алерт «токены WB» */
+.dsp-token-alert {
+  border: 1px solid; border-radius: var(--radius-lg, 14px);
+  padding: 11px 14px; font-size: calc(12.5px * var(--fs));
+}
+.dsp-token-alert--warn {
+  background: var(--warn-tint); border-color: color-mix(in srgb, var(--warn) 30%, transparent);
+  color: var(--warn-deep);
+}
+.dsp-token-alert--bad {
+  background: var(--bad-tint); border-color: color-mix(in srgb, var(--bad) 30%, transparent);
+  color: var(--bad-deep);
+}
+.dsp-token-alert__head { display: flex; gap: 8px; align-items: center; font-weight: 600; margin-bottom: 6px; }
+.dsp-token-alert__list { margin: 0; padding-left: 20px; }
+.dsp-token-alert__list li { margin-bottom: 4px; }
+.dsp-token-alert__list .btn { margin-left: 8px; }
+
+.dsp__empty {
+  padding: 28px 16px; text-align: center; color: var(--ink-soft);
+  font-size: calc(13px * var(--fs));
+}
+.dsp__empty--warn {
+  background: var(--warn-tint); color: var(--warn-deep);
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+  border-radius: var(--radius-lg, 14px);
+}
+
+/* ---------- плитка показателя (выручка / расходы / итого) ---------- */
+/* Треки grid не должны раздуваться под min-content: колонка сжимается,
+   подпись строки обрезается многоточием, числа не переносятся. */
+.dsp-top .grid-4 > * { min-width: 0; }
+.dsp-metric { display: flex; flex-direction: column; height: 100%; min-width: 0; }
+.dsp-metric__head {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: calc(11.5px * var(--fs)); color: var(--ink-soft);
+}
+.dsp-metric__pct { margin-left: auto; font-weight: 700; color: var(--ink-muted); }
+.dsp-metric__total {
+  font-size: calc(24px * var(--fs)); font-weight: 700; letter-spacing: -.03em;
+  line-height: 1.15; margin: 4px 0 8px;
+}
+.dsp-metric__total--sales { color: var(--d-sales); }
+.dsp-metric__total--expenses { color: var(--d-comm); }
+.dsp-metric__total--pay { color: var(--ink); }
+
+.dsp-metric__bar {
+  display: flex; height: 8px; border-radius: 4px; overflow: hidden;
+  background: var(--surface-3); margin-bottom: 8px;
+}
+.dsp-metric__seg { height: 100%; }
+
+.dsp-metric__rows { list-style: none; margin: 8px 0 0; padding: 0; }
+.dsp-metric__row {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  font-size: calc(12px * var(--fs)); color: var(--ink-soft); padding: 2px 0;
+}
+.dsp-metric__dot { width: 8px; height: 8px; border-radius: 99px; flex: none; }
+.dsp-metric__label {
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dsp-metric__qty { color: var(--ink-muted); font-size: calc(11.5px * var(--fs)); white-space: nowrap; flex: none; }
+.dsp-metric__val { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; flex: none; }
+.dsp-metric__pctrow {
+  color: var(--ink-muted); min-width: 36px; text-align: right;
+  font-variant-numeric: tabular-nums; white-space: nowrap; flex: none;
+}
+.dsp-metric__row--total {
+  border-top: 1px solid var(--line); margin-top: 5px; padding-top: 7px;
+}
+.dsp-metric__row--total .dsp-metric__label { color: var(--ink); font-weight: 600; }
+
+/* hero-карточка «Маржа» — фиолетовый градиент (значение — токен) */
+.dsp-metric--hero {
+  background: var(--d-hero-grad); color: #fff; border-color: transparent;
+}
+.dsp-metric--hero .dsp-metric__head,
+.dsp-metric--hero .dsp-metric__pct { color: rgba(255,255,255,.92); }
+.dsp-metric--hero .dsp-metric__total { color: #fff; }
+
+/* ---------- график «Показатели» (стек 30 дней) ---------- */
+.dsp-chart { width: 100%; height: 320px; }
+.dsp-chart__hint {
+  text-align: right; color: var(--ink-muted);
+  font-size: calc(11px * var(--fs)); padding: 4px 14px 10px;
+}
+
+/* ---------- блок «Сегодня» ---------- */
+.dsp-today__head {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 10px 14px; background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+}
+/* .spacer в теме работает только внутри .card__hd — здесь свой отступ до выбора периода */
+.dsp-today__head .spacer { margin-left: auto; }
+.dsp-tabs { display: flex; }
+.dsp-tab {
+  border: 0; background: transparent; font: inherit;
+  font-size: calc(14px * var(--fs)); font-weight: 600; color: var(--ink-soft);
+  padding: 6px 4px; margin-right: 22px;
+  border-bottom: 2px solid transparent; cursor: pointer;
+}
+.dsp-tab.is-on { color: var(--ink); border-bottom-color: var(--brand); }
+.dsp-today__note { font-size: calc(12px * var(--fs)); color: var(--ink-muted); }
+.dsp-today__check {
+  display: flex; align-items: center; gap: 5px;
+  font-size: calc(12px * var(--fs)); color: var(--ink-soft);
+}
+.dsp-select {
+  font: inherit; font-size: calc(13px * var(--fs)); font-weight: 600;
+  color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line-strong); border-radius: 6px; padding: 6px 10px;
+}
+.dsp-delta { font-size: calc(11px * var(--fs)); margin-top: 4px; }
+.dsp-delta--up { color: var(--good); }
+.dsp-delta--down { color: var(--bad); }
+
+/* «Сегодня»: цифры по выбранному периоду — крупнее (данные — главное в блоке) */
+.dsp-today__kpi .tile__value { font-size: calc(30px * var(--fs)); }
+.dsp-today__kpi .dsp-delta { font-size: calc(12.5px * var(--fs)); }
+.dsp-today__kpi .dsp-prev__rows { font-size: calc(12.5px * var(--fs)); }
+.dsp-prev {
+  border: 1px solid var(--brand); border-radius: 8px;
+  padding: 10px 12px; background: var(--surface); height: 100%;
+}
+.dsp-prev__rows {
+  text-align: right; margin-top: 6px;
+  font-size: calc(12px * var(--fs)); color: var(--ink-soft);
+}
+.dsp-prev__rows b { color: var(--ink); }
+.dsp-today__chart { height: 260px; }
+.dsp-today__cap {
+  text-align: right; color: var(--brand-2);
+  font-size: calc(11px * var(--fs)); margin-top: 4px;
+}
+
+/* ---------- новости: как в боевом блоке (заголовок-ссылка + рельс) ---------- */
+.dsp-news__head { margin-bottom: 8px; }
+.dsp-news__title {
+  font-size: calc(20px * var(--fs)); font-weight: 700; color: var(--ink); text-decoration: none;
+}
+.dsp-news__title:hover { color: var(--brand); }
+.dsp-news__track {
+  display: flex; gap: 24px;
+  overflow-x: auto; scrollbar-width: none; cursor: grab;
+  padding-bottom: 4px; user-select: none;
+}
+.dsp-news__track::-webkit-scrollbar { display: none; }
+.dsp-news__item {
+  flex: 0 0 300px; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md); padding: 12px 14px; box-shadow: var(--shadow-1);
+}
+.dsp-news__item:hover { border-color: var(--brand); }
+.dsp-news__date { font-size: calc(12px * var(--fs)); color: var(--ink-muted); margin-bottom: 4px; }
+.dsp-news__name {
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  font-size: calc(15px * var(--fs)); font-weight: 600; color: var(--ink);
+}
+
+/* ---------- новые карточки: как в боевом блоке (2 ряда, фото слева) ---------- */
+.dsp-cards__head { margin-bottom: 8px; }
+.dsp-cards__title {
+  font-size: calc(20px * var(--fs)); font-weight: 700; color: var(--ink); text-decoration: none;
+}
+.dsp-cards__title:hover { color: var(--brand); }
+.dsp-cards__track {
+  display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, auto); gap: 12px;
+  overflow-x: auto; scrollbar-width: none; cursor: grab;
+  padding-bottom: 4px; user-select: none;
+}
+.dsp-cards__track::-webkit-scrollbar { display: none; }
+.dsp-cards__item { width: 340px; }
+.dsp-cards__card {
+  display: flex; gap: 12px; padding: 8px; height: 100%;
+  background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-1); align-items: center;
+}
+.dsp-cards__img {
+  flex: none; width: 80px; height: 110px; border-radius: 6px; overflow: hidden;
+  background: var(--surface-2); border: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: center; color: var(--ink-muted);
+}
+.dsp-cards__img img { width: 100%; height: 100%; object-fit: cover; }
+.dsp-cards__text { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.dsp-cards__name {
+  font-size: calc(14px * var(--fs)); font-weight: 600; color: var(--ink); margin-bottom: 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dsp-cards__sub {
+  font-size: calc(12px * var(--fs)); color: var(--ink-muted); margin-bottom: 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dsp-cards__row {
+  font-size: calc(12px * var(--fs)); color: var(--ink-soft); margin-bottom: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dsp-cards__row a { color: var(--brand); font-weight: 600; text-decoration: none; }
+.dsp-cards__row a:hover { text-decoration: underline; }
+.dsp-cards__date {
+  font-size: calc(11px * var(--fs)); color: var(--ink-muted);
+  margin-top: 4px; padding-top: 4px; border-top: 1px dashed var(--line);
+}
+
+/* ---------- модалка «Показатели за день» ---------- */
+.dsp-modal {
+  position: fixed; inset: 0; z-index: 1060; background: rgba(17,24,39,.5);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 40px 16px; overflow: auto;
+}
+.dsp-modal__box {
+  background: var(--surface); border-radius: 14px; max-width: 1180px; width: 100%;
+  box-shadow: 0 12px 40px rgba(0,0,0,.28); padding: 16px 18px 18px;
+}
+.dsp-modal__head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 12px;
+}
+.dsp-modal__title { font-weight: 700; font-size: calc(15px * var(--fs)); }
+.dsp-modal__links {
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  margin-top: 14px; font-size: calc(12.5px * var(--fs));
+}
+.dsp-modal__links-cap { color: var(--ink-muted); }
+.dsp-modal__link {
+  background: none; border: 0; padding: 0; font: inherit; cursor: pointer;
+  color: var(--brand-2); text-decoration: underline; text-underline-offset: 2px;
+}
+.dsp-modal__link:hover { opacity: .75; }
+
+/* ---------- таблицы ---------- */
+.dsp-tbl td.dsp-tbl__sum { color: var(--brand-2); font-weight: 600; }
+.dsp-tbl__link { color: var(--d-adv); text-decoration: none; }
+.dsp-tbl__link:hover { text-decoration: underline; }
+.dsp-tbl th.sortable { cursor: pointer; user-select: none; }
+.dsp-tbl th.sortable:hover { color: var(--brand); }
+.dsp-sortmark { color: var(--ink-muted); font-size: calc(10px * var(--fs)); }
+
+/* ---------- адаптив ---------- */
+@media (max-width: 991px) {
+  .page-dashboard .nav_div { position: static; }
+}
+@media (max-width: 767px) {
+  .page-dashboard .nav_div { display: none !important; }
+  .dsp__dates { width: 100%; }
+  .dsp__head { flex-wrap: wrap; }
+  /* «Финансовая аналитика» — 19 колонок, на телефоне прячем (как было раньше). */
+  .mobile-hide-block { display: none !important; }
+}
